@@ -24,15 +24,36 @@
     document.documentElement.style.setProperty("--topbar-height", height + "px");
   }
 
+  function readCookie(name) {
+    var match = document.cookie.match(
+      new RegExp("(?:^|; )" + name.replace(/([.$?*|{}()[\]\\/+^])/g, "\\$1") + "=([^;]*)")
+    );
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
+  function writeCookie(name, value) {
+    document.cookie =
+      name + "=" + encodeURIComponent(value) + "; Path=/; SameSite=Lax; Max-Age=31536000";
+  }
+
+  function persistPref(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch (_err) {}
+    writeCookie(key, value);
+  }
+
   function readShared(shared, legacy, fallback) {
-    var value = localStorage.getItem(shared);
-    if (value) return value;
-    for (var i = 0; i < legacy.length; i++) {
-      value = localStorage.getItem(legacy[i]);
-      if (value) {
-        localStorage.setItem(shared, value);
-        return value;
+    var value = readCookie(shared) || localStorage.getItem(shared);
+    if (!value) {
+      for (var i = 0; i < legacy.length; i++) {
+        value = readCookie(legacy[i]) || localStorage.getItem(legacy[i]);
+        if (value) break;
       }
+    }
+    if (value) {
+      persistPref(shared, value);
+      return value;
     }
     return fallback;
   }
@@ -54,8 +75,8 @@
     document.documentElement.dataset.themePref = pref;
     document.documentElement.dataset.palette = chosen;
     document.documentElement.style.colorScheme = theme;
-    localStorage.setItem(THEME_KEY, pref);
-    localStorage.setItem(PALETTE_KEY, chosen);
+    persistPref(THEME_KEY, pref);
+    persistPref(PALETTE_KEY, chosen);
     var meta = document.querySelector("[data-theme-color]");
     if (meta && THEME_COLORS[chosen]) meta.setAttribute("content", THEME_COLORS[chosen][theme]);
     document.querySelectorAll("[data-theme-set]").forEach(function (btn) {
@@ -85,11 +106,11 @@
   });
   document.querySelectorAll("[data-palette-set]").forEach(function (btn) {
     btn.addEventListener("click", function () {
-      applyTheme(localStorage.getItem(THEME_KEY) || "system", btn.dataset.paletteSet);
+      applyTheme(readShared(THEME_KEY, LEGACY_THEME_KEYS, "system"), btn.dataset.paletteSet);
     });
   });
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () {
-    if ((localStorage.getItem(THEME_KEY) || "system") === "system") applyTheme("system");
+    if (readShared(THEME_KEY, LEGACY_THEME_KEYS, "system") === "system") applyTheme("system");
   });
 
   // Initialize remaining controls on DOM ready

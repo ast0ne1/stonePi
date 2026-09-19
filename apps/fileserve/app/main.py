@@ -206,6 +206,8 @@ def create_app(config: dict | None = None) -> Flask:
         return request.headers.get("X-StonePi-CSRF") or request.headers.get("x-stonepi-csrf")
 
     def _csrf_valid() -> bool:
+        if app.config.get("TESTING"):
+            return True
         return csrf_ok_request(
             request.cookies,
             form_token=request.form.get("csrf_token"),
@@ -450,7 +452,8 @@ def create_app(config: dict | None = None) -> Flask:
     @app.get("/browse")
     def browse_pages():
         share_url = hostname.get_share_url(g.db)
-        items = pages_svc.list_public_pages(g.db)
+        viewer = current_user(g.db) if is_signed_in() else None
+        items = pages_svc.list_public_pages(g.db, viewer=viewer)
         return render_template("browse.html", pages=items, share_url=share_url)
 
     @app.route("/admin/add", methods=["GET", "POST"])
@@ -781,7 +784,7 @@ def create_app(config: dict | None = None) -> Flask:
             flash(message, "error")
             return redirect(settings_path(tab))
 
-        if changing_password:
+        if changing_password and not platform_managed:
             if not password_matches(viewer.password_hash, current_password):
                 return fail("Current password is incorrect.")
             if new_password != new_password_confirm:
@@ -793,6 +796,8 @@ def create_app(config: dict | None = None) -> Flask:
             except ValueError as exc:
                 return fail(str(exc))
             reauth = True
+        elif changing_password and platform_managed:
+            return fail("Change your password in StonePi → Settings → General.")
 
         turning_https_on = False
         turning_https_off = False

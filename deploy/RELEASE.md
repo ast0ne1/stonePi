@@ -49,4 +49,4 @@ Each zip includes `STONEPI.txt`. The updater prefers `stonepi-{app}-*.zip` and s
 
 ## 6. GitHub Release
 
-Tag platform **v0.1.1** (or your chosen tag), attach the `stonepi-*.zip` assets, summarize from root `CHANGELOG.md`.
+Tag platform **v0.1.2** (or your chosen tag), attach the `stonepi-*.zip` assets, summarize from root `CHANGELOG.md`.

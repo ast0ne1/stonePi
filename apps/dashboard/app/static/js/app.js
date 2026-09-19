@@ -10,15 +10,38 @@ const THEME_COLORS = {
   slate: { light: "#ececee", dark: "#121314" },
 };
 
+function readCookie(name) {
+  const match = document.cookie.match(
+    new RegExp("(?:^|; )" + name.replace(/([.$?*|{}()[\]\\/+^])/g, "\\$1") + "=([^;]*)")
+  );
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function writeCookie(name, value) {
+  document.cookie =
+    name + "=" + encodeURIComponent(value) + "; Path=/; SameSite=Lax; Max-Age=31536000";
+}
+
+function persistPref(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (_err) {
+    /* private mode */
+  }
+  writeCookie(key, value);
+}
+
 function readShared(shared, legacy, fallback) {
-  let value = localStorage.getItem(shared);
-  if (value) return value;
-  for (const key of legacy) {
-    value = localStorage.getItem(key);
-    if (value) {
-      localStorage.setItem(shared, value);
-      return value;
+  let value = readCookie(shared) || localStorage.getItem(shared);
+  if (!value) {
+    for (const key of legacy) {
+      value = readCookie(key) || localStorage.getItem(key);
+      if (value) break;
     }
+  }
+  if (value) {
+    persistPref(shared, value);
+    return value;
   }
   return fallback;
 }
@@ -46,26 +69,36 @@ function applyTheme(pref, palette) {
     button.classList.toggle("is-active", button.dataset.themeSet === pref);
   });
   document.querySelectorAll("[data-palette-set]").forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.paletteSet === chosen);
+    const on = button.dataset.paletteSet === chosen;
+    button.classList.toggle("is-active", on);
+    button.setAttribute("aria-pressed", on ? "true" : "false");
   });
+  const status = document.querySelector("[data-palette-status]");
+  if (status) {
+    const label = chosen.charAt(0).toUpperCase() + chosen.slice(1);
+    status.textContent = `Using ${label} — saved for this browser (no Save button).`;
+  }
 }
 
 const savedTheme = readShared(THEME_KEY, LEGACY_THEME_KEYS, "system");
 applyTheme(savedTheme);
 document.querySelectorAll("[data-theme-set]").forEach((button) => {
   button.addEventListener("click", () => {
-    localStorage.setItem(THEME_KEY, button.dataset.themeSet);
-    applyTheme(button.dataset.themeSet);
+    const pref = button.dataset.themeSet || "system";
+    persistPref(THEME_KEY, pref);
+    applyTheme(pref, savedPalette());
   });
 });
 document.querySelectorAll("[data-palette-set]").forEach((button) => {
   button.addEventListener("click", () => {
-    localStorage.setItem(PALETTE_KEY, button.dataset.paletteSet);
-    applyTheme(localStorage.getItem(THEME_KEY) || "system", button.dataset.paletteSet);
+    const palette = button.dataset.paletteSet || "default";
+    persistPref(PALETTE_KEY, palette);
+    const pref = readCookie(THEME_KEY) || localStorage.getItem(THEME_KEY) || "system";
+    applyTheme(pref, palette);
   });
 });
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
-  if ((localStorage.getItem(THEME_KEY) || "system") === "system") applyTheme("system");
+  if (readShared(THEME_KEY, LEGACY_THEME_KEYS, "system") === "system") applyTheme("system");
 });
 
 function askConfirm({ title, body, okLabel }) {

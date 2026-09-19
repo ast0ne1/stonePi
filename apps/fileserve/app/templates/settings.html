@@ -20,11 +20,12 @@
 
   <div class="stack settings-panel" id="settings-panel-device" role="tabpanel" data-settings-panel="device" aria-labelledby="settings-tab-device"{% if settings_tab != 'device' %} hidden{% endif %}>
     {% if platform_managed %}
-    <p class="hint">Household accounts and updates are managed in StonePi. Colour palette is under <a href="{{ stonepi_home_url }}/settings?tab=general">StonePi → Settings → General</a>.</p>
+    <p class="hint">Your password and colour palette are under <a href="{{ stonepi_home_url }}/settings?tab=general">StonePi → Settings → General</a>. Admins manage household accounts on <a href="{{ stonepi_home_url }}/users">StonePi → Users</a>.</p>
     {% else %}
     <p class="hint">Colour palette for all StonePi apps is set on the portal under Settings → General when StonePi SSO is enabled.</p>
     {% endif %}
 
+    {% if not platform_managed %}
     <div class="card stack">
       <h2>Your access</h2>
       <p class="hint">Signed in as <strong>{{ admin_username }}</strong>{% if current_user_is_admin %} (admin){% endif %}.</p>
@@ -53,6 +54,12 @@
         </span>
       </label>
     </div>
+    {% else %}
+    <div class="card stack">
+      <h2>Your access</h2>
+      <p class="hint">Signed in as <strong>{{ admin_username }}</strong>{% if current_user_is_admin %} (admin){% endif %}. Change your StonePi password under <a href="{{ stonepi_home_url }}/settings?tab=general#account-password">Settings → General</a>.</p>
+    </div>
+    {% endif %}
 
     {% if current_user_is_admin %}
     <div class="card stack">
@@ -161,7 +168,7 @@
       </div>
 
       {% if account.is_admin %}
-      <p class="hint">Change the admin password under General. Admin pages use short URLs such as <code>/emergency-planner</code>.</p>
+      <p class="hint">Change the admin password under <a href="{{ stonepi_home_url }}/settings?tab=general#account-password">StonePi → Settings → General</a> when SSO is on. Admin pages use short URLs such as <code>/emergency-planner</code>.</p>
       {% else %}
       <form method="post" action="{{ url_for('update_household_user', user_id=account.id) }}" class="stack user-edit-form" autocomplete="off">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />

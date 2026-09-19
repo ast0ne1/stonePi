@@ -29,12 +29,14 @@ def _session_secret() -> str:
 
 
 def _settings() -> PlatformSettings:
+    from stonepi_auth.http import browser_auth_url
+
     return PlatformSettings(
         enabled=bool(_session_secret()),
         session_secret=_session_secret(),
         app_id="pinboard",
         prefix=env.stonepi_prefix or ("/pinboard" if env.routing == "path" else ""),
-        auth_url=env.auth_url if "127.0.0.1" in env.auth_url else "/auth",
+        auth_url=browser_auth_url(env.auth_url, routing=env.routing),
         public_origin=env.public_origin,
         hostname=env.hostname,
     )

@@ -16,31 +16,53 @@
 {% if settings_tab == 'general' %}
 <section class="card stack">
   <h2>Appearance</h2>
-  <p class="muted">Palette for this browser across all StonePi apps. Light, Dark, and Match Device stay in each app header. Applies immediately — no need to save.</p>
+  <p class="muted">Tap a colour palette — it saves in this browser immediately (no Save button). Light / Dark / Auto stay in the header on every app. Prefs are per hostname: stay on one URL (for example <code>stonepi.home</code>) so <code>.local</code> does not look different.</p>
   <div class="palette-picker" role="group" aria-label="Colour palette">
-    <button type="button" class="palette-option" data-palette-set="default">
+    <button type="button" class="palette-option" data-palette-set="default" aria-pressed="false">
       <span class="palette-swatch" data-swatch="default" aria-hidden="true"></span>
       <span class="palette-name">Default</span>
       <span class="palette-note">Warm paper</span>
     </button>
-    <button type="button" class="palette-option" data-palette-set="ocean">
+    <button type="button" class="palette-option" data-palette-set="ocean" aria-pressed="false">
       <span class="palette-swatch" data-swatch="ocean" aria-hidden="true"></span>
       <span class="palette-name">Ocean</span>
       <span class="palette-note">Cool blue</span>
     </button>
-    <button type="button" class="palette-option" data-palette-set="forest">
+    <button type="button" class="palette-option" data-palette-set="forest" aria-pressed="false">
       <span class="palette-swatch" data-swatch="forest" aria-hidden="true"></span>
       <span class="palette-name">Forest</span>
       <span class="palette-note">Moss and sage</span>
     </button>
-    <button type="button" class="palette-option" data-palette-set="slate">
+    <button type="button" class="palette-option" data-palette-set="slate" aria-pressed="false">
       <span class="palette-swatch" data-swatch="slate" aria-hidden="true"></span>
       <span class="palette-name">Slate</span>
       <span class="palette-note">Grey, plain</span>
     </button>
   </div>
+  <p class="muted" data-palette-status>Using Default — saved for this browser (no Save button).</p>
 </section>
 
+<section class="card stack" id="account-password">
+  <h2>Your password</h2>
+  <p class="muted">Signed in as <strong>{{ user.display_name or user.username }}</strong> (@{{ user.username }}). Change the password you use for every StonePi app.</p>
+  <form method="post" action="/settings/password" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <label>Current password
+      <input type="password" name="current_password" required autocomplete="current-password" />
+    </label>
+    <label>New password
+      <input type="password" name="new_password" required minlength="8" autocomplete="new-password" placeholder="At least 8 characters" />
+    </label>
+    <label>Confirm new password
+      <input type="password" name="new_password_confirm" required minlength="8" autocomplete="new-password" />
+    </label>
+    <div class="row-actions">
+      <button type="submit" class="btn btn-primary btn-with-icon">{{ svg('check') }} Update password</button>
+    </div>
+  </form>
+</section>
+
+{% if user.is_admin and not settings_appearance_only %}
 <section class="card stack">
   <h2>Network exposure</h2>
   <p class="muted">Default is home network only. Flip to internet-facing when you put StonePi behind a tunnel or public HTTPS — apps tighten immediately, no restart.</p>
@@ -67,6 +89,7 @@
     </div>
   </form>
 </section>
+{% endif %}
 {% endif %}
 
 {% if settings_tab == 'display' %}

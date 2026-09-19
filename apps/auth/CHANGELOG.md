@@ -1,5 +1,17 @@
 # Changelog — Auth
 
+## 0.1.2 — 2026-09-19
+
+### Added
+- `POST /api/me/password` — signed-in users change their own password (current + new); other sessions are revoked
+
+### Fixed
+- Auth **status** page boots the shared theme/palette (post-login screen matches the rest of StonePi)
+- Theme boot prefers cookies then localStorage so palette survives across apps on the same host
+
+### Changed
+- Version aligned to platform **0.1.2** (was incorrectly 0.0.3)
+
 ## 0.0.2 — 2026-09-19
 
 ### Added
@@ -7,8 +19,7 @@
 
 ### Fixed
 - Post-login redirect no longer rewrites to `PUBLIC_ORIGIN` (`stonepi.local`) on path installs — stays on `.home` / IP / `.local`
-- **Back to apps** uses `portal_home_url()` so PrefixRewriter does not loop to `/auth/`
 
 ## 0.0.1 — initial
 
-- Shared household sign-in and session cookie
+Shared sign-in for StonePi apps.

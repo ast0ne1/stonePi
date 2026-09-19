@@ -37,13 +37,15 @@ def _prefix() -> str:
     return (env.stonepi_prefix or "").rstrip("/")
 
 def _settings() -> PlatformSettings:
+    from stonepi_auth.http import browser_auth_url
+
     pfx = _prefix()
     return PlatformSettings(
         enabled=bool(_session_secret()),
         session_secret=_session_secret(),
         app_id="studio",
         prefix=pfx,
-        auth_url=env.auth_url if "127.0.0.1" in env.auth_url else "/auth",
+        auth_url=browser_auth_url(env.auth_url, routing=env.routing),
         public_origin=env.public_origin,
         hostname=env.hostname,
     )

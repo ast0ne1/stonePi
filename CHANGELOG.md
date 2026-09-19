@@ -2,6 +2,23 @@
 
 Platform version lives in [`VERSION`](VERSION). App zips use each app’s `__version__` (see `scripts/build_release_zips.py`).
 
+## 0.1.2 — 2026-09-19
+
+### UX
+- Overview backup card honest about failed/skipped stamps
+- Path-install Sign out stays on `/auth` (hostname you opened), not loopback `AUTH_URL`
+- Settings → General: Appearance + own password for everyone; admins keep **Users** nav for household accounts
+- Theme/palette cookies + auth status page theming
+- Launcher tiles stay on the hostname you opened (relative paths; no `.home` → `.local` flip)
+- FileServe `/browse` scoped: own pages for members; admin/root only for anonymous visitors
+- App Settings General no longer offers local password change when SSO is on (use portal Settings → General)
+
+### App versions in this cut
+| App | Version |
+|-----|---------|
+| dashboard | 0.1.2 |
+| auth | 0.1.2 |
+
 ## 0.1.1 — 2026-09-19
 
 ### Display / TRMNL

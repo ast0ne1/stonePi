@@ -4,6 +4,9 @@ Current version is **0.0.0.5**. New work is appended under that version until yo
 
 ## 0.0.0.5 — 2026-09-17
 
+### Fixed
+- **`/browse`** no longer lists every household member’s pages to standard users: signed-in non-admins see only their own titles; anonymous visitors see admin/root (household) pages only; admins still see everyone
+
 ### Added
 - **Add** splits into **Add file** and **Add from URL** (same header; chips switch panels in place)
 - Add from URL packs a live page into a FileServe-ready Site zip via a signed-in server fetch (no public CORS proxy)
