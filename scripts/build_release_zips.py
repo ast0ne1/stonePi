@@ -13,6 +13,7 @@ not standalone upstream apps). Platform packs use ``stonepi-platform-{version}.z
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import re
 import zipfile
 from pathlib import Path
@@ -35,6 +36,12 @@ APP_INCLUDE = (
 PLATFORM_INCLUDE = ("VERSION", "deploy", "packages", "scripts", "README.md", "CHANGELOG.md")
 PLATFORM_EXCLUDE_PREFIXES = (
     "deploy/packages/",
+)
+# Local-only Pi overlay helpers — never ship in stonepi-platform-*.zip
+PLATFORM_SCRIPT_EXCLUDE_GLOBS = (
+    "scripts/push-*-fixes.*",
+    "scripts/apply-*-on-pi.sh",
+    "scripts/*-ux-overlay*",
 )
 
 STONEPI_NOTICE = """\
@@ -66,7 +73,18 @@ def read_platform_version() -> str:
     return path.read_text(encoding="utf-8").strip().splitlines()[0].strip()
 
 
-def add_path(archive: zipfile.ZipFile, source: Path, arcname: str, *, skip_prefixes: tuple[str, ...] = ()) -> None:
+def should_skip_platform_path(full_arc: str) -> bool:
+    return any(fnmatch.fnmatch(full_arc, pattern) for pattern in PLATFORM_SCRIPT_EXCLUDE_GLOBS)
+
+
+def add_path(
+    archive: zipfile.ZipFile,
+    source: Path,
+    arcname: str,
+    *,
+    skip_prefixes: tuple[str, ...] = (),
+    skip_script_helpers: bool = False,
+) -> None:
     if source.is_dir():
         for path in source.rglob("*"):
             if path.is_dir():
@@ -78,6 +96,8 @@ def add_path(archive: zipfile.ZipFile, source: Path, arcname: str, *, skip_prefi
             rel_posix = path.relative_to(source).as_posix()
             full_arc = f"{arcname}/{rel_posix}" if arcname else rel_posix
             if any(full_arc == p.rstrip("/") or full_arc.startswith(p) for p in skip_prefixes):
+                continue
+            if skip_script_helpers and should_skip_platform_path(full_arc):
                 continue
             if "data" in path.parts and "app" not in path.parts[: path.parts.index("data")]:
                 # Skip runtime data/ under app root, keep app/data bundled assets
@@ -115,7 +135,13 @@ def build_platform_zip(out_dir: Path) -> Path:
             if not source.exists():
                 continue
             skip = PLATFORM_EXCLUDE_PREFIXES if name == "deploy" else ()
-            add_path(archive, source, name, skip_prefixes=skip)
+            add_path(
+                archive,
+                source,
+                name,
+                skip_prefixes=skip,
+                skip_script_helpers=(name == "scripts"),
+            )
     return dest
 
 
