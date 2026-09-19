@@ -11,15 +11,38 @@
     slate: { light: "#ececee", dark: "#121314" },
   };
 
+  function readCookie(name) {
+    const match = document.cookie.match(
+      new RegExp("(?:^|; )" + name.replace(/([.$?*|{}()[\]\\/+^])/g, "\\$1") + "=([^;]*)")
+    );
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
+  function writeCookie(name, value) {
+    document.cookie =
+      name + "=" + encodeURIComponent(value) + "; Path=/; SameSite=Lax; Max-Age=31536000";
+  }
+
+  function persistPref(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch (_err) {
+      /* private mode */
+    }
+    writeCookie(key, value);
+  }
+
   function readShared(shared, legacy, fallback) {
-    let value = localStorage.getItem(shared);
-    if (value) return value;
-    for (const key of legacy) {
-      value = localStorage.getItem(key);
-      if (value) {
-        localStorage.setItem(shared, value);
-        return value;
+    let value = readCookie(shared) || localStorage.getItem(shared);
+    if (!value) {
+      for (const key of legacy) {
+        value = readCookie(key) || localStorage.getItem(key);
+        if (value) break;
       }
+    }
+    if (value) {
+      persistPref(shared, value);
+      return value;
     }
     return fallback;
   }
@@ -51,12 +74,12 @@
   applyTheme(readShared(THEME_KEY, LEGACY_THEME, "system"));
   document.querySelectorAll("[data-theme-set]").forEach((button) => {
     button.addEventListener("click", () => {
-      localStorage.setItem(THEME_KEY, button.dataset.themeSet);
+      persistPref(THEME_KEY, button.dataset.themeSet);
       applyTheme(button.dataset.themeSet);
     });
   });
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
-    if ((localStorage.getItem(THEME_KEY) || "system") === "system") applyTheme("system");
+    if (readShared(THEME_KEY, LEGACY_THEME, "system") === "system") applyTheme("system");
   });
 
   function slugify(value) {

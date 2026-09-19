@@ -5,35 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, shrink-to-fit=no" />
     <meta name="theme-color" content="#f3eee4" data-theme-color />
     <title>{% block title %}StonePi{% endblock %}</title>
-    <script>
-      (function () {
-        function readPref(shared, legacy, fallback) {
-          var value = localStorage.getItem(shared);
-          if (value) return value;
-          for (var i = 0; i < legacy.length; i++) {
-            value = localStorage.getItem(legacy[i]);
-            if (value) {
-              localStorage.setItem(shared, value);
-              return value;
-            }
-          }
-          return fallback;
-        }
-        var pref = readPref("stonepi-theme", ["newscast-theme", "fileserve-theme", "eventtrakr-theme"], "system");
-        var dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-        var theme = pref === "system" ? (dark ? "dark" : "light") : pref;
-        var palette = readPref("stonepi-palette", ["newscast-palette", "fileserve-palette", "eventtrakr-palette"], "default");
-        if (!/^(default|ocean|forest|slate)$/.test(palette)) palette = "default";
-        document.documentElement.dataset.theme = theme;
-        document.documentElement.dataset.themePref = pref;
-        document.documentElement.dataset.palette = palette;
-        document.documentElement.style.colorScheme = theme;
-      })();
-    </script>
+    {% include "_theme_boot.html" %}
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/static/css/app.css?v=20260920a" />
+    <link rel="stylesheet" href="/static/css/app.css?v=20260920c" />
   </head>
   <body>
     {% from "_icons.html" import svg %}
@@ -79,6 +55,8 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><circle cx="17" cy="9" r="2.5"/><path d="M14.5 19a4.5 4.5 0 0 1 6 0"/></svg>
             <span>Users</span>
           </a>
+          {% endif %}
+          {% if user %}
           <a href="/settings" class="{% if active == 'settings' %}is-active{% endif %}">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h9M17 8h3M4 16h3M11 16h9"/><circle cx="15.5" cy="8" r="2"/><circle cx="8.5" cy="16" r="2"/></svg>
             <span>Settings</span>
@@ -100,7 +78,7 @@
           </div>
           {% endif %}
           {% if using_factory_admin %}
-          <p class="banner banner-muted">Factory login is still <strong>admin / admin</strong>. Change it on the <a href="/users">Users</a> tab (edit the admin account password).</p>
+          <p class="banner banner-muted">Factory login is still <strong>admin / admin</strong>. Change it under <a href="/settings?tab=general#account-password">Settings → Your password</a>, or reset any account on <a href="/users">Users</a>.</p>
           {% endif %}
           {% block content %}{% endblock %}
         </main>
@@ -116,6 +94,6 @@
         </div>
       </div>
     </div>
-    <script src="/static/js/app.js?v=20260920a" defer></script>
+    <script src="/static/js/app.js?v=20260920c" defer></script>
   </body>
 </html>

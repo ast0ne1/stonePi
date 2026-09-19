@@ -92,13 +92,14 @@ def _platform_settings():
     if not secret:
         return None
     from stonepi_auth.config import PlatformSettings
+    from stonepi_auth.http import browser_auth_url
 
     return PlatformSettings(
         enabled=True,
         session_secret=secret,
         app_id=env.stonepi_app_id or "newscast",
         prefix=env.stonepi_prefix,
-        auth_url=env.stonepi_auth_url,
+        auth_url=browser_auth_url(env.stonepi_auth_url),
         public_origin=env.stonepi_public_origin,
         hostname=env.device_hostname or "stonepi",
     )

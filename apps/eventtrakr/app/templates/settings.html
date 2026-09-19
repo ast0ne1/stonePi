@@ -25,7 +25,7 @@
 <!-- Tab: General -->
 <div class="stack settings-panel" id="settings-panel-general" role="tabpanel" data-settings-panel="general" aria-labelledby="settings-tab-general"{% if active_tab != 'general' %} hidden{% endif %}>
 {% if platform_managed %}
-<p class="form-hint">Household accounts and updates are managed in StonePi. Colour palette is under <a href="{{ stonepi_home_url }}/settings?tab=general">StonePi → Settings → General</a>.</p>
+<p class="form-hint">Your password and colour palette are under <a href="{{ stonepi_home_url }}/settings?tab=general">StonePi → Settings → General</a>. Admins manage household accounts on <a href="{{ stonepi_home_url }}/users">StonePi → Users</a>.</p>
 {% else %}
 <p class="form-hint">Colour palette for all StonePi apps is set on the portal under Settings → General when StonePi SSO is enabled.</p>
 {% endif %}
@@ -39,10 +39,12 @@
       <span class="form-hint">Used as the pre-filled location when searching events.</span>
     </div>
 
+    {% if not platform_managed %}
     <div class="form-group">
       <label for="new_password">Change Password</label>
       <input type="password" id="new_password" name="new_password" class="form-control" placeholder="Leave blank to keep existing password" autocomplete="new-password" />
     </div>
+    {% endif %}
 
     <button type="submit" class="btn btn-primary" style="margin-top: 10px;">Save General Settings</button>
   </form>

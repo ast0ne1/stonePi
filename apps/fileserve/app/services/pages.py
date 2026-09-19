@@ -157,14 +157,34 @@ def list_pages(db: Session, *, viewer: User, owner_id: int | None = None) -> lis
     return query.order_by(Page.created_at.desc()).all()
 
 
-def list_public_pages(db: Session) -> list[Page]:
+def list_public_pages(db: Session, *, viewer: User | None = None) -> list[Page]:
+    """Titles shown on /browse.
+
+    - Admin viewer: all enabled, non-expired pages.
+    - Signed-in non-admin: only that user's pages.
+    - Anonymous: only household/admin root pages (not /u/{user}/… pages).
+    """
     pages = (
         db.query(Page)
+        .outerjoin(User, Page.user_id == User.id)
         .filter(Page.enabled.is_(True))
         .order_by(Page.title.asc())
         .all()
     )
-    return [page for page in pages if not is_expired(page)]
+    out: list[Page] = []
+    for page in pages:
+        if is_expired(page):
+            continue
+        if viewer is not None and viewer.is_admin:
+            out.append(page)
+            continue
+        if viewer is not None:
+            if page.user_id == viewer.id:
+                out.append(page)
+            continue
+        if page.is_root_page:
+            out.append(page)
+    return out
 
 
 def get_page(db: Session, page_id: int) -> Page | None:

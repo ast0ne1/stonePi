@@ -1277,8 +1277,10 @@ async def save_settings(
     form = await request.form()
     reauth = False
     current_user, current_pass = settings.get_admin_credentials(db)
-    changing_password = bool(new_password.strip())
-    changing_username = bool(admin_username.strip()) and admin_username.strip() != current_user
+    changing_password = bool(new_password.strip()) and not platform_managed
+    changing_username = (
+        bool(admin_username.strip()) and admin_username.strip() != current_user and not platform_managed
+    )
 
     if (changing_password or changing_username) and not is_admin:
         return _settings_error(request, "Only the household admin can change login credentials here.", tab)

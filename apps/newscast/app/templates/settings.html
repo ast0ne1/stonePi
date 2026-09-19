@@ -20,12 +20,12 @@
 
   <div class="stack settings-panel" id="settings-panel-device" role="tabpanel" data-settings-panel="device" aria-labelledby="settings-tab-device"{% if settings_tab != 'device' %} hidden{% endif %}>
     {% if platform_managed %}
-    <p class="hint">Household accounts and updates are managed in StonePi. Colour palette is under <a href="{{ stonepi_home_url }}/settings?tab=general">StonePi → Settings → General</a>.</p>
+    <p class="hint">Your password and colour palette are under <a href="{{ stonepi_home_url }}/settings?tab=general">StonePi → Settings → General</a>. Admins manage household accounts on <a href="{{ stonepi_home_url }}/users">StonePi → Users</a>.</p>
     {% else %}
     <p class="hint">Colour palette for all StonePi apps is set on the portal under Settings → General when StonePi SSO is enabled.</p>
     {% endif %}
 
-    {% if is_admin %}
+    {% if is_admin and not platform_managed %}
     <div class="card stack">
       <h2>Admin access</h2>
       <label>
@@ -57,7 +57,9 @@
         </span>
       </label>
     </div>
+    {% endif %}
 
+    {% if is_admin %}
     <div class="card stack">
       <h2>Network</h2>
       <label>
@@ -613,7 +615,7 @@
       </div>
 
       {% if user.role == 'admin' %}
-      <p class="hint">Admin accounts always have custom feeds, phone alerts, and Status. Change the admin username or password under General.</p>
+      <p class="hint">Admin accounts always have custom feeds, phone alerts, and Status. Change the admin password under <a href="{{ stonepi_home_url }}/settings?tab=general#account-password">StonePi → Settings → General</a> when SSO is on.</p>
       {% else %}
       <form method="post" action="/settings/users/{{ user.id }}" class="stack user-edit-form" autocomplete="off">
         <fieldset class="user-fieldset">

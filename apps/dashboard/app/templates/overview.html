@@ -29,7 +29,7 @@
     <p class="muted">Household accounts</p>
     {% endif %}
   </section>
-  <section class="card stat">
+  <section class="card stat{% if not backup_summary.ok %} is-warn{% endif %}">
     <p class="muted">Last backup</p>
     <strong>{{ backup_summary.label }}</strong>
     <p class="muted">{{ backup_summary.detail }}</p>

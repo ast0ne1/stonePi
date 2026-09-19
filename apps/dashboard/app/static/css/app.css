@@ -412,6 +412,8 @@ a.card:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
   margin-top: 4px;
 }
 .stat .muted { margin: 0; font-size: 0.85rem; }
+.stat.is-warn strong { color: var(--error); }
+.stat.is-warn .muted { color: var(--error); opacity: 0.85; }
 
 .stack { display: grid; gap: 14px; }
 label { display: grid; gap: 6px; font-size: 14px; font-weight: 500; }

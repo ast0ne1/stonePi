@@ -1,0 +1,121 @@
+{# Admin household accounts — used by Users page. #}
+{% from "_icons.html" import svg %}
+<details class="card people-create" id="add-user" open>
+  <summary class="people-create-summary">
+    <span class="people-create-title">{{ svg('plus') }} Add user</span>
+    <span class="muted people-create-hint">Username, password, then which apps they can open</span>
+  </summary>
+  <form method="post" action="{{ users_form_base|default('/users') }}" class="people-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <div class="people-form-grid">
+      <label>Username <input name="username" required autocapitalize="none" spellcheck="false" placeholder="jane" /></label>
+      <label>Display name <input name="display_name" placeholder="Jane" /></label>
+      <label>Password <input type="password" name="password" required minlength="8" placeholder="At least 8 characters" autocomplete="new-password" /></label>
+      <div class="people-flags">
+        <span class="people-flags-label">Role</span>
+        <label class="inline"><input type="checkbox" name="is_admin" value="1" /> Administrator</label>
+      </div>
+    </div>
+    <div class="people-access">
+      <h3>App access</h3>
+      <div class="access-grid">
+        {% for app in apps %}
+        <div class="access-app{% if not app.enabled %} is-disabled{% endif %}">
+          <label class="access-toggle">
+            <input type="checkbox" name="apps" value="{{ app.id }}" {% if app.enabled %}checked{% endif %} {% if not app.enabled %}disabled{% endif %} />
+            <span>{{ app.name }}</span>
+            {% if not app.enabled %}<span class="chip chip-quiet">Off</span>{% endif %}
+          </label>
+          {% if app.capabilities and app.enabled %}
+          <div class="access-caps">
+            {% for cap in app.capabilities %}
+            <label class="inline"><input type="checkbox" name="perm_{{ app.id }}_{{ cap.id }}" value="1" /> {{ cap.label }}</label>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="row-actions">
+      <button class="btn btn-primary btn-with-icon" type="submit">{{ svg('plus') }} Create</button>
+    </div>
+  </form>
+</details>
+
+<section class="people-list" id="household-users">
+  <div class="people-list-head">
+    <h2>Accounts</h2>
+    <p class="muted">{{ people|length }} {{ 'user' if people|length == 1 else 'users' }}</p>
+  </div>
+
+  {% if not people %}
+  <section class="card">
+    <h2>No accounts yet</h2>
+    <p class="muted">Create the first household account, set a password, and grant which apps they can open.</p>
+    <div class="row-actions">
+      <a class="btn btn-primary btn-with-icon" href="#add-user">{{ svg('plus') }} Add user</a>
+    </div>
+  </section>
+  {% endif %}
+
+  {% for person in people %}
+  <details class="card person-card"{% if person.id == user.user_id %} open{% endif %}>
+    <summary class="person-summary">
+      <span class="person-avatar" aria-hidden="true">{{ (person.display_name or person.username)[:1]|upper }}</span>
+      <span class="person-summary-main">
+        <strong>{{ person.display_name or person.username }}</strong>
+        <span class="muted">@{{ person.username }}</span>
+      </span>
+      <span class="person-chips">
+        {% if person.is_admin %}<span class="chip">Admin</span>{% else %}<span class="chip chip-quiet">User</span>{% endif %}
+        {% if person.enabled %}<span class="chip chip-quiet">Active</span>{% else %}<span class="chip chip-bad">Disabled</span>{% endif %}
+        <span class="chip chip-quiet">{{ person.apps|length }} app{% if person.apps|length != 1 %}s{% endif %}</span>
+      </span>
+    </summary>
+
+    <form method="post" action="{{ users_form_base|default('/users') }}/{{ person.id }}" class="people-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <div class="people-form-grid">
+        <label>Display name <input name="display_name" value="{{ person.display_name }}" /></label>
+        <label>New password <input type="password" name="password" minlength="8" placeholder="Leave blank to keep current" autocomplete="new-password" /></label>
+        <div class="people-flags">
+          <span class="people-flags-label">Status</span>
+          <label class="inline"><input type="checkbox" name="enabled" value="1" {% if person.enabled %}checked{% endif %} /> Enabled</label>
+          <label class="inline"><input type="checkbox" name="is_admin" value="1" {% if person.is_admin %}checked{% endif %} /> Administrator</label>
+        </div>
+      </div>
+      <div class="people-access">
+        <h3>App access</h3>
+        <div class="access-grid">
+          {% for app in apps %}
+          {% set person_perms = (person.permissions or {}).get(app.id, {}) %}
+          <div class="access-app{% if not app.enabled %} is-disabled{% endif %}">
+            <label class="access-toggle">
+              <input type="checkbox" name="apps" value="{{ app.id }}" {% if app.id in person.apps or person.is_admin %}checked{% endif %} {% if not app.enabled %}disabled{% endif %} />
+              <span>{{ app.name }}</span>
+              {% if not app.enabled %}<span class="chip chip-quiet">Off</span>{% endif %}
+            </label>
+            {% if app.capabilities and app.enabled %}
+            <div class="access-caps">
+              {% for cap in app.capabilities %}
+              <label class="inline"><input type="checkbox" name="perm_{{ app.id }}_{{ cap.id }}" value="1" {% if person_perms.get(cap.id) or person.is_admin %}checked{% endif %} /> {{ cap.label }}</label>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="row-actions">
+        <button class="btn btn-primary btn-with-icon" type="submit" name="action" value="save">{{ svg('check') }} Save changes</button>
+      </div>
+    </form>
+    <form method="post" action="{{ users_form_base|default('/users') }}/{{ person.id }}" class="row-actions" data-confirm="Delete {{ person.username }}?" data-confirm-detail="This cannot be undone." data-confirm-ok="Delete">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="action" value="delete" />
+      <button class="btn btn-ghost btn-with-icon" type="submit">{{ svg('trash') }} Delete</button>
+    </form>
+  </details>
+  {% endfor %}
+</section>
