@@ -1,0 +1,71 @@
+{% macro filter_icon(name) -%}
+<svg viewBox="0 0 24 24" aria-hidden="true">
+  {%- if name == "all" -%}
+  <circle cx="8" cy="8" r="1.7"/><circle cx="16" cy="8" r="1.7"/><circle cx="8" cy="16" r="1.7"/><circle cx="16" cy="16" r="1.7"/>
+  {%- elif name == "favourites" -%}
+  <path d="M12 3.6 14.6 10h6.8l-5.5 4.2 2.1 6.6L12 16.8 6 20.8l2.1-6.6L2.6 10h6.8z"/>
+  {%- elif name == "news" -%}
+  <path d="M5 6h11a2 2 0 0 1 2 2v11H7a2 2 0 0 1-2-2V6z"/><path d="M7 6v11a2 2 0 0 0 2 2h10"/><path d="M9 10h6M9 13h6M9 16h4"/>
+  {%- elif name == "nordic" -%}
+  <circle cx="12" cy="12" r="8"/><path d="M12 4v16M4 12h16M7.2 7.2 12 12l4.8-4.8M7.2 16.8 12 12l4.8 4.8"/>
+  {%- elif name == "australia" -%}
+  <circle cx="8" cy="7" r="1.3"/><circle cx="14" cy="6.2" r="1.1"/><circle cx="16.2" cy="10.5" r="1.1"/><circle cx="12.4" cy="13.6" r="1.2"/><circle cx="9.6" cy="10.8" r="0.7"/>
+  {%- elif name == "technology" -%}
+  <rect x="7" y="7" width="10" height="10" rx="1.6"/><path d="M9 4.5v2.5M12 4.5v2.5M15 4.5v2.5M9 17v2.5M12 17v2.5M15 17v2.5M4.5 9H7M4.5 12H7M4.5 15H7M17 9h2.5M17 12h2.5M17 15h2.5"/>
+  {%- elif name == "security" -%}
+  <path d="M12 3.5 19 6.2v6.1c0 4.6-3 7.2-7 8.7-4-1.5-7-4.1-7-8.7V6.2z"/>
+  {%- elif name == "science" -%}
+  <path d="M9.5 3.5h5M12 3.5v6.2L17 18a2.8 2.8 0 0 1-2.4 4.2H9.4A2.8 2.8 0 0 1 7 18l5-8.3"/><path d="M9 15.5h6"/>
+  {%- elif name == "business" -%}
+  <rect x="3.5" y="8" width="17" height="11.5" rx="2"/><path d="M8.5 8V6.2A1.7 1.7 0 0 1 10.2 4.5h3.6A1.7 1.7 0 0 1 15.5 6.2V8M3.5 13h17"/>
+  {%- elif name == "sport" -%}
+  <circle cx="12" cy="12" r="8"/><path d="M12 4c2.2 2.4 3.2 5 3.2 8s-1 5.6-3.2 8M12 4c-2.2 2.4-3.2 5-3.2 8s1 5.6 3.2 8M4.6 9.2h14.8M4.6 14.8h14.8"/>
+  {%- elif name == "culture" -%}
+  <path d="M12 5.5c-2.4-1.5-6.2-1.2-8 0v13c2-1.2 5.6-1.5 8 0 2.4-1.5 6-1.2 8 0v-13c-1.8-1.2-5.6-1.5-8 0z"/><path d="M12 5.5v13"/>
+  {%- elif name == "rss" -%}
+  <circle cx="6.6" cy="17.4" r="1.5"/><path d="M5 11a8 8 0 0 1 8 8M5 6.2A12.8 12.8 0 0 1 17.8 19"/>
+  {%- elif name == "webpage" -%}
+  <circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c2.4 2.8 3.7 5.4 3.7 8s-1.3 5.2-3.7 8M12 4C9.6 6.8 8.3 9.4 8.3 12s1.3 5.2 3.7 8"/>
+  {%- elif name == "access" or name == "device" -%}
+  <rect x="3.5" y="5.5" width="17" height="12" rx="2"/><path d="M8 20h8M12 17.5V20"/>
+  {%- elif name == "schedule" -%}
+  <circle cx="12" cy="12" r="8"/><path d="M12 8v4.2L15 14"/>
+  {%- elif name == "publication" -%}
+  <path d="M5 6h11a2 2 0 0 1 2 2v11H7a2 2 0 0 1-2-2V6z"/><path d="M7 6v11a2 2 0 0 0 2 2h10"/><path d="M9 10h6M9 13h6M9 16h4"/>
+  {%- elif name == "filters" -%}
+  <path d="M4 6h16l-6.2 7.4V18l-3.6 2v-6.6z"/>
+  {%- elif name == "translation" -%}
+  <path d="M4 6h7M7.5 6v2.5M5.5 16.5C7 12 9.5 9.5 12.5 8.5"/><path d="M13 7h7l-3.5 10h-2.2L13 7zM14.2 13.2h4.2"/>
+  {%- elif name == "today" -%}
+  <circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h2M19 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/>
+  {%- elif name == "yesterday" -%}
+  <path d="M16 13a6 6 0 1 1-5-8.9A7 7 0 1 0 16 13z"/>
+  {%- elif name == "search" -%}
+  <circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/>
+  {%- elif name == "llm" -%}
+  <path d="M12 4v3M12 17v3M4 12h3M17 12h3M6.6 6.6l2.1 2.1M15.3 15.3l2.1 2.1M6.6 17.4l2.1-2.1M15.3 8.7l2.1-2.1"/><circle cx="12" cy="12" r="2.4"/>
+  {%- elif name == "reader" -%}
+  <rect x="5" y="4" width="14" height="16" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>
+  {%- elif name == "notifications" -%}
+  <path d="M12 4a5 5 0 0 1 5 5v2.2l1.4 2.8H5.6L7 11.2V9a5 5 0 0 1 5-5z"/><path d="M10 18a2 2 0 0 0 4 0"/>
+  {%- elif name == "categories" -%}
+  <path d="M4 8h7l2 2h7v9H4z"/><path d="M4 8V6.2A1.7 1.7 0 0 1 5.7 4.5H10l2 2"/>
+  {%- elif name == "catalog" -%}
+  <path d="M6 4.5h9.5A2.5 2.5 0 0 1 18 7v12.5H8A2.5 2.5 0 0 1 5.5 17V6.5"/><path d="M8 8.5h7M8 12h7M8 15.5h5"/>
+  {%- elif name == "users" -%}
+  <circle cx="9" cy="8" r="3"/><path d="M3.5 18.5c.8-3 2.8-4.5 5.5-4.5s4.7 1.5 5.5 4.5"/><circle cx="17" cy="9" r="2.4"/><path d="M14.2 18.5c.5-2.2 1.8-3.4 3.8-3.4 1.2 0 2.2.4 2.9 1.2"/>
+  {%- elif name == "backup" -%}
+  <path d="M12 5v10"/><path d="M8 11l4 4 4-4"/><path d="M5 19h14"/>
+  {%- elif name == "update" -%}
+  <path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 5v5h-5"/>
+  {%- elif name == "about" -%}
+  <circle cx="12" cy="12" r="8"/><path d="M12 11.2V17"/><circle cx="12" cy="8" r="0.7"/>
+  {%- else -%}
+  <circle cx="12" cy="12" r="7"/>
+  {%- endif -%}
+</svg>
+{%- endmacro %}
+
+{% macro filter_chip(key, label, active=false) -%}
+<button class="chip-btn{% if active %} is-active{% endif %}" type="button" data-filter="{{ key }}">{{ filter_icon(key) }}<span>{{ label }}</span></button>
+{%- endmacro %}

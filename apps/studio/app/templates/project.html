@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ project.name }} · Studio{% endblock %}
+{% block main_class %} main-wide{% endblock %}
+{% block content %}
+{% set publish_open = message == 'Published' or project.fileserve_page_id %}
+<div class="split{% if has_built %} is-built{% endif %}" data-studio-split {% if has_built %}data-built="1"{% endif %}>
+  <section class="pane chat-pane card">
+    <div class="pane-head">
+      <a class="back-link" href="/">← Projects</a>
+      <h1>{{ project.name }}</h1>
+      <p class="chip">{{ kind_label }}</p>
+      <p class="hint workflow-hint" data-workflow-hint>
+        {% if has_built %}
+        Preview is live on the right. Clarify further, then rebuild when you want changes — publish only when you’re happy.
+        {% elif has_described %}
+        Add clarification if needed, then Build to generate the preview.
+        {% else %}
+        Describe what you want. Next you can clarify or Build — preview updates as soon as files are written.
+        {% endif %}
+      </p>
+    </div>
+    <div class="thread" data-chat-thread>
+      {% for m in project.messages %}
+      <div class="msg msg-{{ m.role }}"><strong>{{ m.role }}:</strong> {{ m.content }}</div>
+      {% else %}
+      <p class="hint">Start with a short description of the site or game.</p>
+      {% endfor %}
+    </div>
+    {% if can_llm %}
+    <form class="chat-form stack" data-chat-form data-project-id="{{ project.id }}" data-has-described="{{ '1' if has_described else '' }}" data-has-built="{{ '1' if has_built else '' }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="intent" value="clarify" data-intent-field />
+      <label>
+        Message
+        <textarea name="message" rows="3" placeholder="{% if has_built %}Clarify changes for the next build…{% elif has_described %}Add detail, or leave blank and press Build…{% else %}Describe what to build…{% endif %}" {% if not has_described %}required{% endif %} data-chat-input></textarea>
+      </label>
+      <div class="btn-row workflow-actions" data-workflow-actions {% if not has_described %}hidden{% endif %}>
+        <button class="btn btn-ghost" type="submit" data-intent="clarify">Clarify</button>
+        <button class="btn btn-primary btn-with-icon" type="submit" data-intent="build">{{ icon("send") }} <span data-build-label>{% if has_built %}Rebuild{% else %}Build{% endif %}</span></button>
+      </div>
+      <div class="btn-row" data-describe-actions {% if has_described %}hidden{% endif %}>
+        <button class="btn btn-primary btn-with-icon" type="submit" data-intent="clarify">{{ icon("send") }} Describe</button>
+      </div>
+    </form>
+    {% else %}
+    <p class="hint">Your account cannot use the LLM. Ask an admin to enable “Use LLM” for Studio.</p>
+    {% endif %}
+    <details class="files">
+      <summary>Files ({{ files|length }})</summary>
+      <ul data-file-list>
+        {% for f in files %}<li>{{ f }}</li>{% endfor %}
+      </ul>
+    </details>
+    {% if can_publish %}
+    <details class="publish-panel" {% if publish_open %}open{% endif %}>
+      <summary>
+        <span class="publish-summary-title">{{ icon("publish") }} Publish to FileServe</span>
+        <span class="hint">{% if project.fileserve_page_id %}Published — expand to update{% else %}When the preview looks right{% endif %}</span>
+      </summary>
+      <form method="post" action="/p/{{ project.id }}/publish" class="publish stack" data-page-setup>
+        <p class="hint">Same keep-until and password options as Hosted Pages.</p>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <label>
+          Label
+          <input type="text" name="title" value="{{ project.name }}" required autocomplete="off" placeholder="Emergency Planner" data-label-field />
+        </label>
+        <p class="hint">Shown on the Hosted Pages card.</p>
+        <label>
+          Short description
+          <textarea name="description" rows="2" maxlength="280" autocomplete="off" placeholder="Optional note shown on the card and public listing"></textarea>
+        </label>
+        <p class="hint">Optional. Up to 280 characters.</p>
+        <label>
+          Path
+          <span class="path-field">
+            <span class="path-prefix" aria-hidden="true">/</span>
+            <input type="text" name="slug" value="" autocomplete="off" spellcheck="false" placeholder="emergency-planner" data-slug-field />
+          </span>
+        </label>
+        <p class="hint">Defaults from the label. Must be unique among your FileServe pages.</p>
+        <label>
+          Keep until
+          <select name="expiry" data-expiry-mode>
+            <option value="none" selected>Removed manually</option>
+            <option value="week">1 week</option>
+            <option value="month">1 month</option>
+            <option value="3months">3 months</option>
+            <option value="6months">6 months</option>
+            <option value="custom">Custom date</option>
+          </select>
+        </label>
+        <label data-expiry-custom hidden>
+          Remove after
+          <input type="date" name="expiry_date" data-expiry-date />
+        </label>
+        <p class="hint">By default the page stays until you delete it. Custom dates expire at the end of that day UTC.</p>
+        <label class="check-row">
+          <input type="checkbox" name="protect" value="1" data-protect-toggle />
+          <span>
+            <strong>Require a password</strong>
+            <span class="hint">Off by default. Turn on to ask visitors for a username and password before the page opens.</span>
+          </span>
+        </label>
+        <div class="stack" data-protect-fields hidden>
+          <label>
+            Page username
+            <input type="text" name="page_username" value="" autocomplete="off" />
+          </label>
+          <label>
+            Page password
+            <input type="password" name="page_password" autocomplete="new-password" />
+          </label>
+        </div>
+        <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("publish") }} Publish zip</button>
+        {% if project.fileserve_page_id %}<p class="hint">Updates your existing FileServe page (#{{ project.fileserve_page_id }}).</p>{% endif %}
+      </form>
+    </details>
+    {% endif %}
+  </section>
+  <section class="pane preview-pane card" data-preview-pane>
+    <div class="preview-head">
+      <h2>Preview</h2>
+      <p class="hint" data-preview-status>{% if has_built %}Live from your last build{% else %}Shows after Build{% endif %}</p>
+    </div>
+    <iframe class="preview" src="{{ preview_url }}" title="Preview" data-preview></iframe>
+  </section>
+</div>
+{% endblock %}

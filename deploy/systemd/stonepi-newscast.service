@@ -1,0 +1,19 @@
+[Unit]
+Description=StonePi NewsCast
+After=network-online.target stonepi-auth.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=stonepi-news
+Group=stonepi-news
+EnvironmentFile=/etc/stonepi/stonepi.env
+EnvironmentFile=-/etc/stonepi/newscast.env
+WorkingDirectory=/opt/stonepi/apps/newscast
+ExecStart=/opt/stonepi/apps/newscast/.venv/bin/python -m app.serve
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

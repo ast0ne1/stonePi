@@ -1,0 +1,19 @@
+[Unit]
+Description=StonePi EventTrakr
+After=network-online.target stonepi-auth.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=stonepi-events
+Group=stonepi-events
+EnvironmentFile=/etc/stonepi/stonepi.env
+EnvironmentFile=-/etc/stonepi/eventtrakr.env
+WorkingDirectory=/opt/stonepi/apps/eventtrakr
+ExecStart=/opt/stonepi/apps/eventtrakr/.venv/bin/python -m app.serve
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

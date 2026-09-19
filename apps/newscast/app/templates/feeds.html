@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% from "_filter_icon.html" import filter_chip %}
+{% block title %}Feeds · NewsCast{% endblock %}
+{% block content %}
+<section class="hero hero-row">
+  <div>
+    <h1>Feeds</h1>
+    <p class="lede">Each source can follow the global schedule ({{ global_interval_label }}) or use its own. Tap a card to edit schedule and filters. Tap the circular arrow to fetch just that source. Turn off Summarise to keep the full article text. Language can follow Settings → Translation (Google or LLM) or force one engine per source.</p>
+  </div>
+  {% if can_add_custom_sources %}
+  <button class="btn btn-secondary btn-with-icon" type="button" data-open-sheet>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    <span>Add custom</span>
+  </button>
+  {% endif %}
+</section>
+
+<div data-filter-root>
+<div class="chips" data-chip-group>
+  {{ filter_chip("all", "All", true) }}
+  {% for key, label in category_labels.items() %}
+    {% if feeds | selectattr('category', 'equalto', key) | list %}
+    {{ filter_chip(key, label) }}
+    {% endif %}
+  {% endfor %}
+</div>
+
+<ul class="feed-list">
+  {% for feed in feeds %}
+  <li id="feed-{{ feed.id }}" class="card feed-card {% if not feed.enabled %}is-off{% endif %}" data-category="{{ feed.category }}">
+    <header class="feed-head">
+      <div class="feed-copy">
+        <h2 class="feed-title">{% if favicons.get(feed.name) %}<img class="source-icon source-icon-lg" src="{{ favicons[feed.name] }}" alt="" width="20" height="20">{% endif %}{{ feed.name }}</h2>
+        <p class="feed-kicker">
+          <span class="chip chip-quiet">{{ category_labels.get(feed.category, feed.category) }}</span>
+          <span class="chip chip-quiet {% if feed.type == 'webpage' %}chip-scrape{% endif %}">{{ 'Scrape' if feed.type == 'webpage' else ('RSS' if feed.type == 'rss' else 'Auto') }}</span>
+          <span class="chip chip-quiet">{{ 'Summarise' if feed.summarize != false else 'Full article' }}</span>
+          {% if feed.translate %}<span class="chip chip-quiet">{{ 'LLM' if feed.translate_mode == 'llm' else ('Google' if feed.translate_mode == 'google' else 'Translate') }}</span>{% endif %}
+          <span class="chip chip-quiet chip-health chip-health-{{ feed.health }}">{{ feed.health_label }}</span>
+          {% if feed.is_muted %}<span class="chip chip-quiet">Muted until {{ feed.muted_until.strftime('%d %b %Y %H:%M') }} UTC</span>{% endif %}
+        </p>
+      </div>
+      <div class="feed-actions">
+        <form method="post" action="/feeds/{{ feed.id }}/toggle">
+          <button class="toggle {% if feed.enabled %}is-on{% endif %}" type="submit" aria-pressed="{{ 'true' if feed.enabled else 'false' }}" aria-label="{{ 'Disable ' ~ feed.name if feed.enabled else 'Enable ' ~ feed.name }}">
+            {{ 'Enabled' if feed.enabled else 'Disabled' }}
+          </button>
+        </form>
+        <form method="post" action="/feeds/{{ feed.id }}/refresh">
+          <button class="icon-btn icon-btn-quiet{% if ingest.running %} is-busy{% endif %}" type="submit" data-feed-refresh aria-label="Update {{ feed.name }}" title="Update this source"{% if ingest.running %} disabled{% endif %}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 4v6h-6"/></svg>
+          </button>
+        </form>
+        {% if feed.is_muted %}
+        <form method="post" action="/feeds/{{ feed.id }}/unmute">
+          <button class="btn btn-secondary" type="submit">Unmute</button>
+        </form>
+        {% else %}
+        <form method="post" action="/feeds/{{ feed.id }}/mute">
+          <button class="btn btn-secondary" type="submit">Mute 24 hrs</button>
+        </form>
+        {% endif %}
+        <form method="post" action="/feeds/{{ feed.id }}/delete" data-confirm="Remove {{ feed.name }}?" data-confirm-detail="Existing stories stay in the briefing until they expire." data-confirm-ok="Remove">
+          <button class="icon-btn" type="submit" aria-label="Delete {{ feed.name }}" title="Remove feed">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M9 7V5h6v2M7 7l1 13h8l1-13"/></svg>
+          </button>
+        </form>
+      </div>
+    </header>
+    <p class="feed-status {% if feed.last_error %}is-error{% endif %}">
+      {% if feed.last_error %}
+        {{ feed.last_error }}
+      {% elif feed.last_fetched_at %}
+        Fetched {{ feed.last_fetched_at.strftime('%d %b %Y %H:%M') }}
+      {% else %}
+        Not fetched yet
+      {% endif %}
+    </p>
+    <details class="feed-settings">
+      <summary class="feed-settings-toggle">
+        <span class="feed-settings-toggle-row">
+          <span>Schedule &amp; filters</span>
+          <svg class="feed-settings-chevron" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </span>
+      </summary>
+      <div class="feed-settings-panel">
+        <form method="post" action="/feeds/{{ feed.id }}/schedule" class="schedule-form">
+          <label>
+            Schedule
+            <select name="schedule_mode" data-schedule-mode>
+              <option value="global" {% if (feed.schedule_mode or 'global') == 'global' %}selected{% endif %}>Global ({{ global_interval_label }})</option>
+              <option value="custom" {% if feed.schedule_mode == 'custom' %}selected{% endif %}>Custom</option>
+            </select>
+          </label>
+          <label data-custom-interval {% if feed.schedule_mode != 'custom' %}hidden{% endif %}>
+            Every
+            <select name="interval_minutes">
+              {% for value, label in refresh_intervals %}
+              <option value="{{ value }}" {% if feed.interval_minutes == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>
+            Article text
+            <select name="summarize">
+              <option value="1" {% if feed.summarize != false %}selected{% endif %}>Summarise</option>
+              <option value="0" {% if feed.summarize == false %}selected{% endif %}>Full article</option>
+            </select>
+          </label>
+          <label>
+            Language
+            <select name="translate">
+              {% for value, label in translate_modes %}
+              <option value="{{ value }}" {% if feed.translate_mode == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <p class="hint schedule-span">Global translation is currently {{ 'LLM' if global_translate_provider == 'llm' else 'Google' }} (Settings → Translation).</p>
+          <label class="schedule-span">
+            Include words
+            <input type="text" name="keyword_include" value="{{ feed.keyword_include or '' }}" autocomplete="off" placeholder="optional, comma-separated" />
+          </label>
+          <label class="schedule-span">
+            Exclude words
+            <input type="text" name="keyword_exclude" value="{{ feed.keyword_exclude or '' }}" autocomplete="off" placeholder="optional, comma-separated" />
+          </label>
+          <button class="btn btn-secondary" type="submit">Save</button>
+        </form>
+      </div>
+    </details>
+  </li>
+  {% else %}
+  <li class="empty card">No feeds yet. Add one from Catalog, or tap Add custom.</li>
+  {% endfor %}
+  <li class="empty card" hidden data-filter-empty>No feeds in this category.</li>
+</ul>
+</div>
+
+{% if can_add_custom_sources %}
+{% set source_next = "/feeds" %}
+{% include "_source_sheet.html" %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,22 @@
+# Example only — optional external reverse proxy.
+# Preferred path: Settings → General → Use HTTPS on the LAN (in-app local CA).
+#
+# Use this Caddyfile only if you deliberately terminate TLS outside NewsCast.
+# 1. Install Caddy.
+# 2. Set NewsCast HOST=127.0.0.1 and leave https_enabled off in the app (or point
+#    share URLs carefully).
+# 3. Trust Caddy's local CA on phones/PCs.
+
+{
+	# Optional: email for ACME if you later use a public domain.
+}
+
+newscast.local {
+	tls internal
+	encode gzip
+	reverse_proxy 127.0.0.1:8080
+}
+
+http://newscast.local {
+	redir https://{host}{uri} permanent
+}

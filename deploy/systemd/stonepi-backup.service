@@ -1,0 +1,15 @@
+[Unit]
+Description=StonePi full USB backup
+After=local-fs.target
+# Brief settle so the new partition is queryable by lsblk/mount.
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 3
+ExecStart=/usr/local/sbin/stonepi-backup
+User=root
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+StandardOutput=journal
+StandardError=journal

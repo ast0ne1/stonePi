@@ -1,0 +1,378 @@
+{% extends "base.html" %}
+{% from "_icons.html" import svg, service_icon, tab_icon %}
+{% block title %}Settings · StonePi{% endblock %}
+{% block content %}
+<section class="hero">
+  <h1>Settings</h1>
+  <p class="lede">{{ settings_lede }}</p>
+</section>
+
+<div class="settings-tablist" role="tablist" aria-label="Settings sections">
+  {% for key, label in settings_tabs %}
+  <a class="settings-tab{% if settings_tab == key %} is-active{% endif %}" href="/settings?tab={{ key }}" role="tab" aria-selected="{{ 'true' if settings_tab == key else 'false' }}">{{ tab_icon(key) }}<span>{{ label }}</span></a>
+  {% endfor %}
+</div>
+
+{% if settings_tab == 'general' %}
+<section class="card stack">
+  <h2>Appearance</h2>
+  <p class="muted">Palette for this browser across all StonePi apps. Light, Dark, and Match Device stay in each app header. Applies immediately — no need to save.</p>
+  <div class="palette-picker" role="group" aria-label="Colour palette">
+    <button type="button" class="palette-option" data-palette-set="default">
+      <span class="palette-swatch" data-swatch="default" aria-hidden="true"></span>
+      <span class="palette-name">Default</span>
+      <span class="palette-note">Warm paper</span>
+    </button>
+    <button type="button" class="palette-option" data-palette-set="ocean">
+      <span class="palette-swatch" data-swatch="ocean" aria-hidden="true"></span>
+      <span class="palette-name">Ocean</span>
+      <span class="palette-note">Cool blue</span>
+    </button>
+    <button type="button" class="palette-option" data-palette-set="forest">
+      <span class="palette-swatch" data-swatch="forest" aria-hidden="true"></span>
+      <span class="palette-name">Forest</span>
+      <span class="palette-note">Moss and sage</span>
+    </button>
+    <button type="button" class="palette-option" data-palette-set="slate">
+      <span class="palette-swatch" data-swatch="slate" aria-hidden="true"></span>
+      <span class="palette-name">Slate</span>
+      <span class="palette-note">Grey, plain</span>
+    </button>
+  </div>
+</section>
+
+<section class="card stack">
+  <h2>Network exposure</h2>
+  <p class="muted">Default is home network only. Flip to internet-facing when you put StonePi behind a tunnel or public HTTPS — apps tighten immediately, no restart.</p>
+  <form method="post" action="/settings/exposure" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <label class="inline">
+      <input type="radio" name="exposure" value="lan" {% if exposure_mode != 'public' %}checked{% endif %} />
+      Home network (LAN)
+    </label>
+    <p class="muted" style="margin:0 0 0.5rem 1.5rem">OPDS / X3 / sync stay open for CrossPoint when catalog login is off.</p>
+    <label class="inline">
+      <input type="radio" name="exposure" value="public" {% if exposure_mode == 'public' %}checked{% endif %} />
+      Internet-facing
+    </label>
+    <p class="muted" style="margin:0 0 0.5rem 1.5rem">Catalog token required for reader APIs; calendar ICS needs sign-in; stricter URL fetch. Prefer Tailscale or a tunnel first.</p>
+    {% if exposure_mode == 'public' %}
+    <p class="pill">
+      <span class="dot ok"></span>
+      Internet-facing is on. Set a strong catalog / sync token in NewsCast → Settings → Reader before opening the port.
+    </p>
+    {% endif %}
+    <div class="row-actions">
+      <button type="submit" class="btn btn-primary btn-with-icon">{{ svg('check') }} Save exposure</button>
+    </div>
+  </form>
+</section>
+{% endif %}
+
+{% if settings_tab == 'display' %}
+<section class="card stack">
+  <h2>Display</h2>
+  <ol class="muted" style="margin:0;padding-left:1.2rem">
+    <li>In TRMNL, create a Private Plugin with strategy <strong>Webhook</strong> and save it.</li>
+    <li>Paste the plugin Webhook URL below <em>or</em> store it once in <strong>Vault → Display webhook</strong> — you do not need both.</li>
+    <li>Arrange or pick a design, then <strong>Copy markup</strong> into TRMNL’s Markup editor (required — StonePi only pushes data variables, not markup).</li>
+    <li>Save here, enable scheduled push, or use <strong>Push now</strong>. Force Refresh in TRMNL.</li>
+  </ol>
+  <form method="post" action="/settings/display" class="stack" data-trmnl-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="layout_json" value="{{ layout_json }}" data-trmnl-layout />
+    <label class="inline">
+      <input type="checkbox" name="enabled" value="1" {% if display.enabled %}checked{% endif %} />
+      Enable scheduled push
+    </label>
+    <label>
+      Webhook URL
+      <input type="url" name="webhook_url" value="{{ display.webhook_url }}" autocomplete="off" spellcheck="false" placeholder="https://trmnl.com/api/custom_plugins/…" />
+    </label>
+    <p class="muted">
+      {% if vault_has_webhook and display.webhook_url %}
+      Showing the URL from Vault (or saved here). Leave this field as-is, or clear it to keep using Vault only.
+      {% elif vault_has_webhook %}
+      Vault already has <code>DISPLAY_WEBHOOK_URL</code> — leave this blank and push will use Vault.
+      {% else %}
+      Optional if you already saved <code>DISPLAY_WEBHOOK_URL</code> in Vault. Saving here also updates Vault.
+      {% endif %}
+    </p>
+    <label>
+      Panel size
+      <select name="device" data-trmnl-device>
+        {% for item in display_devices %}
+        <option value="{{ item.id }}" {% if display_device == item.id %}selected{% endif %}>{{ item.label }} — {{ item.width }}×{{ item.height }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <p class="muted">{{ display_device_profile.blurb }}</p>
+    <p class="muted">Markup uses TRMNL Framework tokens (<code>outline</code>, <code>label--success</code> / <code>label--error</code>, filled badges). Designed first for B/W (1-bit); the same plugin renders on gray and colour panels without separate markup.</p>
+    <label>
+      Design
+      <select name="design" data-trmnl-design>
+        {% for item in display_designs %}
+        <option value="{{ item.id }}" {% if display_design == item.id %}selected{% endif %}>{{ item.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <p class="muted">{{ display_design_profile.blurb }}</p>
+    <label class="inline">
+      <input type="checkbox" name="reset_layout" value="1" />
+      Apply the recommended layout for this panel size and design when saving
+    </label>
+    <label>
+      Interval (minutes)
+      <input type="number" name="interval_minutes" min="10" max="120" value="{{ display.interval_minutes }}" />
+    </label>
+    <p class="muted">TRMNL allows about 12 pushes per hour (more on TRMNL+). Default 30 minutes stays under that limit.</p>
+    {% if display.last_push_at %}
+    <p class="pill">
+      <span class="dot {% if display.last_push_ok %}ok{% else %}bad{% endif %}"></span>
+      Last push {{ display.last_push_at[:19]|replace('T', ' ') }}
+      {% if display.last_push_status %} · HTTP {{ display.last_push_status }}{% endif %}
+      {% if display.last_push_message %} · {{ display.last_push_message }}{% endif %}
+    </p>
+    {% endif %}
+
+    <h3 class="trmnl-section-title">Layout</h3>
+    {% if display_design_profile.fixed %}
+    <p class="muted">{% if display_design == 'status' %}Status wall uses a fixed ops composition (header, metrics strip, Services + Alerts + Storage). Switch Design to Custom to rearrange blocks.{% else %}Household focus uses a fixed composition (Watch + Apps, then product cards, then a thin stats strip). Switch Design to Custom to rearrange blocks.{% endif %}</p>
+    {% else %}
+    <p class="muted">Drag blocks from the palette onto the canvas. Use Half / Full for width. Remove sends a block back to the palette.</p>
+    {% endif %}
+    <p class="muted">Preview matches TRMNL’s landscape frame (800×480 OG): dotted cards{% if display_design != 'status' %} and title bar{% endif %}, scaled to fit this column (≤1×). Fixed designs stay locked; Custom is freeform.</p>
+    <div class="trmnl-designer" data-trmnl-designer {% if display_design_profile.fixed %}data-fixed-design="1"{% endif %}>
+      <div class="trmnl-palette" data-trmnl-palette aria-label="Unused components" {% if display_design_profile.fixed %}hidden{% endif %}></div>
+      <div class="trmnl-canvas" data-trmnl-canvas aria-label="Display layout"></div>
+    </div>
+
+    <label>
+      Markup for TRMNL
+      <textarea class="display-preview trmnl-markup" rows="12" readonly data-trmnl-markup>{{ generated_markup }}</textarea>
+    </label>
+    <div class="row-actions">
+      <button class="btn btn-ghost btn-with-icon" type="button" data-trmnl-copy>{{ svg('copy') }} <span>Copy markup</span></button>
+      <button class="btn btn-primary btn-with-icon" type="submit" name="action" value="save">{{ svg('check') }} Save</button>
+      <button class="btn btn-ghost btn-with-icon" type="submit" name="action" value="push">{{ svg('install') }} Push now</button>
+    </div>
+  </form>
+</section>
+
+<details class="card stack">
+  <summary>Raw merge_variables</summary>
+  <p class="muted">What the next push will send. Useful for debugging Liquid variables.</p>
+  <pre class="display-preview">{{ preview_json }}</pre>
+</details>
+<textarea id="trmnl-designer-data" hidden readonly>{{ designer | tojson }}</textarea>
+{% endif %}
+
+{% if settings_tab == 'watch' %}
+{% set level = watch.level or 'attention' %}
+<section class="card watch-status is-{{ level }}">
+  <div class="watch-status-main">
+    <p class="watch-level-label">{{ level|capitalize }}</p>
+    <h2>{{ watch.summary }}</h2>
+    {% if watch.checked_at %}
+    <p class="muted">Checked {{ watch.checked_at[:19]|replace('T', ' ') }} UTC</p>
+    {% endif %}
+  </div>
+  {% if watch.reasons %}
+  <ul class="watch-reasons">
+    {% for reason in watch.reasons %}
+    <li>{{ reason }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+
+<div class="watch-metrics">
+  <section class="card watch-metric">
+    <div class="watch-metric-icon" aria-hidden="true">{{ svg('disk') }}</div>
+    <div>
+      <h3>Disk</h3>
+      <p class="watch-metric-value">{% if watch.disk_pct is not none %}{{ watch.disk_pct }}%{% else %}n/a{% endif %}</p>
+      <p class="muted">Used on the StonePi host</p>
+    </div>
+  </section>
+  <section class="card watch-metric">
+    <div class="watch-metric-icon" aria-hidden="true">{{ svg('backup') }}</div>
+    <div>
+      <h3>Backup</h3>
+      <p class="watch-metric-value">{{ watch.backup_status or 'none' }}</p>
+      <p class="muted">{% if watch.backup_age_days is not none %}About {{ watch.backup_age_days|int }} day{% if watch.backup_age_days|int != 1 %}s{% endif %} ago{% else %}No recent backup stamp{% endif %}</p>
+    </div>
+  </section>
+</div>
+
+<section class="card stack">
+  <h2>Apps</h2>
+  <div class="watch-app-grid">
+    {% for app in watch.apps %}
+    <article class="watch-app-card">
+      {{ service_icon(app.id, app.color or '') }}
+      <div class="watch-app-body">
+        <h3>{{ app.n }}</h3>
+        <p class="pill">
+          <span class="dot {% if not app.enabled %}{% elif app.level == 'critical' or not app.running %}bad{% elif app.level == 'attention' %}warn{% else %}ok{% endif %}"></span>
+          {% if not app.enabled %}Disabled
+          {% elif app.running %}Running
+          {% else %}Down
+          {% endif %}
+          · {{ app.unit }}
+        </p>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if settings_tab == 'vault' %}
+<section class="card stack">
+  <h2>Add or update a secret</h2>
+  <p class="muted">Pick a known setting from the list, or choose <strong>Custom key</strong> for something else. Values are encrypted on disk and preferred over installer <code>.env</code> when set.</p>
+  <form method="post" action="/settings/vault" class="stack" data-vault-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <label>
+      Setting
+      <select name="key" data-vault-key>
+        <option value="">Choose a setting…</option>
+        {% for group in vault_catalog %}
+        <optgroup label="{{ group.group }}">
+          {% for item in group['items'] %}
+          <option value="{{ item.id }}" data-blurb="{{ item.blurb }}">{{ item.label }}</option>
+          {% endfor %}
+        </optgroup>
+        {% endfor %}
+        <option value="__custom__">Custom key…</option>
+      </select>
+    </label>
+    <p class="muted vault-blurb" data-vault-blurb hidden></p>
+    <label data-vault-custom hidden>
+      Custom key
+      <input type="text" name="custom_key" autocomplete="off" spellcheck="false" placeholder="MY_CUSTOM_KEY" data-vault-custom-input />
+    </label>
+    <label>
+      Value
+      <input type="password" name="value" autocomplete="new-password" spellcheck="false" placeholder="Paste the secret here" />
+    </label>
+    <div class="row-actions">
+      <button class="btn btn-primary btn-with-icon" type="submit" name="action" value="set">{{ svg('check') }} Save secret</button>
+    </div>
+  </form>
+</section>
+
+<section class="card stack">
+  <h2>Stored secrets</h2>
+  {% if vault_keys %}
+  <ul class="vault-list">
+    {% for item in vault_keys %}
+    <li class="vault-row">
+      <div class="vault-row-text">
+        <strong>{{ item.label }}</strong>
+        {% if item.known %}<span class="chip">Known</span>{% else %}<span class="chip">Custom</span>{% endif %}
+        <code>{{ item.id }}</code>
+      </div>
+      <form method="post" action="/settings/vault" data-confirm="Remove {{ item.label }}?" data-confirm-detail="Apps that need this secret will fall back to .env or empty until you add it again." data-confirm-ok="Remove">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <input type="hidden" name="key" value="{{ item.id }}" />
+        <input type="hidden" name="action" value="delete" />
+        <button class="icon-btn" type="submit" aria-label="Remove {{ item.label }}" title="Remove">{{ svg('trash') }}</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty-state">
+    <h3>No secrets yet</h3>
+    <p class="muted">Use the form above to store the first one.</p>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if settings_tab == 'automations' %}
+<section class="card stack">
+  <h2>Automations</h2>
+  <p class="muted">A handful of StonePi-native jobs — not a full smart-home engine.</p>
+  <form method="post" action="/settings/automations" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    {% for rule in automation_rules %}
+    <label class="inline">
+      <input type="checkbox" name="rule_{{ rule.id }}" value="1" {% if automation_state.enabled.get(rule.id) %}checked{% endif %} />
+      <span><strong>{{ rule.label }}</strong><br /><span class="muted">When {{ rule.when }} → {{ rule.then }}</span></span>
+    </label>
+    {% endfor %}
+    <button class="btn btn-primary btn-with-icon" type="submit">{{ svg('check') }} Save automations</button>
+  </form>
+</section>
+{% endif %}
+
+{% if settings_tab == 'update' %}
+<form method="post" action="/settings/update/repo" class="card stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+  <h2>GitHub repository</h2>
+  <label>
+    owner/repo
+    <input type="text" name="github_repo" value="{{ github_repo }}" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="owner/stonePi" />
+  </label>
+  <p class="muted">Release assets should be named like <code>newscast-0.0.2.zip</code>, <code>auth-0.0.1.zip</code>, or <code>stonepi-platform-0.1.0.zip</code>.</p>
+  <button class="btn btn-primary btn-with-icon" type="submit">{{ svg('check') }} Save</button>
+</form>
+
+<div class="stack update-list" style="margin-top:1.25rem">
+  {% for card in cards %}
+  <section class="card">
+    <div class="update-meta service-card-head">
+      {{ service_icon(card.id, card.color or '') }}
+      <div>
+        <h2>{{ card.name }}</h2>
+        <p class="muted">Installed {{ card.version }}
+          {% if card.check.newer %} · <strong>{{ card.check.version or card.check.tag }}</strong> available{% elif card.check.tag %} · up to date{% endif %}
+        </p>
+        {% if card.check.message %}<p class="muted">{{ card.check.message }}</p>{% endif %}
+        {% if card.check.newer and card.check.valid %}
+        <form method="post" action="/settings/update/{{ card.id }}/install" class="update-install" data-confirm="Install {{ card.check.version or card.check.tag }} for {{ card.name }}?" data-confirm-detail="The app will be replaced and restarted." data-confirm-ok="Install">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <button class="btn btn-primary btn-with-icon" type="submit">{{ svg('install') }} Install {{ card.check.version or card.check.tag }}</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    <div class="update-actions">
+      <form method="post" action="/settings/update/{{ card.id }}/check">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <button class="btn btn-ghost btn-icon" type="submit" title="Check for updates" aria-label="Check for updates">{{ svg('refresh') }}</button>
+      </form>
+    </div>
+  </section>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if settings_tab == 'backup' %}
+<section class="card stack">
+  <h2>Backup/Restore</h2>
+  <p class="muted">Full SD-card recovery is started from Cockpit so the backup can see the USB disk. This page only reports status.</p>
+  <p class="pill"><span class="dot {% if backup.get('status') in ['ok', 'complete', 'success'] %}ok{% else %}bad{% endif %}"></span>
+    {{ backup.get('status') or 'unknown' }}
+  </p>
+  <p>Timestamp: {{ backup.get('timestamp') or '—' }}</p>
+  <p>Destination: {{ backup.get('destination') or backup.get('path') or '—' }}</p>
+  <p>Size: {{ backup.get('size') or backup.get('size_bytes') or '—' }}</p>
+  <div class="row-actions">
+    <a class="btn btn-primary btn-with-icon" href="{{ cockpit_url }}">{{ svg('cockpit') }} Open Cockpit</a>
+  </div>
+</section>
+{% endif %}
+
+{% if settings_tab == 'about' %}
+<section class="card stack">
+  <h2>About</h2>
+  <p class="lede">StonePi is the household LAN portal for NewsCast, FileServe, EventTrakr, Pinboard, Studio, and shared sign-in — plus Display, Watch, and Vault under Settings.</p>
+  <p class="muted">Author: <a href="{{ app_github }}" rel="noopener noreferrer" target="_blank">{{ app_author }}</a></p>
+  <p class="muted">Version: {{ app_version }}</p>
+</section>
+{% endif %}
+{% endblock %}

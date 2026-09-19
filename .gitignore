@@ -1,0 +1,52 @@
+# Secrets and local env (keep *.env.example)
+.env
+apps/*/.env
+vault.key
+secrets.enc
+session.secret
+
+# Runtime data — never ship household DBs, vault, caches, briefings
+data/
+apps/*/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# Bundled catalog defaults live under app/data (not apps/*/data) — keep them:
+!apps/*/app/data/
+!apps/*/app/data/**
+
+# Virtualenvs / caches / build
+.venv/
+venv/
+apps/*/.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+packages/*/build/
+packages/*/*.egg-info/
+.pytest_cache/
+.mypy_cache/
+dist/
+build/
+*.log
+
+# IDE / agent local state (keep shared skills)
+.idea/
+.vscode/
+.cursor/*
+!.cursor/skills/
+!.cursor/skills/**
+
+# Interim Pi staging packs (not part of the release tree)
+deploy/packages/
+
+# Local scratch archives
+*.tar
+*.tar.gz
+

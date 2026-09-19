@@ -1,0 +1,16 @@
+[Unit]
+Description=StonePi %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/stonepi/stonepi.env
+WorkingDirectory=/opt/stonepi/apps/%i
+ExecStart=/opt/stonepi/apps/%i/.venv/bin/python -m app.serve
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

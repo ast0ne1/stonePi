@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+
+{% block title %}Search Events · EventTrakr{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <h1>Search Events</h1>
+  <p class="lede">Query across your configured event sources by date, location, and keywords.</p>
+</section>
+
+<div class="card" style="margin-bottom: 28px;">
+  <form method="get" action="/search">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px;">
+      <div class="form-group" style="margin-bottom: 0;">
+        <label for="date">Event Date</label>
+        <input type="date" id="date" name="date" class="form-control" value="{{ date_query }}" />
+      </div>
+
+      <div class="form-group" style="margin-bottom: 0;">
+        <label for="location">Location</label>
+        <input type="text" id="location" name="location" class="form-control" value="{{ loc_query }}" placeholder="City, district, or venue..." />
+      </div>
+
+      <div class="form-group" style="margin-bottom: 0;">
+        <label for="category">Category</label>
+        <select id="category" name="category" class="form-control">
+          <option value="all">All Categories</option>
+          {% for cat in categories %}
+          <option value="{{ cat }}" {% if cat_query == cat %}selected{% endif %}>{{ cat }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 0;">
+        <label for="q">Keywords</label>
+        <input type="text" id="q" name="q" class="form-control" value="{{ term_query }}" placeholder="e.g. jazz, react, free..." />
+      </div>
+    </div>
+
+    <div style="margin-top: 18px; display: flex; gap: 12px; justify-content: flex-end;">
+      <a href="/search" class="btn btn-outline">Clear</a>
+      <button type="submit" class="btn btn-primary">
+        {{ icon('search') }} Search Events
+      </button>
+    </div>
+  </form>
+</div>
+
+{% if performed %}
+<div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+  <h2 style="font-size: 1.1rem; font-weight: 600;">{{ events|length }} Results Found</h2>
+</div>
+
+{% if deep_search_sources_checked is not none %}
+<p class="form-hint" style="margin-top: -12px; margin-bottom: 16px;">
+  {% if deep_search_sources_checked %}
+  That date is beyond the usual 7-day Agenda window, so we checked {{ deep_search_sources_checked }} matching source{{ 's' if deep_search_sources_checked != 1 }} live for it. Star any result to keep it -- it'll stick around until the event's date passes.
+  {% else %}
+  That date is beyond the usual 7-day Agenda window, and no configured source matches this category to check live.
+  {% endif %}
+</p>
+{% endif %}
+
+{% if events %}
+<div class="events-grid">
+  {% for ev in events %}
+  <div class="event-card">
+    <div>
+      <div class="event-header">
+        <div class="event-badges">
+          <span class="badge category">{{ ev.category }}</span>
+          <span class="badge {% if ev.is_free %}cost-free{% endif %}">{{ ev.cost }}</span>
+          {% if ev.calendar_synced %}
+          <span class="badge text-ok" style="border-color: var(--ok);">{{ icon('check') }} Google Cal</span>
+          {% endif %}
+        </div>
+        <button type="button" class="btn-star {% if ev.is_favourited %}starred{% endif %}" data-fav-toggle="{{ ev.id }}" title="{% if ev.is_favourited %}Favourited{% else %}Add to Favourites{% endif %}">
+          {% if ev.is_favourited %}{{ icon('star-filled') }}{% else %}{{ icon('star') }}{% endif %}
+        </button>
+      </div>
+
+      <h2 class="event-title">{{ ev.title }}</h2>
+
+      <div class="event-time">
+        {{ icon('clock') }}
+        <span>{{ ev.start_time|format_datetime }}</span>
+      </div>
+
+      <div class="event-location">
+        {{ icon('map-pin') }}
+        <span>{{ ev.location }}</span>
+      </div>
+
+      {% if ev.description %}
+      <p class="event-desc">{{ ev.description }}</p>
+      {% endif %}
+    </div>
+
+    <div class="event-footer">
+      {% if ev.url %}
+      <a href="{{ ev.url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm">
+        Details {{ icon('external-link') }}
+      </a>
+      {% else %}
+      <div></div>
+      {% endif %}
+
+      <div class="dropdown">
+        <button type="button" class="btn btn-primary btn-sm dropdown-toggle">
+          {{ icon('calendar') }} Add to Cal ▾
+        </button>
+        <div class="dropdown-content">
+          <a href="{{ ev.gcal_url }}" target="_blank" rel="noopener noreferrer" class="dropdown-item">
+            Google Calendar
+          </a>
+          <a href="/calendar/ics/{{ ev.id }}" class="dropdown-item">
+            Download .ICS (Apple/Outlook)
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card empty-state">
+  {{ icon('search') }}
+  <h3>No matching events found</h3>
+  <p style="margin-top: 6px;">Try widening your location or date search criteria.</p>
+  <div class="row-actions" style="margin-top: 12px;">
+    <a class="btn btn-primary btn-sm" href="/sources">Add sources</a>
+  </div>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

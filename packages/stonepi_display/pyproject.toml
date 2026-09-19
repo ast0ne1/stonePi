@@ -1,0 +1,13 @@
+[project]
+name = "stonepi-display"
+version = "0.1.1"
+description = "StonePi Display service: TRMNL webhook, layout, merge_variables push"
+requires-python = ">=3.11"
+dependencies = ["httpx>=0.27"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["stonepi_display*"]

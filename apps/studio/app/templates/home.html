@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}What to build · Studio{% endblock %}
+{% block content %}
+<section class="hero">
+  <h1>What to build?</h1>
+  <p class="lede">Pick a type, give it a fun name, and Studio helps you make a page for FileServe — built for phones and desktops.</p>
+</section>
+
+<div class="kind-grid">
+  {% for kind in build_kinds %}
+  <form method="post" action="/create" class="kind-card card stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="kind" value="{{ kind.id }}" />
+    <div class="kind-icon" aria-hidden="true">{{ icon(kind.icon) }}</div>
+    <h2>{{ kind.label }}</h2>
+    <p class="hint">{{ kind.blurb }}</p>
+    <label>
+      Name
+      <input name="name" placeholder="My cool {{ kind.label|lower }}" required maxlength="80" autocomplete="off" />
+    </label>
+    <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("plus") }} Start</button>
+  </form>
+  {% endfor %}
+</div>
+
+<section class="card stack">
+  <h2>Your projects</h2>
+  {% if projects %}
+  <ul class="project-list">
+    {% for p in projects %}
+    <li>
+      <a href="/p/{{ p.id }}">
+        <span class="project-name">{{ p.name }}</span>
+        <span class="chip">{{ kind_labels.get(p.kind or 'spa', 'Project') }}</span>
+      </a>
+      <div class="project-actions">
+        <span class="hint">{{ (p.updated_at or '')[:10] }}</span>
+        <form method="post" action="/p/{{ p.id }}/delete" data-confirm="Delete {{ p.name }}?" data-confirm-detail="Workspace files for this project will be removed. Any FileServe page you already published stays until you delete it there." data-confirm-ok="Delete">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <button class="icon-btn" type="submit" aria-label="Delete {{ p.name }}" title="Delete">{{ icon("trash") }}</button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty-state">
+    <h3>Nothing here yet</h3>
+    <p class="hint">Choose a card above to make your first site.</p>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

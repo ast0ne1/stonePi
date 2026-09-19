@@ -1,0 +1,19 @@
+[Unit]
+Description=StonePi Pinboard
+After=network-online.target stonepi-auth.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=stonepi-pin
+Group=stonepi-pin
+EnvironmentFile=/etc/stonepi/stonepi.env
+EnvironmentFile=-/etc/stonepi/pinboard.env
+WorkingDirectory=/opt/stonepi/apps/pinboard
+ExecStart=/opt/stonepi/apps/pinboard/.venv/bin/python -m app.serve
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

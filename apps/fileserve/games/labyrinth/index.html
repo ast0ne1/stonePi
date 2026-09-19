@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Moving Maze</title>
+    <link rel="stylesheet" href="css/game.css" />
+  </head>
+  <body>
+    <div class="app" id="app">
+      <header class="top">
+        <div class="brand">
+          <h1>Moving Maze</h1>
+          <p class="tag">Find treasures in a shifting labyrinth</p>
+        </div>
+        <div class="top-actions" id="top-actions" hidden>
+          <button type="button" class="btn ghost" id="btn-new">New game</button>
+        </div>
+      </header>
+
+      <section class="setup" id="setup">
+        <div class="panel">
+          <h2>New game</h2>
+          <p class="lede">
+            Slide a path tile into the board, then move your piece along open corridors.
+            Collect every treasure on your list. Inspired by the classic shifting-maze family game —
+            original board and pieces, not affiliated with Ravensburger.
+          </p>
+          <label class="field">
+            Players
+            <select id="player-count">
+              <option value="2">2 players</option>
+              <option value="3">3 players</option>
+              <option value="4" selected>4 players</option>
+            </select>
+          </label>
+          <button type="button" class="btn primary" id="btn-start">Start</button>
+        </div>
+      </section>
+
+      <section class="play" id="play" hidden>
+        <aside class="sidebar">
+          <div class="panel turn-panel">
+            <p class="kicker">Now playing</p>
+            <p class="turn-name" id="turn-name">—</p>
+            <p class="phase" id="phase">Insert a tile</p>
+          </div>
+
+          <div class="panel spare-panel">
+            <p class="kicker">Extra tile</p>
+            <div class="spare-wrap">
+              <canvas id="spare" width="88" height="88" aria-label="Extra path tile"></canvas>
+              <button type="button" class="btn ghost" id="btn-rotate" title="Rotate tile">Rotate</button>
+            </div>
+            <p class="hint" id="insert-hint">Tap a yellow arrow on the board edge to push this tile in.</p>
+          </div>
+
+          <div class="panel treasure-panel">
+            <p class="kicker">Your next treasure</p>
+            <div class="treasure-card" id="treasure-card">
+              <span class="treasure-glyph" id="treasure-glyph">?</span>
+              <span class="treasure-label" id="treasure-label">—</span>
+            </div>
+            <p class="hint" id="treasure-left">0 left</p>
+          </div>
+
+          <div class="panel scores-panel">
+            <p class="kicker">Progress</p>
+            <ul class="scores" id="scores"></ul>
+          </div>
+        </aside>
+
+        <div class="board-wrap">
+          <canvas id="board" width="640" height="640" role="img" aria-label="Labyrinth board"></canvas>
+        </div>
+      </section>
+
+      <div class="modal" id="win-modal" hidden>
+        <div class="panel modal-card">
+          <h2 id="win-title">Winner</h2>
+          <p id="win-copy"></p>
+          <button type="button" class="btn primary" id="btn-again">Play again</button>
+        </div>
+      </div>
+    </div>
+    <script src="js/game.js"></script>
+  </body>
+</html>

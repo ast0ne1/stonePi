@@ -1,0 +1,494 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+
+{% block title %}Settings · EventTrakr{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <h1>Settings</h1>
+  <p class="lede" data-settings-lede>{{ settings_lede or "Configure privacy, sync schedules, and calendar connections." }}</p>
+</section>
+
+<!-- Settings Tabs Chips -->
+{% set tab_icons = {'general': 'settings', 'privacy': 'lock', 'schedule': 'refresh', 'filters': 'filter', 'categories': 'tag', 'calendar': 'calendar', 'providers': 'key', 'network': 'wifi', 'users': 'users', 'update': 'refresh'} %}
+<div class="settings-tabs" data-settings-tabs>
+<div class="chips-row settings-chips" role="tablist" aria-label="Settings sections">
+  {% for key, label in settings_tabs %}
+  {% if key != 'users' or user.role == 'admin' %}
+  <a class="chip-btn{% if active_tab == key %} is-active{% endif %}" href="?tab={{ key }}" role="tab" id="settings-tab-{{ key }}" data-settings-tab="{{ key }}" data-settings-lede="{{ settings_ledes.get(key, '') }}" aria-selected="{{ 'true' if active_tab == key else 'false' }}" aria-controls="settings-panel-{{ key }}">
+    {{ icon(tab_icons.get(key)) }}<span>{{ label }}</span>
+  </a>
+  {% endif %}
+  {% endfor %}
+</div>
+
+<!-- Tab: General -->
+<div class="stack settings-panel" id="settings-panel-general" role="tabpanel" data-settings-panel="general" aria-labelledby="settings-tab-general"{% if active_tab != 'general' %} hidden{% endif %}>
+{% if platform_managed %}
+<p class="form-hint">Household accounts and updates are managed in StonePi. Colour palette is under <a href="{{ stonepi_home_url }}/settings?tab=general">StonePi → Settings → General</a>.</p>
+{% else %}
+<p class="form-hint">Colour palette for all StonePi apps is set on the portal under Settings → General when StonePi SSO is enabled.</p>
+{% endif %}
+
+<div class="card">
+  <h2>Account & Default Location</h2>
+  <form method="post" action="/settings/general">
+    <div class="form-group">
+      <label for="default_location">Default City / Location</label>
+      <input type="text" id="default_location" name="default_location" class="form-control" value="{{ default_location }}" required placeholder="e.g. Copenhagen, Denmark" />
+      <span class="form-hint">Used as the pre-filled location when searching events.</span>
+    </div>
+
+    <div class="form-group">
+      <label for="new_password">Change Password</label>
+      <input type="password" id="new_password" name="new_password" class="form-control" placeholder="Leave blank to keep existing password" autocomplete="new-password" />
+    </div>
+
+    <button type="submit" class="btn btn-primary" style="margin-top: 10px;">Save General Settings</button>
+  </form>
+</div>
+</div>
+
+<!-- Tab: Privacy -->
+<div class="stack settings-panel" id="settings-panel-privacy" role="tabpanel" data-settings-panel="privacy" aria-labelledby="settings-tab-privacy"{% if active_tab != 'privacy' %} hidden{% endif %}>
+<div class="card">
+  <h2>Personal Overview Privacy</h2>
+  <p class="form-hint" style="margin-bottom: 20px;">Control whether your 7-day personal event agenda is visible publicly to others without logging in.</p>
+
+  <form method="post" action="/settings/privacy">
+    <div style="margin-bottom: 20px;">
+      <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 600;">
+        <input type="checkbox" name="is_public" value="1" {% if is_public %}checked{% endif %} style="width: 18px; height: 18px;" />
+        Make my personal 7-day overview public
+      </label>
+      <p class="form-hint" style="margin-left: 28px; margin-top: 4px;">
+        When enabled, anyone with your link can view your upcoming events without logging in.
+      </p>
+    </div>
+
+    {% if is_public %}
+    <div class="info-box" style="margin-bottom: 20px;">
+      <div class="text-muted" style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px;">Your Public Overview Link:</div>
+      <a href="/u/{{ user.username }}" target="_blank" style="color: var(--accent); font-weight: 600; word-break: break-all;">
+        {{ public_url }}/u/{{ user.username }} {{ icon('external-link') }}
+      </a>
+    </div>
+    {% endif %}
+
+    <div style="margin-bottom: 20px;">
+      <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 600;">
+        <input type="checkbox" name="favourites_public" value="1" {% if favourites_public %}checked{% endif %} style="width: 18px; height: 18px;" />
+        Make my favourites public
+      </label>
+      <p class="form-hint" style="margin-left: 28px; margin-top: 4px;">
+        When enabled, anyone with your link can see the events you've starred, without logging in.
+      </p>
+    </div>
+
+    {% if favourites_public %}
+    <div class="info-box" style="margin-bottom: 20px;">
+      <div class="text-muted" style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px;">Your Public Favourites Link:</div>
+      <a href="/u/{{ user.username }}/favourites" target="_blank" style="color: var(--accent); font-weight: 600; word-break: break-all;">
+        {{ public_url }}/u/{{ user.username }}/favourites {{ icon('external-link') }}
+      </a>
+    </div>
+    {% endif %}
+
+    <button type="submit" class="btn btn-primary">Save Privacy Settings</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Webcal Calendar Subscription Feed</h2>
+  <p class="form-hint" style="margin-bottom: 14px;">Subscribe to all your favourited events in Apple Calendar, Microsoft Outlook, or Google Calendar using this live iCal URL.</p>
+
+  <div class="info-box" style="font-family: monospace; font-size: 0.85rem; word-break: break-all;">
+    webcal://{{ public_url|replace('http://','')|replace('https://','') }}/calendar/feed/{{ user.username }}.ics
+  </div>
+</div>
+</div>
+
+<!-- Tab: Schedule -->
+<div class="stack settings-panel" id="settings-panel-schedule" role="tabpanel" data-settings-panel="schedule" aria-labelledby="settings-tab-schedule"{% if active_tab != 'schedule' %} hidden{% endif %}>
+<div class="card">
+  <h2>Global Scraper Schedule</h2>
+  <p class="form-hint" style="margin-bottom: 16px;">The background service checks every 5 minutes for sources that are due, syncing each one on its own schedule and limiting searches to the next 7 days.</p>
+
+  <div class="stat-grid">
+    <div class="stat-tile">
+      <div class="stat-tile-label">Sync Schedule</div>
+      <div class="stat-tile-value">{{ schedule_summary }}</div>
+    </div>
+
+    <div class="stat-tile">
+      <div class="stat-tile-label">Max Horizon</div>
+      <div class="stat-tile-value">7 Days Forward</div>
+    </div>
+
+    <div class="stat-tile">
+      <div class="stat-tile-label">Scheduler Status</div>
+      <div class="stat-tile-value text-ok">Active</div>
+    </div>
+  </div>
+
+  {% if user.role == 'admin' %}
+  <form method="post" action="/settings/schedule" style="margin-bottom: 20px;" data-schedule-global-form>
+    <div class="form-group">
+      <label for="schedule_type">How often</label>
+      <select id="schedule_type" name="schedule_type" class="form-control" data-schedule-type>
+        <option value="interval" {% if global_schedule.mode != 'weekly' %}selected{% endif %}>Simple interval</option>
+        <option value="weekly" {% if global_schedule.mode == 'weekly' %}selected{% endif %}>Specific days &amp; times</option>
+      </select>
+      <span class="form-hint">Sources set to "Global" on the Sources tab follow this. A source set to "Custom" keeps its own flat interval instead.</span>
+    </div>
+
+    <div class="form-group" data-schedule-panel="interval" {% if global_schedule.mode == 'weekly' %}hidden{% endif %}>
+      <label for="interval_minutes">Interval</label>
+      <select id="interval_minutes" name="interval_minutes" class="form-control">
+        {% for minutes, label in interval_choices %}
+        <option value="{{ minutes }}" {% if global_schedule.mode != 'weekly' and global_schedule.interval_minutes == minutes %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-group" data-schedule-panel="weekly" {% if global_schedule.mode != 'weekly' %}hidden{% endif %}>
+      <label>Days</label>
+      <div class="weekday-picker" role="group" aria-label="Days to sync">
+        {% for code, label in weekdays %}
+        <label class="weekday-check">
+          <input type="checkbox" name="schedule_days" value="{{ code }}" {% if code in global_schedule.get('days', []) %}checked{% endif %} />
+          <span>{{ label }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      <span class="form-hint">Sync will only run on the days you tick, at the times below.</span>
+
+      <div class="time-list" data-time-list>
+        {% for t in (global_schedule.get('times') or ['09:00']) %}
+        <div class="time-row" data-time-row>
+          <input type="time" name="schedule_times" class="form-control" value="{{ t }}" />
+          <button type="button" class="time-remove-btn" data-remove-time aria-label="Remove time" title="Remove time">{{ icon('trash') }}</button>
+        </div>
+        {% endfor %}
+      </div>
+      <button type="button" class="btn btn-outline btn-sm" data-add-time>{{ icon('plus') }} Add time</button>
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-sm" style="margin-top: 10px;">Save Schedule</button>
+  </form>
+  {% else %}
+  <p class="form-hint" style="margin-bottom: 20px;">Only an admin can change the global schedule. Set a per-source custom interval on the <a href="/sources">Sources</a> tab.</p>
+  {% endif %}
+
+  <button type="button" class="btn btn-primary" data-sync-btn>
+    {{ icon('refresh') }} Trigger Manual Sync for All Sources
+  </button>
+</div>
+</div>
+
+<!-- Tab: Filters -->
+<div class="stack settings-panel" id="settings-panel-filters" role="tabpanel" data-settings-panel="filters" aria-labelledby="settings-tab-filters"{% if active_tab != 'filters' %} hidden{% endif %}>
+<div class="card">
+  <h2>Global Keyword Filters</h2>
+  <p class="form-hint" style="margin-bottom: 16px;">
+    Applied on top of each source's own include/exclude words (Sources tab) -- an event must pass both to show up.
+    Use this to filter out a whole type of event across every source at once, for example excluding <strong>online</strong> or <strong>webinar</strong> events.
+  </p>
+
+  {% if user.role == 'admin' %}
+  <form method="post" action="/settings/filters">
+    <div class="form-group">
+      <label for="global_keyword_include">Must contain (any of)</label>
+      <input type="text" id="global_keyword_include" name="global_keyword_include" class="form-control" value="{{ global_keyword_include }}" placeholder="comma-separated, e.g. music, market" />
+      <span class="form-hint">Leave blank to allow everything through this check. If set, an event's title, description, or location must match at least one word.</span>
+    </div>
+
+    <div class="form-group">
+      <label for="global_keyword_exclude">Never show (any of)</label>
+      <input type="text" id="global_keyword_exclude" name="global_keyword_exclude" class="form-control" value="{{ global_keyword_exclude }}" placeholder="comma-separated, e.g. online, webinar, cancelled" />
+      <span class="form-hint">Matches title, description, and location -- catches events whose location just says "Online" even if the title doesn't mention it.</span>
+    </div>
+
+    <button type="submit" class="btn btn-primary" style="margin-top: 10px;">Save Filters</button>
+  </form>
+  {% else %}
+  <p class="form-hint">Only an admin can change the global filters. Each source can still add its own include/exclude words on the <a href="/sources">Sources</a> tab.</p>
+  {% if global_keyword_include or global_keyword_exclude %}
+  <div class="info-box" style="margin-top: 12px;">
+    {% if global_keyword_include %}<div>Must contain: {{ global_keyword_include }}</div>{% endif %}
+    {% if global_keyword_exclude %}<div>Never show: {{ global_keyword_exclude }}</div>{% endif %}
+  </div>
+  {% endif %}
+  {% endif %}
+</div>
+</div>
+
+<!-- Tab: Categories -->
+<div class="stack settings-panel" id="settings-panel-categories" role="tabpanel" data-settings-panel="categories" aria-labelledby="settings-tab-categories"{% if active_tab != 'categories' %} hidden{% endif %}>
+<div class="card">
+  <h2>Event Categories</h2>
+  <p class="form-hint" style="margin-bottom: 16px;">
+    Each source is assigned one of these on the Sources tab -- its events are labelled with that category, instead of whatever the source itself calls things.
+  </p>
+
+  <ul class="category-edit-list">
+    {% for cat in category_list %}
+    <li class="category-edit">
+      <form method="post" action="/settings/categories/{{ cat.key }}/rename" class="category-edit-form">
+        <input type="text" name="label" value="{{ cat.label }}" required {% if cat.is_builtin or user.role != 'admin' %}readonly{% endif %} class="form-control" />
+        {% if user.role == 'admin' %}
+          {% if not cat.is_builtin %}
+          <button class="btn btn-outline btn-sm" type="submit">Rename</button>
+          {% else %}
+          <span class="badge">Built-in</span>
+          {% endif %}
+        {% endif %}
+      </form>
+      {% if user.role == 'admin' and not cat.is_builtin %}
+      <form method="post" action="/settings/categories/{{ cat.key }}/delete" data-confirm="Remove {{ cat.label }}?" data-confirm-detail="Sources using it move to General." data-confirm-ok="Remove">
+        <button class="icon-btn" type="submit" aria-label="Remove {{ cat.label }}" title="Remove category">{{ icon('trash') }}</button>
+      </form>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+
+  {% if user.role == 'admin' %}
+  <form method="post" action="/settings/categories" class="category-add">
+    <input type="text" name="label" required placeholder="e.g. Wellness" class="form-control" />
+    <button class="btn btn-primary btn-sm" type="submit">{{ icon('plus') }} Add category</button>
+  </form>
+  {% endif %}
+</div>
+</div>
+
+<!-- Tab: Calendar Integrations -->
+<div class="stack settings-panel" id="settings-panel-calendar" role="tabpanel" data-settings-panel="calendar" aria-labelledby="settings-tab-calendar"{% if active_tab != 'calendar' %} hidden{% endif %}>
+<div class="card">
+  <h2>Google OAuth Credentials</h2>
+  <p class="form-hint" style="margin-bottom: 16px;">
+    Required once before anyone can connect a Google account below. Create an OAuth Client ID in
+    <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer">Google Cloud Console</a>
+    (Application type: Web application) with this exact redirect URI, then paste the two values it gives you here.
+  </p>
+
+  <div class="info-box" style="margin-bottom: 16px; font-family: monospace; font-size: 0.85rem; word-break: break-all;">
+    {{ env.google_redirect_uri }}
+  </div>
+
+  {% if google_configured %}
+  <div style="background-color: color-mix(in srgb, var(--ok) 15%, var(--card)); border: 1px solid var(--ok); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+    <div style="font-weight: 600; color: var(--ok);">✓ OAuth credentials configured</div>
+  </div>
+  {% endif %}
+
+  {% if user.role == 'admin' %}
+  <form method="post" action="/settings/calendar/google-credentials">
+    <div class="form-group">
+      <label for="google_client_id">Client ID</label>
+      <input type="text" id="google_client_id" name="google_client_id" class="form-control" placeholder="{% if google_configured %}Leave blank to keep existing{% else %}xxxxx.apps.googleusercontent.com{% endif %}" autocomplete="off" />
+    </div>
+    <div class="form-group">
+      <label for="google_client_secret">Client Secret</label>
+      <input type="password" id="google_client_secret" name="google_client_secret" class="form-control" placeholder="{% if google_configured %}Leave blank to keep existing{% else %}Paste the client secret{% endif %}" autocomplete="off" />
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm">Save Credentials</button>
+  </form>
+  {% else %}
+  <p class="form-hint">Only an admin can manage Google OAuth credentials.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Google & Gmail Calendar</h2>
+  <p class="form-hint" style="margin-bottom: 16px;">Connect your Google account so favourited events can be forwarded directly onto your Google Calendar.</p>
+
+  {% if gcal_conn and gcal_conn.access_token %}
+  <div style="background-color: color-mix(in srgb, var(--ok) 15%, var(--card)); border: 1px solid var(--ok); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+    <div style="font-weight: 600; color: var(--ok); margin-bottom: 4px;">✓ Connected to Google Calendar</div>
+    <div style="font-size: 0.88rem;">Connected Account: <strong>{{ gcal_conn.account_email }}</strong></div>
+    <p style="font-size: 0.8rem; color: var(--muted); margin-top: 6px;">Favourited events will automatically be pushed to your Google Calendar.</p>
+  </div>
+  <form method="post" action="/calendar/google/disconnect">
+    <button type="submit" class="btn btn-outline" style="color: var(--error);">Disconnect Google Calendar</button>
+  </form>
+  {% elif google_configured %}
+  <p style="margin-bottom: 16px;">No Google Calendar connected. You can still use the 1-click "Add to Google Calendar" button on any event card, or connect your account for automatic background forwarding.</p>
+  <a href="/calendar/google/connect" class="btn btn-primary">
+    {{ icon('calendar') }} Connect Google / Gmail Calendar
+  </a>
+  {% else %}
+  <p class="form-hint">Add your Google OAuth credentials above first, then you'll be able to connect an account here.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Facebook Events & Calendar Invites</h2>
+  <p class="form-hint" style="margin-bottom: 12px;">Due to Meta API privacy rules, Facebook event invites can be exported via standard .ics invites or shared directly to Facebook from each event card.</p>
+  <p style="font-size: 0.88rem; color: var(--muted);">To track events hosted on Facebook, simply paste public Facebook event URLs into your Sources tab.</p>
+</div>
+</div>
+
+<!-- Tab: Data Providers -->
+<div class="stack settings-panel" id="settings-panel-providers" role="tabpanel" data-settings-panel="providers" aria-labelledby="settings-tab-providers"{% if active_tab != 'providers' %} hidden{% endif %}>
+<div class="card">
+  <h2>Bright Data</h2>
+  <p class="form-hint" style="margin-bottom: 16px;">
+    Facebook's own event search requires a login our browser-based scraper can't provide. When an API key is
+    set here, any Facebook source is fetched through Bright Data's hosted scraping API instead, which handles
+    that authentication on its own end.
+  </p>
+
+  {% if brightdata_configured %}
+  <div style="background-color: color-mix(in srgb, var(--ok) 15%, var(--card)); border: 1px solid var(--ok); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+    <div style="font-weight: 600; color: var(--ok);">✓ API key configured</div>
+  </div>
+  {% endif %}
+
+  {% if user.role == 'admin' %}
+  <form method="post" action="/settings/integrations" style="margin-bottom: 12px;">
+    <div class="form-group">
+      <label for="brightdata_api_key">Bright Data API Key</label>
+      <input type="password" id="brightdata_api_key" name="brightdata_api_key" class="form-control" placeholder="{% if brightdata_configured %}Leave blank to keep existing key{% else %}Paste your Bright Data API key{% endif %}" autocomplete="off" />
+      <span class="form-hint">Found under Account Settings in your Bright Data dashboard.</span>
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm">Save API Key</button>
+  </form>
+
+  {% if brightdata_configured %}
+  <form method="post" action="/settings/integrations/clear" data-confirm="Remove the Bright Data API key?" data-confirm-detail="Facebook sources will stop syncing until a new key is added." data-confirm-ok="Remove">
+    <button type="submit" class="btn btn-outline btn-sm" style="color: var(--error);">Remove API Key</button>
+  </form>
+  {% endif %}
+  {% else %}
+  <p class="form-hint">Only an admin can manage the Bright Data API key.</p>
+  {% endif %}
+</div>
+</div>
+
+<!-- Tab: Network & SSL -->
+<div class="stack settings-panel" id="settings-panel-network" role="tabpanel" data-settings-panel="network" aria-labelledby="settings-tab-network"{% if active_tab != 'network' %} hidden{% endif %}>
+<div class="card">
+  <h2>Network & Local SSL Certificates</h2>
+  <p class="form-hint" style="margin-bottom: 16px;">EventTrakr includes an internal certificate authority matching NewsCast, providing secure HTTPS for your local network without external cloud certificates.</p>
+
+  <form method="post" action="/settings/network" style="margin-bottom: 20px;">
+    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 600; margin-bottom: 14px;">
+      <input type="checkbox" name="https_enabled" value="1" {% if is_https %}checked{% endif %} style="width: 18px; height: 18px;" />
+      Serve over HTTPS with auto-generated local certificates
+    </label>
+    <button type="submit" class="btn btn-primary btn-sm">Update TLS Setting</button>
+  </form>
+
+  <div class="info-box" style="margin-bottom: 18px;">
+    <div style="font-weight: 600; margin-bottom: 6px;">Certificate Status:</div>
+    <div style="font-size: 0.88rem;">{{ cert_status.message }}</div>
+    {% if cert_status.sans %}
+    <div class="text-muted" style="font-size: 0.8rem; margin-top: 8px;">
+      Valid for SANs: {{ cert_status.sans|join(', ') }}
+    </div>
+    {% endif %}
+  </div>
+
+  <a href="/settings/network/ca.crt" class="btn btn-outline btn-sm">
+    {{ icon('download') }} Download Root CA (.crt)
+  </a>
+  <span class="form-hint" style="margin-left: 10px;">Install on your phone or computer to trust the HTTPS certificate.</span>
+</div>
+</div>
+
+<!-- Tab: Users (Admin Only) -->
+{% if user.role == 'admin' %}
+<div class="stack settings-panel" id="settings-panel-users" role="tabpanel" data-settings-panel="users" aria-labelledby="settings-tab-users"{% if active_tab != 'users' %} hidden{% endif %}>
+<div class="card">
+  <h2>User Accounts</h2>
+  <div class="table-wrap" style="margin-bottom: 24px;">
+    <table>
+      <thead>
+        <tr>
+          <th>User ID</th>
+          <th>Username</th>
+          <th>Role</th>
+          <th>Overview</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>{{ u.id }}</td>
+          <td><strong>{{ u.username }}</strong></td>
+          <td><span class="badge">{{ u.role }}</span></td>
+          <td>{% if u.is_public %}<span style="color: var(--ok);">Public</span>{% else %}<span style="color: var(--muted);">Private</span>{% endif %}</td>
+          <td>{{ u.created_at|format_datetime }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Add New User</h3>
+  <form method="post" action="/settings/users/create" style="margin-top: 14px;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px;">
+      <div class="form-group">
+        <label for="new_username">Username</label>
+        <input type="text" id="new_username" name="username" class="form-control" required />
+      </div>
+      <div class="form-group">
+        <label for="user_pass">Password</label>
+        <input type="password" id="user_pass" name="password" class="form-control" required />
+      </div>
+      <div class="form-group">
+        <label for="role">Role</label>
+        <select id="role" name="role" class="form-control">
+          <option value="user">User</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary" style="margin-top: 10px;">Create User</button>
+  </form>
+</div>
+</div>
+{% endif %}
+
+{% if user.role == 'admin' %}
+<div class="stack settings-panel" id="settings-panel-update" role="tabpanel" data-settings-panel="update" aria-labelledby="settings-tab-update"{% if active_tab != 'update' %} hidden{% endif %}>
+<div class="card stack">
+  <h2>Updates</h2>
+  <form method="post" action="/settings/update" class="stack">
+    <label>
+      GitHub repository
+      <input type="text" name="github_repo" value="{{ github_repo }}" class="form-control" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="owner/stonePi" />
+    </label>
+    <p class="form-hint">Checks GitHub Releases for an <code>eventtrakr-version.zip</code> asset. Leave blank until you publish releases.</p>
+    <p class="form-hint">This copy is <strong>{{ app_version }}</strong>.
+      {% if update_check.newer %}
+        <strong>{{ update_check.version or update_check.tag }}</strong> is available.
+      {% elif update_check.tag %}
+        You have the latest version.
+      {% elif update_check.message %}
+        {{ update_check.message }}
+      {% endif %}
+    </p>
+    {% if update_check.newer and update_check.notes %}
+    <p class="form-hint">{{ update_check.notes[:1200] }}</p>
+    {% endif %}
+    <button type="submit" class="btn btn-primary">Save repository</button>
+  </form>
+  <form method="post" action="/settings/updates/check" style="margin-top:12px">
+    <button type="submit" class="btn btn-outline">Check for updates</button>
+  </form>
+  {% if update_check.newer and update_check.valid %}
+  <form method="post" action="/settings/updates/install" style="margin-top:12px" data-confirm="Install {{ update_check.version or update_check.tag }}?" data-confirm-detail="EventTrakr will replace the app and restart." data-confirm-ok="Install">
+    <button type="submit" class="btn btn-primary">Install {{ update_check.version or update_check.tag }}</button>
+  </form>
+  {% endif %}
+  <form method="post" action="/settings/updates/rollback" style="margin-top:12px" data-confirm="Roll back to the previous app?" data-confirm-detail="EventTrakr will restore the last snapshot and restart." data-confirm-ok="Roll back">
+    <button type="submit" class="btn btn-outline">Roll back last app</button>
+  </form>
+</div>
+</div>
+{% endif %}
+</div>
+{% endblock %}

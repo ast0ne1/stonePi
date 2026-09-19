@@ -1,0 +1,19 @@
+[Unit]
+Description=StonePi Authentication
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=stonepi-auth
+Group=stonepi-auth
+EnvironmentFile=/etc/stonepi/stonepi.env
+EnvironmentFile=-/etc/stonepi/auth.env
+WorkingDirectory=/opt/stonepi/apps/auth
+ExecStart=/opt/stonepi/apps/auth/.venv/bin/python -m app.serve
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target
