@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+
+{% block title %}
+{% if is_private %}Private {% if is_favourites %}Favourites{% else %}Calendar{% endif %} · EventTrakr{% else %}{{ target_user.username }}'s {% if is_favourites %}Favourites{% else %}Public Events{% endif %} · EventTrakr{% endif %}
+{% endblock %}
+
+{% block content %}
+{% if is_private %}
+<div class="card empty-state" style="max-width: 500px; margin: 60px auto;">
+  <svg viewBox="0 0 24 24" width="48" height="48" stroke="currentColor" stroke-width="2" fill="none"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+  <h2>Private {% if is_favourites %}Favourites{% else %}Overview{% endif %}</h2>
+  <p style="margin-top: 8px;">The user <strong>{{ username }}</strong> has kept their {% if is_favourites %}favourites{% else %}personal event agenda{% endif %} private.</p>
+  <div style="margin-top: 20px;">
+    <a href="/login" class="btn btn-outline">Sign In to EventTrakr</a>
+  </div>
+</div>
+{% else %}
+<section class="hero">
+  {% if is_favourites %}
+  <h1>{{ target_user.username }}'s Favourites ⭐</h1>
+  <p class="lede">Events {{ target_user.username }} has starred.</p>
+  {% else %}
+  <h1>{{ target_user.username }}'s Public Agenda</h1>
+  <p class="lede">Upcoming curated events for the next 7 days in {{ target_user.default_location }}.</p>
+  {% endif %}
+</section>
+
+{% if events %}
+<div class="events-grid">
+  {% for ev in events %}
+  <div class="event-card">
+    <div>
+      <div class="event-header">
+        <div class="event-badges">
+          <span class="badge category">{{ ev.category }}</span>
+          <span class="badge {% if ev.is_free %}cost-free{% endif %}">{{ ev.cost }}</span>
+          {% if ev.is_cancelled %}
+          <span class="badge cancelled">Cancelled</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <h2 class="event-title">{{ ev.title }}</h2>
+
+      <div class="event-time">
+        {{ icon('clock') }}
+        <span>{{ ev.start_time|format_datetime }}</span>
+      </div>
+
+      <div class="event-location">
+        {{ icon('map-pin') }}
+        <span>{{ ev.location }}</span>
+      </div>
+
+      {% if ev.description %}
+      <p class="event-desc">{{ ev.description }}</p>
+      {% endif %}
+    </div>
+
+    <div class="event-footer">
+      {% if ev.url %}
+      <a href="{{ ev.url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm">
+        Details {{ icon('external-link') }}
+      </a>
+      {% else %}
+      <div></div>
+      {% endif %}
+
+      <div class="dropdown">
+        <button type="button" class="btn btn-primary btn-sm dropdown-toggle">
+          {{ icon('calendar') }} Add to Cal ▾
+        </button>
+        <div class="dropdown-content">
+          <a href="{{ ev.gcal_url }}" target="_blank" rel="noopener noreferrer" class="dropdown-item">
+            Google Calendar
+          </a>
+          <a href="/calendar/ics/{{ ev.id }}" class="dropdown-item">
+            Download .ICS (Apple/Outlook)
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card empty-state">
+  {{ icon('calendar') }}
+  <h3>No upcoming events right now</h3>
+  <p style="margin-top: 6px;">Check back soon for new events.</p>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

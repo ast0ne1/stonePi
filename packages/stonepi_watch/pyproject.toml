@@ -1,0 +1,13 @@
+[project]
+name = "stonepi-watch"
+version = "0.1.0"
+description = "StonePi Watch: app and host status rollup (healthy / attention / critical)"
+requires-python = ">=3.11"
+dependencies = ["httpx>=0.27", "stonepi-auth"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["stonepi_watch*"]

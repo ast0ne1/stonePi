@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% from "_icons.html" import svg, service_icon %}
+{% block title %}Overview · StonePi{% endblock %}
+{% block content %}
+<section class="hero">
+  <div class="hero-row">
+    <div>
+      <h1>Overview</h1>
+      <p class="lede">{{ hostname }}.local · signed in as {{ user.display_name }}</p>
+      <p class="muted">StonePi {{ platform_version }}</p>
+    </div>
+    <a class="btn btn-ghost btn-with-icon" href="{{ cockpit_url }}">{{ svg('cockpit') }} Cockpit</a>
+  </div>
+</section>
+
+<div class="grid">
+  <section class="card stat">
+    <p class="muted">Services</p>
+    <strong>{{ enabled_count }} / {{ cards|length }}</strong>
+    <p class="muted">Enabled / total</p>
+  </section>
+  <section class="card stat">
+    <p class="muted">Users</p>
+    {% if users_unavailable %}
+    <strong>—</strong>
+    <p class="muted">Could not load accounts</p>
+    {% else %}
+    <strong>{{ user_count }}</strong>
+    <p class="muted">Household accounts</p>
+    {% endif %}
+  </section>
+  <section class="card stat">
+    <p class="muted">Last backup</p>
+    <strong>{{ backup_summary.label }}</strong>
+    <p class="muted">{{ backup_summary.detail }}</p>
+  </section>
+</div>
+
+<h2>Services</h2>
+{% if cards %}
+<div class="service-grid">
+  {% for card in cards %}
+  <a class="card service-card{% if card.enabled is defined and not card.enabled %} is-disabled{% endif %}" href="{{ card.url }}">
+    <div class="service-card-head">
+      {{ service_icon(card.id, card.color or '') }}
+      <div>
+        <h3>{{ card.name }}</h3>
+        <p class="pill"><span class="dot {% if card.health.ok %}ok{% else %}bad{% endif %}"></span>
+          {% if card.health.ok %}Healthy{% else %}Unreachable{% endif %}
+          · {% if card.unit_status == 'local' %}local process{% else %}{{ card.unit_status }}{% endif %}
+        </p>
+        <p class="muted">{{ card.version }} · {{ card.url }}</p>
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<section class="card">
+  <h2>No services listed</h2>
+  <p class="muted">Open <a href="/applications">Services</a> to check health and availability.</p>
+</section>
+{% endif %}
+{% endblock %}

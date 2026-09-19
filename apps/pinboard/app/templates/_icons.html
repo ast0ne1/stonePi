@@ -1,0 +1,18 @@
+{# Shared stroke icons. Usage: {% from "_icons.html" import icon %}{{ icon("plus") }} #}
+{% macro icon(name) -%}
+{%- if name == "home" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5"/><path d="M7 10.5V19h10v-8.5"/></svg>
+{%- elif name == "plus" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+{%- elif name == "trash" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M9 7V5h6v2M7 7l1 13h8l1-13"/></svg>
+{%- elif name == "check" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5L20 7"/></svg>
+{%- elif name == "pin" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5"/><path d="M9 3h6l1 7H8L9 3z"/><path d="M8 10h8l-1.5 4h-5L8 10z"/></svg>
+{%- elif name == "board" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h5"/></svg>
+{%- elif name == "reminder" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="7"/><path d="M12 10v3l2 2M9 4h6"/></svg>
+{%- endif -%}
+{%- endmacro %}

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Add · FileServe{% endblock %}
+{% block content %}
+<section class="hero">
+  <h1>Add</h1>
+  <p class="lede">Upload a file from this device, or pack a live page URL into a Site zip.</p>
+</section>
+
+<div data-add-tabs>
+  <div class="chips add-chips" role="tablist" aria-label="Add options">
+    <a class="chip-btn{% if add_tab != 'url' %} is-active{% endif %}" href="{{ url_for('add_page') }}" role="tab" id="add-tab-file" data-add-tab="file" aria-selected="{{ 'false' if add_tab == 'url' else 'true' }}" aria-controls="add-panel-file">Add file</a>
+    <a class="chip-btn{% if add_tab == 'url' %} is-active{% endif %}" href="{{ url_for('add_from_url') }}" role="tab" id="add-tab-url" data-add-tab="url" aria-selected="{{ 'true' if add_tab == 'url' else 'false' }}" aria-controls="add-panel-url">Add from URL</a>
+  </div>
+
+  <div class="card stack add-card" id="add-panel-file" role="tabpanel" data-add-panel="file" aria-labelledby="add-tab-file"{% if add_tab == 'url' %} hidden{% endif %}>
+    {% if error %}
+    <p class="banner">{{ error }}</p>
+    {% endif %}
+    <p class="error-text" hidden data-form-error></p>
+    <form method="post" action="{{ url_for('add_page') }}" class="stack" enctype="multipart/form-data" data-page-setup>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      {% include "_page_setup_fields.html" %}
+      <label class="file-picker">
+        File
+        <span class="file-picker-drop">
+          <input type="file" name="file" accept=".html,.pdf,.docx,.zip,text/html,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/zip" required data-file-picker />
+          <span class="file-picker-copy">
+            <strong data-file-name data-empty="Tap to choose a file">Tap to choose a file</strong>
+            <span class="hint">.html, .pdf, .docx, or .zip — zip needs index.html; listed as one page</span>
+          </span>
+        </span>
+      </label>
+      <button class="btn btn-primary btn-block" type="submit">Host Page</button>
+    </form>
+  </div>
+
+  <div class="card stack add-card" id="add-panel-url" role="tabpanel" data-add-panel="url" data-url-pack aria-labelledby="add-tab-url"{% if add_tab != 'url' %} hidden{% endif %}>
+    <label>
+      Page URL
+      <input id="pack-url" type="url" name="page_url" placeholder="https://example.com/game/" autocomplete="off" spellcheck="false" />
+    </label>
+    <label>
+      Zip file name
+      <input id="pack-name" type="text" value="site.zip" spellcheck="false" />
+    </label>
+    <p class="hint">FileServe fetches on the server. Only same-site scripts, styles, and media are included.</p>
+    <div class="btn-row">
+      <button class="btn btn-primary" type="button" id="pack-go">Download zip</button>
+      <button class="btn btn-ghost" type="button" id="pack-clear">Clear log</button>
+    </div>
+    <pre class="pack-log" id="pack-log" aria-live="polite"><span class="muted">Ready.</span></pre>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='js/url-pack.js') }}?v={{ app_version }}" defer></script>
+{% endblock %}

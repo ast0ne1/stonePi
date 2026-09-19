@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+
+{% block title %}{{ view_title }} · EventTrakr{% endblock %}
+
+{% block content %}
+<div data-favourites-view="{{ '1' if is_favourites_view else '0' }}" hidden></div>
+<section class="hero">
+  <h1>{{ view_title }}</h1>
+  <p class="lede">
+    {% if is_favourites_view %}
+      Your starred events — automatically synced to your connected Google Calendar.
+    {% else %}
+      Upcoming events from your subscribed sources for the next 7 days.
+    {% endif %}
+  </p>
+</section>
+
+{% if not is_favourites_view %}
+<!-- 7-Day Filter Tabs -->
+<div class="chips-row">
+  {% for tab in day_tabs %}
+  <a class="chip-btn {% if selected_day == tab.key %}active{% endif %}" href="?day={{ tab.key }}&category={{ selected_category|urlencode }}&source={{ selected_source }}&free={{ '1' if free_only else '0' }}">
+    {{ icon('calendar') }}
+    <span>{{ tab.label }}</span>
+  </a>
+  {% endfor %}
+</div>
+
+<!-- Category & Free Filter Row -->
+<div class="chips-row" style="margin-top: -10px;">
+  <a class="chip-btn {% if selected_category == 'all' %}active{% endif %}" href="?day={{ selected_day }}&category=all&source={{ selected_source }}&free={{ '1' if free_only else '0' }}">
+    All Categories
+  </a>
+  {% for cat in categories %}
+  <a class="chip-btn {% if selected_category == cat %}active{% endif %}" href="?day={{ selected_day }}&category={{ cat|urlencode }}&source={{ selected_source }}&free={{ '1' if free_only else '0' }}">
+    {{ cat }}
+  </a>
+  {% endfor %}
+  <a class="chip-btn {% if free_only %}active{% endif %}" href="?day={{ selected_day }}&category={{ selected_category|urlencode }}&source={{ selected_source }}&free={{ '0' if free_only else '1' }}" style="margin-left: auto;">
+    {% if free_only %}✓ Free Events Only{% else %}Free Events Only{% endif %}
+  </a>
+</div>
+
+{% if source_options %}
+<!-- Source Filter Row -->
+<div class="chips-row" style="margin-bottom: 24px;">
+  <a class="chip-btn {% if selected_source == 'all' %}active{% endif %}" href="?day={{ selected_day }}&category={{ selected_category|urlencode }}&source=all&free={{ '1' if free_only else '0' }}">
+    All Sources
+  </a>
+  {% for src in source_options %}
+  <a class="chip-btn {% if selected_source == src.id|string %}active{% endif %}" href="?day={{ selected_day }}&category={{ selected_category|urlencode }}&source={{ src.id }}&free={{ '1' if free_only else '0' }}">
+    {{ src.name }}
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+{% endif %}
+
+<!-- Events Grid -->
+{% if events %}
+<div class="events-grid">
+  {% for ev in events %}
+  <div class="event-card" data-event-card="{{ ev.id }}">
+    <div>
+      <div class="event-header">
+        <div class="event-badges">
+          <span class="badge category">{{ ev.category }}</span>
+          <span class="badge {% if ev.is_free %}cost-free{% endif %}">{{ ev.cost }}</span>
+          {% if ev.is_cancelled %}
+          <span class="badge cancelled">Cancelled</span>
+          {% endif %}
+          {% if ev.calendar_synced %}
+          <span class="badge text-ok" style="border-color: var(--ok);" title="Synced to Google Calendar">{{ icon('check') }} Google Cal</span>
+          {% endif %}
+        </div>
+        <button type="button" class="btn-star {% if ev.is_favourited %}starred{% endif %}" data-fav-toggle="{{ ev.id }}" title="{% if ev.is_favourited %}Favourited{% else %}Add to Favourites{% endif %}">
+          {% if ev.is_favourited %}{{ icon('star-filled') }}{% else %}{{ icon('star') }}{% endif %}
+        </button>
+      </div>
+
+      <h2 class="event-title">{{ ev.title }}</h2>
+
+      <div class="event-time">
+        {{ icon('clock') }}
+        <span>{{ ev.start_time|format_datetime }}</span>
+      </div>
+
+      <div class="event-location">
+        {{ icon('map-pin') }}
+        <span>{{ ev.location }}</span>
+      </div>
+
+      {% if ev.description %}
+      <p class="event-desc">{{ ev.description }}</p>
+      {% endif %}
+    </div>
+
+    <div class="event-footer">
+      {% if ev.url %}
+      <a href="{{ ev.url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm">
+        Details {{ icon('external-link') }}
+      </a>
+      {% else %}
+      <div></div>
+      {% endif %}
+
+      <div class="dropdown">
+        <button type="button" class="btn btn-primary btn-sm dropdown-toggle">
+          {{ icon('calendar') }} Add to Cal ▾
+        </button>
+        <div class="dropdown-content">
+          <a href="{{ ev.gcal_url }}" target="_blank" rel="noopener noreferrer" class="dropdown-item">
+            Google Calendar
+          </a>
+          <a href="/calendar/ics/{{ ev.id }}" class="dropdown-item">
+            Download .ICS (Apple/Outlook)
+          </a>
+          <a href="{{ ev.fb_share_url }}" target="_blank" rel="noopener noreferrer" class="dropdown-item">
+            Share on Facebook
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card empty-state">
+  {% if is_favourites_view %}
+  {{ icon('star') }}
+  <h3>No favourites yet</h3>
+  <p style="margin-top: 6px;">Star events from Agenda or Search to keep them here.</p>
+  <div class="row-actions" style="margin-top: 12px;">
+    <a class="btn btn-primary btn-sm" href="/agenda">Browse agenda</a>
+    <a class="btn btn-outline btn-sm" href="/search">Search events</a>
+  </div>
+  {% else %}
+  {{ icon('calendar') }}
+  <h3>No events found for this selection</h3>
+  <p style="margin-top: 6px;">Try adjusting your day or category filters, or add more sources in the Sources tab.</p>
+  <div class="row-actions" style="margin-top: 12px;">
+    <a class="btn btn-primary btn-sm" href="/sources">Manage sources</a>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

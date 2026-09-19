@@ -1,0 +1,19 @@
+[Unit]
+Description=StonePi FileServe
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=stonepi-files
+Group=stonepi-files
+EnvironmentFile=/etc/stonepi/stonepi.env
+EnvironmentFile=-/etc/stonepi/fileserve.env
+WorkingDirectory=/opt/stonepi/apps/fileserve
+ExecStart=/opt/stonepi/apps/fileserve/.venv/bin/python run.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

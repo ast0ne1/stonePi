@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>StonePi · Fresh Pi install walkthrough</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --paper: #f3eee4;
+      --ink: #1c1814;
+      --muted: #6d645a;
+      --line: #d6cec2;
+      --card: #fbf7f0;
+      --accent: #8b1e1e;
+      --accent-ink: #fff8f2;
+      --ok: #2c5d3c;
+      --wash: #ebe4d7;
+      --chrome: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+      --serif: "Source Serif 4", Georgia, serif;
+      --radius: 16px;
+      --shadow: 0 1px 0 var(--line);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: var(--chrome);
+      color: var(--ink);
+      line-height: 1.55;
+      background:
+        radial-gradient(1000px 360px at 8% -8%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 55%),
+        var(--paper);
+      min-height: 100dvh;
+    }
+    a { color: var(--accent); }
+    code, kbd, pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.88em;
+    }
+    code {
+      background: var(--wash);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0.1em 0.4em;
+    }
+    .shell {
+      display: grid;
+      grid-template-columns: minmax(200px, 260px) 1fr;
+      min-height: 100dvh;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .side {
+      position: sticky;
+      top: 0;
+      align-self: start;
+      height: 100dvh;
+      padding: 28px 18px 28px 22px;
+      border-right: 1px solid var(--line);
+      background: color-mix(in srgb, var(--card) 88%, transparent);
+      backdrop-filter: blur(12px);
+      overflow: auto;
+    }
+    .brand {
+      font-family: var(--serif);
+      font-size: 1.45rem;
+      font-weight: 600;
+      margin: 0 0 4px;
+    }
+    .side-lede {
+      margin: 0 0 16px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .transfer {
+      margin: 0 0 18px;
+      padding: 12px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: var(--paper);
+    }
+    .transfer h2 {
+      font-family: var(--serif);
+      font-size: 1.05rem;
+      margin: 0 0 6px;
+    }
+    .transfer p {
+      margin: 0 0 10px;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+    .transfer .btn-row { margin-top: 0; }
+    .transfer .btn, .transfer .btn-ghost {
+      min-height: 40px;
+      font-size: 0.85rem;
+      padding: 0 12px;
+    }
+    .transfer-status {
+      margin: 8px 0 0;
+      font-size: 0.8rem;
+      color: var(--muted);
+      min-height: 1.2em;
+    }
+    .transfer-status.is-ok { color: var(--ok); font-weight: 600; }
+    .transfer-status.is-err { color: var(--accent); font-weight: 600; }
+    .progress {
+      margin: 0 0 18px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: var(--paper);
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .progress strong { color: var(--ink); }
+    .bar {
+      height: 6px;
+      border-radius: 999px;
+      background: var(--wash);
+      margin-top: 8px;
+      overflow: hidden;
+    }
+    .bar > span {
+      display: block;
+      height: 100%;
+      width: 0%;
+      background: var(--accent);
+      transition: width 200ms ease;
+    }
+    .nav {
+      display: grid;
+      gap: 4px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .nav a {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      text-decoration: none;
+      color: var(--muted);
+      font-weight: 500;
+      font-size: 0.92rem;
+    }
+    .nav a:hover { color: var(--ink); background: var(--wash); }
+    .nav a.is-active {
+      color: var(--ink);
+      background: color-mix(in srgb, var(--accent) 12%, var(--card));
+    }
+    .nav .num {
+      width: 1.5rem;
+      height: 1.5rem;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      display: grid;
+      place-items: center;
+      font-size: 0.72rem;
+      flex: 0 0 auto;
+    }
+    .nav a.is-done .num {
+      background: var(--ok);
+      border-color: var(--ok);
+      color: #fff;
+    }
+    .nav a.is-active .num {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .main {
+      padding: 28px 28px 80px;
+      min-width: 0;
+    }
+    .step {
+      display: none;
+      animation: in 180ms ease;
+    }
+    .step.is-open { display: block; }
+    @keyframes in {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: none; }
+    }
+    .hero h1 {
+      font-family: var(--serif);
+      font-size: clamp(1.8rem, 3vw, 2.35rem);
+      font-weight: 600;
+      margin: 0 0 8px;
+    }
+    .lede { color: var(--muted); margin: 0 0 22px; max-width: 42rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 18px 18px 16px;
+      margin: 0 0 14px;
+    }
+    .card h2 {
+      font-family: var(--serif);
+      font-size: 1.25rem;
+      margin: 0 0 8px;
+    }
+    .card h3 {
+      font-size: 0.95rem;
+      margin: 16px 0 8px;
+    }
+    .card p, .card li { margin: 0 0 10px; }
+    .card ul, .card ol { margin: 0 0 10px; padding-left: 1.2rem; }
+    .muted { color: var(--muted); }
+    .check {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: var(--paper);
+      margin: 0 0 8px;
+      cursor: pointer;
+    }
+    .check input {
+      width: 18px;
+      height: 18px;
+      margin-top: 2px;
+      accent-color: var(--accent);
+      flex: 0 0 auto;
+    }
+    .check.is-on {
+      border-color: color-mix(in srgb, var(--ok) 45%, var(--line));
+      background: color-mix(in srgb, var(--ok) 10%, var(--card));
+    }
+    .cmd {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: stretch;
+      margin: 0 0 12px;
+    }
+    .cmd pre {
+      margin: 0;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: var(--wash);
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .cmd button, .btn {
+      font: inherit;
+      font-weight: 600;
+      border: 0;
+      border-radius: 12px;
+      padding: 0 14px;
+      min-height: 44px;
+      cursor: pointer;
+      background: var(--accent);
+      color: var(--accent-ink);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .btn-ghost {
+      background: transparent;
+      color: var(--ink);
+      border: 1px solid var(--line);
+    }
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 18px;
+    }
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+    }
+    .table th, .table td {
+      text-align: left;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    .table th { color: var(--muted); font-weight: 600; }
+    .tree {
+      margin: 0;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: var(--wash);
+      white-space: pre;
+      overflow: auto;
+    }
+    .note {
+      border-left: 3px solid var(--accent);
+      padding: 4px 0 4px 12px;
+      color: var(--muted);
+      margin: 0 0 12px;
+    }
+    .footer-links {
+      margin-top: 28px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+    @media (max-width: 840px) {
+      .shell { grid-template-columns: 1fr; }
+      .side {
+        position: relative;
+        height: auto;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .nav { grid-template-columns: 1fr 1fr; }
+      .main { padding: 20px 16px 64px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="side">
+      <p class="brand">StonePi</p>
+      <p class="side-lede">Guided install for a fresh Raspberry Pi</p>
+      <div class="transfer">
+        <h2>Get the files</h2>
+        <p>Pull the whole project (no <code>.venv</code> / <code>data</code>) onto this machine.</p>
+        <div class="btn-row">
+          <button type="button" class="btn" id="save-folder-btn">Save into folder…</button>
+          <a class="btn btn-ghost" id="download-zip-link" href="/stonePi-transfer.zip" download="stonePi-transfer.zip">Download zip</a>
+        </div>
+        <p class="transfer-status" id="transfer-status" aria-live="polite"></p>
+      </div>
+      <div class="progress">
+        <div><strong data-progress-count>0</strong> of <span data-progress-total>0</span> checks done</div>
+        <div class="bar"><span data-progress-bar></span></div>
+      </div>
+      <ol class="nav" id="nav">
+        <li><a href="#need" data-nav="need"><span class="num">1</span> What you need</a></li>
+        <li><a href="#flash" data-nav="flash"><span class="num">2</span> Flash the OS</a></li>
+        <li><a href="#copy" data-nav="copy"><span class="num">3</span> Copy to SD</a></li>
+        <li><a href="#ssh" data-nav="ssh"><span class="num">4</span> SSH in</a></li>
+        <li><a href="#install" data-nav="install"><span class="num">5</span> Run installer</a></li>
+        <li><a href="#signin" data-nav="signin"><span class="num">6</span> Sign in</a></li>
+        <li><a href="#first" data-nav="first"><span class="num">7</span> First-boot setup</a></li>
+        <li><a href="#backup" data-nav="backup"><span class="num">8</span> Backup USB</a></li>
+        <li><a href="#help" data-nav="help"><span class="num">?</span> Troubleshooting</a></li>
+      </ol>
+    </aside>
+
+    <main class="main">
+      <section class="step is-open" id="need" data-step="need">
+        <div class="hero">
+          <h1>What you need</h1>
+          <p class="lede">Blank SD card to apps that start on every boot. Work through each step; checks save in this browser.</p>
+        </div>
+        <div class="card">
+          <h2>Hardware &amp; software</h2>
+          <label class="check"><input type="checkbox" data-check="need-pi" /><span>Raspberry Pi 4 or 5 ready (3B+ works; EventTrakr is heavier)</span></label>
+          <label class="check"><input type="checkbox" data-check="need-sd" /><span>MicroSD card (16&nbsp;GB or larger)</span></label>
+          <label class="check"><input type="checkbox" data-check="need-imager" /><span><a href="https://www.raspberrypi.com/software/" target="_blank" rel="noopener">Raspberry Pi Imager</a> installed on your PC</span></label>
+          <label class="check"><input type="checkbox" data-check="need-folder" /><span>This <code>stonePi</code> project folder on your PC</span></label>
+          <label class="check"><input type="checkbox" data-check="need-net" /><span>Ethernet or Wi‑Fi details ready for Imager</span></label>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn" data-next="flash">Next: Flash the OS</button>
+        </div>
+      </section>
+
+      <section class="step" id="flash" data-step="flash">
+        <div class="hero">
+          <h1>Flash the OS</h1>
+          <p class="lede">Use Raspberry Pi Imager. Enable SSH so you can install without a keyboard on the Pi.</p>
+        </div>
+        <div class="card">
+          <h2>Imager steps</h2>
+          <ol>
+            <li>Choose <strong>Raspberry Pi OS</strong> — Bookworm, 64-bit. Lite is fine.</li>
+            <li>Open the gear / <strong>OS customisation</strong>:</li>
+          </ol>
+          <ul>
+            <li>Hostname <code>stonepi</code> (optional — the installer can set it)</li>
+            <li>Enable <strong>SSH</strong> (password or public key)</li>
+            <li>Set username + password (you will use these for SSH)</li>
+            <li>Configure Wi‑Fi if you are not using Ethernet</li>
+          </ul>
+          <ol start="3">
+            <li>Write the image to the SD card.</li>
+          </ol>
+          <label class="check"><input type="checkbox" data-check="flash-done" /><span>Image written successfully</span></label>
+          <label class="check"><input type="checkbox" data-check="flash-ssh" /><span>SSH enabled and username/password noted</span></label>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn btn-ghost" data-prev="need">Back</button>
+          <button type="button" class="btn" data-next="copy">Next: Copy StonePi</button>
+        </div>
+      </section>
+
+      <section class="step" id="copy" data-step="copy">
+        <div class="hero">
+          <h1>Copy StonePi onto the SD card</h1>
+          <p class="lede">After Imager finishes, Windows often remounts only the small <strong>boot</strong> partition. The big “unreadable / needs format” volume is Linux root — ignore it.</p>
+        </div>
+        <div class="card">
+          <h2>Find <code>bootfs</code> (FAT), not the Linux partition</h2>
+          <p>A Pi image has two partitions. Windows can only open the first:</p>
+          <ul>
+            <li><strong>bootfs</strong> — small FAT/FAT32 drive (often a few hundred MB). <em>This is where you copy <code>stonePi</code>.</em></li>
+            <li><strong>rootfs</strong> — large ext4 volume. Windows may say it must be formatted. <strong>Do not format it.</strong> Close that dialog.</li>
+          </ul>
+          <p class="note">If you only see the “needs format” prompt and no drive letter for boot: eject the card, unplug the reader, plug it back in. Check This PC for a new drive (sometimes named <code>bootfs</code> or <code>boot</code>). In Disk Management you should see a FAT partition you can assign a letter to if it has none.</p>
+          <h3>Layout on the boot partition</h3>
+          <pre class="tree">bootfs/
+  stonePi/
+    apps/
+    deploy/
+    packages/
+    scripts/
+    README.md
+    …</pre>
+          <p class="note">Do <strong>not</strong> copy <code>.venv</code> folders (Windows-only). Skip <code>dist/</code>, <code>.git/</code>, and local <code>data/</code> if present.</p>
+          <p>Helper on Windows (boot drive <code>E:</code> example):</p>
+          <div class="cmd">
+            <pre>scripts\copy-to-sd.bat E:\</pre>
+            <button type="button" data-copy>Copy</button>
+          </div>
+          <label class="check"><input type="checkbox" data-check="copy-bootfs" /><span>I can see the small FAT <code>bootfs</code> drive (and I ignored any format prompt)</span></label>
+          <label class="check"><input type="checkbox" data-check="copy-done" /><span><code>stonePi</code> folder is on that boot partition</span></label>
+          <label class="check"><input type="checkbox" data-check="copy-eject" /><span>Card ejected, inserted in the Pi, powered on</span></label>
+        </div>
+        <div class="card">
+          <h2>Boot partition still missing? Use the network instead</h2>
+          <p>You can flash and boot the Pi with <strong>no</strong> files on the SD, then copy StonePi over SSH from your PC.</p>
+          <ol>
+            <li>Flash OS with SSH + Wi‑Fi/Ethernet as usual, boot the Pi, SSH in.</li>
+            <li>On the Pi, create a destination folder:</li>
+          </ol>
+          <div class="cmd">
+            <pre>mkdir -p ~/stonePi</pre>
+            <button type="button" data-copy>Copy</button>
+          </div>
+          <p>From your <strong>Windows PC</strong> (PowerShell), with the unzipped project at e.g. <code>C:\Users\You\stonePi</code>:</p>
+          <div class="cmd">
+            <pre>scp -r C:\Users\You\stonePi\* adam@stonepi.local:~/stonePi/</pre>
+            <button type="button" data-copy>Copy</button>
+          </div>
+          <p class="muted">Replace <code>adam</code> and the path. Then SSH in and run the installer from <code>~/stonePi</code> (next steps).</p>
+          <div class="cmd">
+            <pre>cd ~/stonePi
+sudo bash deploy/install.sh --hostname stonepi</pre>
+            <button type="button" data-copy>Copy</button>
+          </div>
+          <label class="check"><input type="checkbox" data-check="copy-scp" /><span>Used SCP/network copy instead of boot partition (optional path)</span></label>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn btn-ghost" data-prev="flash">Back</button>
+          <button type="button" class="btn" data-next="ssh">Next: SSH in</button>
+        </div>
+      </section>
+
+      <section class="step" id="ssh" data-step="ssh">
+        <div class="hero">
+          <h1>SSH in</h1>
+          <p class="lede">Replace <code>adam</code> with the username you set in Imager.</p>
+        </div>
+        <div class="card">
+          <h2>Connect</h2>
+          <div class="cmd">
+            <pre>ssh adam@stonepi.local</pre>
+            <button type="button" data-copy>Copy</button>
+          </div>
+          <p class="muted">If <code>.local</code> does not resolve yet, use the Pi’s IP from your router.</p>
+          <h3>Confirm the copy landed</h3>
+          <div class="cmd">
+            <pre>ls /boot/firmware/stonePi/deploy/install.sh</pre>
+            <button type="button" data-copy>Copy</button>
+          </div>
+          <p class="muted">On older images the path may be <code>/boot/stonePi/...</code>.</p>
+          <label class="check"><input type="checkbox" data-check="ssh-in" /><span>Logged in over SSH</span></label>
+          <label class="check"><input type="checkbox" data-check="ssh-path" /><span><code>install.sh</code> is visible on the boot path</span></label>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn btn-ghost" data-prev="copy">Back</button>
+          <button type="button" class="btn" data-next="install">Next: Run installer</button>
+        </div>
+      </section>
+
+      <section class="step" id="install" data-step="install">
+        <div class="hero">
+          <h1>Run the installer</h1>
+          <p class="lede">Boot is FAT, so use <code>bash</code> — execute bits are not reliable. First run can take several minutes (pip + Chromium for EventTrakr).</p>
+        </div>
+        <div class="card">
+          <h2>One-shot from boot</h2>
+          <div class="cmd">
+            <pre>sudo bash /boot/firmware/stonePi/deploy/install.sh --hostname stonepi</pre>
+            <button type="button" data-copy>Copy</button>
+          </div>
+          <h3>Or copy home first (cleaner for re-runs)</h3>
+          <div class="cmd">
+            <pre>cp -a /boot/firmware/stonePi ~/stonePi
+cd ~/stonePi
+sudo bash deploy/install.sh --hostname stonepi</pre>
+            <button type="button" data-copy>Copy</button>
+          </div>
+          <h3>What the installer does</h3>
+          <ul>
+            <li>System packages (Python, Nginx, Avahi, Cockpit, Playwright libs)</li>
+            <li>Tree → <code>/opt/stonepi</code></li>
+            <li><code>/etc/stonepi/*.env</code> and <code>/var/lib/stonepi</code> (kept on re-run)</li>
+            <li>Python venvs + dependencies</li>
+            <li>Systemd units enabled for boot</li>
+            <li>Nginx path routing and <code>stonepi.local</code></li>
+            <li>Cockpit enabled</li>
+          </ul>
+          <h3>After it finishes</h3>
+          <div class="cmd">
+            <pre>stonepi status</pre>
+            <button type="button" data-copy>Copy</button>
+          </div>
+          <label class="check"><input type="checkbox" data-check="install-run" /><span>Installer completed without a hard failure</span></label>
+          <label class="check"><input type="checkbox" data-check="install-status" /><span><code>stonepi status</code> shows units active</span></label>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn btn-ghost" data-prev="ssh">Back</button>
+          <button type="button" class="btn" data-next="signin">Next: Sign in</button>
+        </div>
+      </section>
+
+      <section class="step" id="signin" data-step="signin">
+        <div class="hero">
+          <h1>Sign in from another device</h1>
+          <p class="lede">Same LAN as the Pi. Default account is temporary — change it in the next step.</p>
+        </div>
+        <div class="card">
+          <h2>URLs</h2>
+          <table class="table">
+            <thead><tr><th>URL</th><th>What</th></tr></thead>
+            <tbody>
+              <tr><td><a href="http://stonepi.local/" target="_blank" rel="noopener">http://stonepi.local/</a></td><td>Home / launcher</td></tr>
+              <tr><td><a href="http://stonepi.local/auth/login" target="_blank" rel="noopener">…/auth/login</a></td><td>Sign in</td></tr>
+              <tr><td>…/news/</td><td>NewsCast</td></tr>
+              <tr><td>…/files/</td><td>FileServe</td></tr>
+              <tr><td>…/events/</td><td>EventTrakr</td></tr>
+              <tr><td>…/pinboard/</td><td>Pinboard</td></tr>
+              <tr><td>…/studio/</td><td>Studio</td></tr>
+              <tr><td><a href="https://stonepi.local:9090" target="_blank" rel="noopener">https://…:9090</a></td><td>Cockpit (HTTPS; .local or LAN IP)</td></tr>
+            </tbody>
+          </table>
+          <p>Factory login: <strong>admin</strong> / <strong>admin</strong></p>
+          <label class="check"><input type="checkbox" data-check="signin-home" /><span>Home page loads</span></label>
+          <label class="check"><input type="checkbox" data-check="signin-admin" /><span>Signed in as admin</span></label>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn btn-ghost" data-prev="install">Back</button>
+          <button type="button" class="btn" data-next="first">Next: First-boot setup</button>
+        </div>
+      </section>
+
+      <section class="step" id="first" data-step="first">
+        <div class="hero">
+          <h1>First-boot setup</h1>
+          <p class="lede">Secure the admin account, then optionally add keys and glance at Watch.</p>
+        </div>
+        <div class="card">
+          <h2>Do these now</h2>
+          <label class="check"><input type="checkbox" data-check="first-pass" /><span>Change admin password under <strong>Users</strong> (banner stays until you do)</span></label>
+          <label class="check"><input type="checkbox" data-check="first-tiles" /><span>Confirm launcher tiles: NewsCast, FileServe, EventTrakr, Pinboard, Studio</span></label>
+          <label class="check"><input type="checkbox" data-check="first-order" /><span>Optional: Home → <strong>Edit order</strong> — drag tiles to place, then Done</span></label>
+          <label class="check"><input type="checkbox" data-check="first-watch" /><span>Optional: <strong>Settings → Watch</strong> — apps show Running</span></label>
+          <label class="check"><input type="checkbox" data-check="first-display" /><span>Optional: <strong>Settings → Display</strong> — TRMNL webhook, pick Status wall or Household, Copy markup into the plugin, Push now</span></label>
+          <label class="check"><input type="checkbox" data-check="first-vault" /><span>Optional: <strong>Settings → Vault</strong> — add OpenAI / Anthropic keys for Studio or NewsCast AI</span></label>
+          <label class="check"><input type="checkbox" data-check="first-exposure" /><span>Leave <strong>Settings → General → Network exposure</strong> on Home network unless you intend to go public</span></label>
+          <p class="note">Default is trusted LAN. Flip to Internet-facing only when you put StonePi behind a tunnel or public HTTPS — apps tighten on the next request, no restart. Details: <code>deploy/SECURITY.md</code>.</p>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn btn-ghost" data-prev="signin">Back</button>
+          <button type="button" class="btn" data-next="backup">Next: Backup USB</button>
+        </div>
+      </section>
+
+      <section class="step" id="backup" data-step="backup">
+        <div class="hero">
+          <h1>Backup USB</h1>
+          <p class="lede">Treat the stick as sensitive — it holds application data.</p>
+        </div>
+        <div class="card">
+          <h2>Once</h2>
+          <p>Backup runs when you plug in a USB labelled <code>STONEPI-BACKUP</code> (no weekly timer).</p>
+          <ol>
+            <li>Format a USB disk with label <code>STONEPI-BACKUP</code> (see <code>deploy/backup/RESTORE.md</code>).</li>
+            <li>Plug it into the Pi — apps pause briefly while data is copied, then start again.</li>
+            <li>Optional manual run:</li>
+          </ol>
+          <div class="cmd">
+            <pre>sudo systemctl start stonepi-backup</pre>
+            <button type="button" data-copy>Copy</button>
+          </div>
+          <div class="cmd">
+            <pre>sudo journalctl -u stonepi-backup -n 40 --no-pager</pre>
+            <button type="button" data-copy>Copy</button>
+          </div>
+          <label class="check"><input type="checkbox" data-check="backup-usb" /><span>USB labelled and ready</span></label>
+          <label class="check"><input type="checkbox" data-check="backup-run" /><span>One backup completed (plug-in or manual start)</span></label>
+        </div>
+        <div class="card">
+          <h2>You’re done</h2>
+          <p>StonePi should come back after reboot. Re-running the installer is safe — it keeps databases and existing env files.</p>
+          <div class="cmd">
+            <pre>cd ~/stonePi   # or /opt/stonepi after first install
+sudo bash deploy/install.sh --hostname stonepi</pre>
+            <button type="button" data-copy>Copy</button>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn btn-ghost" data-prev="first">Back</button>
+          <button type="button" class="btn" data-next="help">Troubleshooting</button>
+        </div>
+      </section>
+
+      <section class="step" id="help" data-step="help">
+        <div class="hero">
+          <h1>Troubleshooting</h1>
+          <p class="lede">Common snags on a fresh OS.</p>
+        </div>
+        <div class="card">
+          <table class="table">
+            <thead><tr><th>Symptom</th><th>What to try</th></tr></thead>
+            <tbody>
+              <tr><td><code>stonepi.local</code> not found</td><td>Wait for Avahi; try the Pi IP; <code>ping stonepi.local</code></td></tr>
+              <tr><td>“Welcome to nginx”</td><td>Re-run installer, or remove <code>sites-enabled/default</code> and <code>reload nginx</code></td></tr>
+              <tr><td>502 Bad Gateway</td><td><code>stonepi status</code> then <code>sudo journalctl -u stonepi-auth -e</code></td></tr>
+              <tr><td>EventTrakr sync / Playwright missing</td><td><code>sudo -u stonepi-events HOME=/opt/stonepi /opt/stonepi/apps/eventtrakr/.venv/bin/python -m playwright install chromium</code></td></tr>
+              <tr><td>Install fails on apt</td><td><code>sudo apt-get update</code> and re-run; check network/DNS</td></tr>
+              <tr><td>Scripts fail with <code>$'\r'</code></td><td>Installer strips CR; re-run with <code>bash</code></td></tr>
+              <tr><td>Permission errors under <code>/opt/stonepi</code></td><td>Re-run installer as root (<code>sudo bash …</code>)</td></tr>
+            </tbody>
+          </table>
+          <h3>Units enabled on boot</h3>
+          <p class="muted">stonepi-auth · dashboard · newscast · fileserve · eventtrakr · pinboard · studio</p>
+          <div class="cmd">
+            <pre>sudo journalctl -u stonepi-auth -u stonepi-dashboard -f</pre>
+            <button type="button" data-copy>Copy</button>
+          </div>
+          <label class="check"><input type="checkbox" data-check="help-read" /><span>I know where to look if something fails</span></label>
+        </div>
+        <div class="footer-links">
+          Source docs in the repo: <code>deploy/INSTALL.md</code>, <code>deploy/SECURITY.md</code>, <code>deploy/backup/RESTORE.md</code>.
+          <button type="button" class="btn btn-ghost" style="margin-left:8px" data-reset>Reset checklist</button>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn btn-ghost" data-prev="backup">Back</button>
+          <button type="button" class="btn" data-next="need">Back to start</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script>
+    (function () {
+      var KEY = "stonepi-install-walkthrough-v1";
+      var state = {};
+      try { state = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) { state = {}; }
+
+      function save() {
+        try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+      }
+
+      var transferStatus = document.getElementById("transfer-status");
+      var saveFolderBtn = document.getElementById("save-folder-btn");
+
+      function setTransferStatus(text, kind) {
+        if (!transferStatus) return;
+        transferStatus.textContent = text || "";
+        transferStatus.classList.remove("is-ok", "is-err");
+        if (kind) transferStatus.classList.add(kind);
+      }
+
+      async function fetchTransferZip() {
+        setTransferStatus("Building zip on the host PC…");
+        var res = await fetch("/stonePi-transfer.zip", { cache: "no-store" });
+        if (!res.ok) throw new Error("Zip request failed (" + res.status + "). Use scripts/lan-serve.py on the host.");
+        return res.blob();
+      }
+
+      async function writeZipToDirectory(dirHandle, blob) {
+        var fileHandle = await dirHandle.getFileHandle("stonePi-transfer.zip", { create: true });
+        var writable = await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+      }
+
+      async function extractZipToDirectory(dirHandle, blob) {
+        if (typeof JSZip === "undefined") {
+          await writeZipToDirectory(dirHandle, blob);
+          return "zip-only";
+        }
+        setTransferStatus("Unpacking into the folder…");
+        var zip = await JSZip.loadAsync(blob);
+        var names = Object.keys(zip.files).sort();
+        var written = 0;
+        for (var i = 0; i < names.length; i++) {
+          var name = names[i];
+          var entry = zip.files[name];
+          var parts = name.replace(/^\/+/, "").split("/").filter(Boolean);
+          if (!parts.length) continue;
+          var parent = dirHandle;
+          for (var p = 0; p < parts.length - 1; p++) {
+            parent = await parent.getDirectoryHandle(parts[p], { create: true });
+          }
+          if (entry.dir) {
+            await parent.getDirectoryHandle(parts[parts.length - 1], { create: true });
+            continue;
+          }
+          var fileHandle = await parent.getFileHandle(parts[parts.length - 1], { create: true });
+          var writable = await fileHandle.createWritable();
+          await writable.write(await entry.async("blob"));
+          await writable.close();
+          written += 1;
+          if (written % 40 === 0) {
+            setTransferStatus("Unpacking… " + written + " files");
+          }
+        }
+        return "extracted";
+      }
+
+      if (saveFolderBtn) {
+        if (!window.showDirectoryPicker) {
+          saveFolderBtn.textContent = "Download zip";
+        }
+        saveFolderBtn.addEventListener("click", async function () {
+          saveFolderBtn.disabled = true;
+          try {
+            var blob = await fetchTransferZip();
+            if (window.showDirectoryPicker) {
+              setTransferStatus("Choose a folder…");
+              var dir = await window.showDirectoryPicker({ mode: "readwrite" });
+              var mode = await extractZipToDirectory(dir, blob);
+              if (mode === "extracted") {
+                setTransferStatus("Saved. Look for a stonePi folder inside your selection.", "is-ok");
+              } else {
+                setTransferStatus("Saved stonePi-transfer.zip in that folder. Unzip it there.", "is-ok");
+              }
+            } else {
+              var url = URL.createObjectURL(blob);
+              var a = document.createElement("a");
+              a.href = url;
+              a.download = "stonePi-transfer.zip";
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              URL.revokeObjectURL(url);
+              setTransferStatus("Download started (this browser cannot pick a folder).", "is-ok");
+            }
+          } catch (err) {
+            if (err && err.name === "AbortError") {
+              setTransferStatus("Cancelled.");
+            } else {
+              setTransferStatus((err && err.message) || String(err), "is-err");
+            }
+          } finally {
+            saveFolderBtn.disabled = false;
+          }
+        });
+      }
+
+      function show(id) {
+        document.querySelectorAll(".step").forEach(function (el) {
+          el.classList.toggle("is-open", el.dataset.step === id);
+        });
+        document.querySelectorAll("[data-nav]").forEach(function (a) {
+          a.classList.toggle("is-active", a.dataset.nav === id);
+        });
+        history.replaceState(null, "", "#" + id);
+        window.scrollTo(0, 0);
+        refreshNavDone();
+      }
+
+      function refreshProgress() {
+        var boxes = document.querySelectorAll("[data-check]");
+        var total = boxes.length;
+        var done = 0;
+        boxes.forEach(function (box) {
+          var on = !!state[box.dataset.check];
+          box.checked = on;
+          box.closest(".check").classList.toggle("is-on", on);
+          if (on) done += 1;
+        });
+        document.querySelector("[data-progress-count]").textContent = String(done);
+        document.querySelector("[data-progress-total]").textContent = String(total);
+        document.querySelector("[data-progress-bar]").style.width = (total ? (100 * done / total) : 0) + "%";
+        refreshNavDone();
+      }
+
+      function refreshNavDone() {
+        var map = {
+          need: ["need-pi", "need-sd", "need-imager", "need-folder", "need-net"],
+          flash: ["flash-done", "flash-ssh"],
+          copy: ["copy-bootfs", "copy-done", "copy-eject"],
+          ssh: ["ssh-in", "ssh-path"],
+          install: ["install-run", "install-status"],
+          signin: ["signin-home", "signin-admin"],
+          first: ["first-pass", "first-tiles"],
+          backup: ["backup-usb", "backup-run"],
+          help: ["help-read"]
+        };
+        Object.keys(map).forEach(function (step) {
+          var ok = map[step].every(function (k) { return !!state[k]; });
+          if (step === "copy") {
+            ok = ok || (!!state["copy-scp"] && !!state["copy-eject"]);
+          }
+          var link = document.querySelector('[data-nav="' + step + '"]');
+          if (link) link.classList.toggle("is-done", ok);
+        });
+      }
+
+      document.querySelectorAll("[data-check]").forEach(function (box) {
+        box.addEventListener("change", function () {
+          state[box.dataset.check] = box.checked;
+          save();
+          refreshProgress();
+        });
+      });
+
+      document.querySelectorAll("[data-nav]").forEach(function (a) {
+        a.addEventListener("click", function (e) {
+          e.preventDefault();
+          show(a.dataset.nav);
+        });
+      });
+      document.querySelectorAll("[data-next]").forEach(function (btn) {
+        btn.addEventListener("click", function () { show(btn.dataset.next); });
+      });
+      document.querySelectorAll("[data-prev]").forEach(function (btn) {
+        btn.addEventListener("click", function () { show(btn.dataset.prev); });
+      });
+
+      document.querySelectorAll("[data-copy]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var pre = btn.parentElement.querySelector("pre");
+          if (!pre) return;
+          var text = pre.textContent;
+          function ok() {
+            var prev = btn.textContent;
+            btn.textContent = "Copied";
+            setTimeout(function () { btn.textContent = prev; }, 1200);
+          }
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(ok).catch(function () {
+              window.prompt("Copy:", text);
+            });
+          } else {
+            window.prompt("Copy:", text);
+          }
+        });
+      });
+
+      var reset = document.querySelector("[data-reset]");
+      if (reset) {
+        reset.addEventListener("click", function () {
+          if (!window.confirm("Clear all checklist ticks for this walkthrough?")) return;
+          state = {};
+          save();
+          refreshProgress();
+        });
+      }
+
+      refreshProgress();
+      var hash = (location.hash || "#need").replace(/^#/, "");
+      if (!document.querySelector('[data-step="' + hash + '"]')) hash = "need";
+      show(hash);
+    })();
+  </script>
+</body>
+</html>

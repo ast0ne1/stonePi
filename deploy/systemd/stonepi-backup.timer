@@ -1,0 +1,11 @@
+[Unit]
+Description=Optional weekly StonePi USB backup (disabled by default; prefer USB plug-in via udev)
+Requires=stonepi-backup.service
+
+[Timer]
+OnCalendar=Sun *-*-* 03:30:00
+Persistent=false
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target
