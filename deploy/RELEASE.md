@@ -47,6 +47,8 @@ Assets are **StonePi portal variants** (not standalone app releases):
 
 Each zip includes `STONEPI.txt`. The updater prefers `stonepi-{app}-*.zip` and still accepts legacy `{app}-*.zip` for one cycle.
 
+Do **not** ship ad-hoc Pi overlay helpers (`scripts/push-*-fixes.*`, `scripts/apply-*-on-pi.sh`) — those stay local-only (gitignored).
+
 ## 6. GitHub Release
 
 Tag platform **v0.1.2** (or your chosen tag), attach the `stonepi-*.zip` assets, summarize from root `CHANGELOG.md`.
