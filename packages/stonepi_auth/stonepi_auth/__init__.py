@@ -2,6 +2,7 @@ from .catalog import APP_CATALOG, APP_IDS, LAUNCHER_APP_IDS, app_by_id, capabili
 from .config import PlatformSettings, load_settings
 from .csrf import csrf_from_request, csrf_ok, csrf_ok_request, new_csrf_token, set_csrf_cookie
 from .http import (
+    browser_auth_url,
     client_ip,
     exposure_mode,
     is_public_exposure,
@@ -34,6 +35,7 @@ __all__ = [
     "PlatformUser",
     "PrefixRewriter",
     "app_by_id",
+    "browser_auth_url",
     "capabilities_for",
     "clear_cookie",
     "client_ip",

@@ -1,15 +1,28 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="{{ theme }}" data-theme-pref="{{ theme_pref }}" data-palette="{{ palette }}">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f3eee4" data-theme-color />
     <title>Authentication · StonePi</title>
-    <link rel="stylesheet" href="/static/css/app.css" />
+    {% include "_theme_boot.html" %}
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/static/css/app.css?v=20260920b" />
   </head>
   <body class="login-body">
     <div class="login-shell">
       <header class="login-top">
-        <p class="brand">StonePi Auth</p>
+        <p class="brand">
+          <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="4" y="3.5" width="16" height="17" rx="2"/>
+            <path d="M12 7.5v9"/>
+            <path d="M8 10.5h3M8 13.5h3"/>
+            <path d="M13 10.5h3M13 13.5h3"/>
+          </svg>
+          StonePi
+        </p>
       </header>
       <main class="card login-card">
         <h1>{{ service }}</h1>

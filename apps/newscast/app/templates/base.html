@@ -10,31 +10,7 @@
     <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.svg" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <title>{% block title %}NewsCast{% endblock %}</title>
-    <script>
-      (function () {
-        function readPref(shared, legacy, fallback) {
-          var value = localStorage.getItem(shared);
-          if (value) return value;
-          for (var i = 0; i < legacy.length; i++) {
-            value = localStorage.getItem(legacy[i]);
-            if (value) {
-              localStorage.setItem(shared, value);
-              return value;
-            }
-          }
-          return fallback;
-        }
-        var pref = readPref("stonepi-theme", ["newscast-theme", "fileserve-theme", "eventtrakr-theme"], "system");
-        var dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-        var theme = pref === "system" ? (dark ? "dark" : "light") : pref;
-        var palette = readPref("stonepi-palette", ["newscast-palette", "fileserve-palette", "eventtrakr-palette"], "default");
-        if (!/^(default|ocean|forest|slate)$/.test(palette)) palette = "default";
-        document.documentElement.dataset.theme = theme;
-        document.documentElement.dataset.themePref = pref;
-        document.documentElement.dataset.palette = palette;
-        document.documentElement.style.colorScheme = theme;
-      })();
-    </script>
+    {% include "_theme_boot.html" %}
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet" />

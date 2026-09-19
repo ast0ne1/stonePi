@@ -28,6 +28,11 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr("app.services.users.HOSTED_DIR", hosted)
     monkeypatch.setattr("app.services.tls.TLS_DIR", tls)
     monkeypatch.setattr("app.services.backup.TLS_DIR", tls)
+    # Solo-dev / CI machines may have STONEPI_SESSION_SECRET / PREFIX set; keep FileServe local auth for tests.
+    monkeypatch.setattr("app.auth.env.stonepi_session_secret", "")
+    monkeypatch.setattr("app.main.env.stonepi_session_secret", "")
+    monkeypatch.setattr("app.auth.env.stonepi_prefix", "")
+    monkeypatch.setattr("app.main.env.stonepi_prefix", "")
     flask_app = create_app(
         {
             "TESTING": True,
@@ -610,6 +615,10 @@ def test_household_user_pages_use_user_path_and_own_scope(client):
     assert "/u/alex/shared-slug" in pages_html
     assert "Admin Note" not in pages_html
 
+    browse_user = client.get("/browse").get_data(as_text=True)
+    assert "Alex Note" in browse_user
+    assert "Admin Note" not in browse_user
+
     settings_html = client.get("/admin/settings").get_data(as_text=True)
     assert 'data-settings-tab="users"' not in settings_html
     assert "Use HTTPS" not in settings_html
@@ -619,12 +628,20 @@ def test_household_user_pages_use_user_path_and_own_scope(client):
     admin_pages = client.get("/admin").get_data(as_text=True)
     assert "Alex Note" in admin_pages
     assert "alex" in admin_pages
+    browse_admin = client.get("/browse").get_data(as_text=True)
+    assert "Alex Note" in browse_admin
+    assert "Admin Note" in browse_admin
     filtered = client.get("/admin?user=alex").get_data(as_text=True)
     assert "Alex Note" in filtered
     assert "Admin Note" not in filtered
     users_tab = client.get("/admin/settings?tab=users").get_data(as_text=True)
     assert "Create user" in users_tab
     assert "alex" in users_tab
+
+    client.post("/logout")
+    browse_anon = client.get("/browse").get_data(as_text=True)
+    assert "Admin Note" in browse_anon
+    assert "Alex Note" not in browse_anon
 
 
 def test_non_admin_cannot_manage_other_pages(client):

@@ -35,6 +35,22 @@ def _https(request: Request) -> bool:
     return request_is_https(request)
 
 
+def _theme_ctx(request: Request) -> dict[str, str]:
+    """First-paint theme from cookies so auth status/login match the rest of StonePi."""
+    pref = (request.cookies.get("stonepi-theme") or "system").strip().lower()
+    if pref not in {"light", "dark", "system"}:
+        pref = "system"
+    palette = (request.cookies.get("stonepi-palette") or "default").strip().lower()
+    if palette not in {"default", "ocean", "forest", "slate"}:
+        palette = "default"
+    if pref in {"light", "dark"}:
+        theme = pref
+    else:
+        # Prefer light for SSR when system; boot script corrects from prefers-color-scheme.
+        theme = "light"
+    return {"theme_pref": pref, "theme": theme, "palette": palette}
+
+
 def _request_origin(request: Request) -> str:
     proto = (
         (request.headers.get("x-forwarded-proto") or request.url.scheme or "http")
@@ -136,7 +152,7 @@ def _login_template(
     db: Session | None = None,
 ):
     token = csrf_from_request(request.cookies)
-    payload = {**context, "csrf_token": token}
+    payload = {**_theme_ctx(request), **context, "csrf_token": token}
     if db is not None and "using_factory_admin" not in payload:
         payload["using_factory_admin"] = users_svc.using_factory_admin(db)
     response = templates.TemplateResponse(request, "login.html", payload, status_code=status_code)
@@ -188,6 +204,7 @@ def root(request: Request, db: Annotated[Session, Depends(get_db)]):
         request,
         "status.html",
         {
+            **_theme_ctx(request),
             "user": users_svc.user_payload(user, db),
             "hostname": env.hostname,
             "service": "Authentication",
@@ -310,6 +327,32 @@ async def api_set_launcher_order(request: Request, db: Annotated[Session, Depend
         raise HTTPException(status_code=400, detail="order must be a list of app ids")
     result = users_svc.set_launcher_order(db, user, [str(item) for item in order])
     return {"ok": True, "launcher_order": result}
+
+
+@router.post("/api/me/password")
+async def api_change_password(request: Request, db: Annotated[Session, Depends(get_db)]):
+    from stonepi_auth.session import decode_session
+
+    user = current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not signed in")
+    _require_api_csrf(request)
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Expected a JSON object")
+    platform = decode_session(request.cookies.get(COOKIE_NAME), users_svc.session_secret())
+    keep_sid = platform.session_id if platform else None
+    try:
+        users_svc.change_own_password(
+            db,
+            user,
+            current_password=str(body.get("current_password") or ""),
+            new_password=str(body.get("new_password") or body.get("password") or ""),
+            keep_session_id=keep_sid,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "message": "Password updated."}
 
 
 @router.get("/api/users")

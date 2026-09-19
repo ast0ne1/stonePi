@@ -44,9 +44,25 @@ def current_user(cookies: dict[str, str]):
 
 
 def app_public_url(item: dict) -> str:
-    origin = env.public_origin.rstrip("/")
+    """Browser-facing app URL for launcher / Services cards.
+
+    Path installs use **relative** paths so the hostname the user opened
+    (``.home`` / ``.local`` / LAN IP) never flips to ``PUBLIC_ORIGIN``.
+    Windows / loopback solo-dev keeps per-port absolute URLs.
+    """
+    origin = (env.public_origin or "").rstrip("/")
     if "127.0.0.1" in origin or "localhost" in origin:
         return f"http://127.0.0.1:{item['port']}/"
+    path_fronted = getattr(env, "routing", "path") == "path" or Path(
+        "/etc/nginx/sites-enabled/stonepi"
+    ).exists()
+    if path_fronted:
+        if item["id"] == "dashboard":
+            return "/"
+        if item["id"] == "auth":
+            return "/auth/"
+        path = str(item.get("path") or "/")
+        return path if path.endswith("/") else f"{path}/"
     if item["id"] == "dashboard":
         return origin + "/"
     if item["id"] == "auth":

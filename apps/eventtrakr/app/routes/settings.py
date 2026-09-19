@@ -150,8 +150,11 @@ def save_general():
         if db_user:
             if location:
                 db_user.default_location = location
-            if new_password:
+            if new_password and not _platform_managed():
                 db_user.password = passwords.hash_password(new_password)
+            elif new_password and _platform_managed():
+                flash("Change your password in StonePi → Settings → General.", "error")
+                return redirect(url_for("settings.view_settings", tab="general"))
             db.commit()
             flash("General settings updated.", "success")
 

@@ -162,3 +162,19 @@ def portal_home_url(request: Any, fallback: str = "") -> str:
     if fb:
         return fb + "/"
     return "/"
+
+
+def browser_auth_url(configured: str, *, routing: str = "path") -> str:
+    """Auth base URL for browser login/logout redirects.
+
+    Path installs behind nginx must use relative ``/auth`` so Sign out stays on
+    the hostname the user opened (``.home`` / ``.local`` / LAN IP). Keep absolute
+    loopback ``AUTH_URL`` for Windows split-port solo-dev (no nginx ``/auth``).
+    Server-side calls should keep using the configured loopback URL directly.
+    """
+    raw = (configured or "").strip() or "/auth"
+    if Path("/etc/nginx/sites-enabled/stonepi").exists():
+        return "/auth"
+    if routing == "path" and os.name != "nt":
+        return "/auth"
+    return raw

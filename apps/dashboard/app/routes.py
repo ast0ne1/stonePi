@@ -18,17 +18,32 @@ templates = Jinja2Templates(directory=str(ROOT_DIR / "app" / "templates"))
 router = APIRouter()
 
 
+def _browser_auth_url() -> str:
+    """Login/logout URL for the browser (not server-side auth_request)."""
+    try:
+        from stonepi_auth.http import browser_auth_url
+
+        return browser_auth_url(env.auth_url, routing=getattr(env, "routing", "path"))
+    except ImportError:
+        # Pi overlay may update dashboard before stonepi_auth — keep working.
+        from pathlib import Path
+        import os
+
+        raw = (env.auth_url or "").strip() or "/auth"
+        if Path("/etc/nginx/sites-enabled/stonepi").exists():
+            return "/auth"
+        if getattr(env, "routing", "path") == "path" and os.name != "nt":
+            return "/auth"
+        return raw
+
+
 def _settings() -> PlatformSettings:
-    auth_url = env.auth_url
-    # Path routing on the Pi: /auth regardless of .local / .home / IP hostname.
-    if env.routing == "path" and "127.0.0.1" not in (env.public_origin or ""):
-        auth_url = "/auth"
     return PlatformSettings(
         enabled=True,
         session_secret=services.session_secret(),
         app_id="dashboard",
         prefix="",
-        auth_url=auth_url,
+        auth_url=_browser_auth_url(),
         public_origin=env.public_origin,
         hostname=env.hostname,
     )
@@ -116,12 +131,30 @@ def _factory_admin(cookies: dict[str, str], user) -> bool:
 def _backup_summary(backup: dict) -> dict:
     status = str(backup.get("status") or "").strip().lower()
     stamp = str(backup.get("timestamp") or backup.get("finished_at") or backup.get("time") or "").strip()
-    if stamp:
-        label = stamp[:19].replace("T", " ")
-        return {"label": label, "detail": "Last recorded backup", "ok": True}
+    reason = str(backup.get("reason") or backup.get("message") or "").strip()
+    stamp_label = stamp[:19].replace("T", " ") if stamp else ""
+
+    if status in {"failed", "error"}:
+        return {
+            "label": stamp_label or "Backup failed",
+            "detail": reason or "Last backup failed",
+            "ok": False,
+        }
+    if status == "skipped":
+        return {
+            "label": stamp_label or "Skipped",
+            "detail": reason or "Last backup was skipped",
+            "ok": False,
+        }
+    if status in {"ok", "complete", "success"} or (stamp and status not in {"none", "unknown", ""}):
+        if stamp_label:
+            return {"label": stamp_label, "detail": "Last recorded backup", "ok": True}
+    if stamp_label and status in {"none", "", "unknown"}:
+        # Stamp without a clear failure — treat as recorded success.
+        return {"label": stamp_label, "detail": "Last recorded backup", "ok": True}
     if status in {"none", "", "unknown"}:
         return {"label": "Never", "detail": "No backup recorded yet", "ok": False}
-    return {"label": status or "Unknown", "detail": backup.get("message") or "Backup status", "ok": False}
+    return {"label": status or "Unknown", "detail": reason or "Backup status", "ok": False}
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -293,13 +326,13 @@ def users_page(request: Request):
     user, redirected = _user_or_login(request, admin=True)
     if redirected:
         return redirected
-    error = None
+    error = request.query_params.get("err") or None
     people = []
     apps = services.catalog_apps(include_auth=False, cookies=dict(request.cookies))
     try:
         people = services.auth_request("GET", "/api/users", dict(request.cookies)).get("users", [])
     except Exception as exc:
-        error = str(exc)
+        error = error or str(exc)
     return _html(
         request,
         "users.html",
@@ -308,6 +341,7 @@ def users_page(request: Request):
             "active": "users",
             "people": people,
             "apps": apps,
+            "users_form_base": "/users",
             "error": error,
             "message": request.query_params.get("msg") or None,
         },
@@ -315,6 +349,7 @@ def users_page(request: Request):
 
 
 @router.post("/users")
+@router.post("/settings/users")
 async def users_create(request: Request):
     user, redirected = _user_or_login(request, admin=True)
     if redirected:
@@ -331,7 +366,13 @@ async def users_create(request: Request):
             request,
             "users.html",
             user,
-            {"active": "users", "people": people, "apps": apps, "error": "That form expired. Refresh and try again."},
+            {
+                "active": "users",
+                "people": people,
+                "apps": apps,
+                "users_form_base": "/users",
+                "error": "That form expired. Refresh and try again.",
+            },
             status_code=400,
         )
     try:
@@ -358,13 +399,20 @@ async def users_create(request: Request):
             request,
             "users.html",
             user,
-            {"active": "users", "people": people, "apps": apps, "error": str(exc)},
+            {
+                "active": "users",
+                "people": people,
+                "apps": apps,
+                "users_form_base": "/users",
+                "error": str(exc),
+            },
             status_code=400,
         )
     return RedirectResponse("/users?msg=Saved", status_code=303)
 
 
 @router.post("/users/{user_id}")
+@router.post("/settings/users/{user_id}")
 async def users_update(user_id: str, request: Request):
     user, redirected = _user_or_login(request, admin=True)
     if redirected:
@@ -381,7 +429,13 @@ async def users_update(user_id: str, request: Request):
             request,
             "users.html",
             user,
-            {"active": "users", "people": people, "apps": apps, "error": "That form expired. Refresh and try again."},
+            {
+                "active": "users",
+                "people": people,
+                "apps": apps,
+                "users_form_base": "/users",
+                "error": "That form expired. Refresh and try again.",
+            },
             status_code=400,
         )
     action = str(form.get("action") or "save")
@@ -410,10 +464,47 @@ async def users_update(user_id: str, request: Request):
             request,
             "users.html",
             user,
-            {"active": "users", "people": people, "apps": apps, "error": str(exc)},
+            {
+                "active": "users",
+                "people": people,
+                "apps": apps,
+                "users_form_base": "/users",
+                "error": str(exc),
+            },
             status_code=400,
         )
     return RedirectResponse("/users?msg=Saved", status_code=303)
+
+
+@router.post("/settings/password")
+async def settings_password_change(request: Request):
+    user, redirected = _user_or_login(request, require_dashboard=False)
+    if redirected:
+        return redirected
+    form = await request.form()
+    if not _require_csrf(request, form):
+        return RedirectResponse("/settings?tab=general&err=Form+expired#account-password", status_code=303)
+    current = str(form.get("current_password") or "")
+    new = str(form.get("new_password") or "")
+    confirm = str(form.get("new_password_confirm") or "")
+    if new != confirm:
+        return RedirectResponse(
+            "/settings?tab=general&err=New+passwords+do+not+match#account-password",
+            status_code=303,
+        )
+    try:
+        services.auth_request(
+            "POST",
+            "/api/me/password",
+            dict(request.cookies),
+            {"current_password": current, "new_password": new},
+        )
+    except Exception as exc:
+        return RedirectResponse(
+            f"/settings?tab=general&err={quote(str(exc), safe='')}#account-password",
+            status_code=303,
+        )
+    return RedirectResponse("/settings?tab=general&msg=Password+updated#account-password", status_code=303)
 
 
 @router.post("/applications/availability")
@@ -540,7 +631,7 @@ SETTINGS_TABS = [
     ("about", "About"),
 ]
 SETTINGS_LEDES = {
-    "general": "Appearance for this browser, plus whether StonePi is on the home network or internet-facing.",
+    "general": "Appearance and your password for this browser; admins also set network exposure here. Household accounts stay under Users.",
     "display": "TRMNL layout and webhook push of household display data.",
     "watch": "Status of every StonePi app plus disk and backup — healthy, attention, or critical.",
     "vault": "Encrypted secrets and config for StonePi apps and platform services.",
@@ -596,9 +687,12 @@ def _vault_label_map() -> dict[str, str]:
 
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, tab: str = "general"):
-    from app import __author__, __github__, __version__, display, update_service
+    import app as dashboard_app
+    from app import display, update_service
 
-    user, redirected = _user_or_login(request, admin=True)
+    # Appearance is for every signed-in household member (product apps link here).
+    # Admin-only tabs still load only for admins below.
+    user, redirected = _user_or_login(request, require_dashboard=False)
     if redirected:
         return redirected
     settings_tab = (tab or "general").strip().lower()
@@ -608,6 +702,28 @@ def settings_page(request: Request, tab: str = "general"):
         settings_tab = "update"
     if settings_tab in {"backups"}:
         settings_tab = "backup"
+
+    about = {
+        "app_author": getattr(dashboard_app, "__author__", "Adam Stone"),
+        "app_github": getattr(dashboard_app, "__github__", "https://github.com/ast0ne1"),
+        "app_version": getattr(dashboard_app, "__version__", "0.0.0"),
+    }
+
+    if not user.is_admin:
+        # Household members: Appearance + own password on General.
+        settings_tab = "general"
+        extra = {
+            "active": "settings",
+            "settings_tab": "general",
+            "settings_tabs": [("general", "General")],
+            "settings_lede": "Appearance and your password for StonePi apps on this hostname.",
+            "message": request.query_params.get("msg") or None,
+            "error": request.query_params.get("err") or None,
+            **about,
+            "settings_appearance_only": True,
+        }
+        return _html(request, "settings.html", user, extra)
+
     known = {key for key, _ in SETTINGS_TABS}
     if settings_tab not in known:
         settings_tab = "general"
@@ -618,9 +734,8 @@ def settings_page(request: Request, tab: str = "general"):
         "settings_lede": SETTINGS_LEDES[settings_tab],
         "message": request.query_params.get("msg") or None,
         "error": request.query_params.get("err") or None,
-        "app_author": __author__,
-        "app_github": __github__,
-        "app_version": __version__,
+        **about,
+        "settings_appearance_only": False,
     }
     if settings_tab == "general":
         from stonepi_auth import exposure_mode

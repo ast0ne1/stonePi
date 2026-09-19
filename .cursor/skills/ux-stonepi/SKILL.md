@@ -17,7 +17,9 @@ Users/Updates/Services. Product apps keep their own product settings.
 - Nav clarity, settings IA, empty states with CTAs, consistent save/confirm,
   time-to-first-useful-action (sign in → see apps → open one).
 - Portal owns Users and Updates when `STONEPI_SESSION_SECRET` is set; apps hide
-  those tabs and point to the dashboard.
+  those tabs and point to the dashboard. Admins manage household accounts on
+  **Dashboard → Users**; everyone changes their own password under
+  **Dashboard → Settings → General** (not in each app’s General settings when SSO is on).
 - Prefer shared confirm sheets (NewsCast/FileServe) over bare `confirm()` where
   the shell already has them.
 - Theme/palette: light/dark/auto in header; palette can apply immediately without Save.

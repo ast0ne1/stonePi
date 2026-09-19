@@ -393,11 +393,36 @@ def revoke_session(db: Session, session_id: str) -> None:
         db.commit()
 
 
-def revoke_sessions(db: Session, user_id: str) -> None:
+def revoke_sessions(db: Session, user_id: str, *, keep_session_id: str | None = None) -> None:
     rows = db.execute(select(AuthSession).where(AuthSession.user_id == user_id)).scalars().all()
     for row in rows:
+        if keep_session_id and row.id == keep_session_id:
+            continue
         db.delete(row)
     db.commit()
+
+
+def change_own_password(
+    db: Session,
+    user: User,
+    *,
+    current_password: str,
+    new_password: str,
+    keep_session_id: str | None = None,
+) -> User:
+    """Let a signed-in user set a new password after proving the current one."""
+    if not passwords.verify_password(user.password_hash, current_password or ""):
+        raise ValueError("Current password is not right.")
+    if len(new_password or "") < 8:
+        raise ValueError("Password must be at least 8 characters.")
+    if current_password == new_password:
+        raise ValueError("Choose a different password.")
+    user.password_hash = passwords.hash_password(new_password)
+    user.updated_at = utcnow()
+    db.commit()
+    db.refresh(user)
+    revoke_sessions(db, user.id, keep_session_id=keep_session_id)
+    return user
 
 
 def using_factory_admin(db: Session) -> bool:
