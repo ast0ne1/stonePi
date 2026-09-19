@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "_icons.html" import svg %}
+{% block title %}Home · StonePi{% endblock %}
+{% block content %}
+<section class="hero home-hero">
+  <div class="home-hero-row">
+    <div>
+      <h1>StonePi</h1>
+      <p class="lede" data-launcher-lede>Choose an app{% if user.display_name %}, {{ user.display_name }}{% endif %}.</p>
+    </div>
+    {% if tiles and tiles|length > 1 %}
+    <button type="button" class="btn btn-ghost btn-with-icon" data-launcher-edit-toggle aria-pressed="false">
+      {{ svg('manage') }}
+      <span data-launcher-edit-label>Edit order</span>
+    </button>
+    {% endif %}
+  </div>
+</section>
+
+{% if tiles %}
+<form method="post" action="/launcher-order" class="launcher-form" data-launcher-form>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+  <input type="hidden" name="order" value="{% for tile in tiles %}{{ tile.id }}{% if not loop.last %},{% endif %}{% endfor %}" data-launcher-order />
+  <div class="launcher-grid" data-launcher-grid>
+    {% for tile in tiles %}
+    <div class="launcher-tile" style="--tile-accent: {{ tile.color }}" data-launcher-tile data-app-id="{{ tile.id }}">
+      <a class="launcher-tile-link" href="{{ tile.url }}" data-launcher-link>
+        <span class="launcher-icon" aria-hidden="true">{{ svg(tile.icon or tile.id) }}</span>
+        <span class="launcher-copy">
+          <strong>{{ tile.name }}</strong>
+          <span>{{ tile.description }}</span>
+        </span>
+      </a>
+      <div class="launcher-reorder" data-launcher-reorder hidden aria-hidden="true">
+        <span class="launcher-drag" data-launcher-drag aria-hidden="true">{{ svg('grip') }}</span>
+        <span class="launcher-pos" data-launcher-pos aria-hidden="true"></span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</form>
+{% else %}
+<section class="card">
+  <h2>No apps yet</h2>
+  <p class="muted">Ask an administrator to grant you access to NewsCast, FileServe, EventTrakr, Pinboard, or Studio.</p>
+  {% if user.is_admin %}
+  <div class="row-actions">
+    <a class="btn btn-primary btn-with-icon" href="/users">{{ svg('plus') }} Grant apps on Users</a>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

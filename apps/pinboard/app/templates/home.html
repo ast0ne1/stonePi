@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+
+{% block content %}
+<section class="hero" id="board">
+  <h1>Board</h1>
+  <p class="lede">Household notices and short reminders. Shown on Display / TRMNL when enabled.</p>
+</section>
+
+<section class="card stack" id="add-notice">
+  <h2>Add notice</h2>
+  <form method="post" action="/notice" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <label>
+      Notice
+      <input id="notice-text" name="text" placeholder="Bins out tonight" required autocomplete="off" />
+    </label>
+    <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("pin") }} Pin notice</button>
+  </form>
+</section>
+
+<section class="card stack" id="add-reminder">
+  <h2>Add reminder</h2>
+  <form method="post" action="/reminder" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <label>
+      Reminder
+      <input id="reminder-text" name="text" placeholder="Call plumber" required autocomplete="off" />
+    </label>
+    <label>
+      Due date
+      <input type="date" name="due" />
+    </label>
+    <label>
+      Assignee
+      <input name="assignee" placeholder="Optional" autocomplete="off" />
+    </label>
+    <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("plus") }} Add reminder</button>
+  </form>
+</section>
+
+<section class="card stack" id="notices">
+  <h2>Notices</h2>
+  {% for item in items.notices %}
+  <div class="list-row">
+    <span class="list-text">{{ item.text }}</span>
+    <form method="post" action="/delete/notice/{{ item.id }}" data-confirm="Remove this notice?" data-confirm-detail="It will no longer appear on Display." data-confirm-ok="Remove">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <button class="btn btn-ghost btn-with-icon" type="submit">{{ icon("trash") }} Remove</button>
+    </form>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <h3>No notices yet</h3>
+    <p class="hint">Pin a short household note for Display.</p>
+    <div class="btn-row" style="justify-content:center">
+      <button type="button" class="btn btn-primary btn-with-icon" data-focus="#notice-text">{{ icon("plus") }} Add a notice</button>
+    </div>
+  </div>
+  {% endfor %}
+</section>
+
+<section class="card stack" id="reminders">
+  <h2>Reminders</h2>
+  {% for item in items.reminders %}
+  <div class="list-row">
+    <span class="list-text">{{ item.text }}{% if item.due %} · {{ item.due }}{% endif %}{% if item.assignee %} · {{ item.assignee }}{% endif %}</span>
+    <form method="post" action="/delete/reminder/{{ item.id }}" data-confirm="Remove this reminder?" data-confirm-detail="It will no longer appear on Display." data-confirm-ok="Remove">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <button class="btn btn-ghost btn-with-icon" type="submit">{{ icon("trash") }} Remove</button>
+    </form>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <h3>No reminders yet</h3>
+    <p class="hint">Track due dates and who is on the hook.</p>
+    <div class="btn-row" style="justify-content:center">
+      <button type="button" class="btn btn-primary btn-with-icon" data-focus="#reminder-text">{{ icon("plus") }} Add a reminder</button>
+    </div>
+  </div>
+  {% endfor %}
+</section>
+{% endblock %}

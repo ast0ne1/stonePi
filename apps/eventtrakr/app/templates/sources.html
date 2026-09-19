@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+
+{% block title %}Sources · EventTrakr{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <h1>Event Sources</h1>
+  <p class="lede">Manage the websites and feeds that populate your personal event tracker.</p>
+</section>
+
+<!-- My Subscribed Sources -->
+<div class="card">
+  <div class="card-head">
+    <h2>My Configured Sources ({{ user_sources|length }})</h2>
+    <a href="#add-custom-source" class="btn btn-primary btn-sm">{{ icon('plus') }} Add Custom Source</a>
+  </div>
+
+  <p class="form-hint" data-source-sync-status {% if not ingest_state.running %}hidden{% endif %} style="margin-bottom: 12px;">
+    {% if ingest_state.running %}{{ ingest_state.progress or "A sync is running" }} -- this can take a few minutes for some sources, please wait.{% endif %}
+  </p>
+
+  {% if user_sources %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Source Name</th>
+          <th>Category</th>
+          <th>Schedule</th>
+          <th>Last Fetch</th>
+          <th>Status</th>
+          <th style="text-align: right;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for src in user_sources %}
+        <tr>
+          <td>
+            <div class="source-name-cell">
+              {% if src.favicon_path %}<img class="source-icon" src="/favicon-cache/{{ src.favicon_path }}" alt="" width="16" height="16" />{% endif %}
+              <div>
+                <strong>{{ src.name }}</strong>
+                <div style="font-size: 0.78rem; color: var(--muted); max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                  {{ src.url }}
+                </div>
+              </div>
+            </div>
+          </td>
+          <td>
+            <form method="post" action="/sources/{{ src.id }}/category" class="schedule-edit-form">
+              <select name="category" class="form-control" onchange="this.form.submit()">
+                {% for cat in category_list %}
+                <option value="{{ cat.key }}" {% if src.category == cat.key %}selected{% endif %}>{{ cat.label }}</option>
+                {% endfor %}
+              </select>
+            </form>
+            {% if src.keywords_include %}
+            <div style="font-size: 0.75rem; color: var(--muted); margin-top: 2px;">inc: {{ src.keywords_include }}</div>
+            {% endif %}
+          </td>
+          <td>
+            <form method="post" action="/sources/{{ src.id }}/schedule" class="schedule-edit-form" data-schedule-form>
+              <select name="schedule_mode" class="form-control" data-schedule-mode>
+                <option value="global" {% if src.schedule_mode != 'custom' %}selected{% endif %}>Global ({{ global_schedule_summary }})</option>
+                <option value="custom" {% if src.schedule_mode == 'custom' %}selected{% endif %}>Custom</option>
+              </select>
+              <input type="number" name="interval_minutes" class="form-control" min="15" step="15"
+                value="{{ src.interval_minutes or 60 }}"
+                data-schedule-interval {% if src.schedule_mode != 'custom' %}hidden{% endif %} />
+              <button type="submit" class="btn btn-outline btn-sm" title="Save schedule">{{ icon('check') }}</button>
+            </form>
+          </td>
+          <td>
+            {% if src.last_fetched_at %}
+              {{ src.last_fetched_at|format_datetime }}
+            {% else %}
+              <span style="color: var(--muted);">Never</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if src.last_error %}
+              <span style="color: var(--error); font-weight: 500;" title="{{ src.last_error }}">Error</span>
+            {% elif src.last_item_count is not none %}
+              <span style="color: var(--ok); font-weight: 500;">{{ src.last_item_count }} events</span>
+            {% else %}
+              <span style="color: var(--muted);">Pending</span>
+            {% endif %}
+          </td>
+          <td style="text-align: right;">
+            <div style="display: inline-flex; gap: 6px;">
+              <button type="button" class="btn btn-outline btn-sm {% if ingest_state.running %}is-busy{% endif %}" data-sync-source-btn="{{ src.id }}" data-source-name="{{ src.name }}" title="Sync this source now" {% if ingest_state.running %}disabled{% endif %}>
+                {{ icon('refresh') }}
+              </button>
+              <form method="post" action="/sources/toggle/{{ src.id }}" style="display: inline;">
+                <button type="submit" class="btn btn-outline btn-sm" title="Toggle active">
+                  {% if src.enabled %}Pause{% else %}Resume{% endif %}
+                </button>
+              </form>
+              <form method="post" action="/sources/delete/{{ src.id }}" style="display: inline;" data-confirm="Delete this source?" data-confirm-detail="Synced events from this source stay until you remove them." data-confirm-ok="Delete">
+                <button type="submit" class="btn btn-outline btn-sm" style="color: var(--error);" title="Delete">
+                  {{ icon('trash') }}
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card empty-state" style="margin: 12px 0;">
+    <h3>No sources yet</h3>
+    <p class="form-hint">Pick from the curated catalog below or add a custom URL.</p>
+    <div class="row-actions" style="margin-top: 12px;">
+      <a class="btn btn-primary btn-sm" href="#add-custom-source">Add custom source</a>
+      <a class="btn btn-outline btn-sm" href="#catalog-sources">Browse catalog</a>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Curated Catalog -->
+<div class="card" id="catalog-sources">
+  <h2>Curated Catalog of Sources</h2>
+  <p class="form-hint" style="margin-bottom: 16px;">One-click subscription to popular city guides, meetup groups, and event calendars.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Catalog Source</th>
+          <th>Category</th>
+          <th>Location</th>
+          <th>Description</th>
+          <th style="text-align: right;">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for cat in catalog_sources %}
+        <tr>
+          <td>
+            <div class="source-name-cell">
+              {% if cat.favicon_path %}<img class="source-icon" src="/favicon-cache/{{ cat.favicon_path }}" alt="" width="16" height="16" />{% endif %}
+              <div>
+                <strong>{{ cat.name }}</strong>
+                <div style="font-size: 0.75rem; color: var(--muted);">{{ cat.source_type|upper }}</div>
+              </div>
+            </div>
+          </td>
+          <td><span class="badge category">{{ cat.category }}</span></td>
+          <td>{{ cat.city_or_region }}</td>
+          <td style="font-size: 0.85rem; max-width: 320px;">{{ cat.description }}</td>
+          <td style="text-align: right;">
+            {% if cat.url in subscribed_urls %}
+            <span class="badge text-ok" style="border-color: var(--ok);">{{ icon('check') }} In Your Feed</span>
+            {% else %}
+            <form method="post" action="/sources/catalog/subscribe/{{ cat.id }}">
+              <button type="submit" class="btn btn-primary btn-sm">{{ icon('plus') }} Add to My Feed</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Add Custom Source Form -->
+<div class="card" id="add-custom-source">
+  <h2>Add Custom Source URL</h2>
+  <p class="form-hint" style="margin-bottom: 16px;">Add any website URL (Eventbrite, Meetup, Facebook event page, or community website) or standard .ics calendar feed.</p>
+
+  <form method="post" action="/sources/add">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
+      <div class="form-group">
+        <label for="name">Source Name *</label>
+        <input type="text" id="name" name="name" class="form-control" required placeholder="e.g. Copenhagen Jazz Nights" />
+      </div>
+
+      <div class="form-group">
+        <label for="url">Source or Feed URL *</label>
+        <input type="url" id="url" name="url" class="form-control" required placeholder="https://..." />
+      </div>
+
+      <div class="form-group">
+        <label for="category">Category</label>
+        <select id="category" name="category" class="form-control">
+          {% for cat in category_list %}
+          <option value="{{ cat.key }}" {% if cat.key == 'general' %}selected{% endif %}>{{ cat.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="keywords_include">Must Contain Keywords (Optional)</label>
+        <input type="text" id="keywords_include" name="keywords_include" class="form-control" placeholder="comma-separated e.g. jazz, acoustic" />
+      </div>
+
+      <div class="form-group">
+        <label for="keywords_exclude">Exclude Keywords (Optional)</label>
+        <input type="text" id="keywords_exclude" name="keywords_exclude" class="form-control" placeholder="comma-separated e.g. cancelled, sold out" />
+      </div>
+
+      <div class="form-group">
+        <label for="schedule_mode">Sync Schedule</label>
+        <select id="schedule_mode" name="schedule_mode" class="form-control">
+          <option value="global">Use Global Schedule (Recommended)</option>
+          <option value="custom">Custom Interval</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="margin-top: 18px;">
+      <button type="submit" class="btn btn-primary">Save Source & Sync</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

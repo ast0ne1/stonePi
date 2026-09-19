@@ -1,0 +1,19 @@
+[Unit]
+Description=StonePi Dashboard
+After=network-online.target stonepi-auth.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=stonepi-dash
+Group=stonepi-dash
+EnvironmentFile=/etc/stonepi/stonepi.env
+EnvironmentFile=-/etc/stonepi/dashboard.env
+WorkingDirectory=/opt/stonepi/apps/dashboard
+ExecStart=/opt/stonepi/apps/dashboard/.venv/bin/python -m app.serve
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

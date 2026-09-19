@@ -1,0 +1,13 @@
+[project]
+name = "stonepi-automations"
+version = "0.1.0"
+description = "StonePi Automations: thin when→then jobs for the household Pi"
+requires-python = ">=3.11"
+dependencies = []
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["stonepi_automations*"]

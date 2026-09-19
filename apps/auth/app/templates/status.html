@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Authentication · StonePi</title>
+    <link rel="stylesheet" href="/static/css/app.css" />
+  </head>
+  <body class="login-body">
+    <div class="login-shell">
+      <header class="login-top">
+        <p class="brand">StonePi Auth</p>
+      </header>
+      <main class="card login-card">
+        <h1>{{ service }}</h1>
+        <p class="lede">Signed in as {{ user.display_name }} on {{ hostname }}.</p>
+        <p class="hint">This service issues the shared StonePi session. App access and permissions are managed from the dashboard Users tab.</p>
+        <p class="hint">Apps: {{ user.apps|join(', ') or 'none' }}</p>
+        <div class="row-actions">
+          <a class="btn btn-ghost btn-with-icon" href="{{ home_url }}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6"/></svg>
+            Back to apps
+          </a>
+          <form method="post" action="/logout">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+            <button class="btn btn-primary" type="submit">Sign out</button>
+          </form>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>
