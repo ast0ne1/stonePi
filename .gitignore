@@ -46,6 +46,11 @@ build/
 # Interim Pi staging packs (not part of the release tree)
 deploy/packages/
 
+# Ad-hoc Pi overlay push helpers (local-only; never ship in releases)
+scripts/push-*-fixes.*
+scripts/apply-*-on-pi.sh
+scripts/*-ux-overlay*
+
 # Local scratch archives
 *.tar
 *.tar.gz
