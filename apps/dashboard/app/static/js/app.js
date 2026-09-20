@@ -834,6 +834,102 @@ document.querySelectorAll("form[data-confirm]").forEach((form) => {
   }
 })();
 
+(function addUserPanel() {
+  const panel = document.getElementById("add-user");
+  if (!(panel instanceof HTMLDetailsElement)) return;
+
+  function openPanel() {
+    panel.open = true;
+    panel.scrollIntoView({ behavior: "smooth", block: "start" });
+    const first = panel.querySelector('input[name="username"]');
+    if (first instanceof HTMLElement) {
+      window.setTimeout(() => first.focus(), 50);
+    }
+  }
+
+  document.querySelectorAll("[data-open-add-user]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      openPanel();
+    });
+  });
+
+  panel.querySelectorAll("[data-close-add-user]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      panel.open = false;
+    });
+  });
+})();
+
+function showFlash(kind, text) {
+  const main = document.querySelector("main");
+  if (!main || !text) return;
+  document.querySelectorAll("[data-flash]").forEach((el) => el.remove());
+  const el = document.createElement("div");
+  const isError = kind === "error";
+  el.className = "flash " + (isError ? "flash-error" : "flash-ok");
+  el.setAttribute("role", isError ? "alert" : "status");
+  el.dataset.flash = "";
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", isError ? "M6 6l12 12M18 6L6 18" : "M5 12l4 4 10-10");
+  svg.appendChild(path);
+  const span = document.createElement("span");
+  span.textContent = text;
+  el.append(svg, span);
+  main.insertBefore(el, main.firstChild);
+  el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+(function availabilityToggles() {
+  document.querySelectorAll("form[data-availability-toggle]").forEach((form) => {
+    const input = form.querySelector('input[type="checkbox"]');
+    if (!input) return;
+    form.addEventListener("submit", (event) => event.preventDefault());
+    input.addEventListener("change", async () => {
+      const enabled = input.checked;
+      const name = form.dataset.appName || "this app";
+      if (!enabled) {
+        const ok = await askConfirm({
+          title: "Hide " + name + "?",
+          body: "Disabled apps are hidden from grants and blocked at sign-in. Dashboard stays available.",
+          okLabel: "Hide",
+        });
+        if (!ok) {
+          input.checked = true;
+          return;
+        }
+      }
+      const fd = new FormData(form);
+      fd.set("enabled", enabled ? "1" : "0");
+      input.disabled = true;
+      try {
+        const res = await fetch(form.action, {
+          method: "POST",
+          body: fd,
+          headers: { Accept: "application/json", "X-Requested-With": "fetch" },
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+          input.checked = !enabled;
+          showFlash("error", data.error || "Could not save availability.");
+          return;
+        }
+        form.closest(".service-card")?.classList.toggle("is-disabled", !enabled);
+        showFlash("ok", data.message || "Availability saved");
+      } catch {
+        input.checked = !enabled;
+        showFlash("error", "Could not save availability.");
+      } finally {
+        input.disabled = false;
+      }
+    });
+  });
+})();
+
 (function launcherOrder() {
   const form = document.querySelector("[data-launcher-form]");
   if (!form) return;

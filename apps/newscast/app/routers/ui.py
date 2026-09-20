@@ -230,6 +230,7 @@ def render(request: Request, name: str, context: dict, *, status_code: int = 200
     ctx["t"] = t_fn
     ctx["_"] = t_fn
     ctx.setdefault("i18n_js", i18n.js_bundle(lang))
+    ctx.setdefault("stonepi_prefix", (env.stonepi_prefix or "").rstrip("/"))
     return templates.TemplateResponse(request, name, ctx, status_code=status_code)
 
 
@@ -264,6 +265,7 @@ def _base_context(request: Request, db: Session, active: str) -> dict:
         "can_view_status": _session_can_view_status(db, request),
         "reader_setup_nudge": reader_config.needs_setup_nudge(db, uid) if session else False,
         "ui_lang": lang,
+        "stonepi_prefix": (env.stonepi_prefix or "").rstrip("/"),
         "stonepi_home_url": portal_home_url(request, env.stonepi_public_origin),
     }
 

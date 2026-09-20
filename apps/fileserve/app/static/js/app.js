@@ -4,10 +4,21 @@ function syncTopbarHeight() {
   const height = Math.ceil(topbar.getBoundingClientRect().height);
   document.documentElement.style.setProperty("--topbar-height", `${height}px`);
 }
+
+function resetScrollChrome() {
+  window.scrollTo(0, 0);
+  const main = document.querySelector(".main");
+  if (main) main.scrollTop = 0;
+}
+
 syncTopbarHeight();
+resetScrollChrome();
 window.addEventListener("resize", syncTopbarHeight);
 window.addEventListener("orientationchange", syncTopbarHeight);
-window.addEventListener("pageshow", syncTopbarHeight);
+window.addEventListener("pageshow", () => {
+  syncTopbarHeight();
+  resetScrollChrome();
+});
 if (window.visualViewport) {
   window.visualViewport.addEventListener("resize", syncTopbarHeight);
 }

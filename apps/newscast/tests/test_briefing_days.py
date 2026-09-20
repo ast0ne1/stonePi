@@ -24,6 +24,7 @@ def test_today_vs_yesterday_selection(monkeypatch):
     now = datetime(2026, 9, 13, 15, tzinfo=timezone.utc)
     monkeypatch.setattr("app.services.briefing.utcnow", lambda: now)
     monkeypatch.setattr("app.services.briefing._local_today", lambda now=None: date(2026, 9, 13))
+    monkeypatch.setattr("app.services.briefing._local_tz", lambda: timezone.utc)
     monkeypatch.setattr("app.services.briefing.env.story_retention_days", 7)
     db = _session()
     db.add_all(
@@ -69,3 +70,28 @@ def test_today_vs_yesterday_selection(monkeypatch):
     yesterday = current_stories(db, day="yesterday")
     assert [story.title for story in today] == ["Saved long-read", "Today story"]
     assert [story.title for story in yesterday] == ["Yesterday story"]
+
+
+def test_today_includes_story_ingested_today_with_older_publish_date(monkeypatch):
+    now = datetime(2026, 9, 20, 6, tzinfo=timezone.utc)
+    monkeypatch.setattr("app.services.briefing.utcnow", lambda: now)
+    monkeypatch.setattr("app.services.briefing._local_today", lambda now=None: date(2026, 9, 20))
+    monkeypatch.setattr("app.services.briefing._local_tz", lambda: timezone.utc)
+    monkeypatch.setattr("app.services.briefing.env.story_retention_days", 7)
+    db = _session()
+    db.add(
+        Story(
+            title="BBC overnight",
+            summary="From yesterday's RSS pubDate",
+            source_name="BBC World",
+            canonical_url="https://example.com/overnight",
+            content_hash="o",
+            cluster_key="o",
+            published_at=now - timedelta(hours=20),
+            created_at=now - timedelta(minutes=5),
+            importance=3,
+        )
+    )
+    db.commit()
+    today = current_stories(db, day="today")
+    assert [story.title for story in today] == ["BBC overnight"]

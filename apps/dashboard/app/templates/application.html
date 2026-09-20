@@ -7,7 +7,7 @@
   <p class="lede">{{ card.unit }} · {{ card.url }}</p>
 </section>
 <p class="pill"><span class="dot {% if card.health.ok %}ok{% else %}bad{% endif %}"></span>
-  {% if card.health.ok %}Healthy{% else %}Unreachable{% endif %} · systemd {{ card.unit_status }}
+  {% if card.health.ok %}Healthy{% else %}Down{% endif %} · systemd {{ card.unit_status }}
 </p>
 <div class="row-actions">
   <a class="btn btn-ghost btn-with-icon" href="/applications">{{ svg('dashboard') }} Back to Services</a>

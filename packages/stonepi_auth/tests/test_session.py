@@ -37,6 +37,10 @@ def test_prefix_rewrite():
     assert 'href="/news/login"' in out
     assert 'href="/news/static/app.css"' in out
     assert prefix_path("/auth/login", "/news") == "/auth/login"
+    js = 'send("/api/ingest/status"); fetch("/api/ollama/models")'
+    rewritten = rewrite_text(js, "/news")
+    assert 'send("/news/api/ingest/status")' in rewritten
+    assert 'fetch("/news/api/ollama/models")' in rewritten
 
 
 def test_strip_prefix():

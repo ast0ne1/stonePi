@@ -50,6 +50,7 @@ deploy/packages/
 scripts/push-*-fixes.*
 scripts/apply-*-on-pi.sh
 scripts/*-ux-overlay*
+scripts/cleanup-pi-tmp.*
 
 # Local scratch archives
 *.tar

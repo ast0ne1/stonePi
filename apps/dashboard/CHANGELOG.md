@@ -1,5 +1,13 @@
 # Changelog — Dashboard
 
+## 0.1.3 — 2026-09-20
+
+### Changed
+- Overview absorbs **Settings → Watch**: alert banner when not healthy, disk + backup stats, one click-to-launch grid; `?tab=watch` redirects to Overview
+- Services: per-card Enabled toggle autosaves (confirm when hiding); Dashboard and Auth stay always on
+- Users: Accounts list first (rows collapsed); Add account expands the form; new users default to Dashboard only
+- Version aligned to platform **0.1.3**
+
 ## 0.1.2 — 2026-09-19
 
 ### Changed

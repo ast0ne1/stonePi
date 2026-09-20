@@ -77,7 +77,6 @@ Admin **Settings** tabs (not Home tiles):
 | Tab | Role |
 |-----|------|
 | **Display** | TRMNL webhook, design presets (Status wall / Household / Custom), landscape preview, scheduled push (`stonepi_display`) |
-| **Watch** | Catalog apps + disk/backup rollup (`healthy` / `attention` / `critical`) |
 | **Vault** | Encrypted secrets for apps and services (`stonepi_vault`) |
 | **Automations** | Thin when→then (USB→backup, Watch/backup→Display push) |
 

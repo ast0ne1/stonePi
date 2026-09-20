@@ -19,6 +19,7 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --theme-meta: #f3eee4;
   --topbar-height: 65px;
+  --nav-height: calc(8px + var(--tap) + 10px + var(--safe-bottom));
   --scroll-thumb: color-mix(in srgb, var(--ink) 28%, var(--paper));
   --scroll-thumb-hover: color-mix(in srgb, var(--ink) 42%, var(--paper));
   --scroll-track: var(--wash);
@@ -140,11 +141,12 @@ html::-webkit-scrollbar, body::-webkit-scrollbar, .main::-webkit-scrollbar, .she
 html, body {
   margin: 0;
   padding: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   overflow-anchor: none;
   max-width: 100%;
 }
-html { color-scheme: light; height: 100%; -webkit-text-size-adjust: 100%; }
+html { color-scheme: light; height: auto; -webkit-text-size-adjust: 100%; }
 [data-theme="dark"] { color-scheme: dark; }
 body {
   font-family: var(--chrome);
@@ -152,9 +154,8 @@ body {
     radial-gradient(1200px 400px at 10% -10%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 55%),
     var(--paper);
   color: var(--ink);
-  height: 100%;
+  height: auto;
   min-height: 100dvh;
-  min-height: 100svh;
   line-height: 1.5;
   transition: background-color 160ms ease, color 160ms ease;
   -webkit-tap-highlight-color: transparent;
@@ -167,15 +168,15 @@ input, select { font-size: 16px; }
 .app {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  height: 100dvh;
-  height: 100svh;
+  min-height: 100dvh;
+  height: auto;
   max-width: 100%;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .topbar {
-  position: relative;
+  position: sticky;
+  top: 0;
   flex: 0 0 auto;
   z-index: 10;
   display: flex;
@@ -329,7 +330,10 @@ input, select { font-size: 16px; }
 .palette-note { color: var(--muted); font-size: 0.78rem; }
 
 .nav {
-  position: relative;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
   flex: 0 0 auto;
   z-index: 12;
   display: grid;
@@ -374,13 +378,11 @@ input, select { font-size: 16px; }
   min-height: 0;
   width: min(720px, 100%);
   margin: 0 auto;
-  padding: 0 var(--gutter) 32px;
+  padding: 0 var(--gutter) calc(32px + var(--nav-height));
   display: grid;
   align-content: start;
   gap: 16px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  overflow: visible;
 }
 .main > :first-child { margin-top: 20px; }
 .hero { margin-bottom: 4px; }
@@ -1121,6 +1123,9 @@ select {
   .topbar { position: sticky; top: 0; grid-column: 1 / -1; grid-row: 1; }
   .nav {
     position: sticky;
+    left: auto;
+    right: auto;
+    bottom: auto;
     top: var(--topbar-height);
     grid-column: 1;
     grid-row: 2;
@@ -1143,6 +1148,7 @@ select {
     grid-row: 2;
     width: min(860px, 100%);
     overflow: visible;
+    padding-bottom: 32px;
   }
   .chips { top: var(--topbar-height); flex-wrap: wrap; overflow: visible; row-gap: 8px; }
   .sheet { align-items: center; }

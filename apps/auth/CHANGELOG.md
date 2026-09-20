@@ -1,5 +1,12 @@
 # Changelog — Auth
 
+## 0.1.3 — 2026-09-20
+
+### Changed
+- New users default to Dashboard grant only (not every enabled platform app)
+- Auth cannot be placed on the platform disabled-apps list (always available)
+- Version aligned to platform **0.1.3**
+
 ## 0.1.2 — 2026-09-19
 
 ### Added

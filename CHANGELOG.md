@@ -2,6 +2,22 @@
 
 Platform version lives in [`VERSION`](VERSION). App zips use each app’s `__version__` (see `scripts/build_release_zips.py`).
 
+## 0.1.3 — 2026-09-20
+
+### UX
+- Overview absorbs Watch: conditional alert banner, disk + backup stats, one services grid; Settings Watch tab redirects to Overview
+- Services: per-card Enabled toggle (autosave); Dashboard and Auth stay always on
+- Users: Accounts list first (rows collapsed); Add account expands the create form; new users default to Dashboard only
+- Studio: Create landing (`/`) vs Projects (`/projects`); three-up bottom nav
+- Windows split-port: app **Home** nav uses dashboard `PUBLIC_ORIGIN` (no longer loops to the app’s own port)
+
+### App versions in this cut
+| App | Version |
+|-----|---------|
+| dashboard | 0.1.3 |
+| auth | 0.1.3 |
+| studio | 0.0.3 |
+
 ## 0.1.2 — 2026-09-19
 
 ### UX
