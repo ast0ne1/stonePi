@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Offers · PriceScout{% endblock %}
+{% block content %}
+<section class="hero">
+  <h1>Offers</h1>
+  <p class="lede">This week’s supermarket deals from the stores you follow.</p>
+</section>
+
+<form class="filter-bar" method="get" action="/">
+  <label>
+    Store
+    <select name="store" onchange="this.form.submit()">
+      <option value="all" {% if store == 'all' %}selected{% endif %}>All stores</option>
+      {% for s in sources %}
+      <option value="{{ s.id }}" {% if store == s.id %}selected{% endif %}>{{ s.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>
+    Category
+    <select name="category" onchange="this.form.submit()">
+      {% for c in categories %}
+      <option value="{{ c }}" {% if category == c %}selected{% endif %}>{{ c }}</option>
+      {% endfor %}
+    </select>
+  </label>
+</form>
+
+{% if not offers %}
+<div class="empty card stack">
+  <h2>No offers yet</h2>
+  <p class="hint">Refresh sources to pull the latest eTilbudsavis deals, or wait for the first automatic refresh.</p>
+  <a class="btn btn-primary btn-with-icon" href="/sources">{{ icon("sources") }} Open Sources</a>
+</div>
+{% else %}
+<ul class="offer-list">
+  {% for o in offers %}
+  <li class="offer-row">
+    {% if o.image_url %}<img class="offer-thumb" src="{{ o.image_url }}" alt="" loading="lazy" />{% endif %}
+    <div class="offer-body">
+      <p class="offer-title">
+        {% if o.is_hot %}<span class="hot" title="Featured"></span>{% endif %}
+        {% if o.offer_url %}
+        <a class="offer-link" href="{{ o.offer_url }}" target="_blank" rel="noopener noreferrer">{{ o.title }}</a>
+        {% else %}
+        {{ o.title }}
+        {% endif %}
+      </p>
+      <p class="offer-meta">
+        {% if favicons.get(o.source_id) %}<img class="store-icon-inline" src="{{ favicons[o.source_id] }}" alt="" width="16" height="16" /> {% endif %}{{ o.source_name }}{% if o.unit_text %} · {{ o.unit_text }}{% endif %}{% if o.category %} · {{ o.category }}{% endif %}
+        {% if o.catalog_url %} · <a class="text-link" href="{{ o.catalog_url }}" target="_blank" rel="noopener noreferrer">Leaflet</a>{% endif %}
+      </p>
+    </div>
+    <p class="offer-price">{% if o.offer_url %}<a class="offer-link" href="{{ o.offer_url }}" target="_blank" rel="noopener noreferrer">{{ format_price(o.price_dkk, currency) }}</a>{% else %}{{ format_price(o.price_dkk, currency) }}{% endif %}</p>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

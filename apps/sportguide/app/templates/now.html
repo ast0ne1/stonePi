@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Now · SportGuide{% endblock %}
+{% block content %}
+<section class="hero">
+  <h1>Now</h1>
+  <p class="lede">Sports on TV and streams{% if city %} near {{ city }}{% endif %} · {{ local_now }} ({{ timezone }}).</p>
+</section>
+
+<div class="btn-row now-actions">
+  {% if can_refresh %}
+  <form method="post" action="/sources/refresh">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="next" value="now" />
+    <button class="btn btn-ghost btn-with-icon" type="submit"{% if refresh.running %} disabled{% endif %}
+      data-confirm="Refresh schedules from the web now? This can take a minute.">
+      {{ icon("refresh") }} {{ 'Refreshing…' if refresh.running else 'Refresh' }}
+    </button>
+  </form>
+  {% endif %}
+  {% if sport != 'all' or (league and league != 'all') %}
+  <a class="btn btn-ghost btn-with-icon" href="/?sport=all">{{ icon("clear") }} Clear filters</a>
+  {% endif %}
+</div>
+
+<div class="sport-tiles" role="list">
+  {% for s in sports %}
+  <a class="sport-tile{% if sport == s.id %} is-active{% endif %}" href="/?sport={{ s.id }}{% if s.id == 'football' and league and league != 'all' %}&league={{ league|urlencode }}{% endif %}" role="listitem">
+    <img src="/static/img/sports/{{ s.image }}" alt="" width="40" height="40" />
+    <span>{{ s.label }}</span>
+  </a>
+  {% endfor %}
+</div>
+
+{% if sport == 'football' %}
+<div class="chips settings-chips league-chips" role="tablist" aria-label="Football leagues">
+  <a class="chip-btn{% if league == 'all' %} is-active{% endif %}" href="/?sport=football&league=all">All leagues</a>
+  {% for L in leagues %}
+  {% if L != 'all' %}
+  <a class="chip-btn{% if league == L %} is-active{% endif %}" href="/?sport=football&league={{ L|urlencode }}">{{ L }}</a>
+  {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if not has_data %}
+<div class="empty card stack">
+  <h2>No schedule yet</h2>
+  <p class="hint">Pull today’s listings from AusSportGuide and WheresTheMatch. Refresh runs at most once a day automatically, or whenever you ask.</p>
+  <a class="btn btn-primary btn-with-icon" href="/sources">{{ icon("sources") }} Open Sources</a>
+</div>
+{% elif not listings %}
+<div class="empty card stack">
+  <h2>Nothing in this window</h2>
+  <p class="hint">No matches for this filter in the next {{ look_ahead_hours }} hours. Try another sport or refresh Sources.</p>
+  <a class="btn btn-ghost btn-with-icon" href="/?sport=all">{{ icon("clear") }} Clear filters</a>
+</div>
+{% else %}
+  {% for g in groups %}
+  <section class="stack feed-section">
+    <h2 class="section-title">{{ g.label }}</h2>
+    {% if g.subsections %}
+      {% for sub in g.subsections %}
+      <h3 class="league-title">{{ sub.label }}</h3>
+      <ul class="listing-list">
+        {% for row in sub.rows %}
+        {% include "_listing_row.html" %}
+        {% endfor %}
+      </ul>
+      {% endfor %}
+    {% else %}
+      <ul class="listing-list">
+        {% for row in g.rows %}
+        {% include "_listing_row.html" %}
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </section>
+  {% endfor %}
+{% endif %}
+{% endblock %}

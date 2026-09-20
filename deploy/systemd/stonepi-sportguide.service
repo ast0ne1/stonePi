@@ -1,0 +1,21 @@
+[Unit]
+Description=StonePi SportGuide
+After=network-online.target stonepi-auth.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=stonepi-sport
+Group=stonepi-sport
+EnvironmentFile=/etc/stonepi/stonepi.env
+EnvironmentFile=-/etc/stonepi/sportguide.env
+Environment=HOME=/opt/stonepi
+Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/stonepi/.cache/ms-playwright
+WorkingDirectory=/opt/stonepi/apps/sportguide
+ExecStart=/opt/stonepi/apps/sportguide/.venv/bin/python -m app.serve
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

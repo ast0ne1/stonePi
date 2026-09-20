@@ -1,0 +1,15 @@
+<li class="listing-row">
+  <p class="listing-time">{{ row.local_time }}</p>
+  <div class="listing-body">
+    <p class="listing-title">{% if row.source_url %}<a class="offer-link" href="{{ row.source_url }}" target="_blank" rel="noopener noreferrer">{{ row.title }}</a>{% else %}{{ row.title }}{% endif %}</p>
+    {% if row.channels %}
+    <p class="channel-chips">
+      {% for ch in row.channels %}
+      <span class="channel-chip">{{ ch }}</span>
+      {% endfor %}
+    </p>
+    {% else %}
+    <p class="listing-meta">Check guide</p>
+    {% endif %}
+  </div>
+</li>

@@ -40,6 +40,10 @@
 <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
 {%- elif name == 'studio' -%}
 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19h14M8 17V7l4-3 4 3v10"/><path d="M10 11h4M10 14h4"/></svg>
+{%- elif name == 'pricescout' -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v3H4zM6 10h12v9H6z"/><path d="M9 13h6M9 16h4"/></svg>
+{%- elif name == 'sportguide' -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 2"/></svg>
 {%- elif name == 'platform' -%}
 <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M12 7.5v9"/><path d="M8 10.5h3M8 13.5h3"/><path d="M13 10.5h3M13 13.5h3"/></svg>
 {%- elif name == 'disk' -%}
@@ -53,7 +57,7 @@
 
 {% macro service_icon(app_id, color='') -%}
 <span class="service-icon" {% if color %}style="--tile-accent: {{ color }}"{% endif %} aria-hidden="true">
-  {{ svg(app_id if app_id in ['dashboard','auth','newscast','fileserve','eventtrakr','platform','pinboard','studio'] else 'platform') }}
+  {{ svg(app_id if app_id in ['dashboard','auth','newscast','fileserve','eventtrakr','platform','pinboard','studio','pricescout','sportguide'] else 'platform') }}
 </span>
 {%- endmacro %}
 

@@ -1,0 +1,19 @@
+[Unit]
+Description=StonePi PriceScout
+After=network-online.target stonepi-auth.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=stonepi-prices
+Group=stonepi-prices
+EnvironmentFile=/etc/stonepi/stonepi.env
+EnvironmentFile=-/etc/stonepi/pricescout.env
+WorkingDirectory=/opt/stonepi/apps/pricescout
+ExecStart=/opt/stonepi/apps/pricescout/.venv/bin/python -m app.serve
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target
