@@ -7,7 +7,7 @@
 | On the Pi | http://stonepi.local/studio/ |
 | Windows `run-dev.bat` | http://127.0.0.1:8005/studio/ |
 
-Shared StonePi sign-in. Non-admins need grants with **Use LLM** and/or **Publish to FileServe** (`can_use_llm`, `can_publish`).
+Shared StonePi sign-in. Non-admins need grants with **Use LLM** and/or **Publish to FileServe** (`can_use_llm`, `can_publish`). Publishing also requires the **FileServe** app grant (pages land under `/u/…`).
 
 ## Why it’s in StonePi
 

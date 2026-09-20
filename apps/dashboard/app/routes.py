@@ -410,6 +410,11 @@ async def users_create(request: Request):
             status_code=400,
         )
     try:
+        permissions = services.parse_permissions_form(form, apps)
+        app_ids = services.ensure_fileserve_for_studio_publish(
+            [str(value) for value in form.getlist("apps")],
+            permissions,
+        )
         services.auth_request(
             "POST",
             "/api/users",
@@ -419,8 +424,8 @@ async def users_create(request: Request):
                 "password": str(form.get("password") or ""),
                 "display_name": str(form.get("display_name") or ""),
                 "is_admin": form.get("is_admin") == "1",
-                "apps": [str(value) for value in form.getlist("apps")],
-                "permissions": services.parse_permissions_form(form, apps),
+                "apps": app_ids,
+                "permissions": permissions,
             },
         )
     except Exception as exc:
@@ -477,12 +482,16 @@ async def users_update(user_id: str, request: Request):
         if action == "delete":
             services.auth_request("DELETE", f"/api/users/{user_id}", dict(request.cookies))
         else:
+            permissions = services.parse_permissions_form(form, apps)
             payload = {
                 "display_name": str(form.get("display_name") or ""),
                 "enabled": form.get("enabled") == "1",
                 "is_admin": form.get("is_admin") == "1",
-                "apps": [str(value) for value in form.getlist("apps")],
-                "permissions": services.parse_permissions_form(form, apps),
+                "apps": services.ensure_fileserve_for_studio_publish(
+                    [str(value) for value in form.getlist("apps")],
+                    permissions,
+                ),
+                "permissions": permissions,
             }
             password = str(form.get("password") or "")
             if password:

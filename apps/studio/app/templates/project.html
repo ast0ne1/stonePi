@@ -59,7 +59,7 @@
         <span class="hint">{% if project.fileserve_page_id %}Published — expand to update{% else %}When the preview looks right{% endif %}</span>
       </summary>
       <form method="post" action="/p/{{ project.id }}/publish" class="publish stack" data-page-setup>
-        <p class="hint">Same keep-until and password options as Hosted Pages.</p>
+        <p class="hint">Same keep-until and password options as Hosted Pages. Needs FileServe access on your account.</p>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
         <label>
           Label
@@ -116,6 +116,8 @@
         {% if project.fileserve_page_id %}<p class="hint">Updates your existing FileServe page (#{{ project.fileserve_page_id }}).</p>{% endif %}
       </form>
     </details>
+    {% else %}
+    <p class="hint">Publishing is off for your account. Ask an admin to enable Studio <strong>Publish to FileServe</strong> (and FileServe) under Users.</p>
     {% endif %}
   </section>
   <section class="pane preview-pane card" data-preview-pane>
