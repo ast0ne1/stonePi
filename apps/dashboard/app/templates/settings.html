@@ -330,11 +330,11 @@
 {% endif %}
 
 {% if settings_tab == 'about' %}
-<section class="card stack">
-  <h2>About</h2>
-  <p class="lede">StonePi is the household LAN portal for NewsCast, FileServe, EventTrakr, Pinboard, Studio, and shared sign-in — plus Display and Vault under Settings.</p>
-  <p class="muted">Author: <a href="{{ app_github }}" rel="noopener noreferrer" target="_blank">{{ app_author }}</a></p>
-  <p class="muted">Version: {{ app_version }}</p>
+<section class="card stack about-card">
+  <h2>{{ app_name }}</h2>
+  <p class="lede">Household LAN portal for NewsCast, FileServe, EventTrakr, Pinboard, Studio, and shared sign-in — plus Display and Vault under Settings.</p>
+  <p class="hint">GitHub: <a class="text-link" href="{{ app_github }}" rel="noopener noreferrer" target="_blank">{{ app_github_user }}</a></p>
+  <p class="hint">Version: {{ app_version }}</p>
 </section>
 {% endif %}
 {% endblock %}

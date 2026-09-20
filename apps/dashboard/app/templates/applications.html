@@ -4,7 +4,7 @@
 {% block content %}
 <section class="hero">
   <h1>Services</h1>
-  <p class="lede">Health is the HTTP check. After that: systemd unit state on the Pi (<code>active</code>, <code>inactive</code>, <code>failed</code>…), or local process when running without systemd. Toggle a service off to hide it from grants and block sign-in access — Dashboard always stays available.</p>
+  <p class="lede">Manage apps on this Pi — enable or disable access for the household, and open a service to start, stop, or restart it. Dashboard always stays available.</p>
 </section>
 
 {% if cards %}
@@ -20,12 +20,16 @@
       {{ service_icon(card.id, card.color or '') }}
       <div>
         <h3>{{ card.name }}</h3>
-        <p class="pill"><span class="dot {% if card.health.ok %}ok{% else %}bad{% endif %}"></span>
-          {% if card.health.ok %}Healthy{% else %}Down{% endif %}
-          · {% if card.unit_status == 'local' %}local process{% else %}{{ card.unit_status }}{% endif %}
-        </p>
-        <p class="muted service-unit">{{ card.unit }}</p>
-        <p class="muted service-port">port {{ card.port }}</p>
+        <div class="service-meta">
+          <div class="service-meta-row">
+            <span class="meta-label">Route</span>
+            <span class="meta-value">{% if card.id == 'dashboard' %}/{% else %}{{ card.path }}{% endif %}</span>
+          </div>
+          <div class="service-meta-row">
+            <span class="meta-label">Port</span>
+            <span class="meta-value">{{ card.port }}</span>
+          </div>
+        </div>
       </div>
     </div>
     <div class="service-card-foot">
@@ -53,7 +57,7 @@
 {% else %}
 <section class="card">
   <h2>No services yet</h2>
-  <p class="muted">When apps are installed and running, they show up here for health checks and start/stop.</p>
+  <p class="muted">When apps are installed, they show up here so you can enable, disable, or control them.</p>
   <div class="row-actions">
     <a class="btn btn-ghost btn-with-icon" href="/">{{ svg('dashboard') }} Back to Home</a>
   </div>

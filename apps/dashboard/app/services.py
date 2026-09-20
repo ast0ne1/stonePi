@@ -44,30 +44,65 @@ def current_user(cookies: dict[str, str]):
 
 
 def app_public_url(item: dict) -> str:
-    """Browser-facing app URL for launcher / Services cards.
+    """Browser-facing app URL for launcher / Services open links.
 
     Path installs use **relative** paths so the hostname the user opened
     (``.home`` / ``.local`` / LAN IP) never flips to ``PUBLIC_ORIGIN``.
+    Check path/nginx **before** loopback ``PUBLIC_ORIGIN`` — Pi installs often
+    keep ``http://127.0.0.1:8010`` internally while browsers use ``stonepi.*``.
     Windows / loopback solo-dev keeps per-port absolute URLs.
     """
-    origin = (env.public_origin or "").rstrip("/")
-    if "127.0.0.1" in origin or "localhost" in origin:
-        return f"http://127.0.0.1:{item['port']}/"
     path_fronted = getattr(env, "routing", "path") == "path" or Path(
         "/etc/nginx/sites-enabled/stonepi"
     ).exists()
-    if path_fronted:
+    # Solo-dev on Windows has no nginx — per-port URLs still work for Open links.
+    if path_fronted and os.name != "nt":
         if item["id"] == "dashboard":
             return "/"
         if item["id"] == "auth":
             return "/auth/"
         path = str(item.get("path") or "/")
         return path if path.endswith("/") else f"{path}/"
+    origin = (env.public_origin or "").rstrip("/")
+    if "127.0.0.1" in origin or "localhost" in origin or os.name == "nt":
+        return f"http://127.0.0.1:{item['port']}/"
     if item["id"] == "dashboard":
         return origin + "/"
     if item["id"] == "auth":
         return origin + "/auth/"
     return origin + item["path"]
+
+
+def app_display_url(item: dict, *, access_origin: str = "") -> str:
+    """URL text on Health cards — same host the browser used to open Health."""
+    origin = (access_origin or "").rstrip("/")
+    path_fronted = getattr(env, "routing", "path") == "path" or Path(
+        "/etc/nginx/sites-enabled/stonepi"
+    ).exists()
+    if item["id"] == "dashboard":
+        path = "/"
+    elif item["id"] == "auth":
+        path = "/auth/"
+    else:
+        path = str(item.get("path") or "/")
+        if not path.endswith("/"):
+            path = f"{path}/"
+
+    if origin and path_fronted and os.name != "nt":
+        return origin + path
+
+    if origin:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(origin)
+        host = parsed.hostname or (env.hostname or "stonepi").strip() or "stonepi"
+        scheme = parsed.scheme or "http"
+        return f"{scheme}://{host}:{item['port']}/"
+
+    host = (env.hostname or "stonepi").strip() or "stonepi"
+    if path_fronted and os.name != "nt":
+        return f"http://{host}.local{path}"
+    return f"http://{host}.local:{item['port']}/"
 
 
 def probe(url: str) -> dict:

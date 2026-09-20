@@ -1,5 +1,10 @@
 # Changelog — Auth
 
+## 0.1.4 — 2026-09-20
+
+### Changed
+- Version aligned to platform **0.1.4**; Settings General uses shared sliders icon
+
 ## 0.1.3 — 2026-09-20
 
 ### Changed

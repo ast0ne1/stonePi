@@ -202,6 +202,24 @@
     });
   });
 
+  document.querySelectorAll("button[type='submit'][data-confirm]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      const form = button.form;
+      if (!form || form.dataset.confirmPassed === "1") return;
+      event.preventDefault();
+      askConfirm({
+        title: button.dataset.confirm,
+        body: button.dataset.confirmDetail || "",
+        okLabel: button.dataset.confirmOk || "Continue",
+      }).then((ok) => {
+        if (!ok) return;
+        form.dataset.confirmPassed = "1";
+        if (typeof form.requestSubmit === "function") form.requestSubmit(button);
+        else form.submit();
+      });
+    });
+  });
+
   const form = document.querySelector("[data-chat-form]");
   if (!form) return;
   const thread = document.querySelector("[data-chat-thread]");
