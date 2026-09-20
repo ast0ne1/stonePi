@@ -115,14 +115,19 @@
 * { box-sizing: border-box; }
 html, body {
   margin: 0;
-  min-height: 100%;
   height: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 body {
   font-family: var(--chrome);
   background: var(--paper);
   color: var(--ink);
   line-height: 1.45;
+  position: relative;
+  width: 100%;
 }
 a { color: var(--accent); }
 
@@ -131,8 +136,10 @@ a { color: var(--accent); }
   flex-direction: column;
   height: 100%;
   height: 100dvh;
+  max-height: 100dvh;
   max-width: 100%;
   overflow: hidden;
+  overscroll-behavior: none;
 }
 
 .shell {
@@ -141,6 +148,7 @@ a { color: var(--accent); }
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  overscroll-behavior: none;
 }
 
 .topbar {
@@ -321,6 +329,8 @@ a { color: var(--accent); }
   overflow-x: hidden;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  overscroll-behavior-x: none;
 }
 .main.main-wide {
   width: min(1100px, 100%);
