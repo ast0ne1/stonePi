@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Settings · Studio{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <h1>Settings</h1>
+  <p class="lede">{{ settings_lede }}</p>
+</section>
+
+<div class="settings-tabs">
+  <div class="chips settings-chips" role="tablist" aria-label="Settings sections">
+    <a class="chip-btn{% if settings_tab == 'about' %} is-active{% endif %}" href="/settings?tab=about" role="tab" id="settings-tab-about" aria-selected="{{ 'true' if settings_tab == 'about' else 'false' }}" aria-controls="settings-panel-about">
+      {{ icon("about") }}<span>About</span>
+    </a>
+    {% if is_admin %}
+    <a class="chip-btn{% if settings_tab == 'prompts' %} is-active{% endif %}" href="/settings?tab=prompts" role="tab" id="settings-tab-prompts" aria-selected="{{ 'true' if settings_tab == 'prompts' else 'false' }}" aria-controls="settings-panel-prompts">
+      {{ icon("prompts") }}<span>Prompts</span>
+    </a>
+    {% endif %}
+  </div>
+
+  <div class="stack settings-panel" id="settings-panel-about" role="tabpanel" aria-labelledby="settings-tab-about"{% if settings_tab != 'about' %} hidden{% endif %}>
+    <div class="card stack about-card">
+      <h2>{{ app_name }}</h2>
+      <p class="lede">Chat-builds small sites and games for FileServe. Runs on a home Pi or a Windows machine on your LAN.</p>
+      <p class="hint">GitHub: <a class="text-link" href="{{ app_github }}" rel="noopener noreferrer" target="_blank">{{ app_github_user }}</a></p>
+      <p class="hint">Version: {{ app_version }}</p>
+    </div>
+  </div>
+
+  {% if is_admin %}
+  <div class="stack settings-panel" id="settings-panel-prompts" role="tabpanel" aria-labelledby="settings-tab-prompts"{% if settings_tab != 'prompts' %} hidden{% endif %}>
+    <div class="chips settings-chips prompt-picker" role="tablist" aria-label="Prompt files">
+      {% set prompt_icons = {'fileserve_hosting': 'hosting', 'kind_spa': 'spa', 'kind_guide': 'guide', 'kind_game': 'game'} %}
+      {% for row in prompt_rows %}
+      <a class="chip-btn{% if prompt_id == row.id %} is-active{% endif %}" href="/settings?tab=prompts&prompt={{ row.id }}" role="tab" aria-selected="{{ 'true' if prompt_id == row.id else 'false' }}">
+        {{ icon(row.icon or prompt_icons[row.id]) }}<span>{{ row.label }}</span>
+        {% if row.customized %}<span class="chip-tag">edited</span>{% endif %}
+      </a>
+      {% endfor %}
+    </div>
+
+    {% if prompt_def %}
+    <form method="post" action="/settings/prompts" class="card stack prompt-editor-card">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="prompt" value="{{ prompt_id }}" />
+      <div class="stack prompt-editor-head">
+        <h2>{{ prompt_def.label }}</h2>
+        <p class="hint">{{ prompt_def.blurb }} Saved copies live in Studio data and override the packaged file until you reset.</p>
+        {% if prompt_customized %}
+        <p class="hint">Using your edited copy.</p>
+        {% else %}
+        <p class="hint">Using the packaged default.</p>
+        {% endif %}
+      </div>
+      <label>
+        Markdown
+        <textarea name="body" class="prompt-editor" rows="22" spellcheck="false" autocomplete="off">{{ prompt_body }}</textarea>
+      </label>
+      <div class="btn-row">
+        <button class="btn btn-primary" type="submit" name="action" value="save">Save prompt</button>
+        <button class="btn btn-ghost" type="submit" name="action" value="reset"{% if not prompt_customized %} disabled{% endif %} data-confirm="Restore the packaged default for {{ prompt_def.label }}? Your edited copy will be removed.">Reset to default</button>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

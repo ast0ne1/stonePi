@@ -6,8 +6,10 @@ from urllib.parse import urlparse
 
 import httpx
 
-from app.config import BUILD_KIND_IDS, PROMPT_PATH, PROMPTS_DIR, env
+from app.config import env
+from app.prompt_files import hosting_prompt_text, kind_prompt_text
 from app.workspace import FILE_MAP_RE
+
 
 _HTTPS_URL = re.compile(r"https://[^\s\"'<>]+", re.IGNORECASE)
 
@@ -35,17 +37,11 @@ def _check_https_urls(text: str) -> None:
 
 
 def _kind_prompt(kind: str) -> str:
-    kind_id = (kind or "spa").strip().lower()
-    if kind_id not in BUILD_KIND_IDS:
-        kind_id = "spa"
-    path = PROMPTS_DIR / f"kind_{kind_id}.md"
-    if path.is_file():
-        return path.read_text(encoding="utf-8").strip()
-    return ""
+    return kind_prompt_text(kind)
 
 
 def system_prompt(extra_files: list[str], *, kind: str = "spa", intent: str = "build") -> str:
-    base = PROMPT_PATH.read_text(encoding="utf-8") if PROMPT_PATH.is_file() else ""
+    base = hosting_prompt_text()
     kind_block = _kind_prompt(kind)
     listing = "\n".join(f"- {name}" for name in extra_files) or "- (empty project)"
     mode = (intent or "build").strip().lower()

@@ -7,7 +7,7 @@ from app.config import env
 from app.db import SessionLocal
 from app.models import CalendarConnection, Category, EventSource, User
 from app.services import auth, categories, hostname, passwords, settings, tls, update
-from app import __version__ as app_version
+from app import __github__, __github_user__, __version__ as app_version
 
 bp = Blueprint("settings", __name__, url_prefix="/settings")
 
@@ -22,6 +22,7 @@ SETTINGS_TABS = [
     ("network", "Network & SSL"),
     ("users", "Users"),
     ("update", "Update"),
+    ("about", "About"),
 ]
 SETTINGS_LEDES = {
     "general": "Default location and your account password. Colour palette is under StonePi → Settings → General.",
@@ -34,6 +35,7 @@ SETTINGS_LEDES = {
     "network": "Hostname and local HTTPS for this copy.",
     "users": "Local accounts when StonePi SSO is not configured.",
     "update": "Check GitHub Releases and install a newer zip.",
+    "about": "App name, description, GitHub, and the version running here.",
 }
 PLATFORM_HIDDEN_SETTINGS_TABS = frozenset({"users", "update"})
 PLATFORM_MANAGED_MESSAGE = "Household accounts and updates are managed in StonePi."
@@ -123,7 +125,10 @@ def view_settings():
         google_configured=google_configured,
         github_repo=github_repo,
         update_check=update_check,
+        app_name="EventTrakr",
         app_version=app_version,
+        app_github_user=__github_user__,
+        app_github=__github__,
         interval_choices=[
             (15, "Every 15 minutes"),
             (30, "Every 30 minutes"),

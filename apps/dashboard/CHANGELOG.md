@@ -1,5 +1,12 @@
 # Changelog — Dashboard
 
+## 0.1.4 — 2026-09-20
+
+### Changed
+- Nav label **Health** (route still `/overview`): monitor copy; Apps responding stat; Version + URL meta; request-host display URLs
+- **Services**: manage-only copy; Route + Port meta; no Healthy pill / Status line
+- Settings General uses the sliders icon; About cards flush with shared portal chrome
+
 ## 0.1.3 — 2026-09-20
 
 ### Changed

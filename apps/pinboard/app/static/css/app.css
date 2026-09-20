@@ -218,7 +218,7 @@ input, select { font-size: 16px; }
   flex: 0 0 auto;
   z-index: 12;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 2px;
   padding: 8px var(--gutter) calc(10px + var(--safe-bottom));
   background: color-mix(in srgb, var(--card) 94%, transparent);
@@ -233,7 +233,7 @@ input, select { font-size: 16px; }
   justify-content: center;
   gap: 2px;
   text-decoration: none;
-  font-size: 0.62rem;
+  font-size: 0.58rem;
   font-weight: 500;
   color: var(--muted);
   border-radius: 12px;
@@ -249,6 +249,9 @@ input, select { font-size: 16px; }
 .nav svg {
   width: 20px;
   height: 20px;
+  max-width: 20px;
+  max-height: 20px;
+  flex: 0 0 auto;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.7;
@@ -289,6 +292,61 @@ h1 { font-family: var(--serif); font-size: 2rem; font-weight: 600; }
 h2 { font-family: var(--serif); font-size: 1.35rem; }
 .card h2 { margin: 0; }
 .lede, .hint, .muted { color: var(--muted); margin: 0; overflow-wrap: anywhere; }
+.text-link { color: var(--accent); font-weight: 500; }
+.about-card {
+  display: grid;
+  gap: 8px;
+  justify-items: stretch;
+  text-align: left;
+}
+.about-card > * {
+  margin: 0;
+  padding: 0;
+  max-width: 100%;
+  text-indent: 0;
+}
+.about-card h2 { margin: 0; padding: 0; }
+.about-card .lede, .about-card .hint { margin: 0; padding: 0; }
+.settings-tabs { display: grid; gap: 0; }
+.chips.settings-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  overflow-x: auto;
+  margin: 0 0 8px;
+  padding: 0 0 8px;
+}
+.chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.chip-btn svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.chip-btn.is-active {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+.stack { display: grid; gap: 14px; }
+
 
 .banner, .banner-ok, .banner-muted {
   padding: 12px 14px;
@@ -435,17 +493,20 @@ input:focus-visible {
     grid-row: 2;
     height: calc(100dvh - var(--topbar-height));
     grid-template-columns: 1fr;
+    grid-auto-flow: row;
     align-content: start;
     border-top: 0;
     border-right: 1px solid var(--line);
     padding: 16px;
+    overflow: visible;
   }
   .nav a {
     flex-direction: row;
     justify-content: flex-start;
     gap: 10px;
     padding: 0 12px;
-    font-size: 0.85rem;
+    font-size: 0.95rem;
+    max-width: none;
   }
   .main {
     grid-column: 2;

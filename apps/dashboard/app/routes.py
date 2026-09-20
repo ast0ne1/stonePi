@@ -231,6 +231,14 @@ def overview(request: Request):
     import stonepi_watch
 
     cards = services.application_cards(dict(request.cookies))
+    try:
+        from stonepi_auth.http import request_public_origin
+
+        access_origin = request_public_origin(request)
+    except Exception:
+        access_origin = ""
+    for card in cards:
+        card["display_url"] = services.app_display_url(card, access_origin=access_origin)
     backup = services.backup_info()
     watch = display.watch_snapshot(dict(request.cookies))
     users = []
@@ -674,7 +682,7 @@ SETTINGS_LEDES = {
     "automations": "Thin when→then jobs: USB backup, Display push on Watch or backup.",
     "update": "Check GitHub Releases for per-app packages and the platform pack.",
     "backup": "Full SD-card recovery is started from Cockpit so the backup can see the USB disk.",
-    "about": "What StonePi is, who wrote it, and the version running here.",
+    "about": "App name, description, GitHub, and the version running here.",
 }
 
 # Friendly catalog for Settings → Vault (dropdown). Values are env/Vault key names.
@@ -740,7 +748,8 @@ def settings_page(request: Request, tab: str = "general"):
         settings_tab = "backup"
 
     about = {
-        "app_author": getattr(dashboard_app, "__author__", "Adam Stone"),
+        "app_name": "StonePi",
+        "app_github_user": getattr(dashboard_app, "__github_user__", "ast0ne1"),
         "app_github": getattr(dashboard_app, "__github__", "https://github.com/ast0ne1"),
         "app_version": getattr(dashboard_app, "__version__", "0.0.0"),
     }

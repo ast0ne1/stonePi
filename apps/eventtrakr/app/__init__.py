@@ -10,6 +10,8 @@ from app.services import auth, favicon, ingest, schedule
 from stonepi_auth.http import portal_home_url
 
 __version__ = "0.0.2"
+__github_user__ = "ast0ne1"
+__github__ = "https://github.com/ast0ne1"
 
 _STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 

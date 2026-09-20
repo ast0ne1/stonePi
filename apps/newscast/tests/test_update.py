@@ -50,7 +50,7 @@ def test_extract_packaged_version():
 def _write_release_zip(path: Path, version: str, nested: bool = True) -> Path:
     root = f"owner-NewsCast-abc123/" if nested else ""
     with zipfile.ZipFile(path, "w") as archive:
-        archive.writestr(f"{root}app/__init__.py", f'__version__ = "{version}"\n__author__ = "Adam Stone"\n')
+        archive.writestr(f"{root}app/__init__.py", f'__version__ = "{version}"\n__github_user__ = "ast0ne1"\n')
         archive.writestr(f"{root}app/main.py", "app = None\n")
         archive.writestr(f"{root}requirements.txt", "fastapi\n")
     return path

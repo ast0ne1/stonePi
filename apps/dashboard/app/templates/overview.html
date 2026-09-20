@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% from "_icons.html" import svg, service_icon %}
-{% block title %}Overview · StonePi{% endblock %}
+{% block title %}Health · StonePi{% endblock %}
 {% block content %}
 <section class="hero">
   <div class="hero-row">
     <div>
-      <h1>Overview</h1>
-      <p class="lede">{{ hostname }}.local · signed in as {{ user.display_name }}</p>
-      <p class="muted">StonePi {{ platform_version }}</p>
+      <h1>Health</h1>
+      <p class="lede">Monitor StonePi — host status, disk, backup, and whether each app is responding.</p>
+      <p class="muted">{{ hostname }}.local · StonePi {{ platform_version }} · signed in as {{ user.display_name }}</p>
     </div>
     <a class="btn btn-ghost btn-with-icon" href="{{ cockpit_url }}">{{ svg('cockpit') }} Cockpit</a>
   </div>
@@ -28,9 +28,9 @@
 
 <div class="grid">
   <section class="card stat">
-    <p class="muted">Services</p>
-    <strong>{{ enabled_count }} / {{ cards|length }}</strong>
-    <p class="muted">Enabled / total</p>
+    <p class="muted">Apps</p>
+    <strong>{{ healthy_count }} / {{ cards|length }}</strong>
+    <p class="muted">Responding / total</p>
   </section>
   <section class="card stat">
     <p class="muted">Users</p>
@@ -59,9 +59,9 @@
 </div>
 
 <div class="section-head">
-  <h2>Services</h2>
+  <h2>Apps</h2>
   {% if cards %}
-  <p class="muted">{{ healthy_count }} of {{ cards|length }} healthy</p>
+  <p class="muted">{{ healthy_count }} of {{ cards|length }} responding</p>
   {% endif %}
 </div>
 {% if cards %}
@@ -76,7 +76,16 @@
           {% if card.health.ok %}Healthy{% else %}Down{% endif %}
           · {% if card.unit_status == 'local' %}local process{% else %}{{ card.unit_status }}{% endif %}
         </p>
-        <p class="muted">{{ card.version }} · {{ card.url }}</p>
+        <div class="service-meta">
+          <div class="service-meta-row">
+            <span class="meta-label">Version</span>
+            <span class="meta-value">{{ card.version or '—' }}</span>
+          </div>
+          <div class="service-meta-row">
+            <span class="meta-label">URL</span>
+            <span class="meta-value">{% set raw_host = (request.headers.get('x-forwarded-host') or request.headers.get('host') or (hostname ~ '.local')).split(',')[0].strip() %}{% set url_scheme = (request.headers.get('x-forwarded-proto') or request.url.scheme)|string %}{% set url_scheme = url_scheme.split(',')[0].strip() %}{% if ':' in raw_host %}{{ url_scheme }}://{{ raw_host.split(':')[0] }}:{{ card.port }}/{% elif card.id == 'dashboard' %}{{ url_scheme }}://{{ raw_host }}/{% else %}{{ url_scheme }}://{{ raw_host }}{{ card.path }}{% endif %}</span>
+          </div>
+        </div>
       </div>
     </div>
   </a>
@@ -84,8 +93,8 @@
 </div>
 {% else %}
 <section class="card">
-  <h2>No services listed</h2>
-  <p class="muted">Open <a href="/applications">Services</a> to check health and availability.</p>
+  <h2>No apps listed</h2>
+  <p class="muted">Open <a href="/applications">Services</a> to enable apps for the household.</p>
 </section>
 {% endif %}
 {% endblock %}

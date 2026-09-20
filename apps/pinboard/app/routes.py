@@ -4,7 +4,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app import store
+from app import __github__, __github_user__, __version__, store
 from app.config import ROOT_DIR, env
 from stonepi_auth import login_url, logout_url
 from stonepi_auth.config import PlatformSettings
@@ -69,6 +69,7 @@ def home(request: Request):
                 "user": user,
                 "error": "No access to Pinboard.",
                 "items": store.list_items(),
+                "active": "board",
                 "public_origin": portal_home_url(request, env.public_origin).rstrip("/"),
                 "csrf_token": "",
             },
@@ -81,6 +82,51 @@ def home(request: Request):
         {
             "user": user,
             "items": store.list_items(),
+            "active": "board",
+            "csrf_token": csrf,
+            "hostname": env.hostname,
+            "public_origin": portal_home_url(request, env.public_origin).rstrip("/"),
+            "error": request.query_params.get("err"),
+            "message": request.query_params.get("msg"),
+        },
+    )
+    set_csrf_cookie(response, csrf, secure=request_is_https(request))
+    return response
+
+
+@router.get("/settings", response_class=HTMLResponse)
+def settings_page(request: Request):
+    user = _user(request)
+    if _session_secret() and user is None:
+        return RedirectResponse(login_url(_settings(), "/pinboard/settings"), status_code=303)
+    if user and not user.can_access("pinboard") and not user.is_admin:
+        return templates.TemplateResponse(
+            request,
+            "settings.html",
+            {
+                "user": user,
+                "error": "No access to Pinboard.",
+                "active": "settings",
+                "app_name": "Pinboard",
+                "app_version": __version__,
+                "app_github_user": __github_user__,
+                "app_github": __github__,
+                "public_origin": portal_home_url(request, env.public_origin).rstrip("/"),
+                "csrf_token": "",
+            },
+            status_code=403,
+        )
+    csrf = csrf_from_request(request.cookies)
+    response = templates.TemplateResponse(
+        request,
+        "settings.html",
+        {
+            "user": user,
+            "active": "settings",
+            "app_name": "Pinboard",
+            "app_version": __version__,
+            "app_github_user": __github_user__,
+            "app_github": __github__,
             "csrf_token": csrf,
             "hostname": env.hostname,
             "public_origin": portal_home_url(request, env.public_origin).rstrip("/"),

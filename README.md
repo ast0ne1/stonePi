@@ -1,10 +1,23 @@
 # StonePi
 
-**StonePi** is a household LAN portal on one Raspberry Pi: shared sign-in, phone-first apps, and optional e-ink and AI. Hostname: `stonepi.local`.
+**StonePi** is a household LAN portal on one Raspberry Pi: shared sign-in, phone-first apps, and optional e-ink and AI. Hostname: `stonepi.local` (or your router name, e.g. `stonepi.home`).
 
 It is for the jobs that usually scatter across school portals, cloud drives, and sticky notes — daily reading, hosting pages on your network, local events, family notices, and small sites the household builds itself.
 
 **Cockpit** (`:9090`) is for the Linux host. The **Dashboard** is for people, apps, updates, backup, and platform services.
+
+## Screenshots
+
+| | |
+|:---:|:---:|
+| ![Sign in](docs/screenshots/login.jpg) | ![Home launcher](docs/screenshots/home.jpg) |
+| *Shared sign-in* | *Home — drag-to-order launcher* |
+| ![Health](docs/screenshots/health.jpg) | ![Services](docs/screenshots/services.jpg) |
+| *Health — monitor host and apps* | *Services — enable / disable apps* |
+| ![Users](docs/screenshots/users.jpg) | ![Settings](docs/screenshots/settings.jpg) |
+| *Users — household accounts* | *Settings → General* |
+
+More images: [docs/screenshots/](docs/screenshots/).
 
 ## What’s included
 
@@ -22,13 +35,20 @@ It is for the jobs that usually scatter across school portals, cloud drives, and
 
 | App | Role |
 |-----|------|
-| **[Dashboard](apps/dashboard/README.md)** | Home launcher, Overview, Users/grants, Settings |
+| **[Dashboard](apps/dashboard/README.md)** | Home launcher, **Health**, **Services**, Users/grants, Settings |
 | **[Auth](apps/auth/README.md)** | Shared household sign-in — one account, one cookie across apps |
+
+Admin nav split:
+
+| Nav | Job |
+|-----|-----|
+| **Health** (`/overview`) | Monitor the host — alerts, disk, backup, whether each app is responding |
+| **Services** (`/applications`) | Manage apps — enable/disable for the household; open a service to start/stop/restart |
 
 ## How it fits together
 
 ```text
-Portal     Dashboard + Auth (people, grants, exposure, secrets, health)
+Portal     Dashboard + Auth (people, grants, exposure, secrets, Health / Services)
 Consume    NewsCast (briefings / e-readers) · EventTrakr (events / calendars)
 Publish    Studio ──publish──▶ FileServe hosted pages
 Glance     Pinboard + apps / Watch ──▶ Display (Status wall · Household · Custom) ──▶ TRMNL
@@ -42,6 +62,7 @@ Glance     Pinboard + apps / Watch ──▶ Display (Status wall · Household �
 ## Home launcher
 
 On **Home**, tiles follow each user’s saved order. **Edit order** → drag tiles to place → **Done** (order autosaves while dragging).
+
 ## What you’ll need
 
 StonePi itself only needs a **Raspberry Pi** on your home network and a phone or laptop. Everything below is **optional** — add the pieces that match how your household wants to use it. Keys go in **Dashboard → Settings → Vault** (not scattered in chat apps).
@@ -123,7 +144,8 @@ The installer enables systemd services so everything comes back after a reboot. 
 | Address | Service |
 |---------|---------|
 | http://stonepi.local/ | Home (app launcher) |
-| http://stonepi.local/overview | Admin overview |
+| http://stonepi.local/overview | Health (admin monitor) |
+| http://stonepi.local/applications | Services (enable / disable) |
 | http://stonepi.local/auth/login | Sign in |
 | http://stonepi.local/news/ | NewsCast |
 | http://stonepi.local/files/ | FileServe |
@@ -183,7 +205,7 @@ Platform notes: [CHANGELOG.md](CHANGELOG.md). Release steps: [deploy/RELEASE.md]
 
 ```text
 apps/auth            shared login
-apps/dashboard       home launcher + admin
+apps/dashboard       home launcher + admin (Health / Services)
 apps/newscast
 apps/fileserve
 apps/eventtrakr
@@ -195,6 +217,7 @@ packages/stonepi_display
 packages/stonepi_watch
 packages/stonepi_vault
 packages/stonepi_automations
+docs/screenshots     README gallery
 deploy/install.sh    Pi installer
 deploy/INSTALL.md    fresh OS guide
 deploy/RELEASE.md    release checklist

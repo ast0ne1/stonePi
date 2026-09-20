@@ -29,6 +29,7 @@ Guidelines injected every LLM turn: `app/prompts/fileserve_hosting.md` plus `kin
 - **Projects**: list and open existing work; chat, build, preview, publish
 - Workspace files + live iframe preview
 - Emits a JSON **file map** the app applies to disk
+- **Settings → About** and (admins) **Settings → Prompts** to view/edit the LLM markdown guidelines on the Pi
 - **Publish to FileServe** — zip with the same options as Hosted Pages:
   - Label, description, path
   - Keep until (none / week / month / 3 months / 6 months / custom date)

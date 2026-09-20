@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/css/app.css?v=20260919g" />
+  <link rel="stylesheet" href="/static/css/app.css?v=20260920c" />
 </head>
 <body>
   {% from "_icons.html" import icon %}
@@ -53,17 +53,21 @@
         {{ icon("home") }}
         <span>Home</span>
       </a>
-      <a href="#board" data-nav="board" class="is-active">
+      <a href="/#board" data-nav="board" class="{% if active != 'settings' %}is-active{% endif %}">
         {{ icon("board") }}
         <span>Board</span>
       </a>
-      <a href="#notices" data-nav="notices">
+      <a href="/#notices" data-nav="notices">
         {{ icon("pin") }}
         <span>Notices</span>
       </a>
-      <a href="#reminders" data-nav="reminders">
+      <a href="/#reminders" data-nav="reminders">
         {{ icon("reminder") }}
         <span>Reminders</span>
+      </a>
+      <a href="/settings" class="{% if active == 'settings' %}is-active{% endif %}">
+        {{ icon("settings") }}
+        <span>Settings</span>
       </a>
     </nav>
   </div>
@@ -78,6 +82,6 @@
       </div>
     </div>
   </div>
-  <script src="/static/js/app.js?v=20260919g" defer></script>
+  <script src="/static/js/app.js?v=20260920a" defer></script>
 </body>
 </html>

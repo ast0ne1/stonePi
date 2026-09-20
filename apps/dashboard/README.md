@@ -18,8 +18,8 @@ One place for people and apps — separate from **Cockpit** (Linux host admin on
 | Area | Role |
 |------|------|
 | **Home** | Launcher tiles for apps the signed-in user may access; **Edit order** = drag-to-place (autosave) |
-| **Overview** | Admin glance: app health, disk, backup, and alert banner |
-| **Services** | Catalog apps, enable/disable, systemd-oriented controls |
+| **Health** | Admin monitor: alerts, disk, backup, whether each app is responding (URLs use the host you opened) |
+| **Services** | Manage apps: Route + Port, enable/disable for the household; open a service to start/stop/restart |
 | **Users** | Household accounts, app grants, capability flags |
 | **Settings** | General (including **network exposure**), Display, Vault, Automations, Updates, Backup, About |
 

@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from app import __asset_rev__, __github__, __version__
+from app import __asset_rev__, __github__, __github_user__, __version__
 from app.auth import (
     attach_session,
     clear_login_failures,
@@ -119,7 +119,7 @@ SETTINGS_LEDES = {
     "users": "Household accounts. Edit each person’s access, reset passwords, or show a one-time login QR.",
     "backup": "Download or restore a zip of the database, Send library, and .env, or roll back the last app.",
     "update": "Check GitHub Releases and install a newer zip.",
-    "about": "What NewsCast is, who wrote it, and the version running here.",
+    "about": "App name, description, GitHub, and the version running here.",
 }
 
 
@@ -255,8 +255,10 @@ def _base_context(request: Request, db: Session, active: str) -> dict:
         "llm_ready": llm.ready,
         "llm_provider": llm.provider,
         "using_factory_admin": settings.using_factory_admin(db),
+        "app_name": "NewsCast",
         "app_version": __version__,
         "asset_rev": __asset_rev__,
+        "app_github_user": __github_user__,
         "app_github": __github__,
         "homescreen_name": hostname.homescreen_name(db),
         "favicons": favicon.map_for_feeds(db.query(Feed).filter(Feed.user_id == uid).all()),

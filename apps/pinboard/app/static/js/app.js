@@ -158,6 +158,7 @@ function setNavActive(id) {
 }
 
 function syncNavFromHash() {
+  if (/\/settings\/?$/.test(window.location.pathname)) return;
   const raw = (window.location.hash || "#board").replace(/^#/, "");
   const id = ["board", "notices", "reminders"].includes(raw) ? raw : "board";
   setNavActive(id);
