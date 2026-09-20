@@ -4,15 +4,16 @@
 {% block content %}
 <section class="hero">
   <h1>Services</h1>
-  <p class="lede">Manage apps on this Pi — enable or disable access for the household, and open a service to start, stop, or restart it. Dashboard always stays available.</p>
+  <p class="lede">Enable apps for the household, or open one to start, stop, or restart. Dashboard stays available.</p>
 </section>
 
 {% if cards %}
-<div class="service-grid">
+<div class="service-grid services-grid">
   {% for card in cards %}
   {% set locked = card.id in locked_apps %}
-  <section class="card service-card is-managed{% if card.enabled is defined and not card.enabled %} is-disabled{% endif %}">
+  <section class="card service-card is-managed{% if card.enabled is defined and not card.enabled %} is-disabled{% endif %}" data-expand-card>
     <div class="service-card-actions">
+      <button type="button" class="icon-btn service-expand-btn" data-card-expand aria-expanded="false" aria-label="Show details for {{ card.name }}" title="Details">{{ svg('chevron-down') }}</button>
       <a class="icon-btn" href="{{ card.url }}" aria-label="Open {{ card.name }}" title="Open">{{ svg('open') }}</a>
       <a class="icon-btn" href="/applications/{{ card.id }}" aria-label="Manage {{ card.name }}" title="Manage">{{ svg('manage') }}</a>
     </div>
@@ -20,12 +21,12 @@
       {{ service_icon(card.id, card.color or '') }}
       <div>
         <h3>{{ card.name }}</h3>
-        <div class="service-meta">
-          <div class="service-meta-row">
+        <div class="service-meta" data-services-meta>
+          <div class="service-meta-row" data-services-route>
             <span class="meta-label">Route</span>
             <span class="meta-value">{% if card.id == 'dashboard' %}/{% else %}{{ card.path }}{% endif %}</span>
           </div>
-          <div class="service-meta-row">
+          <div class="service-meta-row" data-services-port>
             <span class="meta-label">Port</span>
             <span class="meta-value">{{ card.port }}</span>
           </div>

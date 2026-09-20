@@ -101,6 +101,154 @@ window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () 
   if (readShared(THEME_KEY, LEGACY_THEME_KEYS, "system") === "system") applyTheme("system");
 });
 
+const VIEW_KEYS = {
+  home: "stonepi-view-home",
+  health: "stonepi-view-health",
+  "health-version": "stonepi-view-health-version",
+  "health-url": "stonepi-view-health-url",
+  services: "stonepi-view-services",
+  "services-route": "stonepi-view-services-route",
+  "services-port": "stonepi-view-services-port",
+};
+const VIEW_ALLOWED = {
+  home: ["cards", "list", "icons"],
+  health: ["full", "expandable", "compact"],
+  "health-version": ["1", "0"],
+  "health-url": ["1", "0"],
+  services: ["full", "expandable", "compact"],
+  "services-route": ["1", "0"],
+  "services-port": ["1", "0"],
+};
+const VIEW_DEFAULTS = {
+  home: "cards",
+  health: "full",
+  "health-version": "1",
+  "health-url": "1",
+  services: "full",
+  "services-route": "1",
+  "services-port": "1",
+};
+const VIEW_DATASET = {
+  home: "viewHome",
+  health: "viewHealth",
+  "health-version": "viewHealthVersion",
+  "health-url": "viewHealthUrl",
+  services: "viewServices",
+  "services-route": "viewServicesRoute",
+  "services-port": "viewServicesPort",
+};
+
+function readViewPref(set) {
+  const key = VIEW_KEYS[set];
+  const allowed = VIEW_ALLOWED[set] || [];
+  const fallback = VIEW_DEFAULTS[set];
+  let value = readCookie(key) || localStorage.getItem(key) || fallback;
+  if (!allowed.includes(value)) value = fallback;
+  return value;
+}
+
+function applyViewPrefsToDocument() {
+  Object.keys(VIEW_KEYS).forEach((set) => {
+    const value = readViewPref(set);
+    document.documentElement.dataset[VIEW_DATASET[set]] = value;
+  });
+  document.querySelectorAll("[data-expand-card].is-expanded").forEach((card) => {
+    card.classList.remove("is-expanded");
+    const btn = card.querySelector("[data-card-expand]");
+    if (btn) btn.setAttribute("aria-expanded", "false");
+  });
+}
+
+function syncViewFormFromPrefs() {
+  document.querySelectorAll("[data-view-set]").forEach((el) => {
+    const set = el.dataset.viewSet;
+    if (!set || !VIEW_KEYS[set]) return;
+    const current = readViewPref(set);
+    if (el instanceof HTMLInputElement && el.type === "checkbox") {
+      el.checked = current === "1";
+      return;
+    }
+    if (el instanceof HTMLInputElement && el.type === "radio") {
+      el.checked = el.dataset.viewValue === current || el.value === current;
+    }
+  });
+  syncViewFormDraftState();
+}
+
+function draftViewValue(set) {
+  const radios = document.querySelectorAll(`[data-view-set="${set}"]`);
+  if (!radios.length) return readViewPref(set);
+  const first = radios[0];
+  if (first instanceof HTMLInputElement && first.type === "checkbox") {
+    return first.checked ? "1" : "0";
+  }
+  for (const el of radios) {
+    if (el instanceof HTMLInputElement && el.type === "radio" && el.checked) {
+      return el.dataset.viewValue || el.value || VIEW_DEFAULTS[set];
+    }
+  }
+  return readViewPref(set);
+}
+
+function syncViewFormDraftState() {
+  const healthMode = draftViewValue("health");
+  const servicesMode = draftViewValue("services");
+  const healthDetail = healthMode === "full" || healthMode === "expandable";
+  const servicesDetail = servicesMode === "full" || servicesMode === "expandable";
+  document.querySelectorAll('[data-view-set="health-version"], [data-view-set="health-url"]').forEach((el) => {
+    if (el instanceof HTMLInputElement) el.disabled = !healthDetail;
+  });
+  document.querySelectorAll('[data-view-set="services-route"], [data-view-set="services-port"]').forEach((el) => {
+    if (el instanceof HTMLInputElement) el.disabled = !servicesDetail;
+  });
+}
+
+function saveViewPrefsFromForm() {
+  Object.keys(VIEW_KEYS).forEach((set) => {
+    let value = draftViewValue(set);
+    const allowed = VIEW_ALLOWED[set] || [];
+    if (!allowed.includes(value)) value = VIEW_DEFAULTS[set];
+    persistPref(VIEW_KEYS[set], value);
+  });
+  applyViewPrefsToDocument();
+  syncViewFormFromPrefs();
+  const status = document.querySelector("[data-view-status]");
+  if (status) status.textContent = "View options saved for this browser.";
+}
+
+applyViewPrefsToDocument();
+syncViewFormFromPrefs();
+document.querySelectorAll("[data-view-set]").forEach((el) => {
+  el.addEventListener("change", () => {
+    syncViewFormDraftState();
+    const status = document.querySelector("[data-view-status]");
+    if (status) status.textContent = "Unsaved changes — click Save view options.";
+  });
+});
+document.querySelector("[data-view-save]")?.addEventListener("click", () => {
+  saveViewPrefsFromForm();
+});
+
+(function expandableCards() {
+  document.querySelectorAll("[data-card-expand]").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const card = btn.closest("[data-expand-card]");
+      if (!card) return;
+      const on = !card.classList.contains("is-expanded");
+      card.classList.toggle("is-expanded", on);
+      btn.setAttribute("aria-expanded", on ? "true" : "false");
+      const labelEl = btn.querySelector("[data-expand-label]");
+      if (labelEl) labelEl.textContent = on ? "Hide" : "Details";
+      const name = card.querySelector("h3")?.textContent?.trim();
+      const label = on ? "Hide details" : "Show details";
+      btn.setAttribute("aria-label", name ? `${label} for ${name}` : label);
+      btn.title = label;
+    });
+  });
+})();
+
 function askConfirm({ title, body, okLabel }) {
   const sheet = document.querySelector("[data-confirm-sheet]");
   if (!sheet) return Promise.resolve(window.confirm(title));
@@ -958,7 +1106,6 @@ function showFlash(kind, text) {
   const grid = form.querySelector("[data-launcher-grid]");
   const orderInput = form.querySelector("[data-launcher-order]");
   const toggle = document.querySelector("[data-launcher-edit-toggle]");
-  const toggleLabel = document.querySelector("[data-launcher-edit-label]");
   const lede = document.querySelector("[data-launcher-lede]");
   const editBar = form.querySelector("[data-launcher-edit-bar]");
   const cancel = form.querySelector("[data-launcher-cancel]");
@@ -967,6 +1114,12 @@ function showFlash(kind, text) {
   let saving = false;
   let dragTile = null;
   let persistTimer = 0;
+  let longPressTimer = 0;
+  let longPressTile = null;
+  let longPressMoved = false;
+  let suppressClick = false;
+  const LONG_PRESS_MS = 500;
+  const MOVE_CANCEL_PX = 10;
 
   function tiles() {
     return Array.from(grid.querySelectorAll("[data-launcher-tile]"));
@@ -998,7 +1151,6 @@ function showFlash(kind, text) {
     form.classList.toggle("is-editing", editing);
     if (editBar) editBar.hidden = !editing;
     if (toggle) toggle.setAttribute("aria-pressed", editing ? "true" : "false");
-    if (toggleLabel) toggleLabel.textContent = editing ? "Done" : "Edit order";
     if (lede) {
       lede.textContent = editing
         ? "Drag tiles to reorder — saves as you go."
@@ -1006,9 +1158,17 @@ function showFlash(kind, text) {
     }
     if (!editing) {
       dragTile = null;
-      tiles().forEach((tile) => tile.classList.remove("is-dragging", "is-drop-target"));
+      tiles().forEach((tile) => tile.classList.remove("is-dragging", "is-drop-target", "is-longpress"));
     }
     syncChrome();
+  }
+
+  function clearLongPress() {
+    window.clearTimeout(longPressTimer);
+    longPressTimer = 0;
+    if (longPressTile) longPressTile.classList.remove("is-longpress");
+    longPressTile = null;
+    longPressMoved = false;
   }
 
   function schedulePersist() {
@@ -1040,6 +1200,69 @@ function showFlash(kind, text) {
     syncOrderField();
     syncChrome();
   }
+
+  function pointerPoint(event) {
+    if (event.touches && event.touches[0]) {
+      return { x: event.touches[0].clientX, y: event.touches[0].clientY };
+    }
+    return { x: event.clientX, y: event.clientY };
+  }
+
+  grid.addEventListener("pointerdown", (event) => {
+    if (editing || event.button > 0) return;
+    const targetTile = event.target.closest("[data-launcher-tile]");
+    if (!targetTile) return;
+    longPressTile = targetTile;
+    longPressMoved = false;
+    const start = pointerPoint(event);
+    longPressTimer = window.setTimeout(() => {
+      if (!longPressTile || longPressMoved) return;
+      longPressTile.classList.add("is-longpress");
+      suppressClick = true;
+      try {
+        if (navigator.vibrate) navigator.vibrate(12);
+      } catch {
+        /* ignore */
+      }
+      setEditing(true);
+      clearLongPress();
+    }, LONG_PRESS_MS);
+    const onMove = (moveEvent) => {
+      const pt = pointerPoint(moveEvent);
+      if (Math.abs(pt.x - start.x) > MOVE_CANCEL_PX || Math.abs(pt.y - start.y) > MOVE_CANCEL_PX) {
+        longPressMoved = true;
+        clearLongPress();
+        cleanup();
+      }
+    };
+    const onUp = () => {
+      clearLongPress();
+      cleanup();
+    };
+    const cleanup = () => {
+      grid.removeEventListener("pointermove", onMove);
+      grid.removeEventListener("pointerup", onUp);
+      grid.removeEventListener("pointercancel", onUp);
+    };
+    grid.addEventListener("pointermove", onMove);
+    grid.addEventListener("pointerup", onUp);
+    grid.addEventListener("pointercancel", onUp);
+  });
+
+  grid.addEventListener(
+    "click",
+    (event) => {
+      if (!suppressClick) return;
+      event.preventDefault();
+      event.stopPropagation();
+      suppressClick = false;
+    },
+    true
+  );
+
+  grid.addEventListener("contextmenu", (event) => {
+    if (event.target.closest("[data-launcher-tile]")) event.preventDefault();
+  });
 
   grid.addEventListener("dragstart", (event) => {
     if (!editing) return;

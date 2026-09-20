@@ -4,16 +4,20 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f3eee4" data-theme-color />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="StonePi" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.svg" />
     <title>Authentication · StonePi</title>
     {% include "_theme_boot.html" %}
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/static/css/app.css?v=20260920b" />
+    <link rel="stylesheet" href="/static/css/app.css?v=20260920j" />
   </head>
-  <body class="login-body">
-    <div class="login-shell">
-      <header class="login-top">
+  <body class="login-body status-body">
+    <div class="login-shell status-shell">
+      <header class="login-top status-top">
         <p class="brand">
           <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
             <rect x="4" y="3.5" width="16" height="17" rx="2"/>
@@ -23,23 +27,77 @@
           </svg>
           StonePi
         </p>
+        <form method="post" action="/logout" class="status-signout">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <button class="icon-btn sign-out" type="submit" aria-label="Sign out" title="Sign out">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 7V5a2 2 0 0 1 2-2h7v18h-7a2 2 0 0 1-2-2v-2"/><path d="M15 12H3m0 0 3-3m-3 3 3 3"/></svg>
+          </button>
+        </form>
       </header>
-      <main class="card login-card">
+
+      <main class="card login-card status-card">
         <h1>{{ service }}</h1>
-        <p class="lede">Signed in as {{ user.display_name }} on {{ hostname }}.</p>
-        <p class="hint">This service issues the shared StonePi session. App access and permissions are managed from the dashboard Users tab.</p>
-        <p class="hint">Apps: {{ user.apps|join(', ') or 'none' }}</p>
-        <div class="row-actions">
-          <a class="btn btn-ghost btn-with-icon" href="{{ home_url }}">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6"/></svg>
-            Back to apps
+        <p class="lede">Signed in as {{ user.display_name }} · {{ hostname }}</p>
+        <p class="hint">Install on your phone, open Pi tools, or continue to your apps. Access is managed on the Users tab.</p>
+
+        <div class="hub-actions">
+          <a class="btn btn-primary btn-block btn-with-icon" href="{{ home_url }}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5"/><path d="M7 10.5V20h10v-9.5"/></svg>
+            Continue to apps
           </a>
-          <form method="post" action="/logout">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-            <button class="btn btn-primary" type="submit">Sign out</button>
-          </form>
+          <div class="hub-secondary">
+            <button type="button" class="hub-link" data-install-open>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><path d="M5 19h14"/></svg>
+              Add to Home Screen
+            </button>
+            {% if is_admin %}
+            <a class="hub-link" href="{{ cockpit_url }}">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="12" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+              Pi Management
+            </a>
+            {% endif %}
+          </div>
         </div>
       </main>
     </div>
+
+    <div class="install-sheet" data-install-sheet hidden>
+      <div class="install-sheet-panel" role="dialog" aria-modal="true" aria-labelledby="install-title">
+        <h2 id="install-title">Add StonePi to Home Screen</h2>
+        <ol class="install-steps">
+          <li>Open this page in <strong>Safari</strong> (iPhone) or Chrome (Android).</li>
+          <li>Tap the <strong>Share</strong> button.</li>
+          <li>Choose <strong>Add to Home Screen</strong>, then Add.</li>
+        </ol>
+        <p class="hint">The home icon opens your apps at {{ home_url }}.</p>
+        <div class="row-actions">
+          <button type="button" class="btn btn-primary" data-install-close>Got it</button>
+        </div>
+      </div>
+    </div>
+    <script>
+      (function () {
+        var sheet = document.querySelector("[data-install-sheet]");
+        var openBtn = document.querySelector("[data-install-open]");
+        var closeBtn = document.querySelector("[data-install-close]");
+        if (!sheet || !openBtn) return;
+        function open() {
+          sheet.hidden = false;
+          sheet.classList.add("is-open");
+        }
+        function close() {
+          sheet.hidden = true;
+          sheet.classList.remove("is-open");
+        }
+        openBtn.addEventListener("click", open);
+        closeBtn?.addEventListener("click", close);
+        sheet.addEventListener("click", function (event) {
+          if (event.target === sheet) close();
+        });
+        document.addEventListener("keydown", function (event) {
+          if (event.key === "Escape") close();
+        });
+      })();
+    </script>
   </body>
 </html>
