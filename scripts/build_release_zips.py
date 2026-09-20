@@ -152,7 +152,7 @@ def main() -> None:
     parser.add_argument("--platform", action="store_true", help="Also build stonepi-platform-*.zip")
     parser.add_argument("--all", action="store_true", help="Build every app zip and the platform pack")
     args = parser.parse_args()
-    out_dir = args.out
+    out_dir = args.out.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     apps = [item.strip() for item in args.apps.split(",") if item.strip()]
     if args.all:
@@ -163,11 +163,19 @@ def main() -> None:
             raise SystemExit(f"Unknown app id: {app_id}")
         path = build_app_zip(app_id, out_dir)
         built.append(path)
-        print(f"wrote {path.relative_to(ROOT)}")
+        try:
+            shown = path.relative_to(ROOT)
+        except ValueError:
+            shown = path
+        print(f"wrote {shown}")
     if args.platform or args.all:
         path = build_platform_zip(out_dir)
         built.append(path)
-        print(f"wrote {path.relative_to(ROOT)}")
+        try:
+            shown = path.relative_to(ROOT)
+        except ValueError:
+            shown = path
+        print(f"wrote {shown}")
     print(f"{len(built)} package(s) in {out_dir}")
 
 
