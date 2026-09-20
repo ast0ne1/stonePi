@@ -293,6 +293,15 @@ def parse_permissions_form(form, apps: list[dict]) -> dict[str, dict[str, bool]]
     return permissions
 
 
+def ensure_fileserve_for_studio_publish(apps: list[str], permissions: dict) -> list[str]:
+    """Studio Publish lands in FileServe — grant FileServe when can_publish is on."""
+    out = list(apps)
+    studio_perms = (permissions or {}).get("studio") or {}
+    if studio_perms.get("can_publish") and "fileserve" not in out:
+        out.append("fileserve")
+    return out
+
+
 def launcher_tiles(user, cookies: dict[str, str] | None = None) -> list[dict]:
     """Product apps the signed-in user may open (not Auth/Dashboard chrome)."""
     catalog = {item["id"]: item for item in catalog_apps(include_auth=False, cookies=cookies)}

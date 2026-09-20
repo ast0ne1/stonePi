@@ -49,20 +49,20 @@
       </div>
       <div class="people-access">
         <h3>App access</h3>
-        <p class="muted people-access-hint">Turn on an app to show it on Home and allow sign-in. Permissions appear under each app that has them.</p>
-        <div class="access-grid">
+        <p class="muted people-access-hint">Turn on an app to show it on Home and allow sign-in. Permissions appear under each app that has them. Studio <strong>Publish to FileServe</strong> also needs the FileServe app (checked automatically).</p>
+        <div class="access-grid" data-access-grid>
           {% for app in apps %}
           {% set person_perms = (person.permissions or {}).get(app.id, {}) %}
           <div class="access-app{% if not app.enabled %} is-disabled{% endif %}">
             <label class="access-toggle">
-              <input type="checkbox" name="apps" value="{{ app.id }}" {% if app.id in person.apps or person.is_admin %}checked{% endif %} {% if not app.enabled %}disabled{% endif %} />
+              <input type="checkbox" name="apps" value="{{ app.id }}" {% if app.id in person.apps or person.is_admin %}checked{% endif %} {% if not app.enabled %}disabled{% endif %} {% if app.id == 'fileserve' %}data-app-fileserve{% endif %} />
               <span>{{ app.name }}</span>
               {% if not app.enabled %}<span class="chip chip-quiet">Off</span>{% endif %}
             </label>
             {% if app.capabilities and app.enabled %}
             <div class="access-caps">
               {% for cap in app.capabilities %}
-              <label class="inline"><input type="checkbox" name="perm_{{ app.id }}_{{ cap.id }}" value="1" {% if person_perms.get(cap.id) or person.is_admin %}checked{% endif %} /> {{ cap.label }}</label>
+              <label class="inline"><input type="checkbox" name="perm_{{ app.id }}_{{ cap.id }}" value="1" {% if person_perms.get(cap.id) or person.is_admin %}checked{% endif %} {% if app.id == 'studio' and cap.id == 'can_publish' %}data-studio-can-publish{% endif %} /> {{ cap.label }}</label>
               {% endfor %}
             </div>
             {% endif %}
@@ -101,19 +101,19 @@
     </div>
     <div class="people-access">
       <h3>App access</h3>
-      <p class="muted people-access-hint">Only Dashboard starts on. Grant other apps after you’ve set the password.</p>
-      <div class="access-grid">
+      <p class="muted people-access-hint">Only Dashboard starts on. Grant other apps after you’ve set the password. Studio <strong>Publish to FileServe</strong> also needs FileServe (checked automatically).</p>
+      <div class="access-grid" data-access-grid>
         {% for app in apps %}
         <div class="access-app{% if not app.enabled %} is-disabled{% endif %}">
           <label class="access-toggle">
-            <input type="checkbox" name="apps" value="{{ app.id }}" {% if app.id == 'dashboard' and app.enabled %}checked{% endif %} {% if not app.enabled %}disabled{% endif %} />
+            <input type="checkbox" name="apps" value="{{ app.id }}" {% if app.id == 'dashboard' and app.enabled %}checked{% endif %} {% if not app.enabled %}disabled{% endif %} {% if app.id == 'fileserve' %}data-app-fileserve{% endif %} />
             <span>{{ app.name }}</span>
             {% if not app.enabled %}<span class="chip chip-quiet">Off</span>{% endif %}
           </label>
           {% if app.capabilities and app.enabled %}
           <div class="access-caps">
             {% for cap in app.capabilities %}
-            <label class="inline"><input type="checkbox" name="perm_{{ app.id }}_{{ cap.id }}" value="1" /> {{ cap.label }}</label>
+            <label class="inline"><input type="checkbox" name="perm_{{ app.id }}_{{ cap.id }}" value="1" {% if app.id == 'studio' and cap.id == 'can_publish' %}data-studio-can-publish{% endif %} /> {{ cap.label }}</label>
             {% endfor %}
           </div>
           {% endif %}

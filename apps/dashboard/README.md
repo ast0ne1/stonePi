@@ -20,7 +20,7 @@ One place for people and apps — separate from **Cockpit** (Linux host admin on
 | **Home** | Launcher tiles for apps the signed-in user may access; **Edit order** = drag-to-place (autosave) |
 | **Health** | Admin monitor: alerts, disk, backup, whether each app is responding (URLs use the host you opened) |
 | **Services** | Manage apps: Route + Port, enable/disable for the household; open a service to start/stop/restart |
-| **Users** | Household accounts, app grants, capability flags |
+| **Users** | Household accounts, app grants, capability flags (Studio Publish also needs FileServe) |
 | **Settings** | General (including **network exposure**), Display, Vault, Automations, Updates, Backup, About |
 
 ## Platform Settings tabs
