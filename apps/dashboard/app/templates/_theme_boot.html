@@ -27,6 +27,15 @@
       }
       return fallback;
     }
+    function readView(key, allowed, fallback) {
+      var value = readCookie(key) || localStorage.getItem(key) || fallback;
+      if (allowed.indexOf(value) < 0) value = fallback;
+      try {
+        localStorage.setItem(key, value);
+      } catch (e) {}
+      writeCookie(key, value);
+      return value;
+    }
     var pref = readPref("stonepi-theme", ["newscast-theme", "fileserve-theme", "eventtrakr-theme"], "system");
     var dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     var theme = pref === "system" ? (dark ? "dark" : "light") : pref;
@@ -46,5 +55,41 @@
     document.documentElement.dataset.themePref = pref;
     document.documentElement.dataset.palette = palette;
     document.documentElement.style.colorScheme = theme;
+
+    document.documentElement.dataset.viewHome = readView(
+      "stonepi-view-home",
+      ["cards", "list", "icons"],
+      "cards"
+    );
+    document.documentElement.dataset.viewHealth = readView(
+      "stonepi-view-health",
+      ["full", "expandable", "compact"],
+      "full"
+    );
+    document.documentElement.dataset.viewHealthVersion = readView(
+      "stonepi-view-health-version",
+      ["1", "0"],
+      "1"
+    );
+    document.documentElement.dataset.viewHealthUrl = readView(
+      "stonepi-view-health-url",
+      ["1", "0"],
+      "1"
+    );
+    document.documentElement.dataset.viewServices = readView(
+      "stonepi-view-services",
+      ["full", "expandable", "compact"],
+      "full"
+    );
+    document.documentElement.dataset.viewServicesRoute = readView(
+      "stonepi-view-services-route",
+      ["1", "0"],
+      "1"
+    );
+    document.documentElement.dataset.viewServicesPort = readView(
+      "stonepi-view-services-port",
+      ["1", "0"],
+      "1"
+    );
   })();
 </script>

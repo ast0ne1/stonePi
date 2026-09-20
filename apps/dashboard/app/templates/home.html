@@ -5,13 +5,12 @@
 <section class="hero home-hero">
   <div class="home-hero-row">
     <div>
-      <h1>StonePi</h1>
-      <p class="lede" data-launcher-lede>Choose an app{% if user.display_name %}, {{ user.display_name }}{% endif %}.</p>
+      <h1>Home</h1>
+      <p class="lede" data-launcher-lede>Your apps{% if user.display_name %} · {{ user.display_name }}{% endif %}</p>
     </div>
     {% if tiles and tiles|length > 1 %}
-    <button type="button" class="btn btn-ghost btn-with-icon" data-launcher-edit-toggle aria-pressed="false">
-      {{ svg('manage') }}
-      <span data-launcher-edit-label>Edit order</span>
+    <button type="button" class="icon-btn" data-launcher-edit-toggle aria-pressed="false" aria-label="Reorder apps" title="Reorder">
+      {{ svg('reorder') }}
     </button>
     {% endif %}
   </div>
@@ -21,6 +20,10 @@
 <form method="post" action="/launcher-order" class="launcher-form" data-launcher-form>
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
   <input type="hidden" name="order" value="{% for tile in tiles %}{{ tile.id }}{% if not loop.last %},{% endif %}{% endfor %}" data-launcher-order />
+  <div class="launcher-edit-bar" data-launcher-edit-bar hidden>
+    <p class="muted">Hold a tile to reorder, then drag. Saves as you go.</p>
+    <button type="button" class="btn btn-ghost btn-with-icon" data-launcher-cancel>{{ svg('check') }} Done</button>
+  </div>
   <div class="launcher-grid" data-launcher-grid>
     {% for tile in tiles %}
     <div class="launcher-tile" style="--tile-accent: {{ tile.color }}" data-launcher-tile data-app-id="{{ tile.id }}">
@@ -28,7 +31,7 @@
         <span class="launcher-icon" aria-hidden="true">{{ svg(tile.icon or tile.id) }}</span>
         <span class="launcher-copy">
           <strong>{{ tile.name }}</strong>
-          <span>{{ tile.description }}</span>
+          <span class="launcher-desc">{{ tile.description }}</span>
         </span>
       </a>
       <div class="launcher-reorder" data-launcher-reorder hidden aria-hidden="true">

@@ -4,10 +4,10 @@
 {% block content %}
 <section class="hero">
   <div class="hero-row">
-    <div>
+    <div class="hero-copy">
       <h1>Health</h1>
-      <p class="lede">Monitor StonePi — host status, disk, backup, and whether each app is responding.</p>
-      <p class="muted">{{ hostname }}.local · StonePi {{ platform_version }} · signed in as {{ user.display_name }}</p>
+      <p class="lede">Host status, disk, backup, and whether each app is responding.</p>
+      <p class="muted hero-meta">{{ hostname }}.local · StonePi {{ platform_version }} · {{ user.display_name }}</p>
     </div>
     <a class="btn btn-ghost btn-with-icon" href="{{ cockpit_url }}">{{ svg('cockpit') }} Cockpit</a>
   </div>
@@ -26,36 +26,40 @@
 </aside>
 {% endif %}
 
-<div class="grid">
-  <section class="card stat">
-    <p class="muted">Apps</p>
-    <strong>{{ healthy_count }} / {{ cards|length }}</strong>
-    <p class="muted">Responding / total</p>
-  </section>
-  <section class="card stat">
-    <p class="muted">Users</p>
-    {% if users_unavailable %}
-    <strong>—</strong>
-    <p class="muted">Could not load accounts</p>
-    {% else %}
-    <strong>{{ user_count }}</strong>
-    <p class="muted">Household accounts</p>
-    {% endif %}
-  </section>
-  <section class="card stat{% if disk_warn %} is-warn{% endif %}">
-    <p class="muted">Disk used</p>
-    {% if disk_pct is not none %}
-    <strong>{{ disk_pct }}%</strong>
-    {% else %}
-    <strong>—</strong>
-    {% endif %}
-    <p class="muted">Used on the StonePi host</p>
-  </section>
-  <section class="card stat{% if not backup_summary.ok %} is-warn{% endif %}">
-    <p class="muted">Last backup</p>
-    <strong>{{ backup_summary.label }}</strong>
-    <p class="muted">{{ backup_summary.detail }}</p>
-  </section>
+<div class="health-stats">
+  <div class="health-stats-row">
+    <section class="card stat">
+      <p class="stat-label muted"><span class="stat-icon" aria-hidden="true">{{ svg('dashboard') }}</span> Apps</p>
+      <strong>{{ healthy_count }} / {{ cards|length }}</strong>
+      <p class="muted">Responding / total</p>
+    </section>
+    <section class="card stat">
+      <p class="stat-label muted"><span class="stat-icon" aria-hidden="true">{{ svg('users') }}</span> Users</p>
+      {% if users_unavailable %}
+      <strong>—</strong>
+      <p class="muted">Could not load accounts</p>
+      {% else %}
+      <strong>{{ user_count }}</strong>
+      <p class="muted">Household accounts</p>
+      {% endif %}
+    </section>
+  </div>
+  <div class="health-stats-row">
+    <section class="card stat{% if disk_warn %} is-warn{% endif %}">
+      <p class="stat-label muted"><span class="stat-icon" aria-hidden="true">{{ svg('disk') }}</span> Disk used</p>
+      {% if disk_pct is not none %}
+      <strong>{{ disk_pct }}%</strong>
+      {% else %}
+      <strong>—</strong>
+      {% endif %}
+      <p class="muted">Used on the StonePi host</p>
+    </section>
+    <section class="card stat{% if not backup_summary.ok %} is-warn{% endif %}">
+      <p class="stat-label muted"><span class="stat-icon" aria-hidden="true">{{ svg('backup') }}</span> Last backup</p>
+      <strong>{{ backup_summary.label }}</strong>
+      <p class="muted">{{ backup_summary.detail }}</p>
+    </section>
+  </div>
 </div>
 
 <div class="section-head">
@@ -65,30 +69,38 @@
   {% endif %}
 </div>
 {% if cards %}
-<div class="service-grid">
+<div class="service-grid health-app-grid">
   {% for card in cards %}
-  <a class="card service-card{% if card.enabled is defined and not card.enabled %} is-disabled{% endif %}" href="{{ card.url }}">
+  <section class="card service-card service-card-health is-managed{% if card.enabled is defined and not card.enabled %} is-disabled{% endif %}{% if not card.health.ok %} is-unhealthy{% endif %}" data-expand-card>
+    <div class="service-card-actions">
+      <button type="button" class="icon-btn service-expand-btn" data-card-expand aria-expanded="false" aria-label="Show details for {{ card.name }}" title="Details">{{ svg('chevron-down') }}</button>
+      <a class="icon-btn" href="{{ card.url }}" aria-label="Open {{ card.name }}" title="Open">{{ svg('open') }}</a>
+    </div>
     <div class="service-card-head">
       {{ service_icon(card.id, card.color or '') }}
-      <div>
-        <h3>{{ card.name }}</h3>
-        <p class="pill"><span class="dot {% if card.health.ok %}ok{% else %}bad{% endif %}"></span>
-          {% if card.health.ok %}Healthy{% else %}Down{% endif %}
-          · {% if card.unit_status == 'local' %}local process{% else %}{{ card.unit_status }}{% endif %}
-        </p>
-        <div class="service-meta">
-          <div class="service-meta-row">
+      <div class="service-card-body">
+        <h3><a class="service-card-title-link" href="{{ card.url }}">{{ card.name }}</a></h3>
+        <div class="service-meta" data-health-meta>
+          <div class="service-meta-row" data-health-version>
             <span class="meta-label">Version</span>
             <span class="meta-value">{{ card.version or '—' }}</span>
           </div>
-          <div class="service-meta-row">
+          <div class="service-meta-row" data-health-url>
             <span class="meta-label">URL</span>
             <span class="meta-value">{% set raw_host = (request.headers.get('x-forwarded-host') or request.headers.get('host') or (hostname ~ '.local')).split(',')[0].strip() %}{% set url_scheme = (request.headers.get('x-forwarded-proto') or request.url.scheme)|string %}{% set url_scheme = url_scheme.split(',')[0].strip() %}{% if ':' in raw_host %}{{ url_scheme }}://{{ raw_host.split(':')[0] }}:{{ card.port }}/{% elif card.id == 'dashboard' %}{{ url_scheme }}://{{ raw_host }}/{% else %}{{ url_scheme }}://{{ raw_host }}{{ card.path }}{% endif %}</span>
           </div>
         </div>
       </div>
     </div>
-  </a>
+    <div class="service-card-foot health-status-foot">
+      <p class="health-status{% if card.health.ok %} is-ok{% else %} is-bad{% endif %}">
+        <span class="dot {% if card.health.ok %}ok{% else %}bad{% endif %}"></span>
+        {% if card.health.ok %}Healthy{% else %}Down{% endif %}
+        <span class="health-status-sep">·</span>
+        <span class="health-status-unit">{% if card.unit_status == 'local' %}local process{% else %}{{ card.unit_status }}{% endif %}</span>
+      </p>
+    </div>
+  </section>
   {% endfor %}
 </div>
 {% else %}

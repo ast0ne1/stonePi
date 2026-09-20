@@ -16,7 +16,7 @@
 {% if settings_tab == 'general' %}
 <section class="card stack">
   <h2>Appearance</h2>
-  <p class="muted">Tap a colour palette — it saves in this browser immediately (no Save button). Light / Dark / Auto stay in the header on every app. Prefs are per hostname: stay on one URL (for example <code>stonepi.home</code>) so <code>.local</code> does not look different.</p>
+  <p class="muted">Tap a palette — saves on this browser. Light / Dark / Auto stay in the header. Prefs are per hostname (e.g. <code>stonepi.home</code>).</p>
   <div class="palette-picker" role="group" aria-label="Colour palette">
     <button type="button" class="palette-option" data-palette-set="default" aria-pressed="false">
       <span class="palette-swatch" data-swatch="default" aria-hidden="true"></span>
@@ -60,6 +60,42 @@
       <button type="submit" class="btn btn-primary btn-with-icon">{{ svg('check') }} Update password</button>
     </div>
   </form>
+</section>
+
+<section class="card stack" id="view-options">
+  <h2>View options</h2>
+  <p class="muted">Layout density for Home, Health, and Services on this browser (desktop and phone). Choose options, then Save.</p>
+
+  <fieldset class="view-fieldset">
+    <legend>Home layout</legend>
+    <label class="inline"><input type="radio" name="view_home" value="cards" data-view-set="home" data-view-value="cards" /> Cards (default)</label>
+    <label class="inline"><input type="radio" name="view_home" value="list" data-view-set="home" data-view-value="list" /> List</label>
+    <label class="inline"><input type="radio" name="view_home" value="icons" data-view-set="home" data-view-value="icons" /> Icons only</label>
+  </fieldset>
+
+  <fieldset class="view-fieldset">
+    <legend>Health app cards</legend>
+    <label class="inline"><input type="radio" name="view_health" value="full" data-view-set="health" data-view-value="full" /> Full (version &amp; URL always shown)</label>
+    <label class="inline"><input type="radio" name="view_health" value="expandable" data-view-set="health" data-view-value="expandable" /> Expandable (collapsed; tap to show details)</label>
+    <label class="inline"><input type="radio" name="view_health" value="compact" data-view-set="health" data-view-value="compact" /> Compact (status only)</label>
+    <label class="inline view-toggle-row"><input type="checkbox" data-view-set="health-version" value="1" /> Show version</label>
+    <label class="inline view-toggle-row"><input type="checkbox" data-view-set="health-url" value="1" /> Show URL</label>
+    <p class="muted view-hint">Version and URL apply to Full and Expandable.</p>
+  </fieldset>
+
+  <fieldset class="view-fieldset">
+    <legend>Services cards</legend>
+    <label class="inline"><input type="radio" name="view_services" value="full" data-view-set="services" data-view-value="full" /> Full (route &amp; port always shown)</label>
+    <label class="inline"><input type="radio" name="view_services" value="expandable" data-view-set="services" data-view-value="expandable" /> Expandable (collapsed; tap to show details)</label>
+    <label class="inline"><input type="radio" name="view_services" value="compact" data-view-set="services" data-view-value="compact" /> Compact (toggle &amp; actions only)</label>
+    <label class="inline view-toggle-row"><input type="checkbox" data-view-set="services-route" value="1" /> Show route</label>
+    <label class="inline view-toggle-row"><input type="checkbox" data-view-set="services-port" value="1" /> Show port</label>
+    <p class="muted view-hint">Route and port apply to Full and Expandable.</p>
+  </fieldset>
+  <div class="row-actions">
+    <button type="button" class="btn btn-primary btn-with-icon" data-view-save>{{ svg('check') }} Save view options</button>
+  </div>
+  <p class="muted" data-view-status>Choose options, then Save for this browser.</p>
 </section>
 
 {% if user.is_admin and not settings_appearance_only %}

@@ -2,11 +2,9 @@
 {% from "_icons.html" import svg %}
 {% block title %}Users · StonePi{% endblock %}
 {% block content %}
-<section class="hero hero-row">
-  <div>
-    <h1>Users</h1>
-    <p class="lede">Household accounts for every StonePi app. Open a row to change apps and permissions. Everyone can also change their own password under <a href="/settings?tab=general#account-password">Settings → Your password</a>.</p>
-  </div>
+<section class="hero">
+  <h1>Users</h1>
+  <p class="lede">Household accounts and app access. Passwords: <a href="/settings?tab=general#account-password">Settings → Your password</a>.</p>
 </section>
 
 {% include "_household_users.html" %}

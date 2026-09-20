@@ -685,13 +685,13 @@ SETTINGS_TABS = [
     ("about", "About"),
 ]
 SETTINGS_LEDES = {
-    "general": "Appearance and your password for this browser; admins also set network exposure here. Household accounts stay under Users.",
-    "display": "TRMNL layout and webhook push of household display data.",
-    "vault": "Encrypted secrets and config for StonePi apps and platform services.",
-    "automations": "Thin when→then jobs: USB backup, Display push on Watch or backup.",
-    "update": "Check GitHub Releases for per-app packages and the platform pack.",
-    "backup": "Full SD-card recovery is started from Cockpit so the backup can see the USB disk.",
-    "about": "App name, description, GitHub, and the version running here.",
+    "general": "Appearance, password, and network exposure. Accounts stay under Users.",
+    "display": "TRMNL layout and household display push.",
+    "vault": "Encrypted secrets for apps and platform services.",
+    "automations": "When→then jobs: USB backup, Display push on Watch or backup.",
+    "update": "GitHub Releases for app packages and the platform pack.",
+    "backup": "Full SD recovery starts from Cockpit so backup can see the USB disk.",
+    "about": "Name, description, GitHub, and the version running here.",
 }
 
 # Friendly catalog for Settings → Vault (dropdown). Values are env/Vault key names.
@@ -770,7 +770,7 @@ def settings_page(request: Request, tab: str = "general"):
             "active": "settings",
             "settings_tab": "general",
             "settings_tabs": [("general", "General")],
-            "settings_lede": "Appearance and your password for StonePi apps on this hostname.",
+            "settings_lede": "Appearance and your password for this browser.",
             "message": request.query_params.get("msg") or None,
             "error": request.query_params.get("err") or None,
             **about,

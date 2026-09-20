@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from app.config import ROOT_DIR, env
+from app.config import ROOT_DIR, env, resolve_cockpit_url
 from app.db import get_db, init_db
 from app import users as users_svc
 from stonepi_auth import COOKIE_NAME, clear_cookie, encode_session, set_cookie
@@ -35,6 +35,31 @@ def _https(request: Request) -> bool:
     return request_is_https(request)
 
 
+def _request_host(request: Request) -> str:
+    return (
+        (request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc)
+        .split(",")[0]
+        .strip()
+    )
+
+
+def _is_auth_root_next(nxt: str) -> bool:
+    """True when next would land on the Auth hub instead of portal Home."""
+    if not nxt or nxt == "/":
+        return True
+    if nxt.startswith("/") and not nxt.startswith("//"):
+        path = nxt.split("?", 1)[0].rstrip("/") or "/"
+        return path in ("/", "/auth")
+    parsed = urlparse(nxt)
+    path = (parsed.path or "/").rstrip("/") or "/"
+    if path == "/auth":
+        return True
+    if path == "/":
+        port = parsed.port
+        return port == env.port or port == 8011
+    return False
+
+
 def _theme_ctx(request: Request) -> dict[str, str]:
     """First-paint theme from cookies so auth status/login match the rest of StonePi."""
     pref = (request.cookies.get("stonepi-theme") or "system").strip().lower()
@@ -57,11 +82,7 @@ def _request_origin(request: Request) -> str:
         .split(",")[0]
         .strip()
     )
-    host = (
-        (request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc)
-        .split(",")[0]
-        .strip()
-    )
+    host = _request_host(request)
     if not host:
         return ""
     return f"{proto}://{host}".rstrip("/")
@@ -71,21 +92,27 @@ def _resolve_next(value: str | None, request: Request) -> str:
     """Keep post-login redirects on the host the browser used (.home / .local / IP).
 
     Only rewrite to PUBLIC_ORIGIN for local split-port dev (auth :8011 → dashboard :8010).
+    Auth-root next values map to portal Home so a normal sign-in skips the hub.
     """
     nxt = safe_next(value)
     if nxt.startswith("http://") or nxt.startswith("https://"):
-        return nxt
-    configured = (env.public_origin or "").rstrip("/")
-    req_origin = _request_origin(request)
-    if (
-        configured
-        and "127.0.0.1" in configured
-        and configured != req_origin
-        and nxt.startswith("/")
-        and not nxt.startswith("//")
-    ):
-        return configured + nxt
-    return nxt
+        resolved = nxt
+    else:
+        configured = (env.public_origin or "").rstrip("/")
+        req_origin = _request_origin(request)
+        if (
+            configured
+            and "127.0.0.1" in configured
+            and configured != req_origin
+            and nxt.startswith("/")
+            and not nxt.startswith("//")
+        ):
+            resolved = configured + nxt
+        else:
+            resolved = nxt
+    if _is_auth_root_next(resolved):
+        return portal_home_url(request, env.public_origin)
+    return resolved
 
 
 def _rate_limited(request: Request, username: str) -> bool:
@@ -200,20 +227,51 @@ def root(request: Request, db: Annotated[Session, Depends(get_db)]):
         return RedirectResponse("/login", status_code=303)
     token = csrf_from_request(request.cookies)
     home_url = portal_home_url(request, env.public_origin)
+    payload = users_svc.user_payload(user, db)
     response = templates.TemplateResponse(
         request,
         "status.html",
         {
             **_theme_ctx(request),
-            "user": users_svc.user_payload(user, db),
+            "user": payload,
             "hostname": env.hostname,
             "service": "Authentication",
             "csrf_token": token,
             "home_url": home_url,
+            "cockpit_url": resolve_cockpit_url(_request_host(request)),
+            "is_admin": bool(payload.get("is_admin")),
         },
     )
     set_csrf_cookie(response, token, secure=_https(request))
     return response
+
+
+@router.get("/manifest.webmanifest")
+def manifest(request: Request):
+    home = portal_home_url(request, env.public_origin)
+    icon = "/static/icons/apple-touch-icon.svg"
+    return JSONResponse(
+        {
+            "name": "StonePi",
+            "short_name": "StonePi",
+            "description": "Household apps on your StonePi",
+            "start_url": home,
+            "scope": home,
+            "display": "standalone",
+            "background_color": "#f3eee4",
+            "theme_color": "#f3eee4",
+            "icons": [
+                {
+                    "src": icon,
+                    "sizes": "180x180",
+                    "type": "image/svg+xml",
+                    "purpose": "any",
+                }
+            ],
+        },
+        media_type="application/manifest+json",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @router.get("/login", response_class=HTMLResponse)
