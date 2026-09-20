@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Search · PriceScout{% endblock %}
+{% block content %}
+<section class="hero">
+  <h1>Search</h1>
+  <p class="lede">Compare the same product across your enabled stores.</p>
+</section>
+
+<form class="search-form" method="get" action="/search" data-search-form>
+  <label class="sr-only" for="q">Search products</label>
+  <input id="q" name="q" type="search" value="{{ q }}" placeholder="Search products…" autocomplete="off" />
+  <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("search") }} Search</button>
+  {% if searched %}
+  <a class="btn btn-ghost btn-with-icon" href="/search">{{ icon("clear") }} Clear</a>
+  {% endif %}
+</form>
+
+{% if not searched %}
+  {% if recent %}
+  <div class="stack">
+    <h2 class="section-title">Recent searches</h2>
+    <div class="chips">
+      {% for r in recent %}
+      <a class="chip-btn" href="/search?q={{ r|urlencode }}">{{ r }}</a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+  <div class="stack">
+    <h2 class="section-title">Browse by category</h2>
+    <div class="chips">
+      {% for c in categories %}
+      <a class="chip-btn" href="/search?category={{ c|urlencode }}">{{ c }}</a>
+      {% endfor %}
+    </div>
+  </div>
+{% else %}
+  {% if category %}
+  <p class="hint">Category: {{ category }}</p>
+  {% endif %}
+  {% if not results %}
+  <div class="empty card stack">
+    <h2>No matches</h2>
+    <p class="hint">Try another spelling, or refresh Sources if offers look stale.</p>
+    <a class="btn btn-ghost btn-with-icon" href="/search">{{ icon("clear") }} Clear search</a>
+  </div>
+  {% else %}
+  <ul class="offer-list">
+    {% for o in results %}
+    <li class="offer-row">
+      {% if favicons.get(o.source_id) %}
+      <img class="store-icon" src="{{ favicons[o.source_id] }}" alt="" width="28" height="28" />
+      {% endif %}
+      <div class="offer-body">
+        <p class="offer-title">
+          {% if o.offer_url %}
+          <a class="offer-link" href="{{ o.offer_url }}" target="_blank" rel="noopener noreferrer">{{ o.title }}</a>
+          {% else %}
+          {{ o.title }}
+          {% endif %}
+        </p>
+        <p class="offer-meta">
+          {{ o.source_name }}{% if o.unit_text %} · {{ o.unit_text }}{% endif %}
+          {% if o.catalog_url %} · <a class="text-link" href="{{ o.catalog_url }}" target="_blank" rel="noopener noreferrer">Leaflet</a>{% endif %}
+        </p>
+      </div>
+      <p class="offer-price">{% if o.offer_url %}<a class="offer-link" href="{{ o.offer_url }}" target="_blank" rel="noopener noreferrer">{{ format_price(o.price_dkk, currency) }}</a>{% else %}{{ format_price(o.price_dkk, currency) }}{% endif %}</p>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+  (function () {
+    var form = document.querySelector("[data-search-form]");
+    var input = document.getElementById("q");
+    if (!form || !input) return;
+    input.addEventListener("search", function () {
+      if (!input.value.trim()) window.location.href = "/search";
+    });
+  })();
+</script>
+{% endblock %}

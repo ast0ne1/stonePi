@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Shopping List · PriceScout{% endblock %}
+{% block content %}
+<section class="hero">
+  <h1>Shopping List</h1>
+  <p class="lede">Checklist plus a quick best-price hint from current offers.</p>
+</section>
+
+<form method="post" action="/list/add" class="search-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+  <label class="sr-only" for="label">Add item</label>
+  <input id="label" name="label" type="text" placeholder="Add item…" required />
+  <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("plus") }} Add</button>
+</form>
+
+{% if not items %}
+<div class="empty card stack">
+  <h2>List is empty</h2>
+  <p class="hint">Add milk, coffee, or anything you want to price-check.</p>
+</div>
+{% else %}
+<ul class="check-list">
+  {% for item in items %}
+  <li class="check-row{% if item.checked %} is-checked{% endif %}">
+    <form method="post" action="/list/toggle" class="check-toggle">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="item_id" value="{{ item.id }}" />
+      <input type="hidden" name="checked" value="{{ 0 if item.checked else 1 }}" />
+      <button type="submit" class="check-btn" aria-label="Toggle">{{ '✓' if item.checked else '○' }}</button>
+    </form>
+    <span>{{ item.label }}</span>
+    <form method="post" action="/list/delete">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="item_id" value="{{ item.id }}" />
+      <button class="btn btn-ghost btn-with-icon" type="submit" data-confirm="Remove this item?">{{ icon("trash") }} Remove</button>
+    </form>
+  </li>
+  {% endfor %}
+</ul>
+
+<form method="post" action="/list/to-pinboard" class="card stack pinboard-send">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+  <h2>Send to Pinboard</h2>
+  <p class="hint">Posts unchecked items as one household reminder on Pinboard. Needs a Pinboard grant.</p>
+  <label>
+    Due date (optional)
+    <input type="date" name="due" />
+  </label>
+  {% if can_pinboard %}
+  <button class="btn btn-primary btn-with-icon" type="submit" data-confirm="Send unchecked items to Pinboard as a reminder?">{{ icon("pin") }} Send to Pinboard</button>
+  {% else %}
+  <p class="banner">Pinboard access required — ask an admin to enable Pinboard for your account.</p>
+  <button class="btn btn-primary btn-with-icon" type="submit" disabled>{{ icon("pin") }} Send to Pinboard</button>
+  {% endif %}
+</form>
+{% endif %}
+
+{% if summary %}
+<section class="stack">
+  <h2 class="section-title">Best prices by store</h2>
+  <ul class="offer-list">
+    {% for row in summary %}
+    <li class="offer-row">
+      <div class="offer-body">
+        <p class="offer-title">{{ row.label }}</p>
+        {% if row.best %}
+        <p class="offer-meta">
+          Best at {{ row.best.source_name }}{% if row.best.unit_text %} · {{ row.best.unit_text }}{% endif %}
+          {% if row.best.offer_url %} · <a class="text-link" href="{{ row.best.offer_url }}" target="_blank" rel="noopener noreferrer">Offer</a>{% endif %}
+          {% if row.best.catalog_url %} · <a class="text-link" href="{{ row.best.catalog_url }}" target="_blank" rel="noopener noreferrer">Leaflet</a>{% endif %}
+        </p>
+        {% else %}
+        <p class="offer-meta">No current offer match</p>
+        {% endif %}
+      </div>
+      {% if row.best %}<p class="offer-price">{% if row.best.offer_url %}<a class="offer-link" href="{{ row.best.offer_url }}" target="_blank" rel="noopener noreferrer">{{ format_price(row.best.price_dkk, currency) }}</a>{% else %}{{ format_price(row.best.price_dkk, currency) }}{% endif %}</p>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endblock %}

@@ -103,6 +103,37 @@ APP_CATALOG: list[dict[str, Any]] = [
         "icon": "studio",
         "description": "Chat-build static sites and publish them to FileServe.",
     },
+    {
+        "id": "pricescout",
+        "name": "PriceScout",
+        "path": "/prices/",
+        "port": 8006,
+        "unit": "stonepi-pricescout",
+        "health": "/healthz",
+        "color": "#2f6f4e",
+        "capabilities": [
+            {"id": "can_manage_sources", "label": "Manage sources"},
+            {"id": "can_use_alerts", "label": "Offer alerts"},
+        ],
+        "launcher": True,
+        "icon": "pricescout",
+        "description": "Weekly supermarket offers from eTilbudsavis, compared on your LAN.",
+    },
+    {
+        "id": "sportguide",
+        "name": "SportGuide",
+        "path": "/sports/",
+        "port": 8007,
+        "unit": "stonepi-sportguide",
+        "health": "/healthz",
+        "color": "#1d5a8a",
+        "capabilities": [
+            {"id": "can_refresh", "label": "Refresh schedules"},
+        ],
+        "launcher": True,
+        "icon": "sportguide",
+        "description": "What’s on sports TV and streams — AFL, Cricket, Rugby, Football.",
+    },
 ]
 
 APP_IDS = tuple(item["id"] for item in APP_CATALOG)

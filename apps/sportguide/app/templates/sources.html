@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Sources · SportGuide{% endblock %}
+{% block content %}
+<section class="hero">
+  <h1>Sources</h1>
+  <p class="lede">AusSportGuide for AFL, Cricket and Rugby. WheresTheMatch for Football in Europe.</p>
+</section>
+
+<form method="post" action="/sources/refresh" class="btn-row">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+  <button class="btn btn-primary btn-with-icon" type="submit"{% if refresh.running or not can_refresh %} disabled{% endif %}
+    data-confirm="Refresh schedules from the web now? This can take a minute.">
+    {{ icon("refresh") }} {{ 'Refreshing…' if refresh.running else 'Refresh now' }}
+  </button>
+</form>
+<p class="hint">
+  Last refreshed: {{ refresh.last_ok_at or 'never' }}.
+  Automatic refresh: once per day. Otherwise only when you tap Refresh.
+</p>
+{% if refresh.last_error %}<p class="banner">{{ refresh.last_error }}</p>{% endif %}
+
+<ul class="source-list">
+  {% for s in sources %}
+  <li class="card source-card">
+    <div class="source-head">
+      <div class="source-identity">
+        <div>
+          <h2>{{ s.name }}</h2>
+          <p class="hint">
+            {% if s.id == 'ausportguide' %}AU · AFL, Cricket, Rugby
+            {% elif s.id == 'wheresthematch' %}Euro · Football leagues
+            {% else %}{{ s.id }}{% endif %}
+          </p>
+          <p class="hint">{{ s.listing_count or 0 }} listings · {{ 'enabled' if s.enabled else 'off' }}</p>
+          {% if s.last_ok_at %}<p class="hint">Updated {{ s.last_ok_at }}</p>{% endif %}
+          {% if s.last_error %}<p class="banner">{{ s.last_error }}</p>{% endif %}
+        </div>
+      </div>
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{% endblock %}

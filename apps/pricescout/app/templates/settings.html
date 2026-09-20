@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Settings · PriceScout{% endblock %}
+{% block content %}
+<section class="hero">
+  <h1>Settings</h1>
+  <p class="lede">{{ settings_lede }}</p>
+</section>
+
+<div class="settings-tabs">
+  <div class="chips settings-chips" role="tablist" aria-label="Settings sections">
+    <a class="chip-btn{% if settings_tab == 'general' %} is-active{% endif %}" href="/settings?tab=general" role="tab" id="settings-tab-general" aria-selected="{{ 'true' if settings_tab == 'general' else 'false' }}" aria-controls="settings-panel-general">
+      {{ icon("general") }}<span>General</span>
+    </a>
+    <a class="chip-btn{% if settings_tab == 'about' %} is-active{% endif %}" href="/settings?tab=about" role="tab" id="settings-tab-about" aria-selected="{{ 'true' if settings_tab == 'about' else 'false' }}" aria-controls="settings-panel-about">
+      {{ icon("about") }}<span>About</span>
+    </a>
+  </div>
+
+  {% if settings_tab == 'general' %}
+  <div class="stack settings-panel" id="settings-panel-general" role="tabpanel" aria-labelledby="settings-tab-general">
+  <form method="post" action="/settings/general" class="card stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <h2>General</h2>
+    <label>
+      Currency
+      <select name="currency">
+        {% for c in currencies %}
+        <option value="{{ c.id }}" {% if currency == c.id %}selected{% endif %}>{{ c.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <p class="hint">Leaflet prices are collected in DKK. Other currencies are converted for display only.</p>
+    <label>
+      Postcode (for optional madspild)
+      <input name="zip" value="{{ zip }}" placeholder="e.g. 2100" inputmode="numeric" />
+    </label>
+    <p class="hint">Used only for the optional Salling food-waste stream when a token is in Vault. Manage supermarket sources on the Sources page.</p>
+    <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("check") }} Save</button>
+  </form>
+  <form method="post" action="/settings/clear-history" class="card stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <h2>Search history</h2>
+    <p class="hint">Clear recent searches for your account. Offer data stays until the next refresh.</p>
+    <button class="btn btn-ghost btn-with-icon" type="submit" data-confirm="Clear your search history?">{{ icon("trash") }} Clear search history</button>
+  </form>
+  </div>
+  {% else %}
+  <div class="stack settings-panel" id="settings-panel-about" role="tabpanel" aria-labelledby="settings-tab-about">
+  <div class="card stack about-card">
+    <h2>{{ app_name }}</h2>
+    <p class="lede">Weekly supermarket offers for your household LAN — eTilbudsavis JSON, optional Salling madspild.</p>
+    <p class="hint">GitHub: <a class="text-link" href="{{ app_github }}" rel="noopener noreferrer" target="_blank">{{ app_github_user }}</a></p>
+    <p class="hint">Version: {{ app_version }}</p>
+    <p class="hint">Food-waste token: {{ 'configured' if salling_configured else 'not set' }}</p>
+  </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

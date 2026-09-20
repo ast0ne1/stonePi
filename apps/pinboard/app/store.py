@@ -76,16 +76,47 @@ def display_payload() -> dict:
     lines: list[str] = []
     for notice in data["notices"][:5]:
         lines.append(str(notice.get("text") or ""))
-    today = date.today().isoformat()
+    today = date.today()
+    today_iso = today.isoformat()
+    reminders_out: list[dict] = []
     for rem in data["reminders"]:
-        if len(lines) >= 5:
-            break
-        due = str(rem.get("due") or "")
-        if due and due > today:
+        title = str(rem.get("text") or "").strip()
+        if not title:
             continue
-        label = str(rem.get("text") or "")
+        due_raw = str(rem.get("due") or "").strip()
+        due_label = _due_relative(due_raw, today)
         if rem.get("assignee"):
-            label = f"{label} ({rem['assignee']})"
-        lines.append(label)
+            title = f"{title} ({rem['assignee']})"
+        reminders_out.append({"title": title, "due": due_label})
+        # Keep legacy lines for Status/Household blocks (due today or overdue).
+        if len(lines) < 5 and (not due_raw or due_raw <= today_iso):
+            lines.append(title)
     total = len(data["notices"]) + len(data["reminders"])
-    return {"lines": [line for line in lines if line], "total": total}
+    return {
+        "ok": True,
+        "lines": [line for line in lines if line],
+        "total": total,
+        "reminders": reminders_out[:5],
+    }
+
+
+def _due_relative(due_raw: str, today: date | None = None) -> str:
+    """Human due label for Display: 'today', 'in 2 days', '3 days ago', or raw."""
+    today = today or date.today()
+    raw = (due_raw or "").strip()
+    if not raw:
+        return ""
+    try:
+        due = date.fromisoformat(raw[:10])
+    except ValueError:
+        return raw
+    delta = (due - today).days
+    if delta == 0:
+        return "today"
+    if delta == 1:
+        return "tomorrow"
+    if delta == -1:
+        return "yesterday"
+    if delta > 1:
+        return f"in {delta} days"
+    return f"{abs(delta)} days ago"

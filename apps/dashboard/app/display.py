@@ -186,6 +186,8 @@ def _app_status_url(app_id: str, port: int) -> str:
         "auth": "/auth",
         "pinboard": "/pinboard",
         "studio": "/studio",
+        "pricescout": "/prices",
+        "sportguide": "/sports",
     }.get(app_id, "")
     return f"{origin}{prefix}/api/display"
 
@@ -227,6 +229,8 @@ def collect_overview(cookies: dict[str, str] | None = None) -> dict:
     fs = _fetch_json(_app_status_url("fileserve", 8002))
     auth = _fetch_json(_app_status_url("auth", 8011))
     studio = _fetch_json(_app_status_url("studio", 8005))
+    prices = _fetch_json(_app_status_url("pricescout", 8006))
+    sports = _fetch_json(_app_status_url("sportguide", 8007))
 
     nc_feeds = int(nc.get("feeds") or 0)
     et_next = str(et.get("next") or "None")
@@ -268,32 +272,57 @@ def collect_overview(cookies: dict[str, str] | None = None) -> dict:
         if app_id == "pinboard":
             meta = f"{pinboard_total} notices" if pinboard_total else ""
             return ("—", meta)
+        if app_id == "pricescout":
+            detail = str(prices.get("detail") or "—").strip() or "—"
+            return (detail, "")
+        if app_id == "sportguide":
+            detail = str(sports.get("detail") or "—").strip() or "—"
+            return (detail, "")
         return ("—", "")
 
     apps = []
+    service_rows: list[dict] = []
     for row in watch.get("apps") or []:
         if not row.get("enabled", True):
             continue
         detail, meta = app_meta(str(row.get("id") or ""))
+        running = bool(row.get("running", False))
         apps.append(
             {
                 "id": row["id"],
                 "n": row["n"],
                 "installed": row.get("installed", True),
-                "running": row.get("running", False),
+                "running": running,
                 "d": detail or "—",
                 "m": meta or "",
+            }
+        )
+        detail_text = detail if detail and detail != "—" else (meta or "")
+        service_rows.append(
+            {
+                "name": row["n"],
+                "status": "up" if running else "down",
+                "detail": detail_text,
             }
         )
     system_ok = watch.get("level") == stonepi_watch.LEVEL_HEALTHY
 
     backup = services.backup_info()
     backup_when, backup_ok = _backup_fields(backup)
+    backup_status = str(backup.get("status") or "").strip().lower()
+    if backup_status in {"failed", "error"}:
+        last_backup_status = "failed"
+    elif backup_ok:
+        last_backup_status = "ok"
+    else:
+        last_backup_status = backup_status or "none"
+
     now = datetime.now(timezone.utc)
     cpu = _read_cpu_pct()
     mem = _read_mem_pct()
     temp = _read_temp_c()
     disk = watch.get("disk_pct")
+    disk_i = disk if isinstance(disk, int) else 0
 
     def pct_disp(value: int | None) -> str:
         return f"{value}%" if value is not None else "n/a"
@@ -306,13 +335,63 @@ def collect_overview(cookies: dict[str, str] | None = None) -> dict:
     apps_up = sum(1 for row in apps if row.get("running"))
     apps_total = len(apps)
 
+    watch_level = watch.get("level") or "attention"
+    watch_summary = watch.get("summary") or "—"
+    alerts: list[dict] = []
+    if watch_level != stonepi_watch.LEVEL_HEALTHY:
+        for reason in list(watch.get("reasons") or [])[:5]:
+            alerts.append({"level": watch_level, "message": str(reason)})
+        if not alerts and watch_summary and watch_summary != "—":
+            alerts.append({"level": watch_level, "message": str(watch_summary)})
+
+    events: list[dict] = []
+    for item in list(et.get("events") or [])[:3]:
+        if not isinstance(item, dict):
+            continue
+        events.append(
+            {
+                "time": str(item.get("time") or "")[:8],
+                "message": str(item.get("message") or "")[:80],
+            }
+        )
+    if not events and et_next and et_next != "None":
+        events.append({"time": now.astimezone().strftime("%H:%M"), "message": f"Next: {et_next}"[:80]})
+
+    reminders: list[dict] = []
+    for item in list(pinboard.get("reminders") or [])[:5]:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "").strip()
+        if not title:
+            continue
+        reminders.append({"title": title[:80], "due": str(item.get("due") or "")[:24]})
+
+    uptime = _read_uptime()
     return {
+        # Nested contract for custom TRMNL editor markup
+        "system": {
+            "cpu": int(cpu) if cpu is not None else 0,
+            "ram": int(mem) if mem is not None else 0,
+            "disk": disk_i,
+            "temp": int(temp) if temp is not None else 0,
+            "uptime": uptime,
+        },
+        "services": service_rows,
+        "alerts": alerts,
+        "backup": {
+            "disk_used_pct": disk_i,
+            "last_backup_ago": backup_when,
+            "last_backup_status": last_backup_status,
+        },
+        "events": events,
+        "reminders": reminders,
+        # Flat keys — Status / Household built-in markup
         "hostname": env.hostname or "stonepi",
         "updated_at": now.strftime("%Y-%m-%d %H:%M"),
         "refreshed_ago": "just now",
         "system_ok": system_ok,
-        "watch_level": watch.get("level") or "attention",
-        "watch_summary": watch.get("summary") or "—",
+        "watch_level": watch_level,
+        "watch_summary": watch_summary,
         "cpu_pct": cpu,
         "mem_pct": mem,
         "temp_c": temp,
@@ -320,7 +399,7 @@ def collect_overview(cookies: dict[str, str] | None = None) -> dict:
         "mem_disp": pct_disp(mem),
         "temp_disp": temp_disp(temp),
         "disk_disp": pct_disp(disk if isinstance(disk, int) else None),
-        "uptime": _read_uptime(),
+        "uptime": uptime,
         "apps": apps,
         "apps_up": apps_up,
         "apps_total": apps_total,

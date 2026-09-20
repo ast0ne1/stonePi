@@ -76,8 +76,11 @@ ensure_user stonepi-files
 ensure_user stonepi-events
 ensure_user stonepi-pin
 ensure_user stonepi-studio
+ensure_user stonepi-prices
+ensure_user stonepi-sport
+ensure_user stonepi-sport
 
-mkdir -p "$DEST" "$DATA/auth" "$DATA/newscast" "$DATA/fileserve/hosted" "$DATA/eventtrakr" "$DATA/pinboard" "$DATA/studio" "$DATA/dashboard" "$DATA/vault" "$CONF"
+mkdir -p "$DEST" "$DATA/auth" "$DATA/newscast" "$DATA/fileserve/hosted" "$DATA/eventtrakr" "$DATA/pinboard" "$DATA/studio" "$DATA/pricescout" "$DATA/sportguide" "$DATA/dashboard" "$DATA/vault" "$CONF"
 if [[ ! -f "$DATA/exposure" ]]; then
   printf 'lan\n' > "$DATA/exposure"
   chmod 644 "$DATA/exposure"
@@ -222,6 +225,23 @@ STONEPI_DATA_DIR=/var/lib/stonepi/studio
 FILESERVE_URL=http://127.0.0.1:8002
 EOF
 
+write_env "$CONF/pricescout.env" <<EOF
+PORT=8006
+PUBLIC_BASE_URL=http://${HOSTNAME_VALUE}.local/prices
+STONEPI_PREFIX=/prices
+STONEPI_APP_ID=pricescout
+STONEPI_DATA_DIR=/var/lib/stonepi/pricescout
+PINBOARD_URL=http://127.0.0.1:8004
+EOF
+
+write_env "$CONF/sportguide.env" <<EOF
+PORT=8007
+PUBLIC_BASE_URL=http://${HOSTNAME_VALUE}.local/sports
+STONEPI_PREFIX=/sports
+STONEPI_APP_ID=sportguide
+STONEPI_DATA_DIR=/var/lib/stonepi/sportguide
+EOF
+
 # Upgrade path: existing env files keep secrets but pick up new keys.
 ensure_env_key "$CONF/auth.env" STONEPI_DATA_DIR /var/lib/stonepi/auth
 ensure_env_key "$CONF/dashboard.env" STONEPI_DATA_DIR /var/lib/stonepi/dashboard
@@ -230,6 +250,8 @@ ensure_env_key "$CONF/fileserve.env" STONEPI_DATA_DIR /var/lib/stonepi/fileserve
 ensure_env_key "$CONF/eventtrakr.env" STONEPI_DATA_DIR /var/lib/stonepi/eventtrakr
 ensure_env_key "$CONF/pinboard.env" STONEPI_DATA_DIR /var/lib/stonepi/pinboard
 ensure_env_key "$CONF/studio.env" STONEPI_DATA_DIR /var/lib/stonepi/studio
+ensure_env_key "$CONF/pricescout.env" STONEPI_DATA_DIR /var/lib/stonepi/pricescout
+ensure_env_key "$CONF/sportguide.env" STONEPI_DATA_DIR /var/lib/stonepi/sportguide
 ensure_env_key "$CONF/newscast.env" PUBLIC_BASE_URL "http://${HOSTNAME_VALUE}.local/news"
 ensure_env_key "$CONF/fileserve.env" PUBLIC_BASE_URL "http://${HOSTNAME_VALUE}.local/files"
 ensure_env_key "$CONF/eventtrakr.env" PUBLIC_BASE_URL "http://${HOSTNAME_VALUE}.local/events"
@@ -238,6 +260,9 @@ ensure_env_key "$CONF/newscast.env" STONEPI_PREFIX /news
 ensure_env_key "$CONF/eventtrakr.env" STONEPI_PREFIX /events
 ensure_env_key "$CONF/pinboard.env" STONEPI_PREFIX /pinboard
 ensure_env_key "$CONF/studio.env" STONEPI_PREFIX /studio
+ensure_env_key "$CONF/pricescout.env" STONEPI_PREFIX /prices
+ensure_env_key "$CONF/pricescout.env" PINBOARD_URL http://127.0.0.1:8004
+ensure_env_key "$CONF/sportguide.env" STONEPI_PREFIX /sports
 
 install_app() {
   local name="$1"
@@ -283,6 +308,8 @@ install_app fileserve stonepi-files
 install_app eventtrakr stonepi-events playwright
 install_app pinboard stonepi-pin
 install_app studio stonepi-studio
+install_app pricescout stonepi-prices
+install_app sportguide stonepi-sport playwright
 
 # Runtime data lives under /var/lib/stonepi (STONEPI_DATA_DIR). Also create
 # writable apps/*/data dirs so a missing env key cannot brick boot with EACCES.
@@ -304,12 +331,14 @@ ensure_writable_data stonepi-files "$DATA/fileserve" "$DEST/apps/fileserve/data"
 ensure_writable_data stonepi-events "$DATA/eventtrakr" "$DEST/apps/eventtrakr/data"
 ensure_writable_data stonepi-pin "$DATA/pinboard" "$DEST/apps/pinboard/data"
 ensure_writable_data stonepi-studio "$DATA/studio" "$DEST/apps/studio/data"
+ensure_writable_data stonepi-prices "$DATA/pricescout" "$DEST/apps/pricescout/data"
+ensure_writable_data stonepi-sport "$DATA/sportguide" "$DEST/apps/sportguide/data"
 mkdir -p "$DATA/fileserve/hosted"
 chown -R stonepi-files:stonepi-files "$DATA/fileserve"
 
 # Vault readable by app service users (group stonepi-vault); dashboard can write.
 groupadd --system stonepi-vault 2>/dev/null || true
-for u in stonepi-dash stonepi-auth stonepi-news stonepi-files stonepi-events stonepi-pin stonepi-studio; do
+for u in stonepi-dash stonepi-auth stonepi-news stonepi-files stonepi-events stonepi-pin stonepi-studio stonepi-prices stonepi-sport; do
   id -u "$u" >/dev/null 2>&1 && usermod -aG stonepi-vault "$u" || true
 done
 chown -R stonepi-dash:stonepi-vault "$DATA/vault" 2>/dev/null || true
@@ -317,7 +346,7 @@ chmod 750 "$DATA/vault" 2>/dev/null || true
 # New vault files inherit stonepi-vault group.
 chmod g+s "$DATA/vault" 2>/dev/null || true
 find "$DATA/vault" -type f -exec chmod 640 {} \; 2>/dev/null || true
-chmod 700 "$DATA/auth" "$DATA/newscast" "$DATA/fileserve" "$DATA/eventtrakr" "$DATA/pinboard" "$DATA/studio" "$DATA/dashboard"
+chmod 700 "$DATA/auth" "$DATA/newscast" "$DATA/fileserve" "$DATA/eventtrakr" "$DATA/pinboard" "$DATA/studio" "$DATA/pricescout" "$DATA/sportguide" "$DATA/dashboard"
 chmod 750 "$DATA/vault" 2>/dev/null || true
 chmod g+s "$DATA/vault" 2>/dev/null || true
 
@@ -342,7 +371,7 @@ if [[ ! -f "$CONF/backup.conf" ]]; then
   cat > "$CONF/backup.conf" <<'EOF'
 LABEL=STONEPI-BACKUP
 UUID=
-APPS="stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-dashboard stonepi-auth"
+APPS="stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-dashboard stonepi-auth"
 EOF
   chmod 644 "$CONF/backup.conf"
 fi
@@ -356,7 +385,7 @@ nginx -t
 systemctl enable nginx >/dev/null 2>&1 || true
 systemctl reload nginx 2>/dev/null || systemctl restart nginx
 
-for unit in stonepi-auth stonepi-dashboard stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-backup; do
+for unit in stonepi-auth stonepi-dashboard stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-backup; do
   cp "$DEST/deploy/systemd/${unit}.service" "/etc/systemd/system/${unit}.service"
 done
 if [[ -f "$DEST/deploy/systemd/stonepi-backup.timer" ]]; then
@@ -371,7 +400,7 @@ EOF
 chmod 440 /etc/sudoers.d/stonepi-dash
 
 systemctl daemon-reload
-systemctl enable --now stonepi-auth stonepi-dashboard stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio
+systemctl enable --now stonepi-auth stonepi-dashboard stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide
 # Backup runs on USB insert (udev), not on a calendar timer.
 systemctl disable --now stonepi-backup.timer >/dev/null 2>&1 || true
 systemctl reset-failed stonepi-backup.service >/dev/null 2>&1 || true
@@ -397,13 +426,13 @@ chmod g+s "$DATA/vault" 2>/dev/null || true
 find "$DATA/vault" -type f -exec chmod 640 {} \; 2>/dev/null || true
 
 # Pick up stonepi-vault supplementary group + any new env keys.
-systemctl restart stonepi-auth stonepi-dashboard stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio >/dev/null 2>&1 || true
+systemctl restart stonepi-auth stonepi-dashboard stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide >/dev/null 2>&1 || true
 
 # Wait briefly for apps, then verify edge + backends (catches welcome-page / 502 installs).
 sleep 3
 echo
 echo "Health checks"
-UNITS=(stonepi-auth stonepi-dashboard stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio)
+UNITS=(stonepi-auth stonepi-dashboard stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide)
 failed_units=0
 for u in "${UNITS[@]}"; do
   if systemctl is-active --quiet "$u"; then
@@ -453,6 +482,7 @@ echo "  FileServe  http://${HOSTNAME_VALUE}.local/files/"
 echo "  EventTrakr http://${HOSTNAME_VALUE}.local/events/"
 echo "  Pinboard   http://${HOSTNAME_VALUE}.local/pinboard/"
 echo "  Studio     http://${HOSTNAME_VALUE}.local/studio/"
+echo "  PriceScout http://${HOSTNAME_VALUE}.local/prices/"
 echo "  Cockpit    https://${HOSTNAME_VALUE}.local:9090  (or https://<pi-lan-ip>:9090)"
 echo "  Sign in with admin / admin and change the password."
 echo "  Helper:    stonepi status | stonepi urls | stonepi restart | stonepi logs"
