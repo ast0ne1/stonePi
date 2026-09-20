@@ -672,7 +672,20 @@ def create_app(config: dict | None = None) -> Flask:
         denied = _require_csrf(url_for("pages_list"))
         if denied is not None:
             return denied
-        viewer = _require_viewer()
+        viewer = current_user(g.db)
+        if viewer is None:
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "message": (
+                            "FileServe access required — ask an admin to enable FileServe "
+                            "for your account (Studio Publish needs both)."
+                        ),
+                    }
+                ),
+                403,
+            )
         upload = request.files.get("file")
         if upload is None:
             return jsonify({"ok": False, "message": "Missing zip file."}), 400

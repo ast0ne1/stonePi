@@ -404,7 +404,7 @@ async def project_publish(
     try:
         payload = workspace.workspace_zip(root)
     except ValueError as exc:
-        return RedirectResponse(f"{_prefix()}/p/{project_id}?err={exc}", status_code=303)
+        return RedirectResponse(f"{_prefix()}/p/{project_id}?err={quote(str(exc))}", status_code=303)
     cookie_header = request.headers.get("cookie", "")
     csrf = csrf_from_request(request.cookies)
     protect_on = protect in {"1", "true", "on"} or protected in {"1", "true", "on"}
@@ -437,12 +437,24 @@ async def project_publish(
                 files={"file": ("site.zip", payload, "application/zip")},
                 headers=headers,
             )
-        body = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
-    except Exception as exc:
-        return RedirectResponse(f"{_prefix()}/p/{project_id}?err=Publish+failed", status_code=303)
+        content_type = resp.headers.get("content-type", "")
+        body = resp.json() if content_type.startswith("application/json") else {}
+    except Exception:
+        return RedirectResponse(
+            f"{_prefix()}/p/{project_id}?err={quote('Publish failed — FileServe did not respond.')}",
+            status_code=303,
+        )
     if resp.status_code >= 400 or not body.get("ok", resp.status_code < 300):
-        msg = body.get("message") or "Publish failed"
-        return RedirectResponse(f"{_prefix()}/p/{project_id}?err={msg}", status_code=303)
+        msg = (body.get("message") or "").strip()
+        if not msg:
+            if resp.status_code in {401, 403}:
+                msg = (
+                    "FileServe access required — ask an admin to enable FileServe "
+                    "for your account (Studio Publish needs both)."
+                )
+            else:
+                msg = "Publish failed"
+        return RedirectResponse(f"{_prefix()}/p/{project_id}?err={quote(msg)}", status_code=303)
     new_id = body.get("page_id")
     if new_id is not None:
         store.set_fileserve_page_id(project_id, int(new_id))

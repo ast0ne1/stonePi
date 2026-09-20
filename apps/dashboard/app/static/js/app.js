@@ -862,6 +862,28 @@ document.querySelectorAll("form[data-confirm]").forEach((form) => {
   });
 })();
 
+(function wireStudioPublishImpliesFileServe() {
+  function sync(form) {
+    if (!(form instanceof HTMLFormElement)) return;
+    const publish = form.querySelector("[data-studio-can-publish]");
+    const fileserve = form.querySelector("[data-app-fileserve]");
+    if (!(publish instanceof HTMLInputElement) || !(fileserve instanceof HTMLInputElement)) return;
+    if (publish.checked && !fileserve.disabled) {
+      fileserve.checked = true;
+    }
+  }
+
+  document.querySelectorAll("form.people-form").forEach((form) => {
+    form.addEventListener("change", (event) => {
+      const target = event.target;
+      if (target instanceof HTMLInputElement && target.matches("[data-studio-can-publish]")) {
+        sync(form);
+      }
+    });
+    sync(form);
+  });
+})();
+
 function showFlash(kind, text) {
   const main = document.querySelector("main");
   if (!main || !text) return;
