@@ -1,77 +1,39 @@
 {# Admin household accounts — used by Users page. #}
 {% from "_icons.html" import svg %}
-<details class="card people-create" id="add-user" open>
-  <summary class="people-create-summary">
-    <span class="people-create-title">{{ svg('plus') }} Add user</span>
-    <span class="muted people-create-hint">Username, password, then which apps they can open</span>
-  </summary>
-  <form method="post" action="{{ users_form_base|default('/users') }}" class="people-form">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    <div class="people-form-grid">
-      <label>Username <input name="username" required autocapitalize="none" spellcheck="false" placeholder="jane" /></label>
-      <label>Display name <input name="display_name" placeholder="Jane" /></label>
-      <label>Password <input type="password" name="password" required minlength="8" placeholder="At least 8 characters" autocomplete="new-password" /></label>
-      <div class="people-flags">
-        <span class="people-flags-label">Role</span>
-        <label class="inline"><input type="checkbox" name="is_admin" value="1" /> Administrator</label>
-      </div>
-    </div>
-    <div class="people-access">
-      <h3>App access</h3>
-      <div class="access-grid">
-        {% for app in apps %}
-        <div class="access-app{% if not app.enabled %} is-disabled{% endif %}">
-          <label class="access-toggle">
-            <input type="checkbox" name="apps" value="{{ app.id }}" {% if app.enabled %}checked{% endif %} {% if not app.enabled %}disabled{% endif %} />
-            <span>{{ app.name }}</span>
-            {% if not app.enabled %}<span class="chip chip-quiet">Off</span>{% endif %}
-          </label>
-          {% if app.capabilities and app.enabled %}
-          <div class="access-caps">
-            {% for cap in app.capabilities %}
-            <label class="inline"><input type="checkbox" name="perm_{{ app.id }}_{{ cap.id }}" value="1" /> {{ cap.label }}</label>
-            {% endfor %}
-          </div>
-          {% endif %}
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-    <div class="row-actions">
-      <button class="btn btn-primary btn-with-icon" type="submit">{{ svg('plus') }} Create</button>
-    </div>
-  </form>
-</details>
 
 <section class="people-list" id="household-users">
   <div class="people-list-head">
-    <h2>Accounts</h2>
-    <p class="muted">{{ people|length }} {{ 'user' if people|length == 1 else 'users' }}</p>
+    <div>
+      <h2>Accounts</h2>
+      <p class="muted">{{ people|length }} {{ 'user' if people|length == 1 else 'users' }} · tap a row for apps and permissions</p>
+    </div>
+    <button class="btn btn-primary btn-with-icon" type="button" data-open-add-user>{{ svg('plus') }} Add account</button>
   </div>
 
   {% if not people %}
   <section class="card">
     <h2>No accounts yet</h2>
-    <p class="muted">Create the first household account, set a password, and grant which apps they can open.</p>
+    <p class="muted">Add the first household account, set a password, and choose which apps they can open. Dashboard is granted by default.</p>
     <div class="row-actions">
-      <a class="btn btn-primary btn-with-icon" href="#add-user">{{ svg('plus') }} Add user</a>
+      <button class="btn btn-primary btn-with-icon" type="button" data-open-add-user>{{ svg('plus') }} Add account</button>
     </div>
   </section>
   {% endif %}
 
   {% for person in people %}
-  <details class="card person-card"{% if person.id == user.user_id %} open{% endif %}>
+  <details class="card person-card">
     <summary class="person-summary">
       <span class="person-avatar" aria-hidden="true">{{ (person.display_name or person.username)[:1]|upper }}</span>
       <span class="person-summary-main">
         <strong>{{ person.display_name or person.username }}</strong>
         <span class="muted">@{{ person.username }}</span>
+        <span class="person-chips person-chips-inline">
+          {% if person.is_admin %}<span class="chip">Admin</span>{% else %}<span class="chip chip-quiet">User</span>{% endif %}
+          {% if person.enabled %}<span class="chip chip-quiet">Active</span>{% else %}<span class="chip chip-bad">Disabled</span>{% endif %}
+          <span class="chip chip-quiet">{{ person.apps|length }} app{% if person.apps|length != 1 %}s{% endif %}</span>
+        </span>
       </span>
-      <span class="person-chips">
-        {% if person.is_admin %}<span class="chip">Admin</span>{% else %}<span class="chip chip-quiet">User</span>{% endif %}
-        {% if person.enabled %}<span class="chip chip-quiet">Active</span>{% else %}<span class="chip chip-bad">Disabled</span>{% endif %}
-        <span class="chip chip-quiet">{{ person.apps|length }} app{% if person.apps|length != 1 %}s{% endif %}</span>
-      </span>
+      <span class="person-chevron" aria-hidden="true">{{ svg('chevron-down') }}</span>
     </summary>
 
     <form method="post" action="{{ users_form_base|default('/users') }}/{{ person.id }}" class="people-form">
@@ -87,6 +49,7 @@
       </div>
       <div class="people-access">
         <h3>App access</h3>
+        <p class="muted people-access-hint">Turn on an app to show it on Home and allow sign-in. Permissions appear under each app that has them.</p>
         <div class="access-grid">
           {% for app in apps %}
           {% set person_perms = (person.permissions or {}).get(app.id, {}) %}
@@ -119,3 +82,48 @@
   </details>
   {% endfor %}
 </section>
+
+<details class="card people-create" id="add-user">
+  <summary class="people-create-summary">
+    <span class="people-create-title">{{ svg('plus') }} Add account</span>
+    <span class="muted people-create-hint">Username, password, then which apps they can open — Dashboard is on by default</span>
+  </summary>
+  <form method="post" action="{{ users_form_base|default('/users') }}" class="people-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <div class="people-form-grid">
+      <label>Username <input name="username" required autocapitalize="none" spellcheck="false" placeholder="jane" /></label>
+      <label>Display name <input name="display_name" placeholder="Jane" /></label>
+      <label>Password <input type="password" name="password" required minlength="8" placeholder="At least 8 characters" autocomplete="new-password" /></label>
+      <div class="people-flags">
+        <span class="people-flags-label">Role</span>
+        <label class="inline"><input type="checkbox" name="is_admin" value="1" /> Administrator</label>
+      </div>
+    </div>
+    <div class="people-access">
+      <h3>App access</h3>
+      <p class="muted people-access-hint">Only Dashboard starts on. Grant other apps after you’ve set the password.</p>
+      <div class="access-grid">
+        {% for app in apps %}
+        <div class="access-app{% if not app.enabled %} is-disabled{% endif %}">
+          <label class="access-toggle">
+            <input type="checkbox" name="apps" value="{{ app.id }}" {% if app.id == 'dashboard' and app.enabled %}checked{% endif %} {% if not app.enabled %}disabled{% endif %} />
+            <span>{{ app.name }}</span>
+            {% if not app.enabled %}<span class="chip chip-quiet">Off</span>{% endif %}
+          </label>
+          {% if app.capabilities and app.enabled %}
+          <div class="access-caps">
+            {% for cap in app.capabilities %}
+            <label class="inline"><input type="checkbox" name="perm_{{ app.id }}_{{ cap.id }}" value="1" /> {{ cap.label }}</label>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="row-actions">
+      <button class="btn btn-primary btn-with-icon" type="submit">{{ svg('plus') }} Create</button>
+      <button class="btn btn-ghost" type="button" data-close-add-user>Cancel</button>
+    </div>
+  </form>
+</details>

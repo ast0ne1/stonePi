@@ -4,30 +4,18 @@
 {% block content %}
 <section class="hero">
   <h1>Services</h1>
-  <p class="lede">Health is the HTTP check. After that: systemd unit state on the Pi (<code>active</code>, <code>inactive</code>, <code>failed</code>…), or <strong>local process</strong> when running without systemd (Windows/dev).</p>
-</section>
-
-<section class="card stack">
-  <h2>Platform availability</h2>
-  <p class="muted">Disable an app to hide it from grants and block sign-in access. Dashboard stays available.</p>
-  <form method="post" action="/applications/availability" class="stack" data-confirm="Save platform availability?" data-confirm-detail="Disabled apps are hidden from grants and blocked at sign-in. Dashboard stays available." data-confirm-ok="Save">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    <div class="checks">
-      {% for app in manage_apps %}
-      <label class="inline">
-        <input type="checkbox" name="enabled_apps" value="{{ app.id }}" {% if app.enabled %}checked{% endif %} {% if app.id == 'dashboard' %}disabled{% endif %} />
-        {{ app.name }}
-      </label>
-      {% endfor %}
-    </div>
-    <button class="btn btn-primary btn-with-icon" type="submit">{{ svg('check') }} Save availability</button>
-  </form>
+  <p class="lede">Health is the HTTP check. After that: systemd unit state on the Pi (<code>active</code>, <code>inactive</code>, <code>failed</code>…), or local process when running without systemd. Toggle a service off to hide it from grants and block sign-in access — Dashboard always stays available.</p>
 </section>
 
 {% if cards %}
 <div class="service-grid">
   {% for card in cards %}
-  <section class="card service-card{% if card.enabled is defined and not card.enabled %} is-disabled{% endif %}">
+  {% set locked = card.id in locked_apps %}
+  <section class="card service-card is-managed{% if card.enabled is defined and not card.enabled %} is-disabled{% endif %}">
+    <div class="service-card-actions">
+      <a class="icon-btn" href="{{ card.url }}" aria-label="Open {{ card.name }}" title="Open">{{ svg('open') }}</a>
+      <a class="icon-btn" href="/applications/{{ card.id }}" aria-label="Manage {{ card.name }}" title="Manage">{{ svg('manage') }}</a>
+    </div>
     <div class="service-card-head">
       {{ service_icon(card.id, card.color or '') }}
       <div>
@@ -36,13 +24,28 @@
           {% if card.health.ok %}Healthy{% else %}Down{% endif %}
           · {% if card.unit_status == 'local' %}local process{% else %}{{ card.unit_status }}{% endif %}
         </p>
-        <p class="muted service-unit">{{ card.unit }}{% if card.enabled is defined and not card.enabled %} · disabled{% endif %}</p>
+        <p class="muted service-unit">{{ card.unit }}</p>
         <p class="muted service-port">port {{ card.port }}</p>
       </div>
     </div>
-    <div class="row-actions">
-      <a class="icon-btn" href="{{ card.url }}" aria-label="Open {{ card.name }}" title="Open">{{ svg('open') }}</a>
-      <a class="icon-btn" href="/applications/{{ card.id }}" aria-label="Manage {{ card.name }}" title="Manage">{{ svg('manage') }}</a>
+    <div class="service-card-foot">
+      {% if locked %}
+      <label class="avail-toggle is-locked">
+        <input type="checkbox" checked disabled />
+        <span class="avail-switch" aria-hidden="true"></span>
+        <span>Always on</span>
+      </label>
+      {% else %}
+      <form method="post" action="/applications/availability" data-availability-toggle data-app-name="{{ card.name }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <input type="hidden" name="app_id" value="{{ card.id }}" />
+        <label class="avail-toggle">
+          <input type="checkbox" name="enabled" value="1" {% if card.enabled %}checked{% endif %} />
+          <span class="avail-switch" aria-hidden="true"></span>
+          <span>Enabled</span>
+        </label>
+      </form>
+      {% endif %}
     </div>
   </section>
   {% endfor %}

@@ -33,8 +33,106 @@ _KIND_TITLES = {"spa": "My app", "guide": "My guide", "game": "My game"}
 _KIND_INTROS = {
     "spa": "Ask Studio what this app should do.",
     "guide": "Ask Studio to write the first steps.",
-    "game": "Ask Studio how the game should play.",
+    "game": "Describe the genre and how it should play — Studio will build a real game with keyboard and on-screen controls.",
 }
+
+DEFAULT_GAME_INDEX = """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>My game</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="shell">
+    <header class="hud">
+      <h1>My game</h1>
+      <p class="hint">Describe the game, then press Build.</p>
+      <p class="score" hidden>Score <span data-score>0</span></p>
+    </header>
+    <canvas id="game" width="360" height="480" aria-label="Game playfield"></canvas>
+    <div class="controls" aria-label="On-screen controls">
+      <button type="button" data-dir="left" aria-label="Left">◀</button>
+      <button type="button" data-dir="up" aria-label="Up">▲</button>
+      <button type="button" data-dir="down" aria-label="Down">▼</button>
+      <button type="button" data-dir="right" aria-label="Right">▶</button>
+      <button type="button" data-action aria-label="Action">A</button>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
+"""
+
+DEFAULT_GAME_CSS = """:root {
+  --paper: #12141a;
+  --ink: #f2f4f8;
+  --accent: #5ee0a0;
+  --pad: max(12px, env(safe-area-inset-left));
+  --pad-r: max(12px, env(safe-area-inset-right));
+  --pad-b: max(12px, env(safe-area-inset-bottom));
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: system-ui, sans-serif;
+}
+.shell {
+  width: min(420px, 100%);
+  margin: 0 auto;
+  min-height: 100dvh;
+  padding: max(12px, env(safe-area-inset-top)) var(--pad-r) var(--pad-b) var(--pad);
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+.hud h1 { margin: 0; font-size: 1.35rem; }
+.hint, .score { margin: 0.25rem 0 0; color: #a8b0c0; font-size: 0.95rem; }
+#game {
+  width: 100%;
+  height: auto;
+  display: block;
+  background: #1c2230;
+  border-radius: 12px;
+  touch-action: none;
+}
+.controls {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr) 1.2fr;
+  gap: 8px;
+}
+.controls button {
+  min-height: 48px;
+  min-width: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: #2a3344;
+  color: var(--ink);
+  font-size: 1.1rem;
+  touch-action: manipulation;
+}
+.controls [data-action] { background: var(--accent); color: #102016; font-weight: 700; }
+@media (min-width: 901px) {
+  .shell { width: min(600px, 100%); padding-top: 24px; }
+  .controls { max-width: 420px; margin: 0 auto; }
+}
+"""
+
+DEFAULT_GAME_JS = """const canvas = document.getElementById("game");
+const ctx = canvas?.getContext("2d");
+if (ctx) {
+  ctx.fillStyle = "#1c2230";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#5ee0a0";
+  ctx.font = "16px system-ui";
+  ctx.fillText("Waiting for Build…", 24, 40);
+}
+console.log("StonePi Studio game shell — press Build after you describe the game.");
+"""
 
 
 def _load() -> dict:
@@ -60,16 +158,23 @@ def _now() -> str:
 def _seed_workspace(project_id: str, *, kind: str = "spa") -> Path:
     root = WORKSPACE_DIR / project_id
     root.mkdir(parents=True, exist_ok=True)
-    title = _KIND_TITLES.get(kind, "My page")
-    intro = _KIND_INTROS.get(kind, "Ask the assistant to build your site.")
-    index = DEFAULT_INDEX.replace("My page", title).replace(
-        "Ask the assistant to build your site.", intro
-    )
-    files = {
-        "index.html": index,
-        "style.css": DEFAULT_CSS,
-        "app.js": DEFAULT_JS,
-    }
+    if kind == "game":
+        files = {
+            "index.html": DEFAULT_GAME_INDEX,
+            "style.css": DEFAULT_GAME_CSS,
+            "app.js": DEFAULT_GAME_JS,
+        }
+    else:
+        title = _KIND_TITLES.get(kind, "My page")
+        intro = _KIND_INTROS.get(kind, "Ask the assistant to build your site.")
+        index = DEFAULT_INDEX.replace("My page", title).replace(
+            "Ask the assistant to build your site.", intro
+        )
+        files = {
+            "index.html": index,
+            "style.css": DEFAULT_CSS,
+            "app.js": DEFAULT_JS,
+        }
     for name, body in files.items():
         path = root / name
         if not path.exists():

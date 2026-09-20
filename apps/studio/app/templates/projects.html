@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Projects · Studio{% endblock %}
+{% block content %}
+<section class="hero">
+  <h1>Projects</h1>
+  <p class="lede">Sites and games you’ve started in Studio. Open one to chat, build, and publish to FileServe.</p>
+</section>
+
+<section class="card stack">
+  {% if projects %}
+  <ul class="project-list">
+    {% for p in projects %}
+    <li>
+      <a href="/p/{{ p.id }}">
+        <span class="project-name">{{ p.name }}</span>
+        <span class="chip">{{ kind_labels.get(p.kind or 'spa', 'Project') }}</span>
+      </a>
+      <div class="project-actions">
+        <span class="hint">{{ (p.updated_at or '')[:10] }}</span>
+        <form method="post" action="/p/{{ p.id }}/delete" data-confirm="Delete {{ p.name }}?" data-confirm-detail="Workspace files for this project will be removed. Any FileServe page you already published stays until you delete it there." data-confirm-ok="Delete">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <button class="icon-btn" type="submit" aria-label="Delete {{ p.name }}" title="Delete">{{ icon("trash") }}</button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty-state">
+    <h3>Nothing here yet</h3>
+    <p class="hint">Start on <a href="/">Create</a> — pick SPA, Guide, or Game.</p>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

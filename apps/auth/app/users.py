@@ -103,7 +103,8 @@ def disabled_apps(db: Session) -> list[str]:
 
 
 def set_disabled_apps(db: Session, app_ids: Iterable[str]) -> list[str]:
-    wanted = sorted({item for item in app_ids if item in APP_IDS and item != "dashboard"})
+    locked = {"dashboard", "auth"}
+    wanted = sorted({item for item in app_ids if item in APP_IDS and item not in locked})
     set_setting(db, DISABLED_APPS_KEY, json.dumps(wanted))
     return wanted
 
@@ -288,7 +289,7 @@ def create_user(
     )
     db.add(user)
     db.flush()
-    set_grants(db, user, apps if apps is not None else enabled_app_ids(db), permissions)
+    set_grants(db, user, list(apps) if apps is not None else ["dashboard"], permissions)
     db.commit()
     db.refresh(user)
     return user

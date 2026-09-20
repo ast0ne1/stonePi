@@ -153,12 +153,19 @@ def portal_home_url(request: Any, fallback: str = "") -> str:
     """Dashboard launcher URL for app nav / Back to apps.
 
     Returns an absolute URL so PrefixRewriter does not turn ``/`` into
-    ``/auth/``, ``/news/``, etc. Prefers the request host (.home / .local / IP).
+    ``/auth/``, ``/news/``, etc. On path installs (nginx / Linux), prefer the
+    request host (``.home`` / ``.local`` / IP) so Home stays on the hostname
+    you opened. On Windows split-port solo-dev, each app has its own port —
+    use the dashboard ``PUBLIC_ORIGIN`` fallback instead of the app's origin.
     """
+    fb = (fallback or "").rstrip("/")
+    # Windows run-dev: Studio is :8005, Dashboard is :8010 — request origin
+    # would loop Home back into the app. Prefer the configured portal URL.
+    if os.name == "nt" and fb:
+        return fb + "/"
     origin = request_public_origin(request)
     if origin:
         return origin + "/"
-    fb = (fallback or "").rstrip("/")
     if fb:
         return fb + "/"
     return "/"

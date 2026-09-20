@@ -52,7 +52,7 @@ BUILD_KINDS = (
     {
         "id": "game",
         "label": "Game",
-        "blurb": "A quick portrait game with on-screen controls, score, and play again.",
+        "blurb": "A real playable game for iPhone 13+ and laptops — canvas, score, keyboard + touch controls.",
         "icon": "game",
     },
 )

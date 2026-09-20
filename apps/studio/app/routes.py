@@ -117,9 +117,26 @@ def home(request: Request):
         "home.html",
         {
             "user": user,
+            "active": "create",
+            "build_kinds": BUILD_KINDS,
+            "error": request.query_params.get("err"),
+            "message": request.query_params.get("msg"),
+        },
+    )
+
+
+@router.get("/projects", response_class=HTMLResponse)
+def projects_page(request: Request):
+    user, denied = _require_user(request)
+    if denied:
+        return denied
+    return _csrf_response(
+        request,
+        "projects.html",
+        {
+            "user": user,
             "active": "projects",
             "projects": store.list_projects(),
-            "build_kinds": BUILD_KINDS,
             "kind_labels": _KIND_LABELS,
             "error": request.query_params.get("err"),
             "message": request.query_params.get("msg"),
@@ -149,10 +166,10 @@ async def delete_project(request: Request, project_id: str, csrf_token: str = Fo
     if denied:
         return denied
     if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
-        return RedirectResponse(f"{_prefix()}/?err=Form+expired", status_code=303)
+        return RedirectResponse(f"{_prefix()}/projects?err=Form+expired", status_code=303)
     if not store.delete_project(project_id):
-        return RedirectResponse(f"{_prefix()}/?err=Project+not+found", status_code=303)
-    return RedirectResponse(f"{_prefix()}/?msg=Project+deleted", status_code=303)
+        return RedirectResponse(f"{_prefix()}/projects?err=Project+not+found", status_code=303)
+    return RedirectResponse(f"{_prefix()}/projects?msg=Project+deleted", status_code=303)
 
 
 @router.get("/p/{project_id}", response_class=HTMLResponse)

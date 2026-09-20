@@ -12,8 +12,8 @@ Canonical rules live in `apps/studio/app/prompts/fileserve_hosting.md`. Summary:
 - **`index.html`** at the project root (FileServe site entry).
 - **Relative asset paths** only (`style.css`, `./images/x.png`). No root-absolute `/static/...` paths.
 - **`https://` only** for external URLs in generated HTML/CSS/JS.
-- **Phone-first**: design for ~375px (iPhone 13 mini class) — viewport meta, 44px taps, safe-area insets, no horizontal scroll. Per-kind mobile rules in `kind_spa.md` / `kind_guide.md` / `kind_game.md`.
-- **Games**: keyboard + dedicated on-screen controls; never click-on-playfield as the only scheme (`kind_game.md`).
+- **Phone-first**: design for **iPhone 13+** (~390×844 CSS px) and scale to larger phones (~430px) plus **laptop/desktop** (≥1280×800). Viewport meta, 44px taps, safe-area insets, no horizontal scroll. Per-kind rules in `kind_spa.md` / `kind_guide.md` / `kind_game.md`.
+- **Games**: keyboard + dedicated on-screen controls; real loop/collisions/canvas graphics; never click-on-playfield as the only scheme (`kind_game.md`).
 
 ## Limits
 

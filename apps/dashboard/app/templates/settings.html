@@ -190,67 +190,6 @@
 <textarea id="trmnl-designer-data" hidden readonly>{{ designer | tojson }}</textarea>
 {% endif %}
 
-{% if settings_tab == 'watch' %}
-{% set level = watch.level or 'attention' %}
-<section class="card watch-status is-{{ level }}">
-  <div class="watch-status-main">
-    <p class="watch-level-label">{{ level|capitalize }}</p>
-    <h2>{{ watch.summary }}</h2>
-    {% if watch.checked_at %}
-    <p class="muted">Checked {{ watch.checked_at[:19]|replace('T', ' ') }} UTC</p>
-    {% endif %}
-  </div>
-  {% if watch.reasons %}
-  <ul class="watch-reasons">
-    {% for reason in watch.reasons %}
-    <li>{{ reason }}</li>
-    {% endfor %}
-  </ul>
-  {% endif %}
-</section>
-
-<div class="watch-metrics">
-  <section class="card watch-metric">
-    <div class="watch-metric-icon" aria-hidden="true">{{ svg('disk') }}</div>
-    <div>
-      <h3>Disk</h3>
-      <p class="watch-metric-value">{% if watch.disk_pct is not none %}{{ watch.disk_pct }}%{% else %}n/a{% endif %}</p>
-      <p class="muted">Used on the StonePi host</p>
-    </div>
-  </section>
-  <section class="card watch-metric">
-    <div class="watch-metric-icon" aria-hidden="true">{{ svg('backup') }}</div>
-    <div>
-      <h3>Backup</h3>
-      <p class="watch-metric-value">{{ watch.backup_status or 'none' }}</p>
-      <p class="muted">{% if watch.backup_age_days is not none %}About {{ watch.backup_age_days|int }} day{% if watch.backup_age_days|int != 1 %}s{% endif %} ago{% else %}No recent backup stamp{% endif %}</p>
-    </div>
-  </section>
-</div>
-
-<section class="card stack">
-  <h2>Apps</h2>
-  <div class="watch-app-grid">
-    {% for app in watch.apps %}
-    <article class="watch-app-card">
-      {{ service_icon(app.id, app.color or '') }}
-      <div class="watch-app-body">
-        <h3>{{ app.n }}</h3>
-        <p class="pill">
-          <span class="dot {% if not app.enabled %}{% elif app.level == 'critical' or not app.running %}bad{% elif app.level == 'attention' %}warn{% else %}ok{% endif %}"></span>
-          {% if not app.enabled %}Disabled
-          {% elif app.running %}Running
-          {% else %}Down
-          {% endif %}
-          · {{ app.unit }}
-        </p>
-      </div>
-    </article>
-    {% endfor %}
-  </div>
-</section>
-{% endif %}
-
 {% if settings_tab == 'vault' %}
 <section class="card stack">
   <h2>Add or update a secret</h2>
@@ -393,7 +332,7 @@
 {% if settings_tab == 'about' %}
 <section class="card stack">
   <h2>About</h2>
-  <p class="lede">StonePi is the household LAN portal for NewsCast, FileServe, EventTrakr, Pinboard, Studio, and shared sign-in — plus Display, Watch, and Vault under Settings.</p>
+  <p class="lede">StonePi is the household LAN portal for NewsCast, FileServe, EventTrakr, Pinboard, Studio, and shared sign-in — plus Display and Vault under Settings.</p>
   <p class="muted">Author: <a href="{{ app_github }}" rel="noopener noreferrer" target="_blank">{{ app_author }}</a></p>
   <p class="muted">Version: {{ app_version }}</p>
 </section>
