@@ -333,6 +333,23 @@ h1, h2, h3 {
   margin: 0 0 8px;
 }
 .lede, .muted { color: var(--muted); margin: 0 0 4px; }
+.hint { color: var(--muted); margin: 0; }
+.text-link { color: var(--accent); font-weight: 500; }
+.about-card {
+  display: grid;
+  gap: 8px;
+  justify-items: stretch;
+  text-align: left;
+}
+.about-card > * {
+  margin: 0;
+  padding: 0;
+  max-width: 100%;
+  text-indent: 0;
+}
+.about-card h2 { margin: 0; padding: 0; }
+.about-card .lede,
+.about-card .hint { margin: 0; padding: 0; color: var(--muted); }
 .hero { margin-bottom: 4px; }
 .hero-row {
   display: flex;
@@ -371,7 +388,7 @@ a.card:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
 .service-grid {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
   align-items: stretch;
 }
 .service-card {
@@ -409,11 +426,12 @@ a.card:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
 }
 .service-card h3 {
   margin: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 .service-card .muted {
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 .service-card .row-actions {
   margin-top: auto;
@@ -621,6 +639,29 @@ pre {
 }
 .service-port {
   margin-top: 2px;
+}
+.service-meta {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+}
+.service-meta-row {
+  display: grid;
+  grid-template-columns: 3.75rem minmax(0, 1fr);
+  column-gap: 0.65rem;
+  align-items: baseline;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.service-meta .meta-label {
+  font-weight: 600;
+  color: var(--ink, inherit);
+}
+.service-meta .meta-value {
+  color: var(--muted);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .service-icon {
   width: 40px;

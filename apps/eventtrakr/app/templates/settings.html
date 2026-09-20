@@ -10,9 +10,9 @@
 </section>
 
 <!-- Settings Tabs Chips -->
-{% set tab_icons = {'general': 'settings', 'privacy': 'lock', 'schedule': 'refresh', 'filters': 'filter', 'categories': 'tag', 'calendar': 'calendar', 'providers': 'key', 'network': 'wifi', 'users': 'users', 'update': 'refresh'} %}
+{% set tab_icons = {'general': 'sliders', 'privacy': 'lock', 'schedule': 'refresh', 'filters': 'filter', 'categories': 'tag', 'calendar': 'calendar', 'providers': 'key', 'network': 'wifi', 'users': 'users', 'update': 'refresh', 'about': 'about'} %}
 <div class="settings-tabs" data-settings-tabs>
-<div class="chips-row settings-chips" role="tablist" aria-label="Settings sections">
+<div class="chips settings-chips" role="tablist" aria-label="Settings sections">
   {% for key, label in settings_tabs %}
   {% if key != 'users' or user.role == 'admin' %}
   <a class="chip-btn{% if active_tab == key %} is-active{% endif %}" href="?tab={{ key }}" role="tab" id="settings-tab-{{ key }}" data-settings-tab="{{ key }}" data-settings-lede="{{ settings_ledes.get(key, '') }}" aria-selected="{{ 'true' if active_tab == key else 'false' }}" aria-controls="settings-panel-{{ key }}">
@@ -492,5 +492,14 @@
 </div>
 </div>
 {% endif %}
+
+<div class="stack settings-panel" id="settings-panel-about" role="tabpanel" data-settings-panel="about" aria-labelledby="settings-tab-about"{% if active_tab != 'about' %} hidden{% endif %}>
+<div class="card stack about-card">
+  <h2>{{ app_name }}</h2>
+  <p class="lede">Tracks events from the sources you choose, keeps a personal agenda, and can push favourites to Google Calendar. Runs on a home Pi or a Windows machine on your LAN.</p>
+  <p class="hint">GitHub: <a class="text-link" href="{{ app_github }}" rel="noopener noreferrer" target="_blank">{{ app_github_user }}</a></p>
+  <p class="hint">Version: {{ app_version }}</p>
+</div>
+</div>
 </div>
 {% endblock %}

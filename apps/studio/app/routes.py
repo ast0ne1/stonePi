@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import mimetypes
 from pathlib import Path
+from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app import llm, store, workspace
+from app import __github__, __github_user__, __version__, llm, prompt_files, store, workspace
 from app.config import BUILD_KINDS, ROOT_DIR, env
+
+
 from stonepi_auth import login_url, logout_url
 from stonepi_auth.config import PlatformSettings
 from stonepi_auth.csrf import csrf_from_request, csrf_ok, set_csrf_cookie
@@ -125,6 +128,95 @@ def home(request: Request):
     )
 
 
+def _is_admin(user) -> bool:
+    """Solo (no SSO secret) counts as admin; otherwise require household admin."""
+    if not _session_secret():
+        return True
+    return bool(user and user.is_admin)
+
+
+@router.get("/settings", response_class=HTMLResponse)
+def settings_page(request: Request):
+    user, denied = _require_user(request)
+    if denied:
+        return denied
+    is_admin = _is_admin(user)
+    tab = (request.query_params.get("tab") or "about").strip().lower()
+    if tab not in {"about", "prompts"}:
+        tab = "about"
+    if tab == "prompts" and not is_admin:
+        return RedirectResponse(f"{_prefix()}/settings?tab=about", status_code=303)
+
+    prompt_id = prompt_files.normalize_prompt_id(request.query_params.get("prompt"))
+    prompt_rows = prompt_files.list_prompts() if is_admin else []
+    prompt_body = prompt_files.read_prompt(prompt_id) if tab == "prompts" and is_admin else ""
+    prompt_def = prompt_files.get_prompt_def(prompt_id) if tab == "prompts" and is_admin else None
+
+    ledes = {
+        "about": "App name, description, GitHub, and the version running here.",
+        "prompts": "Edit the markdown guidelines Studio injects into every LLM turn.",
+    }
+    return _csrf_response(
+        request,
+        "settings.html",
+        {
+            "user": user,
+            "active": "settings",
+            "settings_tab": tab,
+            "is_admin": is_admin,
+            "settings_lede": ledes.get(tab, ledes["about"]),
+            "app_name": "Studio",
+            "app_version": __version__,
+            "app_github_user": __github_user__,
+            "app_github": __github__,
+            "prompt_id": prompt_id,
+            "prompt_rows": prompt_rows,
+            "prompt_body": prompt_body,
+            "prompt_def": prompt_def,
+            "prompt_customized": prompt_files.is_customized(prompt_id) if tab == "prompts" and is_admin else False,
+            "error": request.query_params.get("err"),
+            "message": request.query_params.get("msg"),
+        },
+    )
+
+
+@router.post("/settings/prompts")
+async def settings_prompts_save(
+    request: Request,
+    prompt: str = Form(""),
+    body: str = Form(""),
+    action: str = Form("save"),
+    csrf_token: str = Form(""),
+):
+    user, denied = _require_user(request)
+    if denied:
+        return denied
+    if not _is_admin(user):
+        return HTMLResponse("Admins only.", status_code=403)
+    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+        return RedirectResponse(
+            f"{_prefix()}/settings?tab=prompts&prompt={prompt_files.normalize_prompt_id(prompt)}&err={quote('Form expired')}",
+            status_code=303,
+        )
+    prompt_id = prompt_files.normalize_prompt_id(prompt)
+    try:
+        if (action or "save").strip().lower() == "reset":
+            prompt_files.reset_prompt(prompt_id)
+            msg = "Restored packaged default"
+        else:
+            prompt_files.write_prompt(prompt_id, body)
+            msg = "Prompt saved"
+    except ValueError as exc:
+        return RedirectResponse(
+            f"{_prefix()}/settings?tab=prompts&prompt={prompt_id}&err={quote(str(exc))}",
+            status_code=303,
+        )
+    return RedirectResponse(
+        f"{_prefix()}/settings?tab=prompts&prompt={prompt_id}&msg={quote(msg)}",
+        status_code=303,
+    )
+
+
 @router.get("/projects", response_class=HTMLResponse)
 def projects_page(request: Request):
     user, denied = _require_user(request)
@@ -137,6 +229,7 @@ def projects_page(request: Request):
             "user": user,
             "active": "projects",
             "projects": store.list_projects(),
+
             "kind_labels": _KIND_LABELS,
             "error": request.query_params.get("err"),
             "message": request.query_params.get("msg"),

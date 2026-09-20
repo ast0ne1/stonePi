@@ -21,7 +21,7 @@ from flask import (
     url_for,
 )
 
-from app import __author__, __version__
+from app import __github__, __github_user__, __version__
 from app.auth import (
     attach_session,
     clear_login_failures,
@@ -67,7 +67,7 @@ SETTINGS_LEDES = {
     "users": "Household accounts. Create users, reset passwords, or remove access.",
     "backup": "Download or restore a zip of your pages and settings. Roll back the last app install here.",
     "update": "Check GitHub Releases and install a newer zip.",
-    "about": "What FileServe is and which version this copy is running.",
+    "about": "App name, description, GitHub, and the version running here.",
 }
 SETTINGS_SAVE_TABS = {"device", "update"}
 
@@ -146,8 +146,10 @@ def create_app(config: dict | None = None) -> Flask:
             home = hostname.homescreen_name(db)
             pending_tls = settings.https_enabled(db) and not request_is_https()
         return {
+            "app_name": "FileServe",
             "app_version": __version__,
-            "app_author": __author__,
+            "app_github_user": __github_user__,
+            "app_github": __github__,
             "app_port": env.port,
             "using_factory_admin": factory,
             "homescreen_name": home,

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Settings · Pinboard{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <h1>Settings</h1>
+  <p class="lede">App name, description, GitHub, and the version running here.</p>
+</section>
+
+<div class="settings-tabs">
+  <div class="chips settings-chips" role="tablist" aria-label="Settings sections">
+    <a class="chip-btn is-active" href="/settings?tab=about" role="tab" id="settings-tab-about" aria-selected="true" aria-controls="settings-panel-about">
+      {{ icon("about") }}<span>About</span>
+    </a>
+  </div>
+
+  <div class="stack settings-panel" id="settings-panel-about" role="tabpanel" aria-labelledby="settings-tab-about">
+    <div class="card stack about-card">
+      <h2>{{ app_name }}</h2>
+      <p class="lede">Household notices and short reminders for Display / TRMNL. Runs on a home Pi or a Windows machine on your LAN.</p>
+      <p class="hint">GitHub: <a class="text-link" href="{{ app_github }}" rel="noopener noreferrer" target="_blank">{{ app_github_user }}</a></p>
+      <p class="hint">Version: {{ app_version }}</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

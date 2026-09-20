@@ -1,5 +1,13 @@
 # Changelog — Studio
 
+## 0.0.4 — 2026-09-20
+
+### Added
+- Settings → About; admins can view/edit LLM prompt markdown under Settings → Prompts (`prompt_files` + DATA_DIR overrides)
+
+### Changed
+- Settings tab chrome matches other apps (About flush; pill chips)
+
 ## 0.0.3 — 2026-09-20
 
 ### Changed

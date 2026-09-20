@@ -1319,8 +1319,28 @@ select:focus-visible {
 .user-qr-card .qr-frame {
   max-width: 220px;
 }
-.about-card .lede { margin: 0; }
-.about-card .hint { margin: 0; }
+.about-card {
+  display: grid;
+  gap: 8px;
+  justify-items: stretch;
+  text-align: left;
+}
+.about-card > * {
+  margin: 0;
+  padding: 0;
+  max-width: 100%;
+  text-indent: 0;
+}
+.about-card h2 {
+  margin: 0;
+  padding: 0;
+}
+.about-card .lede,
+.about-card .hint {
+  margin: 0;
+  padding: 0;
+  color: var(--muted);
+}
 .provider-panel { display: grid; gap: 14px; }
 fieldset { border: 0; margin: 0; min-width: 0; }
 legend { font-family: var(--serif); font-size: 1.25rem; margin-bottom: 8px; padding: 0; }

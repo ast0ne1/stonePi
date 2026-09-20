@@ -752,7 +752,28 @@ a.icon-btn {
 .pack-log .ok { color: #8fd6b5; }
 .pack-log .err { color: #f0a0a0; }
 .pack-log .muted { color: #a89f93; }
-.about-card .lede, .about-card .hint { margin: 0; }
+.about-card {
+  display: grid;
+  gap: 8px;
+  justify-items: stretch;
+  text-align: left;
+}
+.about-card > * {
+  margin: 0;
+  padding: 0;
+  max-width: 100%;
+  text-indent: 0;
+}
+.about-card h2 {
+  margin: 0;
+  padding: 0;
+}
+.about-card .lede,
+.about-card .hint {
+  margin: 0;
+  padding: 0;
+  color: var(--muted);
+}
 label { display: grid; gap: 6px; font-size: 0.92rem; min-width: 0; }
 .card, .stack, form { min-width: 0; }
 .hint { overflow-wrap: anywhere; }

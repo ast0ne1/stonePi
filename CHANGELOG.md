@@ -2,6 +2,24 @@
 
 Platform version lives in [`VERSION`](VERSION). App zips use each app’s `__version__` (see `scripts/build_release_zips.py`).
 
+## 0.1.4 — 2026-09-20
+
+### UX
+- Admin nav: **Health** (monitor) vs **Services** (manage enable/disable); Overview route kept at `/overview`
+- Health cards: Version + URL labels; URLs follow the hostname you opened; long URLs wrap in-card
+- Services cards: Route + Port only (no Healthy / Status lines); enable toggles unchanged
+- Shared Settings chrome: General sliders icon; About cards flush; Studio Settings pills match NewsCast
+- Studio: Settings → About; admins edit LLM prompt markdown under Settings → Prompts
+- Docs: [docs/screenshots/](docs/screenshots/) gallery linked from the root README
+
+### App versions in this cut
+| App | Version |
+|-----|---------|
+| dashboard | 0.1.4 |
+| auth | 0.1.4 |
+| studio | 0.0.4 |
+| pinboard | 0.0.2 |
+
 ## 0.1.3 — 2026-09-20
 
 ### UX
