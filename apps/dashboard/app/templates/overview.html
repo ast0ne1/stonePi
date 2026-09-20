@@ -13,6 +13,19 @@
   </div>
 </section>
 
+{% set watch_level = (watch.level or 'healthy')|lower %}
+{% if watch_level != 'healthy' %}
+<aside class="overview-alert is-{{ watch_level }}" role="status">
+  <div>
+    <p class="overview-alert-level">{{ watch_level }}</p>
+    <p class="overview-alert-title">{{ watch.summary }}</p>
+  </div>
+  {% if watch.checked_at %}
+  <p class="overview-alert-checked">Checked {{ watch.checked_at[:19]|replace('T', ' ') }} UTC</p>
+  {% endif %}
+</aside>
+{% endif %}
+
 <div class="grid">
   <section class="card stat">
     <p class="muted">Services</p>
@@ -29,6 +42,15 @@
     <p class="muted">Household accounts</p>
     {% endif %}
   </section>
+  <section class="card stat{% if disk_warn %} is-warn{% endif %}">
+    <p class="muted">Disk used</p>
+    {% if disk_pct is not none %}
+    <strong>{{ disk_pct }}%</strong>
+    {% else %}
+    <strong>—</strong>
+    {% endif %}
+    <p class="muted">Used on the StonePi host</p>
+  </section>
   <section class="card stat{% if not backup_summary.ok %} is-warn{% endif %}">
     <p class="muted">Last backup</p>
     <strong>{{ backup_summary.label }}</strong>
@@ -36,7 +58,12 @@
   </section>
 </div>
 
-<h2>Services</h2>
+<div class="section-head">
+  <h2>Services</h2>
+  {% if cards %}
+  <p class="muted">{{ healthy_count }} of {{ cards|length }} healthy</p>
+  {% endif %}
+</div>
 {% if cards %}
 <div class="service-grid">
   {% for card in cards %}
@@ -46,7 +73,7 @@
       <div>
         <h3>{{ card.name }}</h3>
         <p class="pill"><span class="dot {% if card.health.ok %}ok{% else %}bad{% endif %}"></span>
-          {% if card.health.ok %}Healthy{% else %}Unreachable{% endif %}
+          {% if card.health.ok %}Healthy{% else %}Down{% endif %}
           · {% if card.unit_status == 'local' %}local process{% else %}{{ card.unit_status }}{% endif %}
         </p>
         <p class="muted">{{ card.version }} · {{ card.url }}</p>

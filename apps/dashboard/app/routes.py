@@ -4,12 +4,12 @@ import json
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.config import ROOT_DIR, env, resolve_cockpit_url
 from app import services
-from stonepi_auth import APP_CATALOG, login_url, logout_url
+from stonepi_auth import APP_CATALOG, APP_IDS, login_url, logout_url
 from stonepi_auth.config import PlatformSettings
 from stonepi_auth.csrf import csrf_from_request, csrf_ok, set_csrf_cookie
 from stonepi_auth.session import CSRF_COOKIE
@@ -112,6 +112,14 @@ def _require_csrf(request: Request, form) -> bool:
     return csrf_ok(request.cookies.get(CSRF_COOKIE), str(form.get("csrf_token") or ""))
 
 
+def _wants_json(request: Request) -> bool:
+    accept = (request.headers.get("accept") or "").lower()
+    return "application/json" in accept or request.headers.get("x-requested-with") == "fetch"
+
+
+LOCKED_APP_IDS = frozenset({"dashboard", "auth"})
+
+
 @router.get("/healthz")
 @router.get("/health")
 def healthz():
@@ -134,16 +142,19 @@ def _backup_summary(backup: dict) -> dict:
     reason = str(backup.get("reason") or backup.get("message") or "").strip()
     stamp_label = stamp[:19].replace("T", " ") if stamp else ""
 
+    def detail(*parts: str) -> str:
+        return " · ".join(part for part in parts if part)
+
     if status in {"failed", "error"}:
         return {
-            "label": stamp_label or "Backup failed",
-            "detail": reason or "Last backup failed",
+            "label": "Failed",
+            "detail": detail(stamp_label, reason or "Last backup failed"),
             "ok": False,
         }
     if status == "skipped":
         return {
-            "label": stamp_label or "Skipped",
-            "detail": reason or "Last backup was skipped",
+            "label": "Skipped",
+            "detail": detail(stamp_label, reason or "Last backup was skipped"),
             "ok": False,
         }
     if status in {"ok", "complete", "success"} or (stamp and status not in {"none", "unknown", ""}):
@@ -154,7 +165,11 @@ def _backup_summary(backup: dict) -> dict:
         return {"label": stamp_label, "detail": "Last recorded backup", "ok": True}
     if status in {"none", "", "unknown"}:
         return {"label": "Never", "detail": "No backup recorded yet", "ok": False}
-    return {"label": status or "Unknown", "detail": reason or "Backup status", "ok": False}
+    return {
+        "label": (status or "unknown").capitalize(),
+        "detail": detail(stamp_label, reason or "Backup status"),
+        "ok": False,
+    }
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -212,8 +227,12 @@ def overview(request: Request):
     user, redirected = _user_or_login(request, admin=True)
     if redirected:
         return redirected
+    from app import display
+    import stonepi_watch
+
     cards = services.application_cards(dict(request.cookies))
     backup = services.backup_info()
+    watch = display.watch_snapshot(dict(request.cookies))
     users = []
     error = None
     users_ok = False
@@ -223,6 +242,9 @@ def overview(request: Request):
     except Exception as exc:
         error = str(exc)
     enabled_count = sum(1 for card in cards if card.get("enabled", True) is not False)
+    healthy_count = sum(1 for card in cards if (card.get("health") or {}).get("ok"))
+    disk_pct = watch.get("disk_pct")
+    disk_warn = disk_pct is not None and int(disk_pct) >= stonepi_watch.DISK_ATTENTION_PCT
     return _html(
         request,
         "overview.html",
@@ -232,6 +254,10 @@ def overview(request: Request):
             "cards": cards,
             "backup": backup,
             "backup_summary": _backup_summary(backup),
+            "watch": watch,
+            "disk_pct": disk_pct,
+            "disk_warn": disk_warn,
+            "healthy_count": healthy_count,
             "user_count": len(users) if users_ok else None,
             "users_unavailable": not users_ok,
             "enabled_count": enabled_count,
@@ -260,7 +286,7 @@ def applications(request: Request):
         {
             "active": "applications",
             "cards": services.application_cards(dict(request.cookies)),
-            "manage_apps": [app for app in services.catalog_apps(include_auth=False, cookies=dict(request.cookies))],
+            "locked_apps": LOCKED_APP_IDS,
             "message": request.query_params.get("msg") or None,
         },
     )
@@ -513,39 +539,51 @@ async def applications_availability(request: Request):
     if redirected:
         return redirected
     form = await request.form()
+    wants_json = _wants_json(request)
+    cookies = dict(request.cookies)
+
+    def fail(message: str, status_code: int = 400):
+        if wants_json:
+            return JSONResponse({"ok": False, "error": message}, status_code=status_code)
+        return _html(
+            request,
+            "applications.html",
+            user,
+            {
+                "active": "applications",
+                "cards": services.application_cards(cookies),
+                "locked_apps": LOCKED_APP_IDS,
+                "error": message,
+            },
+            status_code=status_code,
+        )
+
     if not _require_csrf(request, form):
-        return _html(
-            request,
-            "applications.html",
-            user,
-            {
-                "active": "applications",
-                "cards": services.application_cards(dict(request.cookies)),
-                "manage_apps": services.catalog_apps(include_auth=False, cookies=dict(request.cookies)),
-                "error": "That form expired. Refresh and try again.",
-            },
-            status_code=400,
-        )
-    enabled = {str(value) for value in form.getlist("enabled_apps")}
-    enabled.add("dashboard")
-    all_ids = {app["id"] for app in APP_CATALOG}
-    disabled = sorted(all_ids - enabled)
+        return fail("That form expired. Refresh and try again.")
+    app_id = str(form.get("app_id") or "").strip()
+    enabled_raw = str(form.get("enabled") or "").strip().lower()
+    enabled = enabled_raw in {"1", "true", "on", "yes"}
+    if app_id not in APP_IDS:
+        return fail("Unknown service.")
+    if app_id in LOCKED_APP_IDS:
+        return fail("Dashboard and Auth always stay available.")
+    names = {item["id"]: str(item.get("name") or item["id"]) for item in APP_CATALOG}
     try:
-        services.auth_request("PATCH", "/api/apps", dict(request.cookies), {"disabled": disabled})
+        payload = services.auth_request("GET", "/api/apps", cookies)
+        disabled = {str(item) for item in (payload.get("disabled") or [])}
+        if enabled:
+            disabled.discard(app_id)
+        else:
+            disabled.add(app_id)
+        disabled -= LOCKED_APP_IDS
+        services.auth_request("PATCH", "/api/apps", cookies, {"disabled": sorted(disabled)})
     except Exception as exc:
-        return _html(
-            request,
-            "applications.html",
-            user,
-            {
-                "active": "applications",
-                "cards": services.application_cards(dict(request.cookies)),
-                "manage_apps": services.catalog_apps(include_auth=False, cookies=dict(request.cookies)),
-                "error": str(exc),
-            },
-            status_code=400,
-        )
-    return RedirectResponse("/applications?msg=Availability+saved", status_code=303)
+        return fail(str(exc))
+    name = names.get(app_id, app_id)
+    message = f"{name} {'enabled' if enabled else 'hidden'}"
+    if wants_json:
+        return JSONResponse({"ok": True, "app_id": app_id, "enabled": enabled, "message": message})
+    return RedirectResponse("/applications?msg=" + quote(message), status_code=303)
 
 
 @router.get("/backups", response_class=HTMLResponse)
@@ -623,7 +661,6 @@ async def updates_install(app_id: str, request: Request):
 SETTINGS_TABS = [
     ("general", "General"),
     ("display", "Display"),
-    ("watch", "Watch"),
     ("vault", "Vault"),
     ("automations", "Automations"),
     ("update", "Updates"),
@@ -633,7 +670,6 @@ SETTINGS_TABS = [
 SETTINGS_LEDES = {
     "general": "Appearance and your password for this browser; admins also set network exposure here. Household accounts stay under Users.",
     "display": "TRMNL layout and webhook push of household display data.",
-    "watch": "Status of every StonePi app plus disk and backup — healthy, attention, or critical.",
     "vault": "Encrypted secrets and config for StonePi apps and platform services.",
     "automations": "Thin when→then jobs: USB backup, Display push on Watch or backup.",
     "update": "Check GitHub Releases for per-app packages and the platform pack.",
@@ -724,6 +760,9 @@ def settings_page(request: Request, tab: str = "general"):
         }
         return _html(request, "settings.html", user, extra)
 
+    if settings_tab == "watch":
+        return RedirectResponse("/overview", status_code=303)
+
     known = {key for key, _ in SETTINGS_TABS}
     if settings_tab not in known:
         settings_tab = "general"
@@ -807,14 +846,6 @@ def settings_page(request: Request, tab: str = "general"):
                 "display_design_profile": design_info,
             }
         )
-    elif settings_tab == "watch":
-        from stonepi_auth import APP_CATALOG
-
-        watch = display.watch_snapshot(dict(request.cookies))
-        colors = {str(item["id"]): str(item.get("color") or "") for item in APP_CATALOG}
-        for app in watch.get("apps") or []:
-            app["color"] = colors.get(str(app.get("id") or ""), "")
-        extra["watch"] = watch
     elif settings_tab == "vault":
         from stonepi_vault import get_vault
 

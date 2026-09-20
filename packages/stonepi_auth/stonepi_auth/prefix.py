@@ -7,7 +7,7 @@ _ATTR = re.compile(
     r'(?P<attr>href|src|action|poster|formaction|data-href)=(?P<q>["\'])(?P<path>/[^"\']*)',
     re.IGNORECASE,
 )
-_FETCH = re.compile(r'''(?P<fn>fetch)\(\s*(?P<q>["'])(?P<path>/[^"']*)''')
+_FETCH = re.compile(r'''(?P<fn>fetch|send)\(\s*(?P<q>["'])(?P<path>/[^"']*)''')
 
 
 def rewrite_text(text: str, prefix: str) -> str:

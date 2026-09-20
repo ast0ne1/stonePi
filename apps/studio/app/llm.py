@@ -63,6 +63,13 @@ def system_prompt(extra_files: list[str], *, kind: str = "spa", intent: str = "b
             "Implement or update the site now. Emit a complete file map so Studio preview "
             "shows a playable/usable result immediately (publish comes later)."
         )
+        if (kind or "").strip().lower() == "game":
+            mode_block += (
+                "\nThis is a **game** build: meet every requirement in the Game kind guideline — "
+                "real loop, collisions/rules, canvas (or equivalent) graphics, keyboard **and** "
+                "on-screen controls, sharp on iPhone 13+ and usable on laptop/desktop. "
+                "Do not ship a static mock, emoji-only toy, or click-playfield-only control scheme."
+            )
     parts = [base.strip()]
     if kind_block:
         parts.append(kind_block)

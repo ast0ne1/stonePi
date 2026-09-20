@@ -8,7 +8,7 @@ Per build type (injected every LLM turn after the user picks **What to build**):
 |---------|------|--------|-------------|
 | `spa` | `kind_spa.md` | Single-page app / tool UI | Single column, sticky actions + safe-area |
 | `guide` | `kind_guide.md` | Interactive how-to / story | One step per screen, large Next/Back |
-| `game` | `kind_game.md` | Simple browser game | Keyboard + on-screen controls (no click-playfield-only) |
+| `game` | `kind_game.md` | Real playable browser game | iPhone 13+ + laptop/desktop; keyboard + on-screen controls |
 
 Studio system prompt = hosting rules + selected kind guideline + current file list.
 

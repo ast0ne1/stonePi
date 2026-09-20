@@ -156,8 +156,43 @@ try {
   /* ignore a bad stored toast */
 }
 
+function appPrefix() {
+  const raw = document.documentElement.getAttribute("data-stonepi-prefix") || "";
+  return raw.replace(/\/$/, "");
+}
+
+function withPrefix(path) {
+  if (!path || typeof path !== "string") return path;
+  // form.action is always an absolute URL; unwrap same-origin paths so we can
+  // re-apply /news (etc.) when the HTML action was root-absolute (/feeds/...).
+  try {
+    if (/^https?:\/\//i.test(path)) {
+      const absolute = new URL(path);
+      if (absolute.origin === window.location.origin) {
+        path = absolute.pathname + absolute.search + absolute.hash;
+      } else {
+        return path;
+      }
+    }
+  } catch {
+    /* keep original */
+  }
+  if (!path.startsWith("/") || path.startsWith("//")) return path;
+  const prefix = appPrefix();
+  if (!prefix) return path;
+  if (path === prefix || path.startsWith(prefix + "/")) return path;
+  return prefix + path;
+}
+
+function onLoginPath() {
+  const path = window.location.pathname || "";
+  const prefix = appPrefix();
+  if (prefix && (path === prefix + "/login" || path.startsWith(prefix + "/login/"))) return true;
+  return path === "/login" || path.startsWith("/login/");
+}
+
 async function send(url, options = {}) {
-  const response = await fetch(url, {
+  const response = await fetch(withPrefix(url), {
     credentials: "same-origin",
     headers: {
       Accept: "application/json",
@@ -166,8 +201,8 @@ async function send(url, options = {}) {
     },
     ...options,
   });
-  if (response.status === 401 && !window.location.pathname.startsWith("/login")) {
-    window.location.href = "/login";
+  if (response.status === 401 && !onLoginPath()) {
+    window.location.href = withPrefix("/login");
     throw new Error("Signed out");
   }
   const data = await response.json().catch(() => ({ ok: response.ok, message: response.statusText }));
@@ -292,9 +327,10 @@ document.querySelectorAll("form").forEach((form) => {
       if (form.dataset.busyLabel) button.textContent = form.dataset.busyLabel;
     }
     try {
-      const data = await send(form.action, { method: "POST", body });
+      const action = form.getAttribute("action") || form.action;
+      const data = await send(action, { method: "POST", body });
       if (data.reauth) {
-        window.location.href = "/login";
+        window.location.href = withPrefix("/login");
         return;
       }
       toastAfterReload(data.message || "Saved", "ok");
@@ -510,7 +546,7 @@ if (loadOllama) {
     const base = form?.querySelector("[name=ollama_base_url]")?.value || "";
     loadOllama.disabled = true;
     try {
-      const data = await send(`/api/ollama/models?base_url=${encodeURIComponent(base)}`);
+      const data = await send("/api/ollama/models?base_url=" + encodeURIComponent(base));
       const models = data.models || [];
       if (!models.length) {
         toast("Ollama is running, but no models are installed.", "error");

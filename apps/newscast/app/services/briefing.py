@@ -182,6 +182,10 @@ def _aware(value: datetime | None) -> datetime | None:
     return value
 
 
+def _local_tz():
+    return datetime.now().astimezone().tzinfo or timezone.utc
+
+
 def _day_window(day: str, now: datetime | None = None) -> tuple[datetime, datetime] | None:
     key = normalize_briefing_day(day)
     if key == "all":
@@ -189,18 +193,26 @@ def _day_window(day: str, now: datetime | None = None) -> tuple[datetime, dateti
     target = paper_day_for(key, now=now)
     if target is None:
         return None
-    start = datetime.combine(target, datetime.min.time(), tzinfo=timezone.utc)
+    # Bound the paper day in the Pi's local timezone (not UTC midnight on that
+    # calendar date), so household "today" matches the wall clock.
+    start = datetime.combine(target, datetime.min.time(), tzinfo=_local_tz())
     return start, start + timedelta(days=1)
 
 
 def _in_day(story: Story, window: tuple[datetime, datetime] | None) -> bool:
     if window is None:
         return True
-    when = _aware(story.published_at or story.created_at)
-    if when is None:
-        return False
     start, end = window
-    return start <= when < end
+    # Match on published_at *or* created_at so a refresh that pulls older RSS
+    # items still surfaces them on the day they were ingested.
+    for raw in (story.published_at, story.created_at):
+        when = _aware(raw)
+        if when is None:
+            continue
+        when_local = when.astimezone(start.tzinfo)
+        if start <= when_local < end:
+            return True
+    return False
 
 
 def _apply_keyword_filters(db: Session, stories: list[Story]) -> list[Story]:

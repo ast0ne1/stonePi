@@ -20,7 +20,7 @@ Hard-refresh the browser after syncing code. Confirm units with `stonepi status`
 1. Home — Edit order drag → Done; refresh keeps order  
 2. Settings → Display — Status wall + Household previews are landscape and full-width  
 3. Copy markup → paste into TRMNL → Push now → panel updates  
-4. Watch shows apps Running; Status Services metadata not all `—` when apps respond  
+4. Overview shows app health (Healthy/Down) plus disk and backup; Status Services metadata not all `—` when apps respond  
 5. Overview → Cockpit opens with HTTPS  
 6. EventTrakr — star an event → “Added to Favourites” (not a false “Removed”)  
 7. Open via router DNS (e.g. `http://stonepi.home/`) — login and **Back to apps** stay on that host (not bounced to `.local`)
@@ -51,4 +51,4 @@ Do **not** ship ad-hoc Pi overlay helpers (`scripts/push-*-fixes.*`, `scripts/ap
 
 ## 6. GitHub Release
 
-Tag platform **v0.1.2** (or your chosen tag), attach the `stonepi-*.zip` assets, summarize from root `CHANGELOG.md`.
+Tag platform **v0.1.3** (or your chosen tag), attach the `stonepi-*.zip` assets, summarize from root `CHANGELOG.md`.

@@ -18,10 +18,10 @@ One place for people and apps — separate from **Cockpit** (Linux host admin on
 | Area | Role |
 |------|------|
 | **Home** | Launcher tiles for apps the signed-in user may access; **Edit order** = drag-to-place (autosave) |
-| **Overview** | Services health, users, backup snapshot (admin) |
+| **Overview** | Admin glance: app health, disk, backup, and alert banner |
 | **Services** | Catalog apps, enable/disable, systemd-oriented controls |
 | **Users** | Household accounts, app grants, capability flags |
-| **Settings** | General (including **network exposure**), Display, Watch, Vault, Automations, Updates, Backup, About |
+| **Settings** | General (including **network exposure**), Display, Vault, Automations, Updates, Backup, About |
 
 ## Platform Settings tabs
 
@@ -29,7 +29,6 @@ One place for people and apps — separate from **Cockpit** (Linux host admin on
 |-----|------|
 | **General** | Instance basics; LAN vs internet-facing exposure (writes `/var/lib/stonepi/exposure`) |
 | **Display** | TRMNL webhook (or Vault `DISPLAY_WEBHOOK_URL`), panel size (OG 800×480 / V2 1040×780), design presets, landscape preview scaled to the Settings column, **Copy markup** + Push now / schedule |
-| **Watch** | healthy / attention / critical rollup for apps + disk + backup age |
 | **Vault** | Encrypted secrets (session, LLM, Bright Data, Google, webhook, ntfy, …) |
 | **Automations** | USB→backup; Watch/backup→Display push |
 | **Updates** | Install GitHub Release zips |

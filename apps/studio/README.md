@@ -19,13 +19,14 @@ Family authoring without a laptop toolchain — kids and adults describe a SPA, 
 |------|--------|-------------|
 | **Single Page App** | One-screen tool (checklist, quiz, converter) | Single column, large taps, safe-area |
 | **Interactive Guide** | Step-by-step how-to or choose-your-path | One step per screen, large Next/Back |
-| **Game** | Quick playable game with score / play again | Portrait on ~375px; on-screen controls ≥44px |
+| **Game** | Real playable game with score / play again | iPhone 13+ (~390×844) through laptop/desktop; on-screen + keyboard |
 
 Guidelines injected every LLM turn: `app/prompts/fileserve_hosting.md` plus `kind_spa.md` / `kind_guide.md` / `kind_game.md`. Sites must work on desktop **and** small handsets (iPhone 13 mini class).
 
 ## What it does
 
-- Project drawer: pick a kind, name it, chat to iterate
+- **Create** (landing): pick SPA / Guide / Game, name it, Start
+- **Projects**: list and open existing work; chat, build, preview, publish
 - Workspace files + live iframe preview
 - Emits a JSON **file map** the app applies to disk
 - **Publish to FileServe** — zip with the same options as Hosted Pages:
