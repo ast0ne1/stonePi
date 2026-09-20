@@ -18,6 +18,7 @@ def display_status():
     now = datetime.now(timezone.utc)
     next_label = "None"
     favourites_count = 0
+    upcoming: list[dict] = []
     with SessionLocal() as db:
         admin = db.execute(select(User).where(User.role == "admin").order_by(User.id.asc())).scalars().first()
         if admin is not None:
@@ -46,8 +47,19 @@ def display_status():
                 if end is not None and end.tzinfo is None:
                     end = end.replace(tzinfo=timezone.utc)
                 if start >= now or (end is not None and end >= now):
-                    chosen = event
-                    break
+                    if chosen is None:
+                        chosen = event
+                    title = (event.title or "Event").strip()
+                    if len(title) > 48:
+                        title = title[:45] + "…"
+                    upcoming.append(
+                        {
+                            "time": start.astimezone().strftime("%H:%M"),
+                            "message": title,
+                        }
+                    )
+                    if len(upcoming) >= 3:
+                        break
             if chosen is not None:
                 start = chosen.start_time
                 if start.tzinfo is None:
@@ -57,7 +69,14 @@ def display_status():
                 if len(title) > 42:
                     title = title[:39] + "…"
                 next_label = f"{title} · {when}"
-    return jsonify({"ok": True, "next": next_label, "favourites": favourites_count})
+    return jsonify(
+        {
+            "ok": True,
+            "next": next_label,
+            "favourites": favourites_count,
+            "events": upcoming,
+        }
+    )
 
 
 @bp.route("/sync/status")

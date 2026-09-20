@@ -214,7 +214,7 @@ document.querySelectorAll("form[data-confirm]").forEach((form) => {
   };
   let dragId = null;
   let dragFrom = null;
-  const productBadges = { newscast: "NC", eventtrakr: "ET", fileserve: "FS", pinboard: "PB" };
+  const productBadges = { newscast: "NC", eventtrakr: "ET", fileserve: "FS", pinboard: "PB", studio: "ST", pricescout: "PS", sportguide: "SG" };
 
   function escapeHtml(value) {
     return String(value ?? "")

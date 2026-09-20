@@ -31,6 +31,8 @@ APPS = [
     ("eventtrakr", ROOT / "apps" / "eventtrakr", 8003, "", "python -m app.serve"),
     ("pinboard", ROOT / "apps" / "pinboard", 8004, "", "python -m app.serve"),
     ("studio", ROOT / "apps" / "studio", 8005, "", "python -m app.serve"),
+    ("pricescout", ROOT / "apps" / "pricescout", 8006, "", "python -m app.serve"),
+    ("sportguide", ROOT / "apps" / "sportguide", 8007, "", "python -m app.serve"),
 ]
 
 
@@ -152,7 +154,7 @@ def ensure_venv(name: str, app_dir: Path) -> Path:
     if update_pkg.exists():
         _pip(py, "-e", str(update_pkg))
     vault = ROOT / "packages" / "stonepi_vault"
-    if vault.exists() and name in {"auth", "dashboard", "newscast", "fileserve", "eventtrakr", "pinboard", "studio"}:
+    if vault.exists() and name in {"auth", "dashboard", "newscast", "fileserve", "eventtrakr", "pinboard", "studio", "pricescout", "sportguide"}:
         _pip(py, "-e", str(vault))
     if name == "dashboard":
         for pkg in PLATFORM_PKGS:
@@ -201,6 +203,8 @@ def main() -> None:
         print("  EventTrakr  http://127.0.0.1:8003/")
         print("  Pinboard    http://127.0.0.1:8004/")
         print("  Studio      http://127.0.0.1:8005/")
+        print("  PriceScout  http://127.0.0.1:8006/")
+        print("  SportGuide  http://127.0.0.1:8007/")
         print("  Login       admin / admin")
         print("Ctrl+C to stop.")
         while True:

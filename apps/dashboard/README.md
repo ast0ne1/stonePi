@@ -45,6 +45,10 @@ One place for people and apps — separate from **Cockpit** (Linux host admin on
 
 StonePi pushes **`merge_variables` only**. After changing design or markup, use **Copy markup** and paste into the TRMNL Private Plugin Markup editor, then Force Refresh on the device.
 
+Custom editor layouts can use the nested contract also pushed alongside flat Status/Household keys:
+
+`system`, `services` (`name` / `status` / `detail`), `alerts`, `backup`, `events`, `reminders`.
+
 Preview matches the panel landscape frame and scales to fit the desktop Settings column (≤1×). Fixed designs use the full column width (palette hidden).
 
 ## Related

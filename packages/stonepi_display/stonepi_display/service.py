@@ -177,9 +177,21 @@ def push_overview(cookies: dict[str, str] | None = None) -> dict:
     try:
         raw = json.dumps(variables, separators=(",", ":"))
         if len(raw.encode("utf-8")) > 2048:
+            # Prefer nested TRMNL contract; trim bulky flat arrays first.
             variables["et_next"] = str(variables.get("et_next") or "")[:40]
-            variables["pinboard_lines"] = list(variables.get("pinboard_lines") or [])[:3]
+            variables["pinboard_lines"] = list(variables.get("pinboard_lines") or [])[:2]
+            variables["apps"] = list(variables.get("apps") or [])[:6]
+            variables["services"] = list(variables.get("services") or [])[:6]
+            variables["events"] = list(variables.get("events") or [])[:2]
+            variables["reminders"] = list(variables.get("reminders") or [])[:3]
+            variables["alerts"] = list(variables.get("alerts") or [])[:3]
             body = {"merge_variables": variables}
+            raw = json.dumps(variables, separators=(",", ":"))
+            if len(raw.encode("utf-8")) > 2048:
+                variables["apps"] = list(variables.get("apps") or [])[:4]
+                variables["services"] = list(variables.get("services") or [])[:4]
+                variables["pinboard_lines"] = []
+                body = {"merge_variables": variables}
         with httpx.Client(timeout=20.0, follow_redirects=False) as client:
             response = client.post(url, json=body)
         ok = response.status_code < 400

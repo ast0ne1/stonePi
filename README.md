@@ -30,6 +30,8 @@ More images: [docs/screenshots/](docs/screenshots/).
 | **[EventTrakr](apps/eventtrakr/README.md)** | Local events, favourites, and calendar sync | Complements news with “what’s on near us” | 7-day agenda; ICS/webcal; Google Calendar; Bright Data for Facebook events |
 | **[Pinboard](apps/pinboard/README.md)** | Household notices and short reminders | Shared fridge-door; feeds the wall display | Grant-gated; Display / TRMNL Pinboard block |
 | **[Studio](apps/studio/README.md)** | Chat-build static sites (SPA, Guide, Game) | Family authoring without a laptop toolchain | Vault LLM keys; publishes to FileServe with the same expiry/password options |
+| **[PriceScout](apps/pricescout/README.md)** | Weekly supermarket offers and cross-store compare | Household shopping without five retailer apps | eTilbudsavis JSON; optional Salling madspild |
+| **[SportGuide](apps/sportguide/README.md)** | Sports TV / stream schedules (Now + Sources) | What’s on without juggling guide sites | Playwright scrapes (AusSportGuide + WheresTheMatch) |
 
 ### Portal (not launcher tiles)
 
@@ -152,6 +154,8 @@ The installer enables systemd services so everything comes back after a reboot. 
 | http://stonepi.local/events/ | EventTrakr |
 | http://stonepi.local/pinboard/ | Pinboard |
 | http://stonepi.local/studio/ | Studio |
+| http://stonepi.local/prices/ | PriceScout |
+| http://stonepi.local/sports/ | SportGuide |
 | https://stonepi.local:9090 or https://PI_LAN_IP:9090 | Cockpit |
 
 Same paths work via the Pi LAN IP or a router DNS name (e.g. `http://stonepi.home/`). Prefer router DNS when Avahi `.local` is unreliable.
@@ -173,6 +177,8 @@ Creates per-app virtualenvs and starts:
 | http://127.0.0.1:8003/ | EventTrakr |
 | http://127.0.0.1:8004/ | Pinboard |
 | http://127.0.0.1:8005/ | Studio |
+| http://127.0.0.1:8006/ | PriceScout |
+| http://127.0.0.1:8007/ | SportGuide |
 
 SSO is shared on `127.0.0.1`. Solo `run-local.bat` still works if `STONEPI_SESSION_SECRET` is unset. On the Pi (with session secret set), **Users**, **Updates**, and **Backup** live under dashboard Settings; in-app Users/Update tabs are for solo runs only.
 
@@ -211,6 +217,8 @@ apps/fileserve
 apps/eventtrakr
 apps/pinboard
 apps/studio
+apps/pricescout
+apps/sportguide
 packages/stonepi_auth
 packages/stonepi_update
 packages/stonepi_display

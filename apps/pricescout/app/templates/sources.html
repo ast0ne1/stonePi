@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Sources · PriceScout{% endblock %}
+{% block content %}
+<section class="hero">
+  <h1>Sources</h1>
+  <p class="lede">Supermarkets on eTilbudsavis. Enabling a store includes its offers in Offers and Search.</p>
+</section>
+
+<form method="post" action="/sources/refresh" class="btn-row">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+  <button class="btn btn-primary btn-with-icon" type="submit"{% if refresh.running %} disabled{% endif %}>
+    {{ icon("refresh") }} {{ 'Refreshing…' if refresh.running else 'Refresh offers' }}
+  </button>
+</form>
+
+<ul class="source-list">
+  {% for s in sources %}
+  <li class="card source-card">
+    <div class="source-head">
+      <div class="source-identity">
+        {% if favicons.get(s.id) %}
+        <img class="store-icon" src="{{ favicons[s.id] }}" alt="" width="36" height="36" />
+        {% endif %}
+        <div>
+        <h2>{{ s.name }}</h2>
+        <p class="hint">
+          {% if s.collector == 'salling_fw' %}
+            Salling food-waste{% if not salling_configured %} · needs Vault token{% endif %}
+          {% else %}
+            eTilbudsavis
+          {% endif %}
+          · {{ s.offer_count or 0 }} offers
+        </p>
+        {% if s.last_ok_at %}<p class="hint">Updated {{ s.last_ok_at }}</p>{% endif %}
+        {% if s.last_error %}<p class="banner">{{ s.last_error }}</p>{% endif %}
+        </div>
+      </div>
+      {% if can_manage %}
+      <form method="post" action="/sources/toggle">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <input type="hidden" name="source_id" value="{{ s.id }}" />
+        <input type="hidden" name="enabled" value="{{ 0 if s.enabled else 1 }}" />
+        <button class="btn btn-with-icon {% if s.enabled %}btn-ghost{% else %}btn-primary{% endif %}" type="submit">
+          {{ icon("check") }} {{ 'Enabled' if s.enabled else 'Enable' }}
+        </button>
+      </form>
+      {% else %}
+      <span class="hint">{{ 'On' if s.enabled else 'Off' }}</span>
+      {% endif %}
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{% endblock %}

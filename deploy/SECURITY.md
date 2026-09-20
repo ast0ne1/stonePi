@@ -19,11 +19,11 @@ Installer also seeds `STONEPI_EXPOSURE=lan` in `/etc/stonepi/stonepi.env` as a f
 | Home network (`lan`) | OPDS / X3 / sync file APIs open on LAN when catalog login is off (CrossPoint-friendly). |
 | Internet-facing (`public`) | Catalog token required for OPDS, `/api/x3`, and `/api/v1/files` + device tasks. Firmware that cannot send a token must use Tailscale/VPN. ICS feeds require sign-in. Stricter FileServe URL-fetch SSRF. |
 
-Nginx already denies `/news/api/display`, `/events/api/display`, `/pinboard/api/display`, `/auth/api/display`, and `/studio/api/display` at the edge (Dashboard scrapes loopback). Optional TLS: [`nginx/stonepi-tls.conf`](nginx/stonepi-tls.conf).
+Nginx already denies `/news/api/display`, `/events/api/display`, `/pinboard/api/display`, `/auth/api/display`, `/studio/api/display`, and `/prices/api/display` at the edge (Dashboard scrapes loopback). Optional TLS: [`nginx/stonepi-tls.conf`](nginx/stonepi-tls.conf).
 
 ## Network
 
-- App processes bind **`HOST=127.0.0.1`**. Do not publish ports 8001–8011 / 8004–8005 publicly; only nginx (or a tunnel) should be reachable.
+- App processes bind **`HOST=127.0.0.1`**. Do not publish ports 8001–8011 / 8004–8006 publicly; only nginx (or a tunnel) should be reachable.
 - Cockpit on **`https://…:9090`** is separate — firewall it off the internet. Overview links use HTTPS; the installer upgrades old `http://` `COCKPIT_URL` values.
 - Access via **`stonepi.local`**, Pi LAN IP, or router LAN DNS (e.g. **`stonepi.home`**). Portal login and Home links follow the host you typed.
 - `stonepi.local` needs Avahi (`avahi-daemon` + `avahi-utils`). If `.local` fails, use the Pi LAN IP or router DNS; `sudo systemctl restart avahi-daemon` often restores IPv4 mDNS.

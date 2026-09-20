@@ -122,6 +122,7 @@ On another device on the same LAN:
 | http://stonepi.local/events/ | EventTrakr |
 | http://stonepi.local/pinboard/ | Pinboard |
 | http://stonepi.local/studio/ | Studio |
+| http://stonepi.local/prices/ | PriceScout |
 | https://stonepi.local:9090 or https://PI_LAN_IP:9090 | Cockpit (Linux admin; HTTPS) |
 
 Prefer a **router DHCP reservation + local DNS** name (e.g. `stonepi.home` on a F@ST / ISP gateway) when `stonepi.local` (Avahi) is flaky. Login and app **Home** links follow whichever host you open — they no longer force `.local`.
@@ -207,3 +208,4 @@ Application units (enabled on boot):
 - `stonepi-eventtrakr`
 - `stonepi-pinboard`
 - `stonepi-studio`
+- `stonepi-pricescout`

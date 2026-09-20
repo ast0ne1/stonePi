@@ -153,7 +153,7 @@ def safe_next(value: str | None, *, allowed_ports: set[int] | None = None) -> st
     host = (parsed.hostname or "").lower()
     if not _host_allowed_for_redirect(host):
         return "/"
-    ports = allowed_ports or {80, 443, 8001, 8002, 8003, 8004, 8005, 8010, 8011, 8080, 8081, 8085}
+    ports = allowed_ports or {80, 443, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8010, 8011, 8080, 8081, 8085}
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
     if port not in ports:
         return "/"

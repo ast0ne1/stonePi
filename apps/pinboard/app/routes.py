@@ -170,6 +170,48 @@ async def add_reminder(
     return RedirectResponse("/?msg=Reminder+added", status_code=303)
 
 
+@router.post("/api/reminder")
+async def api_reminder(request: Request):
+    """Authenticated JSON create — used by PriceScout (and similar) over loopback."""
+    user = _user(request)
+    if _session_secret() and user is None:
+        return JSONResponse({"ok": False, "message": "Sign in required."}, status_code=401)
+    if user and not user.is_admin and not user.can_access("pinboard"):
+        return JSONResponse(
+            {
+                "ok": False,
+                "message": "Pinboard access required — ask an admin to enable Pinboard for your account.",
+            },
+            status_code=403,
+        )
+    ctype = (request.headers.get("content-type") or "").lower()
+    text = ""
+    due = ""
+    assignee = ""
+    csrf_token = ""
+    if "application/json" in ctype:
+        body = await request.json()
+        if not isinstance(body, dict):
+            body = {}
+        text = str(body.get("text") or "")
+        due = str(body.get("due") or "")
+        assignee = str(body.get("assignee") or "")
+        csrf_token = str(body.get("csrf_token") or "")
+    else:
+        form = await request.form()
+        text = str(form.get("text") or "")
+        due = str(form.get("due") or "")
+        assignee = str(form.get("assignee") or "")
+        csrf_token = str(form.get("csrf_token") or "")
+    header_csrf = request.headers.get("X-StonePi-CSRF") or ""
+    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token or header_csrf):
+        return JSONResponse({"ok": False, "message": "Form expired — refresh and try again."}, status_code=403)
+    if not text.strip():
+        return JSONResponse({"ok": False, "message": "Reminder text required."}, status_code=400)
+    item = store.add_reminder(text.strip(), due=due, assignee=assignee)
+    return JSONResponse({"ok": True, "id": item["id"], "message": "Reminder added."})
+
+
 @router.post("/delete/{kind}/{item_id}")
 async def delete_item(kind: str, item_id: str, request: Request, csrf_token: str = Form("")):
     user = _user(request)

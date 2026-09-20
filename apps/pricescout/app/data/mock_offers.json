@@ -1,0 +1,74 @@
+[
+  {
+    "external_id": "mock-1",
+    "source_id": "netto",
+    "title": "Arla økologisk mælk 1 L",
+    "price_dkk": 12.0,
+    "unit_text": "1 L",
+    "category": "Dairy",
+    "is_hot": true,
+    "valid_from": null,
+    "valid_to": null,
+    "image_url": null
+  },
+  {
+    "external_id": "mock-2",
+    "source_id": "lidl",
+    "title": "Kyllingebrystfilet",
+    "price_dkk": 35.0,
+    "unit_text": "500 g",
+    "category": "Meat & fish",
+    "is_hot": true,
+    "valid_from": null,
+    "valid_to": null,
+    "image_url": null
+  },
+  {
+    "external_id": "mock-3",
+    "source_id": "discount365",
+    "title": "Æg 10 stk",
+    "price_dkk": 19.95,
+    "unit_text": "10 stk",
+    "category": "Dairy",
+    "is_hot": false,
+    "valid_from": null,
+    "valid_to": null,
+    "image_url": null
+  },
+  {
+    "external_id": "mock-4",
+    "source_id": "foetex",
+    "title": "Laks filet",
+    "price_dkk": 39.95,
+    "unit_text": "300 g",
+    "category": "Meat & fish",
+    "is_hot": true,
+    "valid_from": null,
+    "valid_to": null,
+    "image_url": null
+  },
+  {
+    "external_id": "mock-5",
+    "source_id": "kvickly",
+    "title": "Kaffe 500 g",
+    "price_dkk": 32.0,
+    "unit_text": "500 g",
+    "category": "Drinks",
+    "is_hot": false,
+    "valid_from": null,
+    "valid_to": null,
+    "image_url": null
+  },
+  {
+    "external_id": "mock-6",
+    "source_id": "netto",
+    "title": "Kaffe 400 g",
+    "price_dkk": 29.95,
+    "unit_text": "400 g",
+    "category": "Drinks",
+    "is_hot": false,
+    "valid_from": null,
+    "valid_to": null,
+    "image_url": null
+  }
+]
