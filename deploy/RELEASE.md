@@ -52,4 +52,4 @@ Do **not** ship ad-hoc Pi overlay helpers (`scripts/push-*-fixes.*`, `scripts/ap
 
 ## 6. GitHub Release
 
-Tag platform **v0.1.4** (or your chosen tag), attach the `stonepi-*.zip` assets, summarize from root `CHANGELOG.md`.
+Tag platform **v0.1.5** (or your chosen tag), attach the `stonepi-*.zip` assets, summarize from root `CHANGELOG.md`.

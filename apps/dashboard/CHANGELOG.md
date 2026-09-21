@@ -1,5 +1,13 @@
 # Changelog — Dashboard
 
+## 0.1.5 — 2026-09-21
+
+### Changed
+- Browser layout / view prefs; denser Home, Health, and Services cards
+- Users cards: expand control and footer pills aligned with Health / Services
+- Tall Settings pages no longer rubber-band the mobile bottom nav off-screen
+- Version aligned to platform **0.1.5**
+
 ## 0.1.4 — 2026-09-20
 
 ### Changed
