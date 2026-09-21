@@ -25,7 +25,7 @@ More images: [docs/screenshots/](docs/screenshots/).
 
 | App | Purpose | Why it’s in the stack | Key usage |
 |-----|---------|------------------------|-----------|
-| **[NewsCast](apps/newscast/README.md)** | Daily briefings from feeds you choose, ready for an e-reader | “What’s worth reading” without five news apps | OPDS / CrossPoint / KOReader; optional LLM summaries, translation, ntfy |
+| **[NewsCast](apps/newscast/README.md)** | Daily briefings from feeds you choose, ready for an e-reader | “What’s worth reading” without five news apps | Sources / Device; RSS or scrape; OPDS / CrossPoint / KOReader; optional LLM, translation, ntfy |
 | **[FileServe](apps/fileserve/README.md)** | Host HTML, PDF, Word, or zip sites on the LAN | Household “put it on a URL” without the cloud | Keep-until + optional password; per-user `/u/…`; Studio publish target |
 | **[EventTrakr](apps/eventtrakr/README.md)** | Local events, favourites, and calendar sync | Complements news with “what’s on near us” | 7-day agenda; ICS/webcal; Google Calendar; Bright Data for Facebook events |
 | **[Pinboard](apps/pinboard/README.md)** | Household notices and short reminders | Shared fridge-door; feeds the wall display | Grant-gated; Display / TRMNL Pinboard block |
@@ -53,7 +53,7 @@ Admin nav split:
 Portal     Dashboard + Auth (people, grants, exposure, secrets, Health / Services)
 Consume    NewsCast (briefings / e-readers) · EventTrakr (events / calendars)
 Publish    Studio ──publish──▶ FileServe hosted pages
-Glance     Pinboard + apps / Watch ──▶ Display (Status wall · Household · Custom) ──▶ TRMNL
+Glance     Pinboard + Health alerts / apps ──▶ Display (Status wall · Household · Custom) ──▶ TRMNL
 ```
 
 - **Studio → FileServe** — generated zips land under the user’s Hosted Pages.
@@ -101,7 +101,7 @@ Admin **Settings** tabs (not Home tiles):
 |-----|------|
 | **Display** | TRMNL webhook, design presets (Status wall / Household / Custom), landscape preview, scheduled push (`stonepi_display`) |
 | **Vault** | Encrypted secrets for apps and services (`stonepi_vault`) |
-| **Automations** | Thin when→then (USB→backup, Watch/backup→Display push) |
+| **Automations** | Thin when→then (USB→backup, Health/backup→Display push) |
 
 ## Integrations (where to turn them on)
 
@@ -109,7 +109,7 @@ Optional bolt-ons — core apps work without them. Prefer **Settings → Vault**
 
 | Integration | Where in StonePi | What it enables |
 |-------------|------------------|-----------------|
-| **TRMNL** | Dashboard → Settings → Display (webhook may live only in Vault as `DISPLAY_WEBHOOK_URL`) | Private Plugin webhook; pick a **design** (Status wall, Household focus, or Custom); **Copy markup** into TRMNL’s Markup editor (StonePi only pushes `merge_variables`); Save / Push now. Status wall is an ops board (Services + Alerts + Storage). Household is Watch/Apps + product cards. Custom is freeform blocks. Preview is landscape 800×480 (OG) / 1040×780 (V2), scaled to fit the Settings column. Outbound POSTs are https-only. On the public edge, nginx denies app `/api/display` routes ([`stonepi-public-deny-display.conf`](deploy/nginx/stonepi-public-deny-display.conf)); the dashboard still scrapes via loopback. |
+| **TRMNL** | Dashboard → Settings → Display (webhook may live only in Vault as `DISPLAY_WEBHOOK_URL`) | Private Plugin webhook; pick a **design** (Status wall, Household focus, or Custom); **Copy markup** into TRMNL’s Markup editor (StonePi only pushes `merge_variables`); Save / Push now. Status wall is an ops board (Services + Alerts + Storage). Household is Health alerts / Apps + product cards. Custom is freeform blocks. Preview is landscape 800×480 (OG) / 1040×780 (V2), scaled to fit the Settings column. Outbound POSTs are https-only. On the public edge, nginx denies app `/api/display` routes ([`stonepi-public-deny-display.conf`](deploy/nginx/stonepi-public-deny-display.conf)); the dashboard still scrapes via loopback. |
 | **AI / LLM** | NewsCast → LLM; Studio via Vault | OpenAI, Anthropic, or Ollama / local base URL. NewsCast writes short briefings (extracted text if no model). Studio generates sites. |
 | **Translation** | NewsCast → Translation | Per-feed or global; Google or LLM; target language for Translate feeds. |
 | **Bright Data** | EventTrakr → Integrations | Facebook Events discover/scrape when keyed; otherwise catalog/ICS/browser paths still work. |

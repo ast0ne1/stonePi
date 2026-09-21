@@ -1,7 +1,21 @@
 ﻿# Changelog
 
-Current version is **0.0.1**. New work is appended under that version until you ask to bump it.
-Subsequent builds use **0.0.1.x** (then `0.0.2` / `0.0.2.x`, and so on).
+## 0.0.2 — 2026-09-21
+
+### Added
+- **Device** and **Sources** nav shells (Status/Send; Feeds/Catalog) with side-by-side tabs
+- PaywallSkip (instance + per-feed) and configurable “read article” label
+- Sync / ingest activity strip on the briefing chrome
+- Briefing day chips: Today / Yesterday / **All** (publish date only)
+- Catalog `rss_url` + per-source Scrape | RSS switch for dual-mode feeds (Hackaday, Krebs, iTnews)
+
+### Changed
+- Webpage scrape ranks dated article links and skips featured/nav noise; explicit Scrape no longer probes RSS first
+- Dead catalog feeds removed (AP, Reuters, New Scientist, Copenhagen Post, Space.com, HBR, Quartz); repaired Politico / SciAm / Smithsonian / Vulture URLs
+- Mobile bottom nav uses seven columns; story kickers keep save/star on one row with truncated source names
+
+### Fixed
+- Seed preserves user-chosen type/URL for dual-mode sources; known-dead RSS URLs still get rewritten
 
 ## 0.0.1 — 2026-09-17
 

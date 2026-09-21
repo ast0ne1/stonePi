@@ -20,7 +20,7 @@ One place for people and apps — separate from **Cockpit** (Linux host admin on
 | **Home** | Launcher tiles for apps the signed-in user may access; **Edit order** = drag-to-place (autosave) |
 | **Health** | Admin monitor: alerts, disk, backup, whether each app is responding (URLs use the host you opened) |
 | **Services** | Manage apps: Route + Port, enable/disable for the household; open a service to start/stop/restart |
-| **Users** | Household accounts, app grants, capability flags (Studio Publish also needs FileServe) |
+| **Users** | Household accounts, app grants, capability flags (Studio Publish also needs FileServe); denser expandable cards |
 | **Settings** | General (including **network exposure**), Display, Vault, Automations, Updates, Backup, About |
 
 ## Platform Settings tabs
@@ -30,7 +30,7 @@ One place for people and apps — separate from **Cockpit** (Linux host admin on
 | **General** | Instance basics; LAN vs internet-facing exposure (writes `/var/lib/stonepi/exposure`) |
 | **Display** | TRMNL webhook (or Vault `DISPLAY_WEBHOOK_URL`), panel size (OG 800×480 / V2 1040×780), design presets, landscape preview scaled to the Settings column, **Copy markup** + Push now / schedule |
 | **Vault** | Encrypted secrets (session, LLM, Bright Data, Google, webhook, ntfy, …) |
-| **Automations** | USB→backup; Watch/backup→Display push |
+| **Automations** | USB→backup; Health/backup→Display push |
 | **Updates** | Install GitHub Release zips |
 | **Backup** | USB `STONEPI-BACKUP` status / trigger |
 | **About** | What StonePi is |
@@ -40,7 +40,7 @@ One place for people and apps — separate from **Cockpit** (Linux host admin on
 | Design | Behaviour |
 |--------|-----------|
 | **Status wall** | Fixed ops board: hostname + SYSTEM, five-metric strip, wide Services list (name · detail · count · UP), Alerts, Storage & Backup. B/W-first Framework tokens. |
-| **Household focus** | Fixed: Watch + Apps, then product cards (2×2 on OG), thin stats strip, title bar. |
+| **Household focus** | Fixed: Health alerts + Apps, then product cards (2×2 on OG), thin stats strip, title bar. |
 | **Custom** | Freeform drag blocks from the palette; half / full width; × to remove. |
 
 StonePi pushes **`merge_variables` only**. After changing design or markup, use **Copy markup** and paste into the TRMNL Private Plugin Markup editor, then Force Refresh on the device.
