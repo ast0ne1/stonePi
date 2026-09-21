@@ -7,7 +7,7 @@
 | On the Pi | http://stonepi.local/news/ |
 | Windows `run-dev.bat` | http://127.0.0.1:8001/ |
 
-Shared StonePi sign-in (one cookie). On the Pi, **Users**, **Updates**, and **Backup** live under Dashboard Settings; NewsCast Settings keep Publication, Schedule, Feeds, Reader, LLM, Translation, and Notifications.
+Shared StonePi sign-in (one cookie). On the Pi, **Users**, **Updates**, and **Backup** live under Dashboard Settings; NewsCast Settings keep Publication, Schedule, Sources, Reader, LLM, Translation, and Notifications.
 
 ## Why it’s in StonePi
 
@@ -27,7 +27,7 @@ Household “what’s worth reading today” without five news apps — fetch, d
 
 ## What it does
 
-- Fetches RSS on a schedule, or scrapes when no usable RSS is found
+- Fetches RSS on a schedule, or scrapes the homepage when you choose Scrape (dual-mode catalog sources can switch)
 - Deduplicates the same story across outlets
 - Writes a concise briefing (**OpenAI**, **Ollama**, or extracted text)
 - Optional **translation** (Google or LLM) per feed or globally
@@ -42,14 +42,12 @@ Household “what’s worth reading today” without five news apps — fetch, d
 
 | Tab | What it is for |
 | --- | --- |
-| **Briefing** | Today / Yesterday, filters, star, bookmark as long-read |
+| **Briefing** | Today / Yesterday / All (publish date), filters, star, bookmark as long-read |
 | **Saved** | Paste a URL; scrape full text into the next briefing |
 | **Search** | Stories, favourites, Saved long-reads |
-| **Send** | Upload EPUB/PDF; push or queue for the reader |
-| **Feeds** | Enable/mute, schedule, keywords, summarise vs full, translate |
-| **Catalog** | Curated sources; admin approvals for household members |
-| **Status** | Delivery health, OPDS URL, queue, QR (capability-gated) |
-| **Settings** | General, Publication, Schedule, Filters, Translation, LLM, Reader, Notifications, Categories, Catalog — Users/Backup/Update when solo |
+| **Device** | Status (delivery health, OPDS, queue) and Send (upload EPUB/PDF) |
+| **Sources** | Feeds (enable/mute, schedule, scrape vs RSS, keywords) and Catalog |
+| **Settings** | General (incl. PaywallSkip), Publication, Schedule, Filters, Translation, LLM, Reader, Notifications, Categories, Catalog — Users/Backup/Update when solo |
 
 ## Integrations (this app)
 

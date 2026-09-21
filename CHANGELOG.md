@@ -2,6 +2,21 @@
 
 Platform version lives in [`VERSION`](VERSION). App zips use each app’s `__version__` (see `scripts/build_release_zips.py`).
 
+## 0.1.5 — 2026-09-21
+
+### UX
+- Portal: browser layout prefs, denser Home / Health / Services cards, Users expand control aligned with Health/Services
+- Auth hub with quieter chrome and install guidance
+- Mobile: keep bottom nav visible when Settings and other tall pages overscroll
+- NewsCast: Device / Sources shells, PaywallSkip, sync activity, scrape↔RSS for dual-mode sources, Today / Yesterday / All by publish date, catalog cleanup, mobile nav and story kickers
+
+### App versions in this cut
+| App | Version |
+|-----|---------|
+| dashboard | 0.1.5 |
+| auth | 0.1.5 |
+| newscast | 0.0.2 |
+
 ## 0.1.4 — 2026-09-20
 
 ### UX

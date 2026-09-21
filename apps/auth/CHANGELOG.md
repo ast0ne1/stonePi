@@ -1,5 +1,12 @@
 # Changelog — Auth
 
+## 0.1.5 — 2026-09-21
+
+### Changed
+- Quieter Auth hub / status chrome with install guidance for household setup
+- Login and status pages denser for phone and desktop
+- Version aligned to platform **0.1.5**
+
 ## 0.1.4 — 2026-09-20
 
 ### Changed
