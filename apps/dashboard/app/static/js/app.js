@@ -1316,3 +1316,257 @@ function showFlash(kind, text) {
   });
   setEditing(false);
 })();
+
+/* Settings → Network: Tailscale connect + auth wait polling */
+(function initNetworkPanel() {
+  const panel = document.querySelector("[data-network-panel]");
+  if (!panel) return;
+
+  const csrf =
+    panel.getAttribute("data-csrf") ||
+    document.querySelector('input[name="csrf_token"]')?.value ||
+    readCookie("stonepi_csrf") ||
+    "";
+
+  function headers(extra) {
+    const h = Object.assign({ Accept: "application/json", "X-Requested-With": "fetch" }, extra || {});
+    if (csrf) h["X-StonePi-CSRF"] = csrf;
+    return h;
+  }
+
+  async function postForm(url, fields) {
+    const body = new FormData();
+    body.set("csrf_token", csrf);
+    Object.entries(fields || {}).forEach(([k, v]) => body.set(k, v));
+    const res = await fetch(url, { method: "POST", headers: headers(), body, credentials: "same-origin" });
+    let data = null;
+    try {
+      data = await res.json();
+    } catch (_err) {
+      data = null;
+    }
+    if (!res.ok) {
+      const msg = (data && data.error) || "Request failed";
+      throw new Error(msg);
+    }
+    return data || {};
+  }
+
+  async function fetchStatus() {
+    const res = await fetch("/api/network/status", {
+      headers: headers(),
+      credentials: "same-origin",
+    });
+    if (!res.ok) throw new Error("Status failed");
+    return res.json();
+  }
+
+  const statusLabel = panel.querySelector("[data-ts-status-label]");
+  const statusDot = panel.querySelector("[data-ts-dot]");
+  const connectBlock = panel.querySelector("[data-ts-connect-block]");
+  const authWait = panel.querySelector("[data-ts-auth-wait]");
+  const authLink = panel.querySelector("[data-ts-auth-link]");
+  const authWrap = panel.querySelector("[data-ts-auth-link-wrap]");
+  const noLink = panel.querySelector("[data-ts-no-link]");
+  const waitMsg = panel.querySelector("[data-ts-wait-msg]");
+  const wantedInput = panel.querySelector("[data-ts-wanted]");
+  const wantedLabel = panel.querySelector("[data-ts-wanted-label]");
+  const connectBtn = panel.querySelector("[data-ts-connect-btn]");
+
+  let pollTimer = null;
+  let connecting = false;
+
+  function stopPoll() {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  function setWantedLabel(on) {
+    if (wantedLabel) wantedLabel.textContent = on ? "Enabled" : "Disabled";
+  }
+
+  function applyStatus(snap) {
+    const ts = (snap && snap.tailscale) || {};
+    let label = "Disconnected";
+    let dot = "bad";
+    if (!snap.appliance) {
+      label = "Available on the Pi appliance";
+      dot = "bad";
+    } else if (ts.connected) {
+      label = "Connected";
+      dot = "ok";
+    } else if (!ts.wanted) {
+      label = "Disabled";
+      dot = "bad";
+    } else if (ts.needs_login || ts.auth_url || connecting) {
+      label = connecting && !ts.auth_url ? "Starting…" : "Waiting for authentication";
+      dot = "warn";
+    } else if (!ts.installed) {
+      label = "Not installed";
+      dot = "bad";
+    } else if (ts.wanted) {
+      label = "Not connected";
+      dot = "bad";
+    }
+    if (statusLabel) statusLabel.textContent = label;
+    if (statusDot) {
+      statusDot.classList.remove("ok", "bad", "warn");
+      statusDot.classList.add(dot);
+    }
+    if (wantedInput && typeof ts.wanted === "boolean" && !wantedInput.disabled) {
+      wantedInput.checked = ts.wanted;
+      setWantedLabel(ts.wanted);
+    }
+    if (connectBlock) connectBlock.hidden = !ts.wanted;
+    const showWait = Boolean(
+      ts.wanted && !ts.connected && (ts.needs_login || ts.auth_url || connecting)
+    );
+    if (authWait) authWait.hidden = !showWait;
+    if (showWait && waitMsg) {
+      if (ts.auth_url) {
+        waitMsg.textContent =
+          "Waiting for authentication… Open the link below on your phone or computer, then approve this device.";
+      } else if (connecting) {
+        waitMsg.textContent = "Starting Tailscale… fetching your login link.";
+      } else {
+        waitMsg.textContent =
+          "Waiting for authentication… No login link yet — tap Connect Tailscale again to generate one.";
+      }
+    }
+    if (authLink && ts.auth_url) {
+      authLink.href = ts.auth_url;
+      authLink.textContent = ts.auth_url;
+      if (authWrap) authWrap.hidden = false;
+      if (noLink) noLink.hidden = true;
+    } else if (authWrap) {
+      authWrap.hidden = true;
+      if (noLink) {
+        noLink.hidden = !(showWait && !connecting);
+        if (!noLink.hidden && ts.error) {
+          noLink.innerHTML =
+            "Still no link? Tap <strong>Connect Tailscale</strong> again.<br /><span data-ts-error></span>";
+          const errEl = noLink.querySelector("[data-ts-error]");
+          if (errEl) errEl.textContent = ts.error + (ts.backend_state ? " (" + ts.backend_state + ")" : "");
+        }
+      }
+    }
+    if (ts.connected) {
+      connecting = false;
+      stopPoll();
+      const dns = panel.querySelector("[data-ts-dns]");
+      const ipv4 = panel.querySelector("[data-ts-ipv4]");
+      if (dns && ts.magicdns_name) dns.innerHTML = "<code>" + ts.magicdns_name + "</code>";
+      if (ipv4 && ts.ipv4) ipv4.innerHTML = "<code>" + ts.ipv4 + "</code>";
+      if (!panel.querySelector("[data-ts-disconnect-form]")) {
+        window.location.reload();
+      }
+    } else if (ts.wanted && (ts.needs_login || ts.auth_url || connecting)) {
+      startPoll();
+    }
+  }
+
+  function startPoll() {
+    if (pollTimer) return;
+    pollTimer = setInterval(() => {
+      if (document.hidden) return;
+      fetchStatus().then(applyStatus).catch(() => {});
+    }, 2000);
+  }
+
+  const wantedForm = panel.querySelector("[data-ts-wanted-form]");
+  wantedForm?.addEventListener("submit", (event) => event.preventDefault());
+  wantedInput?.addEventListener("change", async () => {
+    const on = Boolean(wantedInput.checked);
+    setWantedLabel(on);
+    if (!on) {
+      const ok =
+        typeof askConfirm === "function"
+          ? await askConfirm({
+              title: "Disable remote access?",
+              body: "StonePi stays on your LAN. Tailscale remote access will be turned off until you enable it again.",
+              okLabel: "Disable",
+            })
+          : window.confirm("Disable remote access?");
+      if (!ok) {
+        wantedInput.checked = true;
+        setWantedLabel(true);
+        return;
+      }
+    }
+    wantedInput.disabled = true;
+    try {
+      const snap = await postForm("/settings/network/tailscale/wanted", { wanted: on ? "on" : "off" });
+      applyStatus(snap);
+      if (!on) stopPoll();
+    } catch (err) {
+      wantedInput.checked = !on;
+      setWantedLabel(!on);
+      if (typeof showFlash === "function") {
+        showFlash("error", err.message || "Could not save remote access.");
+      }
+    } finally {
+      wantedInput.disabled = false;
+    }
+  });
+
+  panel.querySelector("[data-ts-connect-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    connecting = true;
+    if (connectBtn) connectBtn.disabled = true;
+    if (authWait) authWait.hidden = false;
+    if (authWrap) authWrap.hidden = true;
+    if (noLink) noLink.hidden = true;
+    if (waitMsg) waitMsg.textContent = "Starting Tailscale… fetching your login link.";
+    if (statusLabel) statusLabel.textContent = "Starting…";
+    if (statusDot) {
+      statusDot.classList.remove("ok", "bad", "warn");
+      statusDot.classList.add("warn");
+    }
+    startPoll();
+    try {
+      const snap = await postForm("/settings/network/tailscale/connect", {});
+      connecting = false;
+      applyStatus(snap);
+      if (snap.tailscale && snap.tailscale.auth_url && /^https:\/\//.test(snap.tailscale.auth_url)) {
+        try {
+          window.open(snap.tailscale.auth_url, "_blank", "noopener,noreferrer");
+        } catch (_err) {
+          /* ignore popup block */
+        }
+      } else if (snap.tailscale && snap.tailscale.error && waitMsg) {
+        waitMsg.textContent = snap.tailscale.error;
+        if (noLink) noLink.hidden = false;
+      }
+      startPoll();
+    } catch (err) {
+      connecting = false;
+      if (waitMsg) {
+        waitMsg.textContent = err.message || "Connect failed. Try again.";
+      }
+      if (noLink) noLink.hidden = false;
+    }
+    if (connectBtn) connectBtn.disabled = false;
+  });
+
+  panel.querySelector("[data-ts-disconnect-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await postForm("/settings/network/tailscale/disconnect", {});
+      window.location.reload();
+    } catch (_err) {
+      event.target.submit();
+    }
+  });
+
+  fetchStatus()
+    .then((snap) => {
+      const ts = snap.tailscale || {};
+      if (ts.wanted && !ts.connected && (ts.needs_login || ts.auth_url)) {
+        applyStatus(snap);
+        startPoll();
+      }
+    })
+    .catch(() => {});
+})();

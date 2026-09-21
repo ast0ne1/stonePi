@@ -13,7 +13,9 @@ WorkingDirectory=/opt/stonepi/apps/dashboard
 ExecStart=/opt/stonepi/apps/dashboard/.venv/bin/python -m app.serve
 Restart=on-failure
 RestartSec=5
-NoNewPrivileges=yes
+# Dashboard is the appliance control plane (systemctl + Tailscale helper via sudoers).
+# NoNewPrivileges would block sudo and break Services controls and Network → Tailscale.
+NoNewPrivileges=no
 
 [Install]
 WantedBy=multi-user.target

@@ -11,7 +11,7 @@ from app.config import ROOT_DIR, env, resolve_cockpit_url
 from app import services
 from stonepi_auth import APP_CATALOG, APP_IDS, login_url, logout_url
 from stonepi_auth.config import PlatformSettings
-from stonepi_auth.csrf import csrf_from_request, csrf_ok, set_csrf_cookie
+from stonepi_auth.csrf import csrf_from_request, csrf_ok, csrf_ok_request, set_csrf_cookie
 from stonepi_auth.session import CSRF_COOKIE
 
 templates = Jinja2Templates(directory=str(ROOT_DIR / "app" / "templates"))
@@ -110,6 +110,12 @@ def _html(request: Request, template: str, user, extra: dict | None = None, stat
 
 def _require_csrf(request: Request, form) -> bool:
     return csrf_ok(request.cookies.get(CSRF_COOKIE), str(form.get("csrf_token") or ""))
+
+
+def _require_csrf_any(request: Request, form=None) -> bool:
+    form_token = str(form.get("csrf_token") or "") if form is not None else None
+    header = request.headers.get("x-stonepi-csrf") or request.headers.get("X-StonePi-CSRF")
+    return csrf_ok_request(dict(request.cookies), form_token=form_token, header_token=header)
 
 
 def _wants_json(request: Request) -> bool:
@@ -253,6 +259,20 @@ def overview(request: Request):
     healthy_count = sum(1 for card in cards if (card.get("health") or {}).get("ok"))
     disk_pct = watch.get("disk_pct")
     disk_warn = disk_pct is not None and int(disk_pct) >= stonepi_watch.DISK_ATTENTION_PCT
+    from app import network as network_svc
+
+    try:
+        network = network_svc.network_snapshot()
+    except Exception:  # noqa: BLE001
+        network = {
+            "internet": {"ok": False, "detail": "unavailable"},
+            "tailscale": network_svc.parse_tailscale_status(
+                {"Installed": False, "BackendState": "NoState"},
+                wanted=False,
+            ),
+            "helper_available": False,
+            "appliance": False,
+        }
     return _html(
         request,
         "overview.html",
@@ -272,6 +292,7 @@ def overview(request: Request):
             "error": error,
             "platform_version": services_platform_version(),
             "using_factory_admin": _factory_admin(dict(request.cookies), user),
+            "network": network,
         },
     )
 
@@ -677,6 +698,7 @@ async def updates_install(app_id: str, request: Request):
 
 SETTINGS_TABS = [
     ("general", "General"),
+    ("network", "Network"),
     ("display", "Display"),
     ("vault", "Vault"),
     ("automations", "Automations"),
@@ -685,7 +707,8 @@ SETTINGS_TABS = [
     ("about", "About"),
 ]
 SETTINGS_LEDES = {
-    "general": "Appearance, password, and network exposure. Accounts stay under Users.",
+    "general": "Appearance, password, and view options. Accounts stay under Users.",
+    "network": "Home network vs internet-facing posture, and Tailscale remote access.",
     "display": "TRMNL layout and household display push.",
     "vault": "Encrypted secrets for apps and platform services.",
     "automations": "When→then jobs: USB backup, Display push on Watch or backup.",
@@ -755,6 +778,8 @@ def settings_page(request: Request, tab: str = "general"):
         settings_tab = "update"
     if settings_tab in {"backups"}:
         settings_tab = "backup"
+    if settings_tab in {"exposure"}:
+        settings_tab = "network"
 
     about = {
         "app_name": "StonePi",
@@ -795,9 +820,13 @@ def settings_page(request: Request, tab: str = "general"):
         "settings_appearance_only": False,
     }
     if settings_tab == "general":
+        pass
+    elif settings_tab == "network":
+        from app import network as network_svc
         from stonepi_auth import exposure_mode
 
         extra["exposure_mode"] = exposure_mode()
+        extra["network"] = network_svc.network_snapshot()
     elif settings_tab == "display":
         cfg = display.load_config()
         device = display.normalize_device(cfg.get("device"))
@@ -897,6 +926,7 @@ def settings_page(request: Request, tab: str = "general"):
 
 
 @router.post("/settings/exposure")
+@router.post("/settings/network/exposure")
 async def settings_exposure_save(request: Request):
     from stonepi_auth import set_exposure_mode
 
@@ -905,16 +935,129 @@ async def settings_exposure_save(request: Request):
         return redirected
     form = await request.form()
     if not _require_csrf(request, form):
-        return RedirectResponse("/settings?tab=general&err=Form+expired", status_code=303)
+        return RedirectResponse("/settings?tab=network&err=Form+expired", status_code=303)
     mode = str(form.get("exposure") or "lan").strip().lower()
     if mode not in {"lan", "public"}:
-        return RedirectResponse("/settings?tab=general&err=Choose+home+network+or+internet-facing", status_code=303)
+        return RedirectResponse(
+            "/settings?tab=network&err=Choose+home+network+or+internet-facing",
+            status_code=303,
+        )
     set_exposure_mode(mode)
     if mode == "public":
         msg = "Internet-facing mode on. Apps pick this up immediately — no restart."
     else:
         msg = "Home network mode on. Reader APIs stay LAN-friendly."
-    return RedirectResponse(f"/settings?tab=general&msg={quote(msg, safe='')}", status_code=303)
+    return RedirectResponse(f"/settings?tab=network&msg={quote(msg, safe='')}", status_code=303)
+
+
+@router.get("/api/network/status")
+def api_network_status(request: Request):
+    user, redirected = _user_or_login(request, admin=True)
+    if redirected:
+        return redirected
+    from app import network as network_svc
+
+    return JSONResponse(network_svc.network_snapshot())
+
+
+@router.post("/settings/network/tailscale/wanted")
+async def settings_tailscale_wanted(request: Request):
+    user, redirected = _user_or_login(request, admin=True)
+    if redirected:
+        return redirected
+    from app import network as network_svc
+
+    form = await request.form()
+    if not _require_csrf_any(request, form):
+        if _wants_json(request):
+            return JSONResponse({"ok": False, "error": "Form expired"}, status_code=403)
+        return RedirectResponse("/settings?tab=network&err=Form+expired", status_code=303)
+    enabled = str(form.get("wanted") or form.get("enabled") or "").strip().lower() in {
+        "on",
+        "1",
+        "true",
+        "yes",
+        "enabled",
+    }
+    try:
+        network_svc.set_tailscale_wanted(enabled)
+        snap = network_svc.network_snapshot()
+    except Exception as exc:  # noqa: BLE001
+        msg = str(exc) or "Could not update remote access."
+        if _wants_json(request):
+            return JSONResponse({"ok": False, "error": msg}, status_code=500)
+        return RedirectResponse(f"/settings?tab=network&err={quote(msg, safe='')}", status_code=303)
+    if _wants_json(request):
+        return JSONResponse({"ok": True, **snap})
+    msg = "Remote access enabled." if enabled else "Remote access disabled."
+    return RedirectResponse(f"/settings?tab=network&msg={quote(msg, safe='')}", status_code=303)
+
+
+@router.post("/settings/network/tailscale/connect")
+async def settings_tailscale_connect(request: Request):
+    user, redirected = _user_or_login(request, admin=True)
+    if redirected:
+        return redirected
+    from app import network as network_svc
+
+    form = await request.form()
+    if not _require_csrf_any(request, form):
+        if _wants_json(request):
+            return JSONResponse({"ok": False, "error": "Form expired"}, status_code=403)
+        return RedirectResponse("/settings?tab=network&err=Form+expired", status_code=303)
+    try:
+        ts = network_svc.start_login()
+        # Avoid a second long helper round-trip; internet probe alone is enough.
+        snap = {
+            "ok": True,
+            "internet": network_svc.internet_status(),
+            "tailscale": ts,
+            "helper_available": network_svc.helper_available(),
+            "appliance": network_svc.helper_available(),
+        }
+    except Exception as exc:  # noqa: BLE001
+        msg = str(exc) or "Could not start Tailscale connect."
+        if _wants_json(request):
+            return JSONResponse({"ok": False, "error": msg}, status_code=500)
+        return RedirectResponse(f"/settings?tab=network&err={quote(msg, safe='')}", status_code=303)
+    if _wants_json(request):
+        return JSONResponse(snap)
+    if ts.get("auth_url"):
+        msg = "Open the Tailscale link to finish signing in."
+    elif ts.get("connected"):
+        msg = "Tailscale connected."
+    else:
+        msg = "Connect started — waiting for authentication."
+    return RedirectResponse(f"/settings?tab=network&msg={quote(msg, safe='')}", status_code=303)
+
+
+@router.post("/settings/network/tailscale/disconnect")
+async def settings_tailscale_disconnect(request: Request):
+    user, redirected = _user_or_login(request, admin=True)
+    if redirected:
+        return redirected
+    from app import network as network_svc
+
+    form = await request.form()
+    if not _require_csrf_any(request, form):
+        if _wants_json(request):
+            return JSONResponse({"ok": False, "error": "Form expired"}, status_code=403)
+        return RedirectResponse("/settings?tab=network&err=Form+expired", status_code=303)
+    try:
+        network_svc.set_tailscale_wanted(False)
+        network_svc.disconnect()
+        snap = network_svc.network_snapshot()
+    except Exception as exc:  # noqa: BLE001
+        msg = str(exc) or "Could not disconnect Tailscale."
+        if _wants_json(request):
+            return JSONResponse({"ok": False, "error": msg}, status_code=500)
+        return RedirectResponse(f"/settings?tab=network&err={quote(msg, safe='')}", status_code=303)
+    if _wants_json(request):
+        return JSONResponse({"ok": True, **snap})
+    return RedirectResponse(
+        f"/settings?tab=network&msg={quote('Tailscale disconnected.', safe='')}",
+        status_code=303,
+    )
 
 
 @router.get("/settings/display", response_class=HTMLResponse)
