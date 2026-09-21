@@ -125,6 +125,18 @@
         </select>
       </label>
       <p class="hint">{{ t("App chrome language (separate from Translate into).") }}</p>
+      <label>
+        Article link text
+        <input type="text" name="article_link_label" value="{{ article_link_label }}" maxlength="40" autocomplete="off" placeholder="{{ article_link_label_default }}" />
+      </label>
+      <p class="hint">Shown on Briefing, Saved, and Search instead of the default “{{ article_link_label_default }}”.</p>
+      {% if is_admin %}
+      <label class="check">
+        <input type="checkbox" name="paywall_skip_enabled" value="1" {% if paywall_skip_enabled %}checked{% endif %} />
+        Enable PaywallSkip
+      </label>
+      <p class="hint">When on, sources that opt in open article links through <a class="text-link" href="https://www.paywallskip.com/" target="_blank" rel="noopener">PaywallSkip</a>. Turn it on per feed under Sources → Feeds → Schedule &amp; filters.</p>
+      {% endif %}
     </div>
     <button class="btn btn-primary btn-block btn-with-icon" type="submit">{{ icon("check") }} {{ t("Save settings") }}</button>
   </div>

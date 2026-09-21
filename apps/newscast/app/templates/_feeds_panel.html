@@ -1,7 +1,5 @@
-{% extends "base.html" %}
 {% from "_filter_icon.html" import filter_chip %}
-{% block title %}Feeds · NewsCast{% endblock %}
-{% block content %}
+{% set source_next = source_next|default('/sources?tab=feeds') %}
 <section class="hero hero-row">
   <div>
     <h1>Feeds</h1>
@@ -36,6 +34,7 @@
           <span class="chip chip-quiet {% if feed.type == 'webpage' %}chip-scrape{% endif %}">{{ 'Scrape' if feed.type == 'webpage' else ('RSS' if feed.type == 'rss' else 'Auto') }}</span>
           <span class="chip chip-quiet">{{ 'Summarise' if feed.summarize != false else 'Full article' }}</span>
           {% if feed.translate %}<span class="chip chip-quiet">{{ 'LLM' if feed.translate_mode == 'llm' else ('Google' if feed.translate_mode == 'google' else 'Translate') }}</span>{% endif %}
+          {% if paywall_skip_enabled and feed.paywall_skip %}<span class="chip chip-quiet">PaywallSkip</span>{% endif %}
           <span class="chip chip-quiet chip-health chip-health-{{ feed.health }}">{{ feed.health_label }}</span>
           {% if feed.is_muted %}<span class="chip chip-quiet">Muted until {{ feed.muted_until.strftime('%d %b %Y %H:%M') }} UTC</span>{% endif %}
         </p>
@@ -61,6 +60,7 @@
         </form>
         {% endif %}
         <form method="post" action="/feeds/{{ feed.id }}/delete" data-confirm="Remove {{ feed.name }}?" data-confirm-detail="Existing stories stay in the briefing until they expire." data-confirm-ok="Remove">
+          <input type="hidden" name="next" value="{{ source_next }}" />
           <button class="icon-btn" type="submit" aria-label="Delete {{ feed.name }}" title="Remove feed">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M9 7V5h6v2M7 7l1 13h8l1-13"/></svg>
           </button>
@@ -129,6 +129,13 @@
             </select>
           </label>
           <p class="hint schedule-span">Global translation is currently {{ 'LLM' if global_translate_provider == 'llm' else 'Google' }} (Settings → Translation).</p>
+          <label class="check schedule-span">
+            <input type="checkbox" name="paywall_skip" value="1" {% if feed.paywall_skip %}checked{% endif %} {% if not paywall_skip_enabled %}disabled{% endif %} />
+            Use PaywallSkip for View article links
+          </label>
+          {% if not paywall_skip_enabled %}
+          <p class="hint schedule-span">Turn on PaywallSkip under Settings → General first.</p>
+          {% endif %}
           <label class="schedule-span">
             Include words
             <input type="text" name="keyword_include" value="{{ feed.keyword_include or '' }}" autocomplete="off" placeholder="optional, comma-separated" />
@@ -150,7 +157,5 @@
 </div>
 
 {% if can_add_custom_sources %}
-{% set source_next = "/feeds" %}
 {% include "_source_sheet.html" %}
 {% endif %}
-{% endblock %}

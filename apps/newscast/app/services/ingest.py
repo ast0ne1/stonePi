@@ -271,13 +271,15 @@ def _collect_feed_items(
 ) -> tuple[list[dict], int | None]:
     status_out: list[int] = []
     mode = (feed.type or "auto").lower()
-    if mode == "rss" or looks_like_feed_url(feed.url):
+    # RSS mode (or auto on a feed-shaped URL): fetch the URL as a feed.
+    if mode == "rss" or (mode == "auto" and looks_like_feed_url(feed.url)):
         direct = _try_rss_url(feed.url, feed, status_out, db=db, fetch_cache=fetch_cache)
         if direct:
             return direct, status_out[-1] if status_out else 200
         if mode == "rss":
             raise RuntimeError("No RSS entries found")
-    if mode in {"auto", "webpage"}:
+    # Auto still probes common feed paths before scraping the homepage.
+    if mode == "auto":
         for guessed in guess_feed_urls(feed.url):
             found = _try_rss_url(guessed, feed, status_out, db=db, fetch_cache=fetch_cache)
             if found:
@@ -289,17 +291,20 @@ def _collect_feed_items(
     except Exception as exc:  # noqa: BLE001
         homepage_error = exc
     else:
-        discovered = discover_rss(feed.url, body)
-        if discovered and discovered.rstrip("/") != feed.url.rstrip("/"):
-            found = _try_rss_url(discovered, feed, status_out, db=db, fetch_cache=fetch_cache)
-            if found:
-                return found, status_out[-1] if status_out else 200
-        scraped = _items_from_scrape(feed.url, body, feed)
-        if scraped:
-            return scraped, status_out[-1] if status_out else 200
-        page_rss = _items_from_parsed(feedparser.parse(body), feed)
-        if page_rss:
-            return page_rss, status_out[-1] if status_out else 200
+        # Only auto discovers <link rel=alternate>; explicit Scrape stays on the page.
+        if mode == "auto":
+            discovered = discover_rss(feed.url, body)
+            if discovered and discovered.rstrip("/") != feed.url.rstrip("/"):
+                found = _try_rss_url(discovered, feed, status_out, db=db, fetch_cache=fetch_cache)
+                if found:
+                    return found, status_out[-1] if status_out else 200
+        if mode in {"auto", "webpage"}:
+            scraped = _items_from_scrape(feed.url, body, feed)
+            if scraped:
+                return scraped, status_out[-1] if status_out else 200
+            page_rss = _items_from_parsed(feedparser.parse(body), feed)
+            if page_rss:
+                return page_rss, status_out[-1] if status_out else 200
     if homepage_error:
         raise homepage_error
     raise RuntimeError("No RSS entries or scrapeable articles found")

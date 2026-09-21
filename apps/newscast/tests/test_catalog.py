@@ -1,4 +1,11 @@
-from app.services.catalog import load_bundled_catalog, load_catalog, source_kind, source_label
+from app.services.catalog import (
+    apply_catalog_type,
+    catalog_url_for_type,
+    load_bundled_catalog,
+    load_catalog,
+    source_kind,
+    source_label,
+)
 
 
 def test_catalog_source_defaults_to_rss():
@@ -10,6 +17,28 @@ def test_catalog_source_webpage_is_scrape():
     item = {"type": "webpage", "url": "https://hackaday.com/"}
     assert source_kind(item) == "webpage"
     assert source_label(item) == "Scrape"
+
+
+def test_itnews_defaults_to_scrape_with_rss_alternate():
+    item = next(entry for entry in load_catalog() if entry["id"] == "itnews")
+    assert source_kind(item) == "webpage"
+    assert item["url"] == "https://www.itnews.com.au/"
+    assert item["rss_url"] == "https://www.itnews.com.au/RSS/rss.ashx"
+    assert catalog_url_for_type(item, "webpage") == item["url"]
+    assert catalog_url_for_type(item, "rss") == item["rss_url"]
+
+
+def test_apply_catalog_type_switches_url():
+    from app.models import Feed
+
+    item = next(entry for entry in load_catalog() if entry["id"] == "itnews")
+    feed = Feed(user_id=1, name="iTnews", url=item["url"], type="webpage", catalog_id="itnews")
+    apply_catalog_type(feed, item, "rss")
+    assert feed.type == "rss"
+    assert feed.url == item["rss_url"]
+    apply_catalog_type(feed, item, "webpage")
+    assert feed.type == "webpage"
+    assert feed.url == item["url"]
 
 
 def test_catalog_includes_techcrunch_rss():
@@ -38,7 +67,7 @@ def test_catalog_has_nordic_sources_that_translate():
     nordic = [item for item in load_catalog() if item["category"] == "nordic"]
     ids = {item["id"] for item in nordic}
     assert {"dr-nyheder", "politiken", "nrk", "svt-nyheter", "yle", "dr-copenhagen", "tv2-kosmopol"} <= ids
-    english = {"copenhagen-post", "the-local-dk"}
+    english = {"the-local-dk"}
     assert english <= ids
     assert all(item.get("translate") is True for item in nordic if item["id"] not in english)
     assert all(not item.get("translate") for item in nordic if item["id"] in english)

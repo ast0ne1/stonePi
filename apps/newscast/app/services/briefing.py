@@ -171,7 +171,11 @@ def paper_day_for(value: str | None = "today", now: datetime | None = None) -> d
 
 def briefing_path(day: str | None = "today") -> str:
     key = normalize_briefing_day(day)
-    return "/?day=yesterday" if key == "yesterday" else "/"
+    if key == "today":
+        return "/"
+    if key in BRIEFING_DAYS:
+        return f"/?day={key}"
+    return "/"
 
 
 def _aware(value: datetime | None) -> datetime | None:
@@ -203,16 +207,13 @@ def _in_day(story: Story, window: tuple[datetime, datetime] | None) -> bool:
     if window is None:
         return True
     start, end = window
-    # Match on published_at *or* created_at so a refresh that pulls older RSS
-    # items still surfaces them on the day they were ingested.
-    for raw in (story.published_at, story.created_at):
-        when = _aware(raw)
-        if when is None:
-            continue
-        when_local = when.astimezone(start.tzinfo)
-        if start <= when_local < end:
-            return True
-    return False
+    # Day chips are calendar publish date only. Stories without a publish time
+    # belong on All, not Today/Yesterday.
+    when = _aware(story.published_at)
+    if when is None:
+        return False
+    when_local = when.astimezone(start.tzinfo)
+    return start <= when_local < end
 
 
 def _apply_keyword_filters(db: Session, stories: list[Story]) -> list[Story]:
@@ -423,10 +424,11 @@ def current_stories(
 ) -> list[Story]:
     if limit is None:
         limit = settings.briefing_limit(db)
+    day_key = normalize_briefing_day(day) if day else None
     cutoff = retention_cutoff()
     age = _story_age()
-    window = _day_window(day) if day else None
-    include_saved = day != "yesterday"
+    window = _day_window(day_key) if day_key else None
+    include_saved = day_key != "yesterday"
     saved = current_saved_stories(db, user_id=user_id) if include_saved else []
     favourites_q = (
         db.query(Story)
@@ -441,7 +443,11 @@ def current_stories(
         .filter(or_(Story.saved.is_(False), Story.saved.is_(None)))
         .filter(age >= cutoff)
     )
-    recent = _scope_stories(recent_q, user_id).order_by(age.desc()).limit(pool_size).all()
+    recent_query = _scope_stories(recent_q, user_id).order_by(age.desc())
+    if day_key == "all":
+        recent = recent_query.all()
+    else:
+        recent = recent_query.limit(pool_size).all()
     favourites = [story for story in favourites if _in_day(story, window)]
     recent = [story for story in recent if _in_day(story, window)]
 
@@ -450,7 +456,9 @@ def current_stories(
     favourites = _apply_keyword_filters(db, favourites)
     recent = _apply_importance_filter(db, _apply_keyword_filters(db, recent))
 
-    if settings.briefing_category_mix_enabled(db):
+    if day_key == "all":
+        selected = recent
+    elif settings.briefing_category_mix_enabled(db):
         selected = _pick_by_category_mix(
             recent,
             feeds,

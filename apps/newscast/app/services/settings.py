@@ -126,6 +126,7 @@ UI_KEYS = (
     "github_repo",
     "keyword_include",
     "keyword_exclude",
+    "paywall_skip_enabled",
     "translate_provider",
     "translate_target_lang",
     "reader_device",
@@ -379,6 +380,10 @@ def catalog_login_enabled(db: Session) -> bool:
 
 def reader_push_enabled(db: Session) -> bool:
     return flag_enabled(db, "reader_push_when_online")
+
+
+def paywall_skip_enabled(db: Session) -> bool:
+    return flag_enabled(db, "paywall_skip_enabled")
 
 
 def normalize_reader_device(value: str | None) -> str:

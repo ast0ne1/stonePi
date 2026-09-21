@@ -1,6 +1,19 @@
 {
   "Briefing": "Resumen",
   "Feeds": "Fuentes",
+  "Catalog": "Catálogo",
+  "Send": "Enviar",
+  "Saved": "Guardados",
+  "Search": "Buscar",
+  "Status": "Estado",
+  "Device": "Dispositivo",
+  "Sources": "Fuentes",
   "Settings": "Ajustes",
+  "Refreshing": "Actualizando",
+  "Sending": "Enviando",
+  "Sent": "Enviado",
+  "Couldn’t send": "No se pudo enviar",
+  "files": "archivos",
+  "reader": "lector",
   "Sign in": "Iniciar sesión"
 }

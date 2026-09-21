@@ -30,6 +30,37 @@ def source_label(item: dict) -> str:
     return SOURCE_LABELS[source_kind(item)]
 
 
+def catalog_homepage_url(item: dict) -> str:
+    return (item.get("url") or "").strip()
+
+
+def catalog_rss_url(item: dict) -> str:
+    return (item.get("rss_url") or "").strip()
+
+
+def catalog_url_for_type(item: dict, feed_type: str) -> str | None:
+    """Pick homepage vs RSS URL when a catalog entry supports both."""
+    kind = (feed_type or source_kind(item)).strip().lower()
+    homepage = catalog_homepage_url(item)
+    rss = catalog_rss_url(item)
+    if kind == "rss":
+        return rss or homepage or None
+    if kind in {"webpage", "auto"}:
+        return homepage or None
+    return homepage or rss or None
+
+
+def apply_catalog_type(feed: Feed, item: dict, feed_type: str) -> None:
+    """Set feed.type and swap URL when the catalog lists homepage + rss_url."""
+    kind = (feed_type or "").strip().lower()
+    if kind not in SOURCE_LABELS:
+        kind = source_kind(item)
+    feed.type = kind
+    next_url = catalog_url_for_type(item, kind)
+    if next_url:
+        feed.url = next_url
+
+
 def load_bundled_catalog() -> list[dict]:
     if not CATALOG_PATH.is_file():
         logger.warning("Bundled feed catalog is missing at %s", CATALOG_PATH)
@@ -76,6 +107,15 @@ def set_catalog_approvals(db: Session, catalog_ids: set[str] | list[str]) -> Non
     db.commit()
 
 
+# Known-dead catalog URLs → current catalog URL (seed repairs in place).
+FEED_URL_REPAIRS: dict[str, set[str]] = {
+    "politico": {"https://www.politico.com/rss/politicopicks.xml"},
+    "scientific-american": {"https://www.scientificamerican.com/feed/"},
+    "smithsonian-magazine": {"https://www.smithsonianmag.com/rss/latest/"},
+    "vulture": {"https://www.vulture.com/rss/index.xml"},
+}
+
+
 def seed_recommended_feeds(db: Session) -> None:
     if not env.seed_recommended_feeds:
         return
@@ -89,7 +129,10 @@ def seed_recommended_feeds(db: Session) -> None:
     for item in load_catalog():
         feed = by_catalog.get(item["id"])
         if feed:
-            if feed.url != item["url"] and item["url"] not in used_urls:
+            # Preserve user-chosen type/URL (e.g. scrape vs RSS for dual-mode sources),
+            # but rewrite known-dead RSS URLs to the current catalog entry.
+            repairs = FEED_URL_REPAIRS.get(item["id"], set())
+            if feed.url in repairs and item["url"] not in used_urls:
                 used_urls.discard(feed.url)
                 feed.url = item["url"]
                 used_urls.add(item["url"])
@@ -112,7 +155,7 @@ def seed_recommended_feeds(db: Session) -> None:
                 user_id=admin.id,
                 catalog_id=item["id"],
                 name=item["name"],
-                url=item["url"],
+                url=catalog_url_for_type(item, item.get("type", "rss")) or item["url"],
                 enabled=bool(item.get("default_enabled")),
                 type=item.get("type", "rss"),
                 category=item.get("category", "news"),

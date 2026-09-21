@@ -32,7 +32,7 @@ from stonepi_auth import is_public_exposure
 from stonepi_auth.http import portal_home_url
 from app.db import get_db
 from app.models import Feed, LibraryFile, Story, SyncTask, User, utcnow
-from app.services import backup, favicon, hostname, i18n, library, ntfy, paper_naming, passwords, qrcode, reader_config, reader_push, settings, tls, translate, update
+from app.services import article_links, backup, favicon, hostname, i18n, library, ntfy, paper_naming, passwords, qrcode, reader_config, reader_push, settings, tls, translate, update
 from app.services import users as users_service
 from app.services import user_settings as user_settings_service
 from app.services.briefing import (
@@ -188,12 +188,31 @@ def _session_can_view_status(db: Session, request: Request) -> bool:
     return users_service.user_may_view_status(user)
 
 
-def _reader_redirect_next(db: Session, request: Request, next_value: str, *, default: str = "/library") -> str:
+DEVICE_NEXT = {"/device?tab=status", "/device?tab=send", "/status", "/library"}
+SOURCES_NEXT = {"/sources?tab=feeds", "/sources?tab=catalog", "/feeds", "/catalog"}
+
+
+def _normalize_device_next(nxt: str) -> str:
+    if nxt in {"/status", "/device?tab=status"}:
+        return "/device?tab=status"
+    if nxt in {"/library", "/device?tab=send"}:
+        return "/device?tab=send"
+    return nxt
+
+
+def _normalize_sources_next(nxt: str) -> str:
+    if nxt in {"/catalog", "/sources?tab=catalog"}:
+        return "/sources?tab=catalog"
+    return "/sources?tab=feeds"
+
+
+def _reader_redirect_next(db: Session, request: Request, next_value: str, *, default: str = "/device?tab=send") -> str:
     nxt = safe_next(next_value)
-    if nxt not in {"/status", "/library"}:
+    if nxt not in DEVICE_NEXT:
         nxt = default
-    if nxt == "/status" and not _session_can_view_status(db, request):
-        return "/library"
+    nxt = _normalize_device_next(nxt)
+    if nxt == "/device?tab=status" and not _session_can_view_status(db, request):
+        return "/device?tab=send"
     return nxt
 
 
@@ -267,6 +286,8 @@ def _base_context(request: Request, db: Session, active: str) -> dict:
         "can_view_status": _session_can_view_status(db, request),
         "reader_setup_nudge": reader_config.needs_setup_nudge(db, uid) if session else False,
         "ui_lang": lang,
+        "article_link_label": article_links.article_link_label(db, uid if session else None),
+        "paywall_skip_enabled": article_links.paywall_skip_enabled(db),
         "stonepi_prefix": (env.stonepi_prefix or "").rstrip("/"),
         "stonepi_home_url": portal_home_url(request, env.stonepi_public_origin),
     }
@@ -459,6 +480,7 @@ def briefing_page(request: Request, db: Annotated[Session, Depends(get_db)], day
     categories = _story_categories(db, uid)
     icons = favicon.map_for_feeds(db.query(Feed).filter(Feed.user_id == uid).all())
     icons.update(favicon.map_for_stories(stories))
+    feeds_by_name = {feed.name: feed for feed in db.query(Feed).filter(Feed.user_id == uid).all()}
     for story in stories:
         story.category = categories.get(story.source_name, "news")
         story.published_label = format_published(story.published_at or story.created_at)
@@ -469,6 +491,7 @@ def briefing_page(request: Request, db: Annotated[Session, Depends(get_db)], day
             favicon.host_key(story.canonical_url),
             favicon.host_key(favicon.homepage_url(story.canonical_url)),
         )
+        story.open_url = article_links.story_open_url(db, story, feeds_by_name)
     return render(
         request,
         "briefing.html",
@@ -551,6 +574,9 @@ def search_page(request: Request, db: Annotated[Session, Depends(get_db)], q: st
             favicon.host_key(story.canonical_url),
             favicon.host_key(favicon.homepage_url(story.canonical_url)),
         )
+    feeds_by_name = {feed.name: feed for feed in db.query(Feed).filter(Feed.user_id == uid).all()}
+    for story in stories:
+        story.open_url = article_links.story_open_url(db, story, feeds_by_name)
     return render(
         request,
         "search.html",
@@ -578,6 +604,9 @@ def saved_page(request: Request, db: Annotated[Session, Depends(get_db)]):
             favicon.host_key(favicon.homepage_url(item.canonical_url)),
         )
         item.origin_label = saved_articles.saved_origin_label(getattr(item, "saved_origin", None))
+    feeds_by_name = {feed.name: feed for feed in db.query(Feed).filter(Feed.user_id == uid).all()}
+    for item in items:
+        item.open_url = article_links.story_open_url(db, item, feeds_by_name)
     return render(
         request,
         "saved.html",
@@ -619,8 +648,8 @@ def delete_saved_article(story_id: int, request: Request, db: Annotated[Session,
     return RedirectResponse("/saved", status_code=303)
 
 
-@router.get("/feeds")
-def feeds_page(request: Request, db: Annotated[Session, Depends(get_db)]):
+
+def _feeds_panel_context(request: Request, db: Session) -> dict:
     from app.services.translate import FEED_PROVIDER_CHOICES, feed_translate_mode
 
     uid = _current_user_id(request)
@@ -635,33 +664,34 @@ def feeds_page(request: Request, db: Annotated[Session, Depends(get_db)]):
         .all()
     )
     now = utcnow()
+    from app.services.catalog import catalog_rss_url, find_catalog_item
+
     for feed in feeds:
         feed.is_muted = feed_is_muted(feed, now)
         feed.health = feed_health(feed, now)
         feed.health_label = feed_health_label(feed, now)
         feed.translate_mode = feed_translate_mode(feed)
-    return render(
-        request,
-        "feeds.html",
-        {
-            **_base_context(request, db, "feeds"),
-            "feeds": feeds,
-            "category_labels": category_labels(db),
-            "refresh_intervals": settings.REFRESH_INTERVALS,
-            "global_interval": settings.get_int(db, "ingest_interval_minutes", env.ingest_interval_minutes),
-            "global_interval_label": settings.format_interval_short(
-                settings.get_int(db, "ingest_interval_minutes", env.ingest_interval_minutes)
-            ),
-            "translate_modes": FEED_PROVIDER_CHOICES,
-            "global_translate_provider": settings.translate_provider(db),
-            "can_add_custom_sources": can_add_custom,
-        },
-        db=db,
-    )
+        item = find_catalog_item(feed.catalog_id) if feed.catalog_id else None
+        feed.has_rss_alternate = bool(item and catalog_rss_url(item))
+    return {
+        **_base_context(request, db, "sources"),
+        "sources_tab": "feeds",
+        "source_next": "/sources?tab=feeds",
+        "feeds": feeds,
+        "category_labels": category_labels(db),
+        "refresh_intervals": settings.REFRESH_INTERVALS,
+        "global_interval": settings.get_int(db, "ingest_interval_minutes", env.ingest_interval_minutes),
+        "global_interval_label": settings.format_interval_short(
+            settings.get_int(db, "ingest_interval_minutes", env.ingest_interval_minutes)
+        ),
+        "translate_modes": FEED_PROVIDER_CHOICES,
+        "global_translate_provider": settings.translate_provider(db),
+        "can_add_custom_sources": can_add_custom,
+        "paywall_skip_enabled": article_links.paywall_skip_enabled(db),
+    }
 
 
-@router.get("/catalog")
-def catalog_page(request: Request, db: Annotated[Session, Depends(get_db)]):
+def _catalog_panel_context(request: Request, db: Session) -> dict:
     from app.services.translate import FEED_PROVIDER_CHOICES
 
     uid = _current_user_id(request)
@@ -669,29 +699,23 @@ def catalog_page(request: Request, db: Annotated[Session, Depends(get_db)]):
     is_admin = bool(session and session.role == "admin")
     user_row = db.get(User, uid) if uid else None
     can_add_custom = is_admin or bool(user_row and user_row.can_add_custom_sources)
-    return render(
-        request,
-        "catalog.html",
-        {
-            **_base_context(request, db, "catalog"),
-            "catalog": grouped_catalog(db, user_id=uid, approved_only=not is_admin),
-            "custom_feeds": db.query(Feed)
-            .filter(Feed.user_id == uid, Feed.catalog_id.is_(None))
-            .order_by(Feed.name.asc())
-            .all(),
-            "category_labels": category_labels(db),
-            "translate_modes": FEED_PROVIDER_CHOICES,
-            "can_add_custom_sources": can_add_custom,
-            "is_admin": is_admin,
-        },
-        db=db,
-    )
+    return {
+        **_base_context(request, db, "sources"),
+        "sources_tab": "catalog",
+        "source_next": "/sources?tab=catalog",
+        "catalog": grouped_catalog(db, user_id=uid, approved_only=not is_admin),
+        "custom_feeds": db.query(Feed)
+        .filter(Feed.user_id == uid, Feed.catalog_id.is_(None))
+        .order_by(Feed.name.asc())
+        .all(),
+        "category_labels": category_labels(db),
+        "translate_modes": FEED_PROVIDER_CHOICES,
+        "can_add_custom_sources": can_add_custom,
+        "is_admin": is_admin,
+    }
 
 
-@router.get("/status")
-def status_page(request: Request, db: Annotated[Session, Depends(get_db)]):
-    if not _session_can_view_status(db, request):
-        return RedirectResponse("/library", status_code=303)
+def _status_panel_context(request: Request, db: Session) -> dict:
     uid = _current_user_id(request)
     session = session_from_request(request)
     username = (session.username if session else "") or settings.get_value(db, "admin_username") or "admin"
@@ -702,53 +726,115 @@ def status_page(request: Request, db: Annotated[Session, Depends(get_db)]):
     public_base = hostname.get_public_base_url(db)
     opds_path = f"/opds/u/{username}"
     x3_path = f"/api/x3/u/{username}"
-    return render(
-        request,
-        "status.html",
+    return {
+        **_base_context(request, db, "device"),
+        "device_tab": "status",
+        "story_count": story_count,
+        "reader": reader,
+        "delivery": delivery,
+        "public_base_url": public_base,
+        "opds_url": f"{public_base}{opds_path}",
+        "opds_path": opds_path,
+        "x3_news_url": f"{public_base}{x3_path}/news",
+        "x3_path": x3_path,
+        "share_url": share_url,
+        "lan_url": hostname.get_lan_url(db),
+        "qr_svg": qrcode.svg_for(share_url),
+        "request_base_url": str(request.base_url).rstrip("/"),
+        "instance_name": settings.get_value(db, "instance_name"),
+        "x3_catalog_login": settings.catalog_login_enabled(db),
+        "x3_catalog_username": settings.catalog_username(db),
+        "x3_token_set": bool(
+            user_settings_service.get_value(db, uid, "x3_sync_token")
+            or settings.get_value(db, "x3_sync_token")
+        ),
+        "update_check": update.last_check(db),
+        "paper": paper_status(db, user_id=uid),
+        "reader_device": reader_config.reader_device(db, uid),
+        "health": status_health(db),
+        "https_enabled": settings.https_enabled(db),
+    }
+
+
+def _send_panel_context(request: Request, db: Session) -> dict:
+    uid = _current_user_id(request)
+    return {
+        **_base_context(request, db, "device"),
+        "device_tab": "send",
+        "library_files": _library_items(db, uid),
+        "reader": reader_push.snapshot(db, probe=False, user_id=uid),
+    }
+
+
+@router.get("/sources")
+def sources_page(request: Request, db: Annotated[Session, Depends(get_db)], tab: str = "feeds"):
+    sources_tab = "catalog" if (tab or "").strip().lower() == "catalog" else "feeds"
+    ctx = _catalog_panel_context(request, db) if sources_tab == "catalog" else _feeds_panel_context(request, db)
+    return render(request, "sources.html", ctx, db=db)
+
+
+@router.get("/device")
+def device_page(request: Request, db: Annotated[Session, Depends(get_db)], tab: str = ""):
+    can_status = _session_can_view_status(db, request)
+    raw = (tab or "").strip().lower()
+    if raw == "status" and can_status:
+        device_tab = "status"
+    elif raw == "send":
+        device_tab = "send"
+    else:
+        device_tab = "status" if can_status else "send"
+    if device_tab == "status":
+        return render(request, "device.html", _status_panel_context(request, db), db=db)
+    return render(request, "device.html", _send_panel_context(request, db), db=db)
+
+
+@router.get("/api/activity")
+def activity_status(request: Request, db: Annotated[Session, Depends(get_db)]):
+    uid = _current_user_id(request)
+    ingest = snapshot()
+    reader = reader_push.snapshot(db, probe=False, user_id=uid)
+    recent = reader_push.recent_sync_result(db, user_id=uid)
+    return JSONResponse(
         {
-            **_base_context(request, db, "status"),
-            "story_count": story_count,
-            "reader": reader,
-            "delivery": delivery,
-            "public_base_url": public_base,
-            "opds_url": f"{public_base}{opds_path}",
-            "opds_path": opds_path,
-            "x3_news_url": f"{public_base}{x3_path}/news",
-            "x3_path": x3_path,
-            "share_url": share_url,
-            "lan_url": hostname.get_lan_url(db),
-            "qr_svg": qrcode.svg_for(share_url),
-            "request_base_url": str(request.base_url).rstrip("/"),
-            "instance_name": settings.get_value(db, "instance_name"),
-            "x3_catalog_login": settings.catalog_login_enabled(db),
-            "x3_catalog_username": settings.catalog_username(db),
-            "x3_token_set": bool(
-                user_settings_service.get_value(db, uid, "x3_sync_token")
-                or settings.get_value(db, "x3_sync_token")
-            ),
-            "update_check": update.last_check(db),
-            "paper": paper_status(db, user_id=uid),
-            "reader_device": reader_config.reader_device(db, uid),
-            "health": status_health(db),
-            "https_enabled": settings.https_enabled(db),
-        },
-        db=db,
+            "ok": True,
+            "ingest": {
+                "running": bool(ingest.get("running")),
+                "progress": ingest.get("progress") or "",
+                "last_message": ingest.get("last_message") or "",
+                "last_error": ingest.get("last_error") or "",
+            },
+            "reader": {
+                "pending": int(reader.get("pending") or 0),
+                "active_label": reader.get("active_label") or "",
+                "online": reader.get("online"),
+                "checked": bool(reader.get("checked")),
+            },
+            "recent_sync": recent,
+        }
     )
+
+
+@router.get("/feeds")
+def feeds_page():
+    return RedirectResponse("/sources?tab=feeds", status_code=303)
+
+
+@router.get("/catalog")
+def catalog_page():
+    return RedirectResponse("/sources?tab=catalog", status_code=303)
+
+
+@router.get("/status")
+def status_page(request: Request, db: Annotated[Session, Depends(get_db)]):
+    if not _session_can_view_status(db, request):
+        return RedirectResponse("/device?tab=send", status_code=303)
+    return RedirectResponse("/device?tab=status", status_code=303)
 
 
 @router.get("/library")
-def library_page(request: Request, db: Annotated[Session, Depends(get_db)]):
-    uid = _current_user_id(request)
-    return render(
-        request,
-        "library.html",
-        {
-            **_base_context(request, db, "library"),
-            "library_files": _library_items(db, uid),
-            "reader": reader_push.snapshot(db, probe=False, user_id=uid),
-        },
-        db=db,
-    )
+def library_page():
+    return RedirectResponse("/device?tab=send", status_code=303)
+
 
 
 def _settings_page_context(request: Request, db: Session, tab: str = "device") -> dict:
@@ -854,6 +940,9 @@ def _settings_page_context(request: Request, db: Session, tab: str = "device") -
         "tls_pending_restart": settings.https_enabled(db) and request.url.scheme != "https",
         "ui_lang": settings.resolve_ui_lang(db, user_id=uid),
         "ui_lang_choices": settings.UI_LANG_CHOICES,
+        "paywall_skip_enabled": article_links.paywall_skip_enabled(db),
+        "article_link_label": article_links.article_link_label(db, uid),
+        "article_link_label_default": article_links.DEFAULT_ARTICLE_LINK_LABEL,
         "household_users": users_service.list_users(db),
         "login_qr_user": None,
         "login_qr_svg": None,
@@ -883,7 +972,7 @@ def upload_library_file(
         return _form_error(request, str(exc), "/library")
     if _wants_json(request):
         return JSONResponse({"ok": True, "message": "Queued for the next reader sync. Not summarised."})
-    return RedirectResponse("/library", status_code=303)
+    return RedirectResponse("/device?tab=send", status_code=303)
 
 
 @router.post("/library/{file_id}/push")
@@ -897,7 +986,7 @@ def push_library_file(file_id: int, request: Request, db: Annotated[Session, Dep
         return _form_error(request, str(exc), "/library")
     if _wants_json(request):
         return JSONResponse({"ok": True, "message": "Queued for the next reader sync."})
-    return RedirectResponse("/library", status_code=303)
+    return RedirectResponse("/device?tab=send", status_code=303)
 
 
 @router.post("/reader/poll")
@@ -978,7 +1067,7 @@ def delete_library_file_form(file_id: int, request: Request, db: Annotated[Sessi
         library.delete_library_file(db, item)
     if _wants_json(request):
         return JSONResponse({"ok": True, "message": "Removed from the library."})
-    return RedirectResponse("/library", status_code=303)
+    return RedirectResponse("/device?tab=send", status_code=303)
 
 
 @router.get("/api/ollama/models")
@@ -1019,11 +1108,12 @@ def create_feed_form(
     source_type: Annotated[str, Form()] = "auto",
     summarize: Annotated[str, Form()] = "1",
     translate: Annotated[str, Form()] = "off",
-    next: Annotated[str, Form()] = "/feeds",
+    next: Annotated[str, Form()] = "/sources?tab=feeds",
 ):
     nxt = safe_next(next)
-    if nxt not in {"/feeds", "/catalog"}:
-        nxt = "/feeds"
+    if nxt not in SOURCES_NEXT:
+        nxt = "/sources?tab=feeds"
+    nxt = _normalize_sources_next(nxt)
     parsed = urlparse(url.strip())
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         if _wants_json(request):
@@ -1077,13 +1167,28 @@ def save_feed_schedule(
     translate: Annotated[str, Form()] = "off",
     keyword_include: Annotated[str, Form()] = "",
     keyword_exclude: Annotated[str, Form()] = "",
+    paywall_skip: Annotated[str, Form()] = "",
+    feed_type: Annotated[str, Form()] = "",
 ):
     feed = db.get(Feed, feed_id)
     if feed is None:
         if _wants_json(request):
             return JSONResponse({"ok": False, "message": "Feed not found."}, status_code=404)
-        return RedirectResponse("/feeds", status_code=303)
+        return RedirectResponse("/sources?tab=feeds", status_code=303)
+    from app.services.catalog import SOURCE_LABELS, apply_catalog_type, find_catalog_item
     from app.services.translate import parse_feed_translate_mode
+
+    wanted_type = (feed_type or feed.type or "rss").strip().lower()
+    if wanted_type not in SOURCE_LABELS:
+        wanted_type = (feed.type or "rss").strip().lower()
+    if feed.catalog_id:
+        item = find_catalog_item(feed.catalog_id)
+        if item is not None:
+            apply_catalog_type(feed, item, wanted_type)
+        else:
+            feed.type = wanted_type
+    else:
+        feed.type = wanted_type
 
     feed.schedule_mode = schedule_mode if schedule_mode in {"global", "custom"} else "global"
     if feed.schedule_mode == "custom":
@@ -1096,12 +1201,13 @@ def save_feed_schedule(
     do_translate, translate_provider = parse_feed_translate_mode(translate)
     feed.translate = do_translate
     feed.translate_provider = translate_provider
+    feed.paywall_skip = bool(paywall_skip) and article_links.paywall_skip_enabled(db)
     feed.keyword_include = keyword_include.strip()
     feed.keyword_exclude = keyword_exclude.strip()
     db.commit()
     if _wants_json(request):
         return JSONResponse({"ok": True, "message": "Source settings saved."})
-    return RedirectResponse("/feeds", status_code=303)
+    return RedirectResponse("/sources?tab=feeds", status_code=303)
 
 
 @router.post("/feeds/{feed_id}/mute")
@@ -1113,7 +1219,7 @@ def mute_feed(feed_id: int, request: Request, db: Annotated[Session, Depends(get
     db.commit()
     if _wants_json(request):
         return JSONResponse({"ok": True, "message": f"Muted {feed.name} for 24 hours."})
-    return RedirectResponse("/feeds", status_code=303)
+    return RedirectResponse("/sources?tab=feeds", status_code=303)
 
 
 @router.post("/feeds/{feed_id}/unmute")
@@ -1125,7 +1231,7 @@ def unmute_feed(feed_id: int, request: Request, db: Annotated[Session, Depends(g
     db.commit()
     if _wants_json(request):
         return JSONResponse({"ok": True, "message": f"Unmuted {feed.name}."})
-    return RedirectResponse("/feeds", status_code=303)
+    return RedirectResponse("/sources?tab=feeds", status_code=303)
 
 
 @router.post("/feeds/{feed_id}/refresh")
@@ -1134,11 +1240,11 @@ def refresh_one_feed(feed_id: int, request: Request, db: Annotated[Session, Depe
     if feed is None:
         if _wants_json(request):
             return JSONResponse({"ok": False, "message": "Feed not found."}, status_code=404)
-        return RedirectResponse("/feeds", status_code=303)
+        return RedirectResponse("/sources?tab=feeds", status_code=303)
     result = start_ingest(force=True, feed_id=feed_id)
     if _wants_json(request):
         return JSONResponse(result, status_code=200 if result.get("ok") else 400)
-    return RedirectResponse("/feeds", status_code=303)
+    return RedirectResponse("/sources?tab=feeds", status_code=303)
 
 
 @router.post("/feeds/{feed_id}/toggle")
@@ -1151,7 +1257,7 @@ def toggle_feed(feed_id: int, request: Request, db: Annotated[Session, Depends(g
             favicon.capture_for_feed_async(feed.id)
     if _wants_json(request):
         return JSONResponse({"ok": True, "enabled": bool(feed and feed.enabled)})
-    return RedirectResponse("/feeds", status_code=303)
+    return RedirectResponse("/sources?tab=feeds", status_code=303)
 
 
 @router.post("/feeds/{feed_id}/delete")
@@ -1159,13 +1265,14 @@ def delete_feed_form(
     feed_id: int,
     request: Request,
     db: Annotated[Session, Depends(get_db)],
-    next: Annotated[str, Form()] = "/feeds",
+    next: Annotated[str, Form()] = "/sources?tab=feeds",
 ):
     feed = db.get(Feed, feed_id)
     if feed:
         db.delete(feed)
         db.commit()
-    nxt = next if next in {"/feeds", "/catalog"} else "/feeds"
+    nxt = next if next in SOURCES_NEXT else "/sources?tab=feeds"
+    nxt = _normalize_sources_next(nxt)
     if _wants_json(request):
         return JSONResponse({"ok": True, "message": "Removed the feed."})
     return RedirectResponse(nxt, status_code=303)
@@ -1182,7 +1289,7 @@ def add_catalog_form(catalog_id: str, request: Request, db: Annotated[Session, D
     add_catalog_feed(db, catalog_id, user_id=_current_user_id(request))
     if _wants_json(request):
         return JSONResponse({"ok": True, "message": "Feed enabled."})
-    return RedirectResponse("/catalog", status_code=303)
+    return RedirectResponse("/sources?tab=catalog", status_code=303)
 
 
 @router.post("/catalog/{catalog_id}/remove")
@@ -1206,7 +1313,7 @@ def remove_catalog_form(catalog_id: str, request: Request, db: Annotated[Session
         db.commit()
     if _wants_json(request):
         return JSONResponse({"ok": True, "message": "Removed the feed."})
-    return RedirectResponse("/catalog", status_code=303)
+    return RedirectResponse("/sources?tab=catalog", status_code=303)
 
 
 @router.post("/settings")
@@ -1346,6 +1453,16 @@ async def save_settings(
         if admin_row is not None:
             admin_row.ui_lang = ui_lang
             db.commit()
+        label_raw = str(form.get("article_link_label") or "")
+        user_settings_service.set_value(
+            db,
+            session.user_id,
+            "article_link_label",
+            article_links.normalize_article_link_label(label_raw),
+        )
+
+    if is_admin and tab == "device":
+        settings.set_value(db, "paywall_skip_enabled", "1" if str(form.get("paywall_skip_enabled") or "").strip() else "0")
 
     if is_admin:
         if clear_openai_api_key:
