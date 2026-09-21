@@ -18,6 +18,7 @@
   <div class="chips">
     <a class="chip-btn{% if briefing_day == 'today' %} is-active{% endif %}" href="/">{{ filter_icon("today") }}<span>Today</span></a>
     <a class="chip-btn{% if briefing_day == 'yesterday' %} is-active{% endif %}" href="/?day=yesterday">{{ filter_icon("yesterday") }}<span>Yesterday</span></a>
+    <a class="chip-btn{% if briefing_day == 'all' %} is-active{% endif %}" href="/?day=all">{{ filter_icon("all-days") }}<span>All</span></a>
   </div>
   {% if stories %}
   <div class="chips" data-chip-group>
@@ -58,7 +59,7 @@
         </div>
         <h2>{{ story.title }}</h2>
         <p class="summary">{{ story.summary }}</p>
-        <a class="text-link" href="{{ story.canonical_url }}" target="_blank" rel="noopener">Open original</a>
+        <a class="text-link" href="{{ story.open_url or story.canonical_url }}" target="_blank" rel="noopener">{{ article_link_label }}</a>
       </li>
       {% endfor %}
     </ol>
@@ -68,8 +69,8 @@
     </div>
   {% else %}
     <div class="empty card">
-      <h2>{% if briefing_day == 'yesterday' %}Nothing from yesterday{% else %}Nothing in the briefing yet{% endif %}</h2>
-      <p>{% if briefing_day == 'yesterday' %}Try Today, or tap Refresh to pull your enabled feeds.{% else %}Tap Refresh to pull your enabled feeds. Four recommended sources are already on.{% endif %}</p>
+      <h2>{% if briefing_day == 'yesterday' %}Nothing from yesterday{% elif briefing_day == 'all' %}Nothing in retention{% else %}Nothing in the briefing yet{% endif %}</h2>
+      <p>{% if briefing_day == 'yesterday' %}Try Today or All, or tap Refresh to pull your enabled feeds.{% elif briefing_day == 'all' %}Stories from the last {{ retention_days }} days show up here after a refresh.{% else %}Tap Refresh to pull your enabled feeds. Four recommended sources are already on.{% endif %}</p>
     </div>
   {% endif %}
 </div>

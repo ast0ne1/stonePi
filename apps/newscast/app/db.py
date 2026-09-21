@@ -85,6 +85,9 @@ def _ensure_schema() -> None:
                 conn.execute(text("ALTER TABLE feeds ADD COLUMN last_item_count INTEGER"))
             if "empty_since" not in feed_cols:
                 conn.execute(text("ALTER TABLE feeds ADD COLUMN empty_since DATETIME"))
+            if "paywall_skip" not in feed_cols:
+                conn.execute(text("ALTER TABLE feeds ADD COLUMN paywall_skip BOOLEAN DEFAULT 0"))
+                conn.execute(text("UPDATE feeds SET paywall_skip = 0 WHERE paywall_skip IS NULL"))
         if "users" in tables:
             user_cols = _table_columns(conn, "users")
             if "auth_user_id" not in user_cols:
@@ -111,6 +114,8 @@ def _ensure_schema() -> None:
             if "kind" not in task_cols:
                 conn.execute(text("ALTER TABLE sync_tasks ADD COLUMN kind VARCHAR(20) DEFAULT 'x3'"))
                 conn.execute(text("UPDATE sync_tasks SET kind = 'x3' WHERE kind IS NULL OR kind = ''"))
+            if "error_message" not in task_cols:
+                conn.execute(text("ALTER TABLE sync_tasks ADD COLUMN error_message TEXT"))
 
 
 def get_db() -> Generator[Session, None, None]:

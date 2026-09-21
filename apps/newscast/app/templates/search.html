@@ -35,7 +35,7 @@
       </div>
       <h2>{{ story.title }}</h2>
       <p class="summary">{{ story.summary }}</p>
-      <a class="text-link" href="{{ story.canonical_url }}" target="_blank" rel="noopener">Open original</a>
+      <a class="text-link" href="{{ story.open_url or story.canonical_url }}" target="_blank" rel="noopener">{{ article_link_label }}</a>
     </li>
     {% endfor %}
   </ol>

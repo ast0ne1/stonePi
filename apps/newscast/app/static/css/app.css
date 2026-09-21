@@ -308,6 +308,26 @@ input, select {
 }
 .status-pill.is-busy { color: var(--accent); }
 .status-pill.is-error { color: var(--error); background: color-mix(in srgb, var(--error) 12%, var(--card)); }
+.activity-banner {
+  display: none;
+  margin: 0;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--accent) 8%, var(--paper));
+  color: var(--ink);
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.activity-banner:not([hidden]) { display: block; }
+.activity-banner.is-busy { color: var(--accent); }
+.activity-banner.is-error {
+  color: var(--error);
+  background: color-mix(in srgb, var(--error) 10%, var(--paper));
+}
 
 .theme-switch {
   display: flex;
@@ -404,9 +424,9 @@ input, select {
   flex: 0 0 auto;
   z-index: 12;
   display: grid;
-  grid-template-columns: repeat(9, minmax(0, 1fr));
-  gap: 2px;
-  padding: 8px var(--gutter) calc(10px + var(--safe-bottom));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  padding: 8px max(var(--gutter), env(safe-area-inset-right, 0px)) calc(10px + var(--safe-bottom)) max(var(--gutter), env(safe-area-inset-left, 0px));
   background: color-mix(in srgb, var(--card) 94%, transparent);
   backdrop-filter: blur(16px);
   border-top: 1px solid var(--line);
@@ -417,14 +437,15 @@ input, select {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 3px;
   text-decoration: none;
-  font-size: 0.62rem;
+  font-size: 0.7rem;
   font-weight: 500;
   color: var(--muted);
   border-radius: 12px;
   min-width: 0;
   text-align: center;
+  padding: 4px 2px;
 }
 .nav a span {
   max-width: 100%;
@@ -433,13 +454,14 @@ input, select {
   white-space: nowrap;
 }
 .nav svg {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
+  flex: 0 0 auto;
 }
 .nav a.is-active {
   color: var(--ink);
@@ -524,6 +546,10 @@ h2 { font-family: var(--serif); font-size: 1.35rem; }
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
+  min-width: 0;
+}
+.story-kicker:has(.story-actions) {
+  flex-wrap: nowrap;
 }
 .story-kicker .chip { margin: 0; }
 .chip-source {
@@ -531,6 +557,15 @@ h2 { font-family: var(--serif); font-size: 1.35rem; }
   align-items: center;
   gap: 6px;
   line-height: 1.1;
+}
+.story-kicker .chip-source {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
 }
 .source-icon {
   display: block;
@@ -553,9 +588,11 @@ h2 { font-family: var(--serif); font-size: 1.35rem; }
 }
 .feed-title .source-icon, .catalog-title .source-icon { margin-top: 2px; }
 .story-date {
+  flex: 0 0 auto;
   font-variant-numeric: tabular-nums;
 }
 .story-actions {
+  flex: 0 0 auto;
   margin-left: auto;
   display: flex;
   align-items: center;
@@ -1232,6 +1269,20 @@ select:focus-visible {
 }
 .settings-form { margin-top: 0; }
 .settings-tabs { display: grid; gap: 0; }
+.page-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 16px;
+}
+.page-tabs .chip-btn {
+  justify-content: center;
+  min-height: 40px;
+  width: 100%;
+}
+.page-tabs .chip-btn:only-child {
+  grid-column: 1 / -1;
+}
 .settings-chips { margin-bottom: 8px; }
 .user-cards {
   display: grid;
@@ -1452,7 +1503,7 @@ input[type="search"]::-webkit-search-results-button {
 .toast {
   position: fixed;
   left: 50%;
-  bottom: calc(88px + var(--safe-bottom));
+  bottom: calc(92px + var(--safe-bottom));
   top: auto;
   transform: translateX(-50%) translateY(6px);
   width: max-content;
@@ -1583,6 +1634,11 @@ input[type="search"]::-webkit-search-results-button {
 
 @media (max-width: 420px) {
   .status-pill { display: none; }
+  .activity-banner {
+    padding-left: 12px;
+    padding-right: 12px;
+    font-size: 0.8rem;
+  }
   .btn-refresh span { display: none; }
   .btn-refresh { min-width: var(--tap); padding: 0 12px; }
   .catalog-grid { gap: 8px; }

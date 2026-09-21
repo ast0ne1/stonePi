@@ -327,12 +327,14 @@ def flush_pending(db: Session, user_id: int | None = None) -> dict:
         path = Path(task.file_path)
         if not path.exists():
             task.status = "failed"
+            task.error_message = "File missing before upload."
             task.completed_at = utcnow()
             continue
         task_uid = getattr(task, "user_id", None) or uid
         try:
             upload_file(host, path, _task_folder(task, dest), db=db, user_id=task_uid)
             task.status = "complete"
+            task.error_message = None
             task.completed_at = utcnow()
             uploaded += 1
             if briefing_day_for_task(task) == today:
@@ -351,6 +353,9 @@ def flush_pending(db: Session, user_id: int | None = None) -> dict:
                 )
         except Exception as exc:  # noqa: BLE001
             logger.warning("upload failed for %s: %s", path.name, exc)
+            task.status = "failed"
+            task.error_message = str(exc)[:240]
+            task.completed_at = utcnow()
     db.commit()
     pending = len(pending_crosspoint(db, user_id=uid))
     return {"ok": True, "online": True, "uploaded": uploaded, "pending": pending, "host": host}
@@ -417,4 +422,21 @@ def snapshot(db: Session, *, probe: bool = True, user_id: int | None = None) -> 
         "push_when_online": push_on,
         "device": device,
         "ssh_port": ssh_port,
+        "active_label": queue_label(pending[0]) if pending else "",
+    }
+
+
+def recent_sync_result(db: Session, user_id: int | None = None) -> dict | None:
+    query = db.query(SyncTask).filter(SyncTask.status.in_(("complete", "failed")))
+    if user_id is not None:
+        query = query.filter(SyncTask.user_id == int(user_id))
+    task = query.order_by(SyncTask.completed_at.desc(), SyncTask.id.desc()).first()
+    if task is None:
+        return None
+    return {
+        "status": task.status,
+        "label": queue_label(task),
+        "error": (task.error_message or "").strip(),
+        "task_id": task.task_id,
+        "completed_at": task.completed_at.isoformat() if task.completed_at else "",
     }
