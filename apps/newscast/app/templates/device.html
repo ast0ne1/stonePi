@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% from "_filter_icon.html" import filter_icon %}
+{% block title %}{% if device_tab == 'send' %}Send{% else %}Status{% endif %} · NewsCast{% endblock %}
+{% block content %}
+<section class="hero">
+  <h1>{{ t("Device") }}</h1>
+  <p class="lede">{% if device_tab == 'send' %}Send files to your reader and manage the push queue.{% else %}Reader delivery, health, and catalog links for this account.{% endif %}</p>
+</section>
+<div class="page-tabs" role="tablist" aria-label="Device">
+  {% if can_view_status %}
+  <a class="chip-btn{% if device_tab == 'status' %} is-active{% endif %}" href="/device?tab=status" role="tab" aria-selected="{{ 'true' if device_tab == 'status' else 'false' }}">{{ filter_icon("status") }}<span>{{ t("Status") }}</span></a>
+  {% endif %}
+  <a class="chip-btn{% if device_tab == 'send' %} is-active{% endif %}" href="/device?tab=send" role="tab" aria-selected="{{ 'true' if device_tab == 'send' else 'false' }}">{{ filter_icon("send") }}<span>{{ t("Send") }}</span></a>
+</div>
+{% if device_tab == 'send' %}
+  {% include "_send_panel.html" %}
+{% else %}
+  {% include "_status_panel.html" %}
+{% endif %}
+{% endblock %}

@@ -88,6 +88,7 @@ class Feed(Base):
     summarize: Mapped[bool] = mapped_column(Boolean, default=True)
     translate: Mapped[bool] = mapped_column(Boolean, default=False)
     translate_provider: Mapped[str] = mapped_column(String(20), default="global")
+    paywall_skip: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -148,6 +149,7 @@ class SyncTask(Base):
     file_path: Mapped[str] = mapped_column(String(500))
     save_path: Mapped[str] = mapped_column(String(500))
     size: Mapped[int] = mapped_column(Integer, default=0)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

@@ -16,8 +16,17 @@ def _session() -> Session:
 def test_normalize_briefing_day():
     assert normalize_briefing_day(None) == "today"
     assert normalize_briefing_day("Yesterday") == "yesterday"
+    assert normalize_briefing_day("All") == "all"
     assert normalize_briefing_day("2026-09-13") == "2026-09-13"
     assert normalize_briefing_day("nope") == "today"
+
+
+def test_briefing_path_for_day_filters():
+    from app.services.briefing import briefing_path
+
+    assert briefing_path("today") == "/"
+    assert briefing_path("yesterday") == "/?day=yesterday"
+    assert briefing_path("all") == "/?day=all"
 
 
 def test_today_vs_yesterday_selection(monkeypatch):
@@ -52,6 +61,17 @@ def test_today_vs_yesterday_selection(monkeypatch):
                 importance=3,
             ),
             Story(
+                title="Older story",
+                summary="Older",
+                source_name="BBC",
+                canonical_url="https://example.com/older",
+                content_hash="o",
+                cluster_key="o",
+                published_at=now - timedelta(days=3),
+                created_at=now,
+                importance=3,
+            ),
+            Story(
                 title="Saved long-read",
                 summary="Keep",
                 source_name="Saved",
@@ -68,11 +88,18 @@ def test_today_vs_yesterday_selection(monkeypatch):
     db.commit()
     today = current_stories(db, day="today")
     yesterday = current_stories(db, day="yesterday")
+    all_days = current_stories(db, day="all")
     assert [story.title for story in today] == ["Saved long-read", "Today story"]
     assert [story.title for story in yesterday] == ["Yesterday story"]
+    assert {story.title for story in all_days} >= {
+        "Today story",
+        "Yesterday story",
+        "Older story",
+        "Saved long-read",
+    }
 
 
-def test_today_includes_story_ingested_today_with_older_publish_date(monkeypatch):
+def test_today_uses_publish_date_not_ingest_time(monkeypatch):
     now = datetime(2026, 9, 20, 6, tzinfo=timezone.utc)
     monkeypatch.setattr("app.services.briefing.utcnow", lambda: now)
     monkeypatch.setattr("app.services.briefing._local_today", lambda now=None: date(2026, 9, 20))
@@ -93,5 +120,32 @@ def test_today_includes_story_ingested_today_with_older_publish_date(monkeypatch
         )
     )
     db.commit()
-    today = current_stories(db, day="today")
-    assert [story.title for story in today] == ["BBC overnight"]
+    assert [story.title for story in current_stories(db, day="today")] == []
+    assert [story.title for story in current_stories(db, day="yesterday")] == ["BBC overnight"]
+    assert [story.title for story in current_stories(db, day="all")] == ["BBC overnight"]
+
+
+def test_undated_stories_only_appear_on_all(monkeypatch):
+    now = datetime(2026, 9, 20, 6, tzinfo=timezone.utc)
+    monkeypatch.setattr("app.services.briefing.utcnow", lambda: now)
+    monkeypatch.setattr("app.services.briefing._local_today", lambda now=None: date(2026, 9, 20))
+    monkeypatch.setattr("app.services.briefing._local_tz", lambda: timezone.utc)
+    monkeypatch.setattr("app.services.briefing.env.story_retention_days", 7)
+    db = _session()
+    db.add(
+        Story(
+            title="No publish date",
+            summary="Undated",
+            source_name="Scrape Source",
+            canonical_url="https://example.com/undated",
+            content_hash="u",
+            cluster_key="u",
+            published_at=None,
+            created_at=now,
+            importance=3,
+        )
+    )
+    db.commit()
+    assert [story.title for story in current_stories(db, day="today")] == []
+    assert [story.title for story in current_stories(db, day="yesterday")] == []
+    assert [story.title for story in current_stories(db, day="all")] == ["No publish date"]

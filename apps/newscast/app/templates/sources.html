@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% from "_filter_icon.html" import filter_icon %}
+{% block title %}Sources · NewsCast{% endblock %}
+{% block content %}
+<section class="hero">
+  <h1>{{ t("Sources") }}</h1>
+  <p class="lede">Manage enabled feeds and browse the household catalog.</p>
+</section>
+<div class="page-tabs" role="tablist" aria-label="Sources">
+  <a class="chip-btn{% if sources_tab == 'feeds' %} is-active{% endif %}" href="/sources?tab=feeds" role="tab" aria-selected="{{ 'true' if sources_tab == 'feeds' else 'false' }}">{{ filter_icon("feeds") }}<span>{{ t("Feeds") }}</span></a>
+  <a class="chip-btn{% if sources_tab == 'catalog' %} is-active{% endif %}" href="/sources?tab=catalog" role="tab" aria-selected="{{ 'true' if sources_tab == 'catalog' else 'false' }}">{{ filter_icon("catalog") }}<span>{{ t("Catalog") }}</span></a>
+</div>
+{% if sources_tab == 'catalog' %}
+  {% set source_next = '/sources?tab=catalog' %}
+  {% include "_catalog_panel.html" %}
+{% else %}
+  {% set source_next = '/sources?tab=feeds' %}
+  {% include "_feeds_panel.html" %}
+{% endif %}
+{% endblock %}

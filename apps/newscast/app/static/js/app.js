@@ -213,18 +213,8 @@ async function send(url, options = {}) {
 }
 
 function applyIngestStatus(data) {
-  const pill = document.querySelector("[data-ingest-pill]");
   const refreshBtn = document.querySelector("[data-refresh]");
   const running = Boolean(data.running);
-  if (pill) {
-    pill.classList.toggle("is-busy", running);
-    pill.classList.toggle("is-error", !running && Boolean(data.last_error));
-    if (running) {
-      pill.textContent = data.progress ? `${t("Refreshing")} ${data.progress}` : t("Refreshing");
-    } else {
-      pill.textContent = data.last_error ? t("Error") : t("Idle");
-    }
-  }
   if (refreshBtn) {
     refreshBtn.disabled = running;
     refreshBtn.classList.toggle("is-busy", running);
@@ -241,20 +231,88 @@ function applyIngestStatus(data) {
   ingestWasRunning = running;
 }
 
-async function pollIngest() {
-  const pill = document.querySelector("[data-ingest-pill]");
-  if (!pill) return;
-  try {
-    applyIngestStatus(await send("/api/ingest/status"));
-  } catch {
-    /* stay on the last rendered state */
+function setActivityBanner(text, { busy = false, error = false } = {}) {
+  const banner = document.querySelector("[data-activity-banner]");
+  if (!banner) return;
+  const value = (text || "").trim();
+  if (!value) {
+    banner.hidden = true;
+    banner.textContent = "";
+    banner.classList.remove("is-busy", "is-error");
+    return;
+  }
+  banner.hidden = false;
+  banner.textContent = value;
+  banner.classList.toggle("is-busy", busy);
+  banner.classList.toggle("is-error", error);
+}
+
+function applyActivity(data) {
+  const ingest = data.ingest || {};
+  const reader = data.reader || {};
+  const recent = data.recent_sync || null;
+  applyIngestStatus(ingest);
+
+  if (ingest.running) {
+    const progress = ingest.progress ? `${t("Refreshing")} ${ingest.progress}…` : `${t("Refreshing")}…`;
+    setActivityBanner(progress, { busy: true });
+  } else if (reader.pending > 0) {
+    const label = reader.active_label || t("reader");
+    const copy =
+      reader.pending === 1
+        ? `${t("Sending")} ${label}…`
+        : `${t("Sending")} ${reader.pending} ${t("files")}…`;
+    setActivityBanner(copy, { busy: true });
+  } else if (ingest.last_error) {
+    setActivityBanner(ingest.last_error, { error: true });
+  } else {
+    setActivityBanner("");
+  }
+
+  const ingestKey = `${ingest.running ? 1 : 0}|${ingest.last_message || ""}|${ingest.last_error || ""}`;
+  if (activityState.ingestKey && activityState.ingestKey !== ingestKey && activityState.ingestRunning && !ingest.running) {
+    if (ingest.last_error) toast(ingest.last_error, "error");
+    else if (ingest.last_message) toast(ingest.last_message, "ok");
+  }
+  activityState.ingestRunning = Boolean(ingest.running);
+  activityState.ingestKey = ingestKey;
+
+  const recentKey = recent ? `${recent.task_id}|${recent.status}` : "";
+  if (recentKey && recentKey !== activityState.recentKey) {
+    if (activityState.recentKey) {
+      if (recent.status === "failed") {
+        toast(recent.error ? `${t("Couldn’t send")} ${recent.label}: ${recent.error}` : `${t("Couldn’t send")} ${recent.label}`, "error");
+      } else if (recent.status === "complete") {
+        toast(`${t("Sent")} ${recent.label}.`, "ok");
+      }
+    }
+    activityState.recentKey = recentKey;
+  } else if (!activityState.recentKey && recentKey) {
+    activityState.recentKey = recentKey;
   }
 }
 
-let ingestWasRunning = Boolean(document.querySelector("[data-ingest-pill]")?.classList.contains("is-busy"));
-if (document.querySelector("[data-ingest-pill]")) {
-  window.setInterval(pollIngest, 4000);
+async function pollActivity() {
+  try {
+    applyActivity(await send("/api/activity"));
+  } catch {
+    try {
+      applyIngestStatus(await send("/api/ingest/status"));
+    } catch {
+      /* stay on last rendered state */
+    }
+  }
 }
+
+const activityState = {
+  ingestRunning: Boolean(document.querySelector("[data-refresh]")?.classList.contains("is-busy")),
+  ingestKey: "",
+  recentKey: "",
+};
+let ingestWasRunning = activityState.ingestRunning;
+window.setInterval(pollActivity, 4000);
+pollActivity();
+
 
 function askConfirm({ title, body, okLabel }) {
   const sheet = document.querySelector("[data-confirm-sheet]");

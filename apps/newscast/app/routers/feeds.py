@@ -142,11 +142,15 @@ def add_catalog_feed(db: Session, catalog_id: str, user_id: int = 1, *, require_
 
         if not is_catalog_approved(db, catalog_id):
             raise HTTPException(status_code=403, detail="That source is not approved for this household.")
+    from app.services.catalog import apply_catalog_type, catalog_rss_url
+
     uid = int(user_id or 1)
+    rss_alt = catalog_rss_url(item)
+    url_match = (Feed.url == item["url"]) | (Feed.url == rss_alt) if rss_alt else (Feed.url == item["url"])
     feed = (
         db.query(Feed)
         .filter(Feed.user_id == uid)
-        .filter((Feed.catalog_id == catalog_id) | (Feed.url == item["url"]))
+        .filter((Feed.catalog_id == catalog_id) | url_match)
         .one_or_none()
     )
     if feed is None:
@@ -160,6 +164,7 @@ def add_catalog_feed(db: Session, catalog_id: str, user_id: int = 1, *, require_
             category=item.get("category", "news"),
             translate=bool(item.get("translate")),
         )
+        apply_catalog_type(feed, item, item.get("type", "rss"))
         db.add(feed)
     else:
         feed.enabled = True

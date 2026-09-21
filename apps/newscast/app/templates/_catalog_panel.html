@@ -1,0 +1,103 @@
+{% from "_filter_icon.html" import filter_chip %}
+{% set source_next = source_next|default('/sources?tab=catalog') %}
+<section class="hero hero-row">
+  <div>
+    <h1>Catalog</h1>
+    <p class="lede">Browse this library and tap Add or Remove. Sources marked Translate are rewritten into your target language before they reach the briefing. Use the plus button only for a source that is not listed. Import and export packages under Settings → Catalog.</p>
+  </div>
+  {% if can_add_custom_sources %}
+  <button class="btn btn-secondary btn-with-icon" type="button" data-open-sheet>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    <span>Add custom</span>
+  </button>
+  {% endif %}
+</section>
+
+<div data-filter-root>
+<div class="chips-stack">
+<div class="chips" data-chip-group>
+  {{ filter_chip("all", "All", true) }}
+  {% for key, label in category_labels.items() %}
+    {{ filter_chip(key, label) }}
+  {% endfor %}
+</div>
+<div class="chips chips-secondary" data-chip-group data-filter-key="source">
+  {{ filter_chip("all", "All types", true) }}
+  {{ filter_chip("rss", "RSS") }}
+  {{ filter_chip("webpage", "Scrape") }}
+</div>
+</div>
+
+{% if custom_feeds %}
+<section class="catalog-group" data-filter-section>
+  <h2 class="section-label">Your sources</h2>
+  <ul class="catalog-grid">
+    {% for feed in custom_feeds %}
+    <li class="card catalog-card is-added" data-filter-item data-category="{{ feed.category }}" data-source="{{ 'webpage' if feed.type == 'webpage' else 'rss' }}">
+      <div class="catalog-top">
+        <div class="catalog-main">
+          <h3 class="catalog-title">{% if favicons.get(feed.name) %}<img class="source-icon source-icon-lg" src="{{ favicons[feed.name] }}" alt="" width="20" height="20">{% endif %}{{ feed.name }}</h3>
+          <p class="catalog-meta">
+            <span class="chip chip-quiet">{{ category_labels.get(feed.category, feed.category) }}</span>
+            <span class="chip chip-quiet {% if feed.type == 'webpage' %}chip-scrape{% endif %}">{{ 'Scrape' if feed.type == 'webpage' else ('RSS' if feed.type == 'rss' else 'Auto') }}</span>
+          </p>
+        </div>
+        <form method="post" action="/feeds/{{ feed.id }}/delete" data-confirm="Remove {{ feed.name }}?" data-confirm-detail="Existing stories stay in the briefing until they expire." data-confirm-ok="Remove">
+          <input type="hidden" name="next" value="{{ source_next }}" />
+          <button class="catalog-action is-remove" type="submit" aria-label="Remove {{ feed.name }}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>
+            <span>Remove</span>
+          </button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% for category, items in catalog.items() %}
+<section class="catalog-group" data-filter-section data-category="{{ category }}">
+  <h2 class="section-label">{{ category_labels.get(category, category) }}</h2>
+  <ul class="catalog-grid">
+    {% for item in items %}
+    <li class="card catalog-card{% if item.added %} is-added{% endif %}" data-filter-item data-category="{{ category }}" data-source="{{ item.source_kind }}">
+      <div class="catalog-top">
+        <div class="catalog-main">
+          <h3 class="catalog-title">{% if item.favicon %}<img class="source-icon source-icon-lg" src="{{ item.favicon }}" alt="" width="20" height="20">{% endif %}{{ item.name }}</h3>
+          <p class="catalog-meta">
+            <span class="chip chip-quiet">{{ item.label }}</span>
+            <span class="chip chip-quiet {% if item.source_kind == 'webpage' %}chip-scrape{% endif %}">{{ item.source_label }}</span>
+            {% if item.translate %}<span class="chip chip-quiet">Translate</span>{% endif %}
+          </p>
+        </div>
+        {% if item.added %}
+          <form method="post" action="/catalog/{{ item.id }}/remove" data-confirm="Remove {{ item.name }}?" data-confirm-detail="Existing stories stay in the briefing until they expire." data-confirm-ok="Remove">
+            <button class="catalog-action is-remove" type="submit" aria-label="Remove {{ item.name }}">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>
+              <span>Remove</span>
+            </button>
+          </form>
+        {% else %}
+          <form method="post" action="/catalog/{{ item.id }}/add">
+            <button class="catalog-action" type="submit" aria-label="Add {{ item.name }}">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              <span>Add</span>
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endfor %}
+<div class="empty card" hidden data-filter-empty>
+  <h2>Nothing in this filter</h2>
+  <p>Try another category or type, or add a custom RSS feed or website.</p>
+</div>
+</div>
+
+{% if can_add_custom_sources %}
+{% include "_source_sheet.html" %}
+{% endif %}

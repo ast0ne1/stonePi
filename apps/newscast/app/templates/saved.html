@@ -50,7 +50,7 @@
     <h2>{{ item.title }}</h2>
     <p class="summary">{% if item.summary|length > 280 %}{{ item.summary[:280] }}…{% else %}{{ item.summary }}{% endif %}</p>
     <div class="btn-row">
-      <a class="text-link" href="{{ item.canonical_url }}" target="_blank" rel="noopener">Open original</a>
+      <a class="text-link" href="{{ item.open_url or item.canonical_url }}" target="_blank" rel="noopener">{{ article_link_label }}</a>
       <form method="post" action="/saved/{{ item.id }}/delete" data-confirm="Remove this saved article?" data-confirm-detail="It will leave Saved and the next reader briefing." data-confirm-ok="Remove">
         <button class="icon-btn" type="submit" aria-label="Remove {{ item.title }}" title="Remove">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M9 7V5h6v2M7 7l1 13h8l1-13"/></svg>
