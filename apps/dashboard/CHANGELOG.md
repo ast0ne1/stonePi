@@ -1,5 +1,11 @@
 # Changelog — Dashboard
 
+## Unreleased
+
+### Added
+- **Settings → Network**: network exposure (moved from General) + Tailscale remote access (enable, connect, auth-wait polling)
+- **Health**: single Remote access card (internet, enabled, Tailscale, MagicDNS)
+
 ## 0.1.5 — 2026-09-21
 
 ### Changed

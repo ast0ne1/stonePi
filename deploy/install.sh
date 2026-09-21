@@ -85,6 +85,15 @@ if [[ ! -f "$DATA/exposure" ]]; then
   printf 'lan\n' > "$DATA/exposure"
   chmod 644 "$DATA/exposure"
 fi
+mkdir -p "$DATA/dashboard"
+if [[ ! -f "$DATA/dashboard/tailscale_wanted" ]]; then
+  if [[ -f "$DATA/tailscale_wanted" ]]; then
+    cp "$DATA/tailscale_wanted" "$DATA/dashboard/tailscale_wanted"
+  else
+    printf 'off\n' > "$DATA/dashboard/tailscale_wanted"
+  fi
+  chmod 644 "$DATA/dashboard/tailscale_wanted"
+fi
 
 
 if [[ "$SRC" != "$DEST" ]]; then
@@ -148,6 +157,15 @@ fi
 if [[ ! -f "$DATA/exposure" ]]; then
   printf 'lan\n' > "$DATA/exposure"
   chmod 644 "$DATA/exposure"
+fi
+mkdir -p "$DATA/dashboard"
+if [[ ! -f "$DATA/dashboard/tailscale_wanted" ]]; then
+  if [[ -f "$DATA/tailscale_wanted" ]]; then
+    cp "$DATA/tailscale_wanted" "$DATA/dashboard/tailscale_wanted"
+  else
+    printf 'off\n' > "$DATA/dashboard/tailscale_wanted"
+  fi
+  chmod 644 "$DATA/dashboard/tailscale_wanted"
 fi
 
 ensure_env_key() {
@@ -394,8 +412,44 @@ fi
 
 install -m 755 "$DEST/deploy/stonepi-cli.sh" /usr/local/bin/stonepi
 
+# Tailscale: preinstall so Network tab is Enable + auth only (no apt from the UI).
+# Does not run `tailscale up` — auth is interactive under Settings → Network.
+install_tailscale() {
+  if command -v tailscale >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "Installing Tailscale (official installer)…"
+  if ! curl -fsSL https://tailscale.com/install.sh | sh; then
+    echo "ERROR: Tailscale install failed — remote access will not be ready." >&2
+    return 1
+  fi
+  if ! command -v tailscale >/dev/null 2>&1; then
+    echo "ERROR: tailscale binary missing after install." >&2
+    return 1
+  fi
+  return 0
+}
+if ! install_tailscale; then
+  echo "Aborting: Tailscale is required for a complete StonePi appliance install." >&2
+  exit 1
+fi
+systemctl enable --now tailscaled >/dev/null 2>&1 || systemctl enable --now tailscaled.service >/dev/null 2>&1 || true
+if ! systemctl is-active --quiet tailscaled && ! systemctl is-active --quiet tailscaled.service; then
+  echo "WARNING: tailscaled is not active yet; Network connect may start it via the helper." >&2
+fi
+if [[ ! -f "$DEST/deploy/stonepi-tailscale.sh" ]]; then
+  echo "Missing $DEST/deploy/stonepi-tailscale.sh — aborting." >&2
+  exit 1
+fi
+install -m 755 "$DEST/deploy/stonepi-tailscale.sh" /usr/local/sbin/stonepi-tailscale
+if ! /usr/local/sbin/stonepi-tailscale install-check >/dev/null 2>&1; then
+  echo "ERROR: stonepi-tailscale install-check failed." >&2
+  exit 1
+fi
+
 cat > /etc/sudoers.d/stonepi-dash <<'EOF'
 stonepi-dash ALL=(root) NOPASSWD: /bin/systemctl start stonepi-*, /bin/systemctl stop stonepi-*, /bin/systemctl restart stonepi-*, /bin/systemctl is-active stonepi-*, /bin/journalctl -u stonepi-*
+stonepi-dash ALL=(root) NOPASSWD: /usr/local/sbin/stonepi-tailscale
 EOF
 chmod 440 /etc/sudoers.d/stonepi-dash
 

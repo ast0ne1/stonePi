@@ -97,23 +97,24 @@
   </div>
   <p class="muted" data-view-status>Choose options, then Save for this browser.</p>
 </section>
+{% endif %}
 
-{% if user.is_admin and not settings_appearance_only %}
+{% if settings_tab == 'network' and user.is_admin and not settings_appearance_only %}
 <section class="card stack">
   <h2>Network exposure</h2>
-  <p class="muted">Default is home network only. Flip to internet-facing when you put StonePi behind a tunnel or public HTTPS — apps tighten immediately, no restart.</p>
-  <form method="post" action="/settings/exposure" class="stack">
+  <p class="muted">Default is home network only. Flip to internet-facing when you put StonePi behind a public HTTPS edge — apps tighten immediately, no restart. Prefer Tailscale remote access below instead of opening the Pi to the internet.</p>
+  <form method="post" action="/settings/network/exposure" class="stack">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <label class="inline">
       <input type="radio" name="exposure" value="lan" {% if exposure_mode != 'public' %}checked{% endif %} />
       Home network (LAN)
     </label>
-    <p class="muted" style="margin:0 0 0.5rem 1.5rem">OPDS / X3 / sync stay open for CrossPoint when catalog login is off.</p>
+    <p class="muted network-radio-hint">OPDS / X3 / sync stay open for CrossPoint when catalog login is off.</p>
     <label class="inline">
       <input type="radio" name="exposure" value="public" {% if exposure_mode == 'public' %}checked{% endif %} />
       Internet-facing
     </label>
-    <p class="muted" style="margin:0 0 0.5rem 1.5rem">Catalog token required for reader APIs; calendar ICS needs sign-in; stricter URL fetch. Prefer Tailscale or a tunnel first.</p>
+    <p class="muted network-radio-hint">Catalog token required for reader APIs; calendar ICS needs sign-in; stricter URL fetch. Prefer Tailscale first.</p>
     {% if exposure_mode == 'public' %}
     <p class="pill">
       <span class="dot ok"></span>
@@ -125,7 +126,114 @@
     </div>
   </form>
 </section>
-{% endif %}
+
+<section class="card stack" id="remote-access" data-network-panel data-csrf="{{ csrf_token }}">
+  <h2>Remote access</h2>
+  <p class="muted">Reach StonePi from outside your home network via Tailscale — without opening ports. LAN access (<code>stonepi.local</code> / your Pi IP) keeps working.</p>
+
+  {% set ts = (network.tailscale if network else {}) %}
+  {% set appliance = network.appliance if network else false %}
+
+  <p class="pill" data-ts-status-pill>
+    <span class="dot {% if ts.connected %}ok{% elif ts.needs_login %}warn{% else %}bad{% endif %}" data-ts-dot></span>
+    <span data-ts-status-label>
+      {% if not appliance %}
+        Available on the Pi appliance
+      {% elif ts.connected %}
+        Connected
+      {% elif not ts.wanted %}
+        Disabled
+      {% elif ts.needs_login or ts.auth_url %}
+        Waiting for authentication
+      {% elif not ts.installed %}
+        Not installed
+      {% else %}
+        Not connected
+      {% endif %}
+    </span>
+  </p>
+
+  {% if not appliance %}
+  <p class="muted">Tailscale is installed with StonePi on the Raspberry Pi. On this Windows/dev instance there is nothing to connect.</p>
+  {% else %}
+  <form method="post" action="/settings/network/tailscale/wanted" class="network-wanted-form" data-ts-wanted-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <label class="avail-toggle">
+      <input type="checkbox" name="wanted" value="on" {% if ts.wanted %}checked{% endif %} data-ts-wanted />
+      <span class="avail-switch" aria-hidden="true"></span>
+      <span data-ts-wanted-label>{% if ts.wanted %}Enabled{% else %}Disabled{% endif %}</span>
+    </label>
+  </form>
+  <p class="muted">When enabled, use Connect to sign this appliance into your Tailscale account.</p>
+
+  <div class="stack network-connect-block" data-ts-connect-block {% if not ts.wanted %}hidden{% endif %}>
+    {% if ts.connected %}
+    <div class="network-detail-list" data-ts-connected-details>
+      <div class="service-meta-row">
+        <span class="meta-label">Open on Tailscale</span>
+        <span class="meta-value" data-ts-access>
+          {% if ts.access_url %}
+          <a class="network-auth-link" href="{{ ts.access_url }}" target="_blank" rel="noopener noreferrer">{{ ts.access_url }}</a>
+          {% elif ts.magicdns_name %}
+          <a class="network-auth-link" href="https://{{ ts.magicdns_name }}/" target="_blank" rel="noopener noreferrer">https://{{ ts.magicdns_name }}/</a>
+          {% else %}—{% endif %}
+        </span>
+      </div>
+      <div class="service-meta-row">
+        <span class="meta-label">Tailscale IP</span>
+        <span class="meta-value" data-ts-ipv4>
+          {% if ts.ipv4 %}
+          <a class="network-auth-link" href="http://{{ ts.ipv4 }}/" target="_blank" rel="noopener noreferrer"><code>http://{{ ts.ipv4 }}/</code></a>
+          {% else %}—{% endif %}
+        </span>
+      </div>
+      <div class="service-meta-row">
+        <span class="meta-label">MagicDNS</span>
+        <span class="meta-value" data-ts-dns>{% if ts.magicdns_name %}<code>{{ ts.magicdns_name }}</code>{% else %}—{% endif %}</span>
+      </div>
+    </div>
+    <p class="muted">
+      Open from a <strong>phone or laptop running the Tailscale app</strong> (same account).
+      A DNS error on this PC usually means Tailscale isn’t connected here — use the
+      <strong>Tailscale IP</strong> link above, or install Tailscale and turn on
+      <em>Use Tailscale DNS</em>. LAN (<code>stonepi.local</code>) is unchanged.
+    </p>
+    <form method="post" action="/settings/network/tailscale/disconnect" data-ts-disconnect-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <div class="row-actions">
+        <button type="submit" class="btn btn-ghost btn-with-icon">{{ svg('close') }} Disconnect</button>
+      </div>
+    </form>
+    {% else %}
+    <form method="post" action="/settings/network/tailscale/connect" data-ts-connect-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <div class="row-actions">
+        <button type="submit" class="btn btn-primary btn-with-icon network-connect-btn" data-ts-connect-btn>{{ svg('open') }} Connect Tailscale</button>
+      </div>
+    </form>
+    <div class="stack network-auth-wait" data-ts-auth-wait {% if not ts.auth_url and not ts.needs_login %}hidden{% endif %}>
+      <p class="muted" data-ts-wait-msg>
+        {% if ts.auth_url %}
+        Waiting for authentication… Open the link below on your phone or computer, then approve this device.
+        {% elif ts.needs_login %}
+        Waiting for authentication… No login link yet — tap Connect Tailscale again to generate one.
+        {% else %}
+        Waiting for authentication… Open the link below on your phone or computer, then approve this device.
+        {% endif %}
+      </p>
+      <p data-ts-auth-link-wrap {% if not ts.auth_url %}hidden{% endif %}>
+        <a class="network-auth-link" href="{{ ts.auth_url or '#' }}" target="_blank" rel="noopener noreferrer" data-ts-auth-link>{{ ts.auth_url or '' }}</a>
+      </p>
+      <p class="muted" data-ts-no-link {% if ts.auth_url or not ts.needs_login %}hidden{% endif %}>
+        Still no link? Tap <strong>Connect Tailscale</strong> again.
+        {% if ts.error %}<br /><span data-ts-error>{{ ts.error }}</span>{% endif %}
+        {% if ts.backend_state %}<br /><span class="meta-label">State: {{ ts.backend_state }}</span>{% endif %}
+      </p>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
 {% endif %}
 
 {% if settings_tab == 'display' %}

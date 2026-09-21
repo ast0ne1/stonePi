@@ -119,7 +119,7 @@ Optional bolt-ons — core apps work without them. Prefer **Settings → Vault**
 
 ## Security posture
 
-Default install is **trusted home network (LAN)**. Flip to **Internet-facing** under Dashboard → Settings → General when you expose the portal beyond the LAN (no service restart). Checklist: **[deploy/SECURITY.md](deploy/SECURITY.md)**.
+Default install is **trusted home network (LAN)**. Flip to **Internet-facing** under Dashboard → Settings → Network when you expose the portal beyond the LAN (no service restart). Tailscale remote access is also under Network (preinstalled on the Pi). Checklist: **[deploy/SECURITY.md](deploy/SECURITY.md)**.
 
 ## Quick start on a fresh Pi
 

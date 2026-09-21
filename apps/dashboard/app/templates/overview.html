@@ -62,6 +62,50 @@
   </div>
 </div>
 
+<section class="card remote-access-card" data-remote-access-card>
+  {% set net = network or {} %}
+  {% set ts = net.tailscale or {} %}
+  {% set inet = net.internet or {} %}
+  <p class="stat-label muted remote-access-title">
+    <span class="stat-icon" aria-hidden="true">{{ svg('network') }}</span>
+    Network
+  </p>
+  <div class="remote-access-cols">
+    <div class="remote-access-col">
+      <span class="meta-label">Internet</span>
+      <span class="pill compact">
+        <span class="dot {% if inet.ok %}ok{% else %}bad{% endif %}"></span>
+        {% if inet.ok %}Connected{% else %}Offline{% endif %}
+      </span>
+    </div>
+    <div class="remote-access-col">
+      <span class="meta-label">Remote access</span>
+      <span class="pill compact">
+        <span class="dot {% if ts.wanted %}ok{% else %}bad{% endif %}"></span>
+        {% if ts.wanted %}Enabled{% else %}Disabled{% endif %}
+      </span>
+    </div>
+    <div class="remote-access-col">
+      <span class="meta-label">Tailscale</span>
+      <span class="pill compact">
+        {% if not net.appliance %}
+        <span class="dot bad"></span>Pi only
+        {% elif ts.connected %}
+        <span class="dot ok"></span>Connected
+        {% elif ts.needs_login %}
+        <span class="dot warn"></span>Needs login
+        {% else %}
+        <span class="dot bad"></span>Disconnected
+        {% endif %}
+      </span>
+    </div>
+    <div class="remote-access-col">
+      <span class="meta-label">MagicDNS</span>
+      <span class="meta-value remote-access-magicdns">{% if ts.access_url %}<a href="{{ ts.access_url }}">{{ ts.magicdns_name or ts.access_url }}</a>{% elif ts.magicdns_name %}<code>{{ ts.magicdns_name }}</code>{% elif ts.magicdns %}On{% else %}Off{% endif %}</span>
+    </div>
+  </div>
+</section>
+
 <div class="section-head">
   <h2>Apps</h2>
   {% if cards %}

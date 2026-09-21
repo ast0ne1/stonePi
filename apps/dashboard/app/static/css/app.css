@@ -2454,3 +2454,93 @@ html[data-view-home="icons"] .launcher-form.is-editing .launcher-tile-link {
   .status-pill { display: none; }
   .topbar { grid-template-columns: 1fr auto auto; }
 }
+
+/* Network / remote access */
+.network-wanted-form {
+  margin: 0.25rem 0 0.35rem;
+}
+.network-wanted-form .avail-toggle {
+  width: fit-content;
+}
+.network-connect-btn {
+  width: 100%;
+  justify-content: center;
+}
+@media (min-width: 720px) {
+  .network-connect-btn {
+    width: auto;
+  }
+}
+.network-auth-link {
+  word-break: break-all;
+  display: inline-block;
+  font-size: 0.95rem;
+}
+.network-detail-list {
+  display: grid;
+  gap: 6px;
+}
+.network-detail-list .service-meta-row {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, 9rem) minmax(0, 1fr);
+  gap: 0.5rem 1rem;
+  align-items: start;
+}
+.network-detail-list .meta-label {
+  white-space: nowrap;
+}
+.network-auth-wait {
+  padding: 0.75rem 0 0;
+  border-top: 1px solid var(--line);
+}
+.remote-access-card {
+  margin-top: 12px;
+  padding: 12px 14px;
+}
+.remote-access-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+.remote-access-title .stat-icon {
+  display: inline-flex;
+  width: 1.1rem;
+  height: 1.1rem;
+}
+.remote-access-title .stat-icon svg {
+  width: 100%;
+  height: 100%;
+}
+.remote-access-cols {
+  display: grid;
+  gap: 10px 12px;
+  grid-template-columns: 1fr 1fr;
+  align-items: start;
+}
+@media (min-width: 720px) {
+  .remote-access-cols {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.remote-access-col {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.remote-access-magicdns {
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+.remote-access-magicdns code {
+  font-size: 0.8rem;
+}
+.pill.compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.85rem;
+  width: fit-content;
+}
+

@@ -18,16 +18,17 @@ One place for people and apps — separate from **Cockpit** (Linux host admin on
 | Area | Role |
 |------|------|
 | **Home** | Launcher tiles for apps the signed-in user may access; **Edit order** = drag-to-place (autosave) |
-| **Health** | Admin monitor: alerts, disk, backup, whether each app is responding (URLs use the host you opened) |
+| **Health** | Admin monitor: alerts, disk, backup, remote access (internet / Tailscale / MagicDNS), whether each app is responding (URLs use the host you opened) |
 | **Services** | Manage apps: Route + Port, enable/disable for the household; open a service to start/stop/restart |
 | **Users** | Household accounts, app grants, capability flags (Studio Publish also needs FileServe); denser expandable cards |
-| **Settings** | General (including **network exposure**), Display, Vault, Automations, Updates, Backup, About |
+| **Settings** | General, **Network** (exposure + Tailscale), Display, Vault, Automations, Updates, Backup, About |
 
 ## Platform Settings tabs
 
 | Tab | Role |
 |-----|------|
-| **General** | Instance basics; LAN vs internet-facing exposure (writes `/var/lib/stonepi/exposure`) |
+| **General** | Appearance, password, view options |
+| **Network** | LAN vs internet-facing exposure; Tailscale remote access (Enable → Connect → auth link). Tailscale is preinstalled on the Pi. |
 | **Display** | TRMNL webhook (or Vault `DISPLAY_WEBHOOK_URL`), panel size (OG 800×480 / V2 1040×780), design presets, landscape preview scaled to the Settings column, **Copy markup** + Push now / schedule |
 | **Vault** | Encrypted secrets (session, LLM, Bright Data, Google, webhook, ntfy, …) |
 | **Automations** | USB→backup; Health/backup→Display push |
