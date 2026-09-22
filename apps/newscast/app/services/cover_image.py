@@ -107,64 +107,90 @@ def render_newspaper_cover(
     heading: str,
     date_label: str,
     stories: list[dict],
+    x3_screen: bool = False,
 ) -> bytes:
-    image = Image.new("RGB", (COVER_WIDTH, COVER_HEIGHT), PAPER)
+    # X3 native portrait is 528×792; keep a 3:4 ratio for the cover JPEG.
+    width = 528 if x3_screen else COVER_WIDTH
+    height = 792 if x3_screen else COVER_HEIGHT
+    scale = width / COVER_WIDTH
+
+    def fz(size: int) -> int:
+        return max(10, int(round(size * scale)))
+
+    image = Image.new("RGB", (width, height), PAPER)
     draw = ImageDraw.Draw(image)
 
-    masthead = _load_font("serif_bold", 78)
-    date_font = _load_font("sans", 28)
-    kicker = _load_font("sans", 22)
-    main_font = _load_font("serif_bold", 54)
-    deck_font = _load_font("serif", 28)
-    side_font = _load_font("serif_bold", 30)
-    side_deck = _load_font("serif", 22)
-    footer_font = _load_font("sans", 20)
+    masthead = _load_font("serif_bold", fz(78))
+    date_font = _load_font("sans", fz(28))
+    kicker = _load_font("sans", fz(22))
+    main_font = _load_font("serif_bold", fz(54))
+    deck_font = _load_font("serif", fz(28))
+    side_font = _load_font("serif_bold", fz(30))
+    side_deck = _load_font("serif", fz(22))
+    footer_font = _load_font("sans", fz(20))
 
-    margin = 64
-    content_w = COVER_WIDTH - (margin * 2)
-    y = 56
+    margin = max(18, int(round(64 * scale)))
+    content_w = width - (margin * 2)
+    y = max(16, int(round(56 * scale)))
 
     brand = " ".join((heading or "NewsCast").split()) or "NewsCast"
-    brand_lines = _wrap(brand.upper(), 22)
+    brand_lines = _wrap(brand.upper(), 18 if x3_screen else 22)
     for line in brand_lines:
         box = draw.textbbox((0, 0), line, font=masthead)
-        draw.text(((COVER_WIDTH - (box[2] - box[0])) // 2, y), line, font=masthead, fill=INK)
+        draw.text(((width - (box[2] - box[0])) // 2, y), line, font=masthead, fill=INK)
         y += (box[3] - box[1]) + 4
 
-    y += 8
+    y += max(4, int(round(8 * scale)))
     date_text = (date_label or "").strip()
     if date_text:
         box = draw.textbbox((0, 0), date_text, font=date_font)
-        draw.text(((COVER_WIDTH - (box[2] - box[0])) // 2, y), date_text, font=date_font, fill=MUTED)
-        y += (box[3] - box[1]) + 18
+        draw.text(((width - (box[2] - box[0])) // 2, y), date_text, font=date_font, fill=MUTED)
+        y += (box[3] - box[1]) + max(8, int(round(18 * scale)))
 
-    draw.line((margin, y, COVER_WIDTH - margin, y), fill=RULE, width=4)
-    y += 10
-    draw.line((margin, y, COVER_WIDTH - margin, y), fill=RULE, width=1)
-    y += 28
+    rule_w = 3 if x3_screen else 4
+    draw.line((margin, y, width - margin, y), fill=RULE, width=rule_w)
+    y += max(6, int(round(10 * scale)))
+    draw.line((margin, y, width - margin, y), fill=RULE, width=1)
+    y += max(12, int(round(28 * scale)))
 
     main, flanks = _pick_stories(stories)
     if main is None:
-        empty = _wrap("No stories in today's paper yet.", 34)
-        _draw_lines(draw, empty, x=margin, y=y, font=main_font, fill=INK, gap=10)
+        empty = _wrap("No stories in today's paper yet.", 22 if x3_screen else 34)
+        _draw_lines(draw, empty, x=margin, y=y, font=main_font, fill=INK, gap=max(6, int(10 * scale)))
     else:
         source = (main.get("source") or "").strip()
         if source:
             draw.text((margin, y), source.upper(), font=kicker, fill=MUTED)
-            y += 34
+            y += max(16, int(round(34 * scale)))
 
-        main_lines = _wrap(_story_title(main), 28)
-        y = _draw_lines(draw, main_lines[:5], x=margin, y=y, font=main_font, fill=INK, gap=8)
-        y += 16
+        main_lines = _wrap(_story_title(main), 20 if x3_screen else 28)
+        y = _draw_lines(
+            draw,
+            main_lines[:4 if x3_screen else 5],
+            x=margin,
+            y=y,
+            font=main_font,
+            fill=INK,
+            gap=max(4, int(8 * scale)),
+        )
+        y += max(8, int(round(16 * scale)))
 
-        deck_lines = _wrap(_story_deck(main, 220), 52)
-        y = _draw_lines(draw, deck_lines[:4], x=margin, y=y, font=deck_font, fill=MUTED, gap=6)
-        y += 24
+        deck_lines = _wrap(_story_deck(main, 140 if x3_screen else 220), 28 if x3_screen else 52)
+        y = _draw_lines(
+            draw,
+            deck_lines[:3 if x3_screen else 4],
+            x=margin,
+            y=y,
+            font=deck_font,
+            fill=MUTED,
+            gap=max(3, int(6 * scale)),
+        )
+        y += max(10, int(round(24 * scale)))
 
-        draw.line((margin, y, COVER_WIDTH - margin, y), fill=RULE, width=2)
-        y += 24
+        draw.line((margin, y, width - margin, y), fill=RULE, width=2)
+        y += max(10, int(round(24 * scale)))
 
-        if flanks:
+        if flanks and not x3_screen:
             col_gap = 28
             col_w = (content_w - col_gap) // 2
             left = flanks[0:2]
@@ -200,15 +226,35 @@ def render_newspaper_cover(
                 )
                 right_y += 22
             y = max(left_y, right_y)
+        elif flanks and x3_screen:
+            # Single column of secondary headlines — two-col is too cramped at 528px.
+            for story in flanks[:3]:
+                y = _draw_flank(
+                    draw,
+                    story,
+                    x=margin,
+                    y=y,
+                    width=content_w,
+                    title_font=side_font,
+                    deck_font=side_deck,
+                    kicker_font=kicker,
+                )
+                y += max(10, int(round(16 * scale)))
 
-    footer_y = COVER_HEIGHT - 70
-    draw.line((margin, footer_y, COVER_WIDTH - margin, footer_y), fill=RULE, width=1)
+    footer_y = height - max(36, int(round(70 * scale)))
+    draw.line((margin, footer_y, width - margin, footer_y), fill=RULE, width=1)
     mark = "NewsCast daily briefing"
     box = draw.textbbox((0, 0), mark, font=footer_font)
-    draw.text(((COVER_WIDTH - (box[2] - box[0])) // 2, footer_y + 18), mark, font=footer_font, fill=MUTED)
+    draw.text(
+        ((width - (box[2] - box[0])) // 2, footer_y + max(8, int(round(18 * scale)))),
+        mark,
+        font=footer_font,
+        fill=MUTED,
+    )
 
     buffer = io.BytesIO()
-    image.save(buffer, format="JPEG", quality=88, optimize=True)
+    # Baseline JPEG, modest quality — CrossPoint / X3 prefer simple images.
+    image.save(buffer, format="JPEG", quality=82 if x3_screen else 88, optimize=True)
     return buffer.getvalue()
 
 

@@ -88,15 +88,84 @@ def reader_reachable(
     return _http_reachable(host, limit)
 
 
+def _http_ensure_dir(client: httpx.Client, host: str, folder: str) -> None:
+    """Create nested folders on CrossPoint (POST /mkdir) if missing."""
+    folder = folder if folder.startswith("/") else f"/{folder}"
+    if folder in {"", "/"}:
+        return
+    parts = [part for part in folder.split("/") if part]
+    current = ""
+    for part in parts:
+        parent = current or "/"
+        current = f"{current}/{part}"
+        listed = client.get(f"http://{host}/api/files", params={"path": current})
+        if listed.status_code == 200:
+            continue
+        created = client.post(
+            f"http://{host}/mkdir",
+            data={"path": parent, "name": part},
+        )
+        if created.status_code >= 400 and "already exists" not in (created.text or "").lower():
+            detail = (created.text or "").strip().replace("\n", " ")[:120]
+            raise RuntimeError(
+                f"Could not create folder {current} on {host}"
+                + (f": {detail}" if detail else "")
+                + ". CrossPoint File Transfer must be on, and the SD card writable."
+            )
+
+
 def _http_upload(host: str, path: Path, dest_dir: str) -> None:
     folder = dest_dir if dest_dir.startswith("/") else f"/{dest_dir}"
     with path.open("rb") as handle:
         with httpx.Client(timeout=UPLOAD_TIMEOUT, follow_redirects=True) as client:
-            response = client.post(
-                f"http://{host}/upload",
-                params={"path": folder},
-                files={"file": (path.name, handle, "application/octet-stream")},
-            )
+            # Preflight: CrossPoint File Transfer must be reachable.
+            try:
+                status = client.get(f"http://{host}/api/status")
+                if status.status_code >= 500:
+                    raise RuntimeError(
+                        f"Reader at {host} responded HTTP {status.status_code} on /api/status. "
+                        "Turn on CrossPoint File Transfer and try again."
+                    )
+            except httpx.HTTPError as exc:
+                raise RuntimeError(
+                    f"Could not reach {host} (/api/status). Is CrossPoint File Transfer on?"
+                ) from exc
+
+            _http_ensure_dir(client, host, folder)
+
+            def _post(target: str):
+                handle.seek(0)
+                return client.post(
+                    f"http://{host}/upload",
+                    params={"path": target},
+                    files={"file": (path.name, handle, "application/octet-stream")},
+                )
+
+            response = _post(folder)
+            # Fallback: if a nested folder still fails, try parent then root.
+            if response.status_code >= 400 and "Failed to create file" in (response.text or ""):
+                for target in (
+                    folder.rsplit("/", 1)[0] if folder.count("/") >= 2 else "",
+                    "/",
+                ):
+                    if not target or target == folder:
+                        continue
+                    if target != "/":
+                        try:
+                            _http_ensure_dir(client, host, target)
+                        except RuntimeError:
+                            continue
+                    retry = _post(target)
+                    if retry.status_code < 400:
+                        return
+                    response = retry
+            if response.status_code >= 400:
+                detail = (response.text or "").strip().replace("\n", " ")[:160]
+                raise RuntimeError(
+                    f"Upload to {host}{folder} failed (HTTP {response.status_code})"
+                    + (f": {detail}" if detail else "")
+                    + ". Check the upload folder exists on the SD card and File Transfer is on."
+                )
             response.raise_for_status()
 
 
@@ -184,17 +253,30 @@ def pending_crosspoint(db: Session, user_id: int | None = None) -> list[SyncTask
     return query.order_by(SyncTask.created_at.asc()).all()
 
 
+def _is_library_task(task: SyncTask) -> bool:
+    """Library/Send files live under LIBRARY_DIR — never label them as today's paper."""
+    file_path = (task.file_path or "").replace("\\", "/")
+    library_root = str(LIBRARY_DIR).replace("\\", "/")
+    if library_root and file_path.startswith(library_root.rstrip("/") + "/"):
+        return True
+    if "/library/" in file_path.lower():
+        return True
+    return False
+
+
 def queue_label(task: SyncTask) -> str:
     from app.services.delivery import briefing_day_for_task
 
+    name = Path(task.save_path or task.file_path).name
+    stem = Path(name).stem or name
+    if _is_library_task(task):
+        return f"File · {stem}"
     day = briefing_day_for_task(task)
     today = datetime.now().astimezone().date()
     if day == today:
         return "Today's paper"
     if day is not None:
         return f"Paper · {day.strftime('%d %b %Y')}"
-    name = Path(task.save_path or task.file_path).name
-    stem = Path(name).stem or name
     return f"File · {stem}"
 
 
@@ -257,9 +339,18 @@ def cancel_pending(db: Session, task_id: str, user_id: int | None = None) -> boo
 
 
 def enqueue_frozen_briefing(db: Session, user_id: int | None = None) -> SyncTask | None:
+    """Queue today's frozen EPUB for CrossPoint/Kobo push.
+
+    Skips when the paper file is missing or has no stories (empty shell).
+    """
+    from app.services.briefing import current_stories
+
     uid = int(user_id or 1)
     path = frozen_briefing_path("today", suffix="epub", fallback=False, user_id=uid)
     if path is None:
+        return None
+    if not list(current_stories(db, day="today", user_id=uid)):
+        logger.info("skip empty briefing enqueue user_id=%s path=%s", uid, path.name)
         return None
     dest = reader_upload_dir(db, user_id=uid)
     day = day_from_briefing_path(path.stem) or datetime.now().date()
@@ -274,35 +365,36 @@ def enqueue_frozen_briefing(db: Session, user_id: int | None = None) -> SyncTask
     )
 
 
-def enqueue_briefing_and_library(db: Session, user_id: int | None = None) -> list[SyncTask]:
-    uid = int(user_id or 1)
-    dest = reader_upload_dir(db, user_id=uid)
-    tasks: list[SyncTask] = []
-    briefing_task = enqueue_frozen_briefing(db, user_id=uid)
-    if briefing_task:
-        tasks.append(briefing_task)
-    for item in (
-        db.query(LibraryFile)
-        .filter(LibraryFile.user_id == uid)
-        .order_by(LibraryFile.created_at.desc())
-        .all()
-    ):
-        from app.services.library import library_path
+def enqueue_briefing_and_library(
+    db: Session,
+    user_id: int | None = None,
+    *,
+    include_briefing: bool = True,
+    include_library: bool = True,
+) -> list[SyncTask]:
+    """Queue today's frozen paper and/or Send library files for the reader.
 
-        path = library_path(item)
-        if not path.exists():
-            continue
-        name = item.original_name or path.name
-        tasks.append(
-            enqueue_sync_file(
-                db,
-                path,
-                name,
-                kind="crosspoint",
-                save_path=join(dest, name),
-                user_id=uid,
-            )
-        )
+    Missing frozen papers are skipped (no error) when include_briefing is True.
+    """
+    from app.services.library import enqueue_library_file, library_path
+
+    uid = int(user_id or 1)
+    tasks: list[SyncTask] = []
+    if include_briefing:
+        briefing_task = enqueue_frozen_briefing(db, user_id=uid)
+        if briefing_task:
+            tasks.append(briefing_task)
+    if include_library:
+        for item in (
+            db.query(LibraryFile)
+            .filter(LibraryFile.user_id == uid)
+            .order_by(LibraryFile.created_at.desc())
+            .all()
+        ):
+            path = library_path(item)
+            if not path.exists():
+                continue
+            tasks.append(enqueue_library_file(db, item))
     return tasks
 
 

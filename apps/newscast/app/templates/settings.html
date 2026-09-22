@@ -201,7 +201,32 @@
           {% endfor %}
         </select>
       </label>
-      <p class="hint">New stories get an importance score from 1 (ignore) to 5 (major). Favourites and Saved long-reads always stay in the paper.</p>
+      <p class="hint">New stories get an importance score from 1 (ignore) to 5 (major). Favourites always stay when their publish date matches the day chip.</p>
+      <label class="check">
+        <input type="checkbox" name="publication_include_saved" value="1" {% if publication_include_saved %}checked{% endif %} />
+        <span>Include saved long-reads in today’s paper</span>
+      </label>
+      <p class="hint">When on, active Saved-tab long-reads are appended to the frozen reader EPUB/OPDS daily briefing (even if their publish date is older). The live Today chip stays publish-date only. Default is off.</p>
+    </div>
+
+    <div class="card stack">
+      <h2>Xteink / X3 paper</h2>
+      <p class="hint">Layout aimed at the Xteink X3 (3.7″, 528×792, buttons only — no touchscreen). Turn options off for a larger reader or KOReader if you prefer the classic paper.</p>
+      <label class="check">
+        <input type="checkbox" name="epub_omit_article_links" value="1" {% if epub_omit_article_links %}checked{% endif %} />
+        <span>Omit original article links</span>
+      </label>
+      <p class="hint">X3 cannot open links. Leaves the summary only — no “Original article” footer or URLs in the TXT.</p>
+      <label class="check">
+        <input type="checkbox" name="epub_chapters_by_source" value="1" {% if epub_chapters_by_source %}checked{% endif %} />
+        <span>One chapter per source</span>
+      </label>
+      <p class="hint">Groups stories under BBC, Politiken, and so on so button page-turns jump by outlet instead of every headline.</p>
+      <label class="check">
+        <input type="checkbox" name="epub_x3_screen" value="1" {% if epub_x3_screen %}checked{% endif %} />
+        <span>Compact layout for X3 screen</span>
+      </label>
+      <p class="hint">Tighter margins, 528×792 cover, and CSS tuned for the small e-ink panel. Generate today’s paper again after changing these.</p>
     </div>
 
     <div class="card stack">
@@ -210,7 +235,7 @@
         <input type="checkbox" name="briefing_category_mix" value="1" {% if briefing_category_mix %}checked{% endif %} />
         <span>Allocate Briefing slots by category</span>
       </label>
-      <p class="hint">Shapes how many stories from each topic appear in Briefing and the full daily paper. Leave a category blank to share leftover slots. Set 0 to exclude it. Favourites and Saved long-reads always stay.</p>
+      <p class="hint">Shapes how many stories from each topic appear in Briefing and the full daily paper. Leave a category blank to share leftover slots. Set 0 to exclude it. Favourites always stay when their publish date matches.</p>
       <div class="category-share-grid">
         {% for category in categories %}
         <label>
@@ -464,7 +489,7 @@
         Upload folder
         <input type="text" name="reader_upload_path" value="{{ reader_upload_path }}" autocomplete="off" autocapitalize="off" spellcheck="false" data-reader-folder placeholder="{{ '/mnt/onboard/News' if reader_device == 'kobo' else '/News' }}" />
       </label>
-      <p class="hint">Files land in a personal subfolder on the device (for example <strong>{{ reader_upload_path }}</strong>) so household accounts do not mix.</p>
+      <p class="hint">Files land in a personal folder named from your Display name (for example <strong>{{ reader_upload_path }}</strong>), not the login username. On CrossPoint, NewsCast creates missing folders before upload so household accounts stay separate.</p>
       <p class="hint" data-reader-hint="kobo" {% if reader_device != 'kobo' %}hidden{% endif %}>KOReader’s file browser root is <strong>/mnt/onboard</strong>. Default base folder is <strong>/mnt/onboard/News</strong>.</p>
       <label class="check">
         <input type="checkbox" name="reader_push_when_online" value="1" {% if reader_push_when_online %}checked{% endif %} />

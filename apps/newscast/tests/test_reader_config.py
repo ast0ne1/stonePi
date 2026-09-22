@@ -1,8 +1,8 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.models import Base, User
-from app.services import reader_config, users
+from app.models import Base
+from app.services import reader_config, user_settings, users
 
 
 def _session() -> Session:
@@ -22,10 +22,27 @@ def test_namespaced_upload_path_reroots_default_and_admin_folder():
     assert reader_config.namespaced_upload_path("/Custom/Books", "pat", "xteink") == "/Custom/Books/pat"
 
 
+def test_reader_folder_label_prefers_display_name_and_avoids_admin():
+    db = _session()
+    admin = users.create_user(db, username="admin", password="admin", role="admin")
+    member = users.create_user(db, username="pat", password="pass1")
+
+    assert reader_config.reader_folder_label(db, admin) == "home"
+    assert reader_config.reader_folder_label(db, member) == "pat"
+
+    user_settings.set_value(db, admin.id, "display_name", "Adam")
+    user_settings.set_value(db, member.id, "display_name", "Pat")
+    assert reader_config.reader_folder_label(db, admin) == "Adam"
+    assert reader_config.reader_folder_label(db, member) == "Pat"
+    # Stock Admin display name still maps away from /News/admin
+    assert reader_config.reader_folder_label(db, admin, display_name="Admin") == "home"
+
+
 def test_save_reader_settings_are_per_user():
     db = _session()
     admin = users.create_user(db, username="admin", password="admin", role="admin")
     member = users.create_user(db, username="pat", password="pass1")
+    user_settings.set_value(db, admin.id, "display_name", "Adam")
 
     reader_config.save_reader_settings(
         db,
@@ -46,7 +63,7 @@ def test_save_reader_settings_are_per_user():
 
     assert reader_config.reader_host(db, admin.id) == "admin-reader.local"
     assert reader_config.reader_host(db, member.id) == "pat-reader.local"
-    assert reader_config.reader_upload_dir(db, admin.id) == "/News/admin"
+    assert reader_config.reader_upload_dir(db, admin.id) == "/News/adam"
     assert reader_config.reader_upload_dir(db, member.id) == "/News/pat"
     assert reader_config.reader_push_enabled(db, admin.id)
     assert not reader_config.reader_push_enabled(db, member.id)

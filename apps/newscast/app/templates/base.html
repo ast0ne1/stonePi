@@ -54,8 +54,10 @@
       <div class="activity-banner {% if ingest.running %}is-busy{% elif ingest.last_error %}is-error{% endif %}" data-activity-banner aria-live="polite" hidden></div>
 
       <main class="main">
-        {% if using_factory_admin and active == 'settings' %}
+        {% if using_factory_admin and active == 'settings' and not platform_managed %}
         <p class="banner">Factory login is still <strong>admin / admin</strong>. Change it on the <a href="/settings?tab=device">General</a> tab.</p>
+        {% elif using_factory_admin and active == 'settings' and platform_managed %}
+        <p class="banner">Factory login is still <strong>admin / admin</strong>. Change it under <a href="{{ stonepi_home_url }}/settings?tab=general">StonePi → Settings → General</a>.</p>
         {% endif %}
         {% if reader_setup_nudge %}
         <div class="banner banner-muted banner-with-action">

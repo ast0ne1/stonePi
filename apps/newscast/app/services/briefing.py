@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import re
 import uuid
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from html.parser import HTMLParser
 from pathlib import Path
@@ -18,6 +19,7 @@ from app.services.categories import BUILTIN_LABELS, DEFAULT_CATEGORY, category_l
 from app.services.cover_image import render_newspaper_cover
 from app.services.filters import story_kept
 from app.services.paper_naming import (
+    day_from_briefing_path,
     format_paper_date,
     paper_category_display_title,
     paper_display_title,
@@ -54,6 +56,28 @@ def _scope_feeds(query, user_id: int | None):
     if user_id is not None:
         return query.filter(Feed.user_id == user_id)
     return query
+
+
+@dataclass(frozen=True)
+class EpubLayout:
+    omit_article_links: bool = True
+    chapters_by_source: bool = True
+    x3_screen: bool = True
+
+    @classmethod
+    def from_db(cls, db: Session) -> "EpubLayout":
+        return cls(
+            omit_article_links=settings.epub_omit_article_links(db),
+            chapters_by_source=settings.epub_chapters_by_source(db),
+            x3_screen=settings.epub_x3_screen(db),
+        )
+
+    @classmethod
+    def classic(cls) -> "EpubLayout":
+        """Legacy layout: per-story chapters, article links, desktop-sized cover."""
+        return cls(omit_article_links=False, chapters_by_source=False, x3_screen=False)
+
+
 EINK_CSS = """
 body {
   font-family: Georgia, "Times New Roman", serif;
@@ -140,6 +164,143 @@ a { color: #111; text-decoration: underline; }
 .story h1 { margin-bottom: 0.45em; }
 .story .body p { margin-bottom: 0.85em; }
 .story .original { margin-top: 1.2em; }
+.source-chapter { page-break-before: always; }
+.source-chapter > h1 {
+  font-size: 1.35em;
+  margin: 0 0 0.75em;
+  padding-bottom: 0.35em;
+  border-bottom: 1px solid #111;
+}
+.source-chapter .story {
+  page-break-before: auto;
+  margin: 0 0 1.4em;
+  padding-bottom: 1em;
+  border-bottom: 1px solid #ccc;
+}
+.source-chapter .story:last-child {
+  border-bottom: 0;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.source-chapter .story h2 {
+  font-size: 1.15em;
+  margin: 0 0 0.35em;
+}
+img { display: none; }
+"""
+
+# Tuned for Xteink X3: 3.7" / 528×792, button page-turns, no touch.
+X3_EINK_CSS = """
+body {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1em;
+  line-height: 1.35;
+  color: #000;
+  background: #fff;
+  margin: 0.45em 0.55em 0.75em;
+}
+h1 {
+  font-size: 1.28em;
+  line-height: 1.2;
+  margin: 0 0 0.3em;
+  font-weight: bold;
+}
+h2 {
+  font-size: 1.08em;
+  line-height: 1.25;
+  margin: 0.95em 0 0.4em;
+  font-weight: bold;
+}
+h3 {
+  font-size: 1em;
+  line-height: 1.25;
+  margin: 0.85em 0 0.35em;
+  font-weight: bold;
+}
+h4 {
+  font-size: 0.95em;
+  line-height: 1.25;
+  margin: 0.7em 0 0.25em;
+  font-weight: normal;
+  font-style: italic;
+}
+p { margin: 0 0 0.55em; }
+a { color: #000; text-decoration: none; }
+.meta { font-style: italic; color: #222; margin: 0 0 0.3em; font-size: 0.92em; }
+.byline { font-style: italic; color: #222; margin: 0 0 0.65em; font-size: 0.9em; }
+.cover-image { margin: 0 0 0.55em; text-align: center; }
+.cover-image img { width: 100%; max-width: 528px; height: auto; }
+.cover-rule {
+  border: 0;
+  border-top: 1px solid #000;
+  margin: 0.55em 0 0.7em;
+}
+.contents h2 { margin-top: 0.25em; font-size: 1.05em; }
+.contents .toc-category { margin: 0 0 0.7em; }
+.contents .toc-category h3 {
+  margin: 0 0 0.35em;
+  padding-bottom: 0.15em;
+  border-bottom: 1px solid #000;
+  font-size: 1em;
+}
+.contents .toc-source { margin: 0 0 0.55em; }
+.contents .toc-source h4 { margin: 0.45em 0 0.25em; font-size: 0.95em; }
+.contents ol.toc-stories {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.contents ol.toc-stories li {
+  margin: 0 0 0.45em;
+  padding: 0;
+  line-height: 1.3;
+}
+.contents ol.toc-stories li .toc-title {
+  display: block;
+  font-weight: bold;
+  margin: 0 0 0.1em;
+  font-size: 0.98em;
+}
+.contents ol.toc-stories li .toc-digest {
+  display: block;
+  font-size: 0.86em;
+  font-weight: normal;
+  font-style: normal;
+  color: #222;
+  line-height: 1.3;
+}
+.masthead {
+  margin: 0 0 0.45em;
+  font-style: italic;
+  color: #222;
+  font-size: 0.9em;
+}
+.story { page-break-before: always; }
+.story h1 { margin-bottom: 0.35em; font-size: 1.2em; }
+.story .body p { margin-bottom: 0.55em; }
+.story .original { display: none; }
+.source-chapter { page-break-before: always; }
+.source-chapter > h1 {
+  font-size: 1.18em;
+  margin: 0 0 0.55em;
+  padding-bottom: 0.25em;
+  border-bottom: 1px solid #000;
+}
+.source-chapter .story {
+  page-break-before: auto;
+  margin: 0 0 0.95em;
+  padding-bottom: 0.7em;
+  border-bottom: 1px solid #666;
+}
+.source-chapter .story:last-child {
+  border-bottom: 0;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.source-chapter .story h2 {
+  font-size: 1.05em;
+  margin: 0 0 0.25em;
+}
 img { display: none; }
 """
 _ALLOWED_TAGS = {"p", "br", "em", "strong", "b", "i", "u", "a", "ul", "ol", "li", "blockquote", "h3", "h4", "h5", "h6"}
@@ -292,9 +453,15 @@ def current_saved_stories(db: Session, user_id: int | None = None) -> list[Story
 
 
 def _diverse_recent(stories: list[Story], limit: int) -> list[Story]:
+    """Round-robin across sources; each source group is already newest-first."""
     by_source: dict[str, list[Story]] = {}
     for story in stories:
         by_source.setdefault(story.source_name, []).append(story)
+    for group in by_source.values():
+        group.sort(
+            key=lambda story: story.published_at or story.created_at or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True,
+        )
     picked: list[Story] = []
     seen: set[int] = set()
     index = 0
@@ -315,6 +482,76 @@ def _diverse_recent(stories: list[Story], limit: int) -> list[Story]:
             break
         index += 1
     return picked
+
+
+def current_stories(
+    db: Session,
+    limit: int | None = None,
+    day: str | None = None,
+    user_id: int | None = None,
+    now: datetime | None = None,
+) -> list[Story]:
+    """Live Briefing list.
+
+    Today / Yesterday: only stories with published_at on that local calendar day.
+    Favourites and saved long-reads follow the same publish-day rule (no pin to Today).
+    All: full retention window, newest first.
+    """
+    if limit is None:
+        limit = settings.briefing_limit(db)
+    day_key = normalize_briefing_day(day) if day else None
+    cutoff = retention_cutoff()
+    age = _story_age()
+    window = _day_window(day_key, now=now) if day_key else None
+
+    favourites_q = (
+        db.query(Story)
+        .filter(Story.favourited.is_(True))
+    )
+    favourites = _scope_stories(favourites_q, user_id).order_by(age.desc()).all()
+    pool_size = max(limit * 8, 80) if settings.briefing_category_mix_enabled(db) else max(limit * 4, 40)
+    # Include saved long-reads in the day-filtered pool (they must still pass _in_day).
+    recent_q = (
+        db.query(Story)
+        .filter(or_(Story.favourited.is_(False), Story.favourited.is_(None)))
+        .filter(age >= cutoff)
+    )
+    recent_query = _scope_stories(recent_q, user_id).order_by(age.desc())
+    if day_key == "all":
+        recent = recent_query.all()
+    else:
+        recent = recent_query.limit(pool_size).all()
+    favourites = [story for story in favourites if _in_day(story, window)]
+    recent = [story for story in recent if _in_day(story, window)]
+
+    feeds = {feed.name: feed for feed in _scope_feeds(db.query(Feed), user_id).all()}
+    favourites = _apply_keyword_filters(db, favourites)
+    recent = _apply_importance_filter(db, _apply_keyword_filters(db, recent))
+
+    if day_key == "all":
+        selected = recent
+    elif settings.briefing_category_mix_enabled(db):
+        selected = _pick_by_category_mix(
+            recent,
+            feeds,
+            limit,
+            settings.briefing_category_shares(db),
+        )
+    else:
+        selected = _diverse_recent(recent, limit)
+
+    seen: set[int] = set()
+    stories: list[Story] = []
+    for story in [*favourites, *selected]:
+        if story.id in seen:
+            continue
+        stories.append(story)
+        seen.add(story.id)
+    stories.sort(
+        key=lambda story: story.published_at or story.created_at or cutoff,
+        reverse=True,
+    )
+    return stories
 
 
 def seats_from_percents(limit: int, percents: dict[str, float]) -> dict[str, int]:
@@ -414,69 +651,6 @@ def _pick_by_category_mix(
             seen.add(story.id)
 
     return picked[:limit]
-
-
-def current_stories(
-    db: Session,
-    limit: int | None = None,
-    day: str | None = None,
-    user_id: int | None = None,
-) -> list[Story]:
-    if limit is None:
-        limit = settings.briefing_limit(db)
-    day_key = normalize_briefing_day(day) if day else None
-    cutoff = retention_cutoff()
-    age = _story_age()
-    window = _day_window(day_key) if day_key else None
-    include_saved = day_key != "yesterday"
-    saved = current_saved_stories(db, user_id=user_id) if include_saved else []
-    favourites_q = (
-        db.query(Story)
-        .filter(Story.favourited.is_(True))
-        .filter(or_(Story.saved.is_(False), Story.saved.is_(None)))
-    )
-    favourites = _scope_stories(favourites_q, user_id).order_by(age.desc()).all()
-    pool_size = max(limit * 8, 80) if settings.briefing_category_mix_enabled(db) else max(limit * 4, 40)
-    recent_q = (
-        db.query(Story)
-        .filter(or_(Story.favourited.is_(False), Story.favourited.is_(None)))
-        .filter(or_(Story.saved.is_(False), Story.saved.is_(None)))
-        .filter(age >= cutoff)
-    )
-    recent_query = _scope_stories(recent_q, user_id).order_by(age.desc())
-    if day_key == "all":
-        recent = recent_query.all()
-    else:
-        recent = recent_query.limit(pool_size).all()
-    favourites = [story for story in favourites if _in_day(story, window)]
-    recent = [story for story in recent if _in_day(story, window)]
-
-    feeds = {feed.name: feed for feed in _scope_feeds(db.query(Feed), user_id).all()}
-    saved = _apply_keyword_filters(db, saved)
-    favourites = _apply_keyword_filters(db, favourites)
-    recent = _apply_importance_filter(db, _apply_keyword_filters(db, recent))
-
-    if day_key == "all":
-        selected = recent
-    elif settings.briefing_category_mix_enabled(db):
-        selected = _pick_by_category_mix(
-            recent,
-            feeds,
-            limit,
-            settings.briefing_category_shares(db),
-        )
-    else:
-        selected = _diverse_recent(recent, limit)
-
-    seen = {story.id for story in saved}
-    stories = [*saved]
-    for story in [*favourites, *selected]:
-        if story.id not in seen:
-            stories.append(story)
-            seen.add(story.id)
-    feed_stories = [story for story in stories if not story.saved]
-    feed_stories.sort(key=lambda story: story.published_at or story.created_at or cutoff, reverse=True)
-    return [*[story for story in stories if story.saved], *feed_stories]
 
 
 def search_stories(db: Session, query: str, limit: int = 50, user_id: int | None = None) -> list[Story]:
@@ -704,7 +878,9 @@ def write_category_briefing_files(
         cat_payload["title"] = title
         cat_payload["paper_title"] = title
         cat_payload["paper_id"] = f"newscast-{day.isoformat()}-{key}"
-        paths = write_briefing_files(cat_payload, stem=dated_category_stem(day, key), user_id=user_id)
+        paths = write_briefing_files(
+            cat_payload, stem=dated_category_stem(day, key), user_id=user_id, db=db
+        )
         written.append(paths["epub"])
     return written
 
@@ -738,20 +914,48 @@ def paper_status(db: Session, now: datetime | None = None, user_id: int | None =
     path = dated_briefing_path(today, user_id=user_id)
     publish_at = briefing_publish_at(db)
     published = path.exists()
+    empty = frozen_paper_is_empty(user_id=user_id, day=today) if published else True
+    story_count = len(list(current_stories(db, day="today", user_id=user_id, now=when)))
+    if published and empty:
+        message = (
+            f"Today’s paper file exists but is empty (frozen at {publish_at} with no stories). "
+            "Generate again once Briefing has stories, or wait for the next refresh."
+        )
+    elif published:
+        message = f"Today’s paper is ready ({story_count} stor{'y' if story_count == 1 else 'ies'}). Scheduled publish {publish_at}."
+    else:
+        message = f"Publishes at {publish_at} — not ready yet."
     return {
         "publish_at": publish_at,
         "published": published,
+        "empty": bool(published and empty),
+        "story_count": story_count,
         "date": today.isoformat(),
         "path": str(path) if published else None,
-        "message": (
-            f"Today's paper published at {publish_at}."
-            if published
-            else f"Publishes at {publish_at} — not ready yet."
-        ),
+        "message": message,
     }
 
 
+def frozen_paper_is_empty(*, user_id: int | None = None, day: date | None = None) -> bool:
+    """True when today's frozen txt/epub is missing content (empty shell)."""
+    target = day or _local_today()
+    txt = dated_briefing_path(target, "txt", user_id=user_id)
+    if txt.exists():
+        text = txt.read_text(encoding="utf-8", errors="replace")
+        if "No stories yet" in text:
+            return True
+        if re.search(r"(?m)^\d+\. ", text):
+            return False
+        return len(text.strip()) < 80
+    epub = dated_briefing_path(target, "epub", user_id=user_id)
+    if not epub.exists():
+        return True
+    # Tiny EPUB cover-only shells are well under a normal paper with stories.
+    return epub.stat().st_size < 20_000
+
+
 def maybe_publish_daily_briefing(db: Session, now: datetime | None = None) -> Path | None:
+    """Publish (or refill an empty shell) once past publish_at and stories exist."""
     from app.models import User
 
     when = now or datetime.now()
@@ -762,14 +966,17 @@ def maybe_publish_daily_briefing(db: Session, now: datetime | None = None) -> Pa
         return None
     published: Path | None = None
     users = db.query(User).filter(User.active.is_(True)).all()
-    if not users:
-        if dated_briefing_path(when.date(), user_id=1).exists():
-            return None
-        return publish_daily_briefing(db, now=when, user_id=1)
-    for user in users:
-        if dated_briefing_path(when.date(), user_id=user.id).exists():
+    targets = users or [None]
+    for user in targets:
+        uid = int(user.id) if user is not None else 1
+        stories = list(current_stories(db, day="today", user_id=uid, now=when))
+        if not stories:
             continue
-        published = publish_daily_briefing(db, now=when, user_id=user.id)
+        path = dated_briefing_path(when.date(), user_id=uid)
+        if path.exists() and not frozen_paper_is_empty(user_id=uid, day=when.date()):
+            continue
+        overwrite = path.exists()
+        published = publish_daily_briefing(db, now=when, user_id=uid, overwrite=overwrite)
     return published
 
 
@@ -785,39 +992,44 @@ def publish_daily_briefing(
     day = _local_today(when)
     dest = dated_briefing_path(day, user_id=uid)
     created = overwrite or not dest.exists()
+    story_count = 0
     if created:
-        payload = current_briefing_payload(db, day="today", user_id=uid)
+        payload = current_briefing_payload(db, day="today", user_id=uid, now=when)
+        story_count = len(payload.get("stories") or [])
         payload["paper_date"] = day.isoformat()
         payload["date_label"] = format_paper_date(day, reader_date_format(db))
         payload["paper_title"] = paper_display_title(db, day)
-        write_briefing_files(payload, stem=dated_stem(day), user_id=uid)
+        write_briefing_files(payload, stem=dated_stem(day), user_id=uid, db=db)
         write_category_briefing_files(db, payload, day, user_id=uid)
     prune_old_briefings(user_id=uid)
     if created:
         enqueue_latest_briefing(db, user_id=uid)
         from app.services import reader_config, reader_push
 
-        if reader_config.reader_push_enabled(db, uid):
+        # Only push a paper that actually has stories — empty shells confuse the reader.
+        if story_count and reader_config.reader_push_enabled(db, uid):
             reader_push.enqueue_frozen_briefing(db, user_id=uid)
         from app.services import ntfy
 
         paper_title = paper_display_title(db, day)
         instance = (settings.get_value(db, "instance_name") or "").strip() or "NewsCast"
-        ntfy.notify(
-            db,
-            kind="publish",
-            title=instance,
-            body=f"Morning paper ready — {paper_title}",
-            user_id=uid,
-        )
+        if story_count:
+            ntfy.notify(
+                db,
+                kind="publish",
+                title=instance,
+                body=f"Morning paper ready — {paper_title}",
+                user_id=uid,
+            )
     return dest
 
 
 class _HtmlSanitizer(HTMLParser):
-    def __init__(self) -> None:
+    def __init__(self, *, strip_links: bool = False) -> None:
         super().__init__(convert_charrefs=True)
         self.parts: list[str] = []
         self._skip = 0
+        self.strip_links = strip_links
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in _SKIP_TAGS:
@@ -831,6 +1043,8 @@ class _HtmlSanitizer(HTMLParser):
             self.parts.append("<br/>")
             return
         if tag == "a":
+            if self.strip_links:
+                return
             href = ""
             for key, value in attrs:
                 if key == "href" and value and value.startswith(("http://", "https://", "/")):
@@ -846,6 +1060,8 @@ class _HtmlSanitizer(HTMLParser):
             return
         if self._skip or tag in _DROP_TAGS or tag not in _ALLOWED_TAGS or tag == "br":
             return
+        if tag == "a" and self.strip_links:
+            return
         self.parts.append(f"</{tag}>")
 
     def handle_data(self, data: str) -> None:
@@ -854,18 +1070,18 @@ class _HtmlSanitizer(HTMLParser):
         self.parts.append(html.escape(data))
 
 
-def sanitize_html(value: str) -> str:
+def sanitize_html(value: str, *, strip_links: bool = False) -> str:
     raw = value or ""
     if "<" not in raw:
         return html.escape(raw)
-    parser = _HtmlSanitizer()
+    parser = _HtmlSanitizer(strip_links=strip_links)
     parser.feed(raw)
     parser.close()
     return "".join(parser.parts)
 
 
-def _story_body(summary: str) -> str:
-    cleaned = sanitize_html(summary or "").strip()
+def _story_body(summary: str, *, strip_links: bool = False) -> str:
+    cleaned = sanitize_html(summary or "", strip_links=strip_links).strip()
     if not cleaned:
         return "<p></p>"
     if cleaned.lstrip().startswith("<"):
@@ -996,7 +1212,8 @@ def stories_payload(
     }
 
 
-def render_txt(payload: dict) -> str:
+def render_txt(payload: dict, *, layout: EpubLayout | None = None) -> str:
+    opts = layout if layout is not None else EpubLayout.classic()
     lines = [payload.get("title") or "NewsCast briefing", payload["generated_at"], ""]
     stories = payload.get("stories") or []
     lines.append(masthead_line(stories))
@@ -1016,14 +1233,33 @@ def render_txt(payload: dict) -> str:
                 if story.get("published_label"):
                     lines.append(story["published_label"])
                 lines.append(story["summary"])
-                if story.get("url"):
+                if story.get("url") and not opts.omit_article_links:
                     lines.append(story["url"])
                 lines.append("")
                 index += 1
     return "\n".join(lines).rstrip() + "\n"
 
 
-def write_epub(payload: dict, dest: Path) -> None:
+def _story_block_html(story: dict, *, heading: str, opts: EpubLayout) -> str:
+    title = story.get("title") or "Untitled"
+    byline_bits = [bit for bit in (story.get("source"), story.get("published_label")) if bit]
+    # When chapter is already the source, skip repeating source in the byline.
+    if opts.chapters_by_source:
+        byline_bits = [bit for bit in (story.get("published_label"),) if bit]
+    byline = f'<p class="byline">{html.escape(" · ".join(byline_bits))}</p>' if byline_bits else ""
+    url = story.get("url") or ""
+    link = ""
+    if url and not opts.omit_article_links:
+        link = f'<p class="original"><a href="{html.escape(url, quote=True)}">Original article</a></p>'
+    body = _story_body(story.get("summary") or "", strip_links=opts.omit_article_links)
+    return (
+        f'<div class="story"><{heading}>{html.escape(title)}</{heading}>{byline}'
+        f'<div class="body">{body}</div>{link}</div>'
+    )
+
+
+def write_epub(payload: dict, dest: Path, *, layout: EpubLayout | None = None) -> None:
+    opts = layout if layout is not None else EpubLayout.classic()
     book = epub.EpubBook()
     heading = payload.get("title") or "NewsCast briefing"
     date_label = _payload_date_label(payload)
@@ -1035,13 +1271,20 @@ def write_epub(payload: dict, dest: Path) -> None:
     book.set_language("en")
     book.add_author("NewsCast")
 
-    cover_bytes = render_newspaper_cover(heading=heading, date_label=date_label, stories=stories)
+    cover_bytes = render_newspaper_cover(
+        heading=heading,
+        date_label=date_label,
+        stories=stories,
+        x3_screen=opts.x3_screen,
+    )
     book.set_cover("cover.jpg", cover_bytes, create_page=False)
 
-    style = epub.EpubItem(uid="style", file_name="style/eink.css", media_type="text/css", content=EINK_CSS.encode())
+    css_text = X3_EINK_CSS if opts.x3_screen else EINK_CSS
+    style = epub.EpubItem(uid="style", file_name="style/eink.css", media_type="text/css", content=css_text.encode())
     book.add_item(style)
 
     groups = group_stories(stories)
+    blurb_limit = 90 if opts.x3_screen else 160
     cover_bits = [
         '<div class="cover-image"><img alt="Front page" src="cover.jpg"/></div>',
         f"<h1>{html.escape(heading)}</h1>",
@@ -1058,10 +1301,13 @@ def write_epub(payload: dict, dest: Path) -> None:
                 cover_bits.append('<ol class="toc-stories">')
                 for story in source_stories:
                     title = story.get("title") or "Untitled"
-                    blurb = digest_blurb(story.get("summary") or "")
+                    blurb = digest_blurb(story.get("summary") or "", limit=blurb_limit)
                     cover_bits.append("<li>")
                     cover_bits.append(f'<span class="toc-title">{html.escape(title)}</span>')
-                    if blurb:
+                    if blurb and not opts.x3_screen:
+                        cover_bits.append(f'<span class="toc-digest">{html.escape(blurb)}</span>')
+                    elif blurb and opts.x3_screen:
+                        # Short digests only — small screen.
                         cover_bits.append(f'<span class="toc-digest">{html.escape(blurb)}</span>')
                     cover_bits.append("</li>")
                 cover_bits.append("</ol></div>")
@@ -1080,37 +1326,48 @@ def write_epub(payload: dict, dest: Path) -> None:
     chapters = [cover]
     toc: list = []
     index = 1
-    for _key, label, group in groups:
-        source_sections = []
-        for source, source_stories in group_stories_by_source(group):
-            source_chapters = []
-            for story in source_stories:
-                title = story.get("title") or "Untitled"
-                chapter = epub.EpubHtml(title=title[:120], file_name=f"story-{index}.xhtml", lang="en")
-                byline_bits = [bit for bit in (story.get("source"), story.get("published_label")) if bit]
-                byline = (
-                    f'<p class="byline">{html.escape(" · ".join(byline_bits))}</p>' if byline_bits else ""
+
+    if opts.chapters_by_source:
+        for _key, label, group in groups:
+            source_sections = []
+            for source, source_stories in group_stories_by_source(group):
+                chapter = epub.EpubHtml(
+                    title=source[:120],
+                    file_name=f"source-{index}.xhtml",
+                    lang="en",
                 )
-                url = story.get("url") or ""
-                link = (
-                    f'<p class="original"><a href="{html.escape(url, quote=True)}">Original article</a></p>'
-                    if url
-                    else ""
-                )
-                chapter.content = (
-                    f'<div class="story"><h1>{html.escape(title)}</h1>{byline}'
-                    f'<div class="body">{_story_body(story.get("summary") or "")}</div>{link}</div>'
-                )
+                parts = [f'<div class="source-chapter"><h1>{html.escape(source)}</h1>']
+                for story in source_stories:
+                    parts.append(_story_block_html(story, heading="h2", opts=opts))
+                parts.append("</div>")
+                chapter.content = "".join(parts)
                 chapter.add_item(style)
                 chapter.add_link(href="style/eink.css", rel="stylesheet", type="text/css")
                 book.add_item(chapter)
                 chapters.append(chapter)
-                source_chapters.append(chapter)
+                source_sections.append(chapter)
                 index += 1
-            if source_chapters:
-                source_sections.append((epub.Section(source), tuple(source_chapters)))
-        if source_sections:
-            toc.append((epub.Section(label), tuple(source_sections)))
+            if source_sections:
+                toc.append((epub.Section(label), tuple(source_sections)))
+    else:
+        for _key, label, group in groups:
+            source_sections = []
+            for source, source_stories in group_stories_by_source(group):
+                source_chapters = []
+                for story in source_stories:
+                    title = story.get("title") or "Untitled"
+                    chapter = epub.EpubHtml(title=title[:120], file_name=f"story-{index}.xhtml", lang="en")
+                    chapter.content = _story_block_html(story, heading="h1", opts=opts)
+                    chapter.add_item(style)
+                    chapter.add_link(href="style/eink.css", rel="stylesheet", type="text/css")
+                    book.add_item(chapter)
+                    chapters.append(chapter)
+                    source_chapters.append(chapter)
+                    index += 1
+                if source_chapters:
+                    source_sections.append((epub.Section(source), tuple(source_chapters)))
+            if source_sections:
+                toc.append((epub.Section(label), tuple(source_sections)))
 
     book.toc = toc or [cover]
     book.add_item(epub.EpubNcx())
@@ -1124,20 +1381,50 @@ def write_briefing_files(
     payload: dict,
     stem: str = "news",
     user_id: int | None = None,
+    *,
+    layout: EpubLayout | None = None,
+    db: Session | None = None,
 ) -> dict[str, Path]:
+    opts = layout
+    if opts is None and db is not None:
+        opts = EpubLayout.from_db(db)
+    opts = opts if opts is not None else EpubLayout.classic()
     safe = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "-" for ch in stem).strip("-") or "news"
     root = briefing_dir_for(user_id)
     txt_path = root / f"{safe}.txt"
     epub_path = root / f"{safe}.epub"
-    txt_path.write_text(render_txt(payload), encoding="utf-8")
-    write_epub(payload, epub_path)
+    txt_path.write_text(render_txt(payload, layout=opts), encoding="utf-8")
+    write_epub(payload, epub_path, layout=opts)
     return {"txt": txt_path, "epub": epub_path}
 
 
-def current_briefing_payload(db: Session, day: str | None = "today", user_id: int | None = None) -> dict:
+def publication_include_saved(db: Session, user_id: int | None = None) -> bool:
+    """Per-user: append Saved long-reads to today's frozen paper (default off)."""
+    if user_id is None:
+        return False
+    from app.services import user_settings as user_settings_service
+
+    return user_settings_service.flag_enabled(db, int(user_id), "publication_include_saved")
+
+
+def current_briefing_payload(
+    db: Session,
+    day: str | None = "today",
+    user_id: int | None = None,
+    now: datetime | None = None,
+) -> dict:
     feeds = {feed.name: feed for feed in _scope_feeds(db.query(Feed), user_id).all()}
+    stories = list(current_stories(db, day=day, user_id=user_id, now=now))
+    day_key = normalize_briefing_day(day)
+    if day_key == "today" and publication_include_saved(db, user_id):
+        seen = {story.id for story in stories}
+        for story in current_saved_stories(db, user_id=user_id):
+            if story.id in seen:
+                continue
+            stories.append(story)
+            seen.add(story.id)
     return stories_payload(
-        current_stories(db, day=day, user_id=user_id),
+        stories,
         settings.get_value(db, "instance_name"),
         feeds=feeds,
         labels=category_labels(db),
@@ -1152,7 +1439,7 @@ def enqueue_latest_briefing(db: Session, user_id: int | None = None) -> SyncTask
     path = frozen_briefing_path("today", suffix=fmt, fallback=False, user_id=uid)
     if path is None:
         return None
-    day = date.fromisoformat(path.stem.removeprefix("news-"))
+    day = day_from_briefing_path(path.stem) or date.fromisoformat(path.stem.removeprefix("news-")[:10])
     return enqueue_sync_file(db, path, paper_download_name(db, day, suffix=fmt), user_id=uid)
 
 

@@ -386,6 +386,29 @@ def paywall_skip_enabled(db: Session) -> bool:
     return flag_enabled(db, "paywall_skip_enabled")
 
 
+def publication_flag(db: Session, key: str, *, default: bool = True) -> bool:
+    """Publication layout flags default on (X3-oriented) when unset."""
+    raw = get_value(db, key).strip().lower()
+    if not raw:
+        return default
+    return raw in {"1", "true", "on", "yes"}
+
+
+def epub_omit_article_links(db: Session) -> bool:
+    """Omit original-article URLs/links — X3 has no touchscreen."""
+    return publication_flag(db, "epub_omit_article_links", default=True)
+
+
+def epub_chapters_by_source(db: Session) -> bool:
+    """One EPUB chapter per news source (better for button page-turns)."""
+    return publication_flag(db, "epub_chapters_by_source", default=True)
+
+
+def epub_x3_screen(db: Session) -> bool:
+    """Compact CSS + cover sized for Xteink X3 (3.7\", 528×792)."""
+    return publication_flag(db, "epub_x3_screen", default=True)
+
+
 def normalize_reader_device(value: str | None) -> str:
     key = (value or "").strip().lower()
     return key if key in READER_DEVICE_IDS else DEFAULT_READER_DEVICE
@@ -562,7 +585,31 @@ def resolve_ui_lang(db: Session, user_id: int | None = None) -> str:
 
 
 def using_factory_admin(db: Session) -> bool:
+    """True only for solo NewsCast when local admin still accepts admin/admin.
+
+    Under StonePi SSO the Auth service owns the factory-password warning — NewsCast
+    must not keep nagging from a stale settings.admin_password default.
+    """
+    from app.config import env
+    from app.models import User
     from app.services import passwords
+
+    if env.stonepi_session_secret.strip():
+        return False
+
+    admin = (
+        db.query(User)
+        .filter(User.role == "admin", User.active.is_(True))
+        .order_by(User.id.asc())
+        .first()
+    )
+    if admin is not None:
+        if admin.username != DEFAULT_ADMIN_USERNAME:
+            return False
+        stored = (admin.password or "").strip()
+        if not stored:
+            return False
+        return passwords.verify_password(stored, DEFAULT_ADMIN_PASSWORD)
 
     username, password = get_admin_credentials(db)
     if username != DEFAULT_ADMIN_USERNAME:

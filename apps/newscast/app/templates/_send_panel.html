@@ -10,9 +10,10 @@
   </form>
   <form method="post" action="/reader/queue">
     <input type="hidden" name="next" value="/device?tab=send" />
-    <button class="btn btn-secondary btn-with-icon" type="submit">{{ icon("queue") }} <span class="btn-label-full">Queue for later</span><span class="btn-label-short">Queue</span></button>
+    <button class="btn btn-secondary btn-with-icon" type="submit">{{ icon("queue") }} <span class="btn-label-full">Queue library</span><span class="btn-label-short">Queue</span></button>
   </form>
 </div>
+<p class="hint">Push now sends only what is already waiting. Queue library adds your Send files — not today’s paper. Publish the paper from Device → Status.</p>
 {% if reader.queue %}
 <section class="stack">
   <h2>Waiting to reach the reader</h2>
@@ -24,8 +25,8 @@
 
 <form method="post" action="/library" class="card panel saved-form" enctype="multipart/form-data" data-busy-label="Adding…">
   <div class="panel-head">
-    <h2>Add a file to Send</h2>
-    <p class="hint">Stored here and offered on the next push. Not part of your feeds.</p>
+    <h2>Add a file</h2>
+    <p class="hint">Goes to your OPDS Library. Optionally queue it for the reader. Not part of your feeds or today’s paper.</p>
   </div>
   <div class="panel-form">
     <p class="error-text" hidden data-form-error></p>
@@ -37,7 +38,11 @@
       File
       <input type="file" name="file" accept=".epub,.pdf,application/epub+zip,application/pdf" required />
     </label>
-    <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("plus-file") }} Add file</button>
+    <label class="check">
+      <input type="checkbox" name="queue_for_reader" value="1" />
+      <span>Also queue for the reader</span>
+    </label>
+    <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("plus-file") }} Add to Library</button>
   </div>
 </form>
 
@@ -52,9 +57,9 @@
         <p class="meta">{{ item.original_name }} · {{ item.size }}{% if item.created_at %} · {{ item.created_at }} UTC{% endif %}</p>
       </div>
       <form method="post" action="/library/{{ item.id }}/push" class="library-push">
-        <button class="btn btn-secondary btn-with-icon" type="submit">{{ icon("upload") }} <span class="btn-label-full">Push again</span><span class="btn-label-short">Push</span></button>
+        <button class="btn btn-secondary btn-with-icon" type="submit">{{ icon("queue") }} <span class="btn-label-full">Queue for reader</span><span class="btn-label-short">Queue</span></button>
       </form>
-      <form method="post" action="/library/{{ item.id }}/delete" data-confirm="Remove this file from Send?" data-confirm-detail="It leaves this list and will not be offered on the next push." data-confirm-ok="Remove">
+      <form method="post" action="/library/{{ item.id }}/delete" data-confirm="Remove this file from Library?" data-confirm-detail="It leaves OPDS Library and will not be offered on the next push." data-confirm-ok="Remove">
         <button class="icon-btn" type="submit" aria-label="Delete {{ item.title }}" title="Remove file">
           {{ icon("trash") }}
         </button>

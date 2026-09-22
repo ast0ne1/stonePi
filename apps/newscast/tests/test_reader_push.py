@@ -281,3 +281,129 @@ def test_kobo_upload_uses_sftp(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(reader_push, "_http_upload", lambda *a, **k: (_ for _ in ()).throw(AssertionError("http")))
     reader_push.upload_file("192.168.1.8", path, "/mnt/onboard/News", db=db)
     assert seen == [("192.168.1.8", "paper.epub", "/mnt/onboard/News")]
+
+
+def test_library_enqueue_uses_crosspoint_kind(tmp_path: Path, monkeypatch):
+    from app.models import LibraryFile
+    from app.services import library
+
+    monkeypatch.setattr(library, "LIBRARY_DIR", tmp_path)
+    db = _session()
+    stored = tmp_path / "1"
+    stored.mkdir()
+    path = stored / "essay.epub"
+    path.write_bytes(b"epub-bytes")
+    item = LibraryFile(
+        user_id=1,
+        title="Essay",
+        original_name="essay.epub",
+        stored_name="1/essay.epub",
+        size=10,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    task = library.enqueue_library_file(db, item)
+    assert task.kind == "crosspoint"
+    assert task.save_path.endswith("/essay.epub")
+    assert task.save_path.startswith("/News")
+    assert reader_push.queue_label(task) == "File · essay"
+
+
+def test_add_library_file_does_not_auto_enqueue(tmp_path: Path, monkeypatch):
+    from app.services import library
+
+    monkeypatch.setattr(library, "LIBRARY_DIR", tmp_path)
+    db = _session()
+    item = library.add_library_file(db, "notes.epub", b"PK\x03\x04epub", title="Notes", user_id=1)
+    assert db.query(SyncTask).count() == 0
+    item2 = library.add_library_file(
+        db, "notes2.epub", b"PK\x03\x04more", title="Notes 2", user_id=1, queue_for_reader=True
+    )
+    assert db.query(SyncTask).count() == 1
+    task = db.query(SyncTask).one()
+    assert task.kind == "crosspoint"
+    assert item.id != item2.id
+
+
+def test_enqueue_skips_missing_briefing_without_error(tmp_path: Path, monkeypatch):
+    from app.models import LibraryFile
+    from app.services import library
+
+    monkeypatch.setattr(library, "LIBRARY_DIR", tmp_path)
+    monkeypatch.setattr(reader_push, "frozen_briefing_path", lambda *a, **k: None)
+    db = _session()
+    (tmp_path / "1").mkdir()
+    (tmp_path / "1" / "only.pdf").write_bytes(b"x")
+    db.add(
+        LibraryFile(
+            user_id=1,
+            stored_name="1/only.pdf",
+            original_name="only.pdf",
+            title="Only",
+            size=1,
+        )
+    )
+    db.commit()
+    tasks = reader_push.enqueue_briefing_and_library(
+        db, user_id=1, include_briefing=True, include_library=True
+    )
+    assert len(tasks) == 1
+    assert Path(tasks[0].file_path).name == "only.pdf"
+    none = reader_push.enqueue_briefing_and_library(
+        db, user_id=1, include_briefing=False, include_library=False
+    )
+    assert none == []
+
+
+def test_enqueue_frozen_briefing_skips_empty_paper(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr("app.services.briefing.BRIEFING_DIR", tmp_path)
+    db = _session()
+    root = tmp_path / "1"
+    root.mkdir(parents=True)
+    path = root / "news-2026-09-22.epub"
+    path.write_bytes(b"empty-shell")
+    monkeypatch.setattr(
+        reader_push,
+        "frozen_briefing_path",
+        lambda *a, **k: path,
+    )
+    monkeypatch.setattr(
+        "app.services.briefing.current_stories",
+        lambda *a, **k: [],
+    )
+    assert reader_push.enqueue_frozen_briefing(db, user_id=1) is None
+    assert db.query(SyncTask).count() == 0
+
+
+def test_flush_uploads_library_crosspoint_task(tmp_path: Path, monkeypatch):
+    from app.models import LibraryFile
+    from app.services import library
+
+    monkeypatch.setattr(library, "LIBRARY_DIR", tmp_path)
+    db = _session()
+    (tmp_path / "1").mkdir()
+    path = tmp_path / "1" / "book.epub"
+    path.write_bytes(b"epub")
+    item = LibraryFile(
+        user_id=1,
+        title="Book",
+        original_name="book.epub",
+        stored_name="1/book.epub",
+        size=4,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    library.enqueue_library_file(db, item)
+    uploaded: list[str] = []
+    monkeypatch.setattr(reader_push, "reader_reachable", lambda *a, **k: True)
+    monkeypatch.setattr(
+        reader_push,
+        "upload_file",
+        lambda host, file_path, dest, db=None, user_id=None: uploaded.append(file_path.name),
+    )
+    result = reader_push.flush_pending(db)
+    assert result["ok"] is True
+    assert uploaded == ["book.epub"]
+    assert db.query(SyncTask).one().status == "complete"
