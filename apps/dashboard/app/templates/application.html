@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% from "_icons.html" import svg %}
-{% block title %}{{ card.name }} · StonePi{% endblock %}
+{% block title %}Manage {{ card.name }} · StonePi{% endblock %}
 {% block content %}
 <section class="hero">
-  <h1>{{ card.name }}</h1>
-  <p class="lede">{{ card.unit }} · {{ card.url }}</p>
+  <h1>Manage {{ card.name }}</h1>
+  <p class="lede">Start, stop, or restart this service. Open the app, or check recent logs below.</p>
+  <p class="muted hero-meta">{{ card.unit }} · {{ card.url }}</p>
 </section>
 <p class="pill"><span class="dot {% if card.health.ok %}ok{% else %}bad{% endif %}"></span>
   {% if card.health.ok %}Healthy{% else %}Down{% endif %} · systemd {{ card.unit_status }}
@@ -18,15 +19,15 @@
   </form>
   <form method="post" action="/applications/{{ card.id }}/start" data-confirm="Start {{ card.name }}?" data-confirm-detail="The service will start if it is currently stopped." data-confirm-ok="Start">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    <button class="btn btn-ghost" type="submit">Start</button>
+    <button class="btn btn-ghost btn-with-icon" type="submit">{{ svg('start') }} Start</button>
   </form>
   <form method="post" action="/applications/{{ card.id }}/stop" data-confirm="Stop {{ card.name }}?" data-confirm-detail="It will stay down until you start it again." data-confirm-ok="Stop">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    <button class="btn btn-ghost" type="submit">Stop</button>
+    <button class="btn btn-ghost btn-with-icon" type="submit">{{ svg('stop') }} Stop</button>
   </form>
 </div>
 <section class="card">
-  <h2>Recent logs</h2>
+  <h2 class="section-heading">{{ svg('logs') }} Recent logs</h2>
   {% if logs and logs.strip() %}
   <pre>{{ logs }}</pre>
   {% else %}

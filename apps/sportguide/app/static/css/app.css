@@ -143,7 +143,7 @@ input, select, textarea { font-size: 16px; }
   color: var(--ink);
   background: color-mix(in srgb, var(--accent) 12%, var(--card));
 }
-@media (min-width: 800px) {
+@media (min-width: 1024px) {
   .app {
     display: grid;
     grid-template-columns: 200px 1fr;
@@ -294,7 +294,8 @@ input, select, textarea { font-size: 16px; }
   border-radius: 8px;
 }
 .main-wide {
-  width: min(1200px, 100%);
+  width: 100%;
+  max-width: none;
   display: flex;
   flex-direction: column;
   align-content: stretch;
@@ -569,7 +570,7 @@ textarea { min-height: 5rem; resize: vertical; }
   height: 100%;
   align-items: stretch;
 }
-@media (max-width: 900px) {
+@media (max-width: 1023px) {
   .main-wide {
     overflow: auto;
   }
@@ -716,7 +717,7 @@ textarea { min-height: 5rem; resize: vertical; }
 }
 
 /* Phone bottom nav labels */
-@media (max-width: 799px) {
+@media (max-width: 1023px) {
   .nav a span {
     font-size: 0.55rem;
   }
@@ -792,7 +793,7 @@ textarea { min-height: 5rem; resize: vertical; }
 }
 
 /* Desktop: restore side rail + page scroll (do not leave overflow locked) */
-@media (min-width: 800px) {
+@media (min-width: 1024px) {
   html {
     height: auto;
     overflow-x: hidden;
@@ -846,7 +847,7 @@ textarea { min-height: 5rem; resize: vertical; }
   .main {
     grid-column: 2;
     grid-row: 2;
-    width: min(860px, 100%);
+    width: auto; max-width: none;
     overflow: visible;
     padding-bottom: 32px;
   }
@@ -1072,4 +1073,52 @@ textarea { min-height: 5rem; resize: vertical; }
 @media (max-width: 559px) {
   .sport-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .listing-row { flex-wrap: wrap; }
+}
+
+/* Laptop+: fill column beside side rail; multi-column settings cards */
+@media (min-width: 1024px) {
+  .listing-list,
+  .offer-list,
+  .source-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+  .settings-panel:not([hidden]),
+  .settings-panels {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+  .settings-panel:not([hidden]) > .form-hint,
+  .settings-panel:not([hidden]) > p.form-hint,
+  .settings-panel:not([hidden]) > .hero,
+  .settings-panel:not([hidden]) > .card:only-of-type,
+  .settings-panel:not([hidden]) > form.card:only-of-type,
+  .settings-panel:not([hidden]) > .settings-panel-span,
+  .settings-panels > .settings-panel-span {
+    grid-column: 1 / -1;
+  }
+  .settings-panel:not([hidden]) label:not(.inline) > input:not([type="checkbox"]):not([type="radio"]),
+  .settings-panel:not([hidden]) label:not(.inline) > select,
+  .settings-panel:not([hidden]) .form-control,
+  .settings-panels label:not(.inline) > input:not([type="checkbox"]):not([type="radio"]),
+  .settings-panels label:not(.inline) > select {
+    max-width: min(36rem, 100%);
+  }
+}
+@media (min-width: 1440px) {
+  .listing-list,
+  .offer-list,
+  .source-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .settings-panel:not([hidden]),
+  .settings-panels {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .settings-panel:not([hidden]) > .settings-panel-span-2,
+  .settings-panels > .settings-panel-span-2 {
+    grid-column: span 2;
+  }
 }

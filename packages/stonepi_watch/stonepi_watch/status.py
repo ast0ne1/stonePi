@@ -22,24 +22,45 @@ BACKUP_ATTENTION_DAYS = 8
 
 
 def _unit_status(unit: str) -> str:
+    return _unit_statuses([unit]).get(unit, "unknown")
+
+
+def _unit_statuses(units: list[str]) -> dict[str, str]:
+    cleaned = [str(unit or "").strip() for unit in units]
     if os.name == "nt" or shutil.which("systemctl") is None:
-        return "local"
+        return {unit: "local" for unit in cleaned if unit}
+    unique: list[str] = []
+    seen: set[str] = set()
+    for unit in cleaned:
+        if unit and unit not in seen:
+            seen.add(unit)
+            unique.append(unit)
+    if not unique:
+        return {}
     try:
         result = subprocess.run(
-            ["systemctl", "is-active", unit],
+            ["systemctl", "is-active", *unique],
             capture_output=True,
             text=True,
             check=False,
         )
-        return (result.stdout or result.stderr or "").strip() or "unknown"
+        lines = (result.stdout or "").strip().splitlines()
+        out: dict[str, str] = {}
+        for index, unit in enumerate(unique):
+            value = lines[index].strip() if index < len(lines) else ""
+            out[unit] = value or "unknown"
+        return out
     except Exception:
-        return "unknown"
+        return {unit: "unknown" for unit in unique}
 
 
-def _probe(url: str, timeout: float = 1.5) -> dict:
+def _probe(url: str, timeout: float = 1.0, client: httpx.Client | None = None) -> dict:
     try:
-        with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+        if client is not None:
             response = client.get(url)
+        else:
+            with httpx.Client(timeout=timeout, follow_redirects=True) as owned:
+                response = owned.get(url)
         return {"ok": response.status_code < 500, "status": response.status_code}
     except Exception as exc:
         return {"ok": False, "status": 0, "error": str(exc)}
@@ -94,14 +115,15 @@ def evaluate(
     disabled = disabled_ids or set()
     apps_meta = list(catalog if catalog is not None else APP_CATALOG)
     app_rows: list[dict] = []
+    statuses = _unit_statuses([str(item.get("unit") or "") for item in apps_meta])
 
-    def check_one(item: dict) -> dict:
+    def check_one(item: dict, client: httpx.Client) -> dict:
         app_id = item["id"]
         enabled = app_id not in disabled
-        unit = _unit_status(str(item.get("unit") or ""))
+        unit = statuses.get(str(item.get("unit") or ""), "unknown")
         health = {"ok": False, "status": 0}
         if enabled:
-            health = _probe(health_url_for(item))
+            health = _probe(health_url_for(item), client=client)
         running = bool(health.get("ok")) and unit in {"active", "local", "activating"}
         level = LEVEL_HEALTHY
         if not enabled:
@@ -121,10 +143,11 @@ def evaluate(
             "level": level,
         }
 
-    with ThreadPoolExecutor(max_workers=min(8, max(1, len(apps_meta)))) as pool:
-        futures = {pool.submit(check_one, item): item for item in apps_meta}
-        for future in as_completed(futures):
-            app_rows.append(future.result())
+    with httpx.Client(timeout=1.0, follow_redirects=True) as client:
+        with ThreadPoolExecutor(max_workers=min(8, max(1, len(apps_meta)))) as pool:
+            futures = {pool.submit(check_one, item, client): item for item in apps_meta}
+            for future in as_completed(futures):
+                app_rows.append(future.result())
     app_rows.sort(key=lambda row: str(row["id"]))
 
     backup = backup_info() or {}
