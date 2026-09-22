@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 VERSION_RE = re.compile(r"__version__\s*=\s*['\"]([^'\"]+)['\"]")
 
-APP_IDS = ("auth", "dashboard", "newscast", "fileserve", "eventtrakr", "pinboard", "studio", "pricescout")
+APP_IDS = ("auth", "dashboard", "newscast", "fileserve", "eventtrakr", "pinboard", "studio", "pricescout", "sportguide")
 APP_INCLUDE = (
     "app",
     "requirements.txt",
