@@ -233,46 +233,61 @@ def overview(request: Request):
     user, redirected = _user_or_login(request, admin=True)
     if redirected:
         return redirected
+    from concurrent.futures import ThreadPoolExecutor
     from app import display
     import stonepi_watch
+    from app import network as network_svc
 
-    cards = services.application_cards(dict(request.cookies))
+    cookies = dict(request.cookies)
     try:
         from stonepi_auth.http import request_public_origin
 
         access_origin = request_public_origin(request)
     except Exception:
         access_origin = ""
-    for card in cards:
-        card["display_url"] = services.app_display_url(card, access_origin=access_origin)
+
+    def load_cards():
+        cards_local = services.application_cards(cookies)
+        for card in cards_local:
+            card["display_url"] = services.app_display_url(card, access_origin=access_origin)
+        return cards_local
+
+    def load_users():
+        try:
+            return services.auth_request("GET", "/api/users", cookies).get("users", []), None
+        except Exception as exc:
+            return [], str(exc)
+
+    def load_network():
+        try:
+            return network_svc.network_snapshot()
+        except Exception:  # noqa: BLE001
+            return {
+                "internet": {"ok": False, "detail": "unavailable"},
+                "tailscale": network_svc.parse_tailscale_status(
+                    {"Installed": False, "BackendState": "NoState"},
+                    wanted=False,
+                ),
+                "helper_available": False,
+                "appliance": False,
+            }
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        cards_f = pool.submit(load_cards)
+        watch_f = pool.submit(display.watch_snapshot, cookies)
+        users_f = pool.submit(load_users)
+        network_f = pool.submit(load_network)
+        cards = cards_f.result()
+        watch = watch_f.result()
+        users, error = users_f.result()
+        network = network_f.result()
+
     backup = services.backup_info()
-    watch = display.watch_snapshot(dict(request.cookies))
-    users = []
-    error = None
-    users_ok = False
-    try:
-        users = services.auth_request("GET", "/api/users", dict(request.cookies)).get("users", [])
-        users_ok = True
-    except Exception as exc:
-        error = str(exc)
+    users_ok = error is None
     enabled_count = sum(1 for card in cards if card.get("enabled", True) is not False)
     healthy_count = sum(1 for card in cards if (card.get("health") or {}).get("ok"))
     disk_pct = watch.get("disk_pct")
     disk_warn = disk_pct is not None and int(disk_pct) >= stonepi_watch.DISK_ATTENTION_PCT
-    from app import network as network_svc
-
-    try:
-        network = network_svc.network_snapshot()
-    except Exception:  # noqa: BLE001
-        network = {
-            "internet": {"ok": False, "detail": "unavailable"},
-            "tailscale": network_svc.parse_tailscale_status(
-                {"Installed": False, "BackendState": "NoState"},
-                wanted=False,
-            ),
-            "helper_available": False,
-            "appliance": False,
-        }
     return _html(
         request,
         "overview.html",
@@ -291,7 +306,7 @@ def overview(request: Request):
             "enabled_count": enabled_count,
             "error": error,
             "platform_version": services_platform_version(),
-            "using_factory_admin": _factory_admin(dict(request.cookies), user),
+            "using_factory_admin": _factory_admin(cookies, user),
             "network": network,
         },
     )

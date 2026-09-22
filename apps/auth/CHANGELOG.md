@@ -1,5 +1,11 @@
 # Changelog — Auth
 
+## 0.1.6 — 2026-09-22
+
+### Changed
+- Login / status: `--tap` targets, safe-area padding, phone card gutters aligned with portal phone tier
+- Version aligned to platform **0.1.6**
+
 ## 0.1.5 — 2026-09-21
 
 ### Changed

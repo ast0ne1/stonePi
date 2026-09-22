@@ -14,7 +14,7 @@ import httpx
 from app.config import env
 from stonepi_auth import APP_CATALOG, LAUNCHER_APP_IDS, COOKIE_NAME, decode_session
 
-TIMEOUT = 1.5
+TIMEOUT = 1.0
 
 
 def session_secret() -> str:
@@ -105,10 +105,13 @@ def app_display_url(item: dict, *, access_origin: str = "") -> str:
     return f"http://{host}.local:{item['port']}/"
 
 
-def probe(url: str) -> dict:
+def probe(url: str, client: httpx.Client | None = None) -> dict:
     try:
-        with httpx.Client(timeout=TIMEOUT, follow_redirects=True) as client:
+        if client is not None:
             response = client.get(url)
+        else:
+            with httpx.Client(timeout=TIMEOUT, follow_redirects=True) as owned:
+                response = owned.get(url)
         return {"ok": response.status_code < 500, "status": response.status_code}
     except Exception as exc:
         return {"ok": False, "status": 0, "error": str(exc)}
@@ -127,18 +130,37 @@ def health_url(item: dict) -> str:
 
 def unit_status(unit: str) -> str:
     """systemd unit state on the Pi (active/inactive/failed…); 'local' on Windows/dev."""
+    return unit_statuses([unit]).get(unit, "unknown")
+
+
+def unit_statuses(units: list[str]) -> dict[str, str]:
+    """Batch `systemctl is-active` for many units (one subprocess on the Pi)."""
+    cleaned = [str(unit or "").strip() for unit in units]
     if os.name == "nt" or shutil.which("systemctl") is None:
-        return "local"
+        return {unit: "local" for unit in cleaned if unit}
+    unique: list[str] = []
+    seen: set[str] = set()
+    for unit in cleaned:
+        if unit and unit not in seen:
+            seen.add(unit)
+            unique.append(unit)
+    if not unique:
+        return {}
     try:
         result = subprocess.run(
-            ["systemctl", "is-active", unit],
+            ["systemctl", "is-active", *unique],
             capture_output=True,
             text=True,
             check=False,
         )
-        return (result.stdout or result.stderr or "").strip() or "unknown"
+        lines = (result.stdout or "").strip().splitlines()
+        out: dict[str, str] = {}
+        for index, unit in enumerate(unique):
+            value = lines[index].strip() if index < len(lines) else ""
+            out[unit] = value or "unknown"
+        return out
     except Exception:
-        return "unknown"
+        return {unit: "unknown" for unit in unique}
 
 
 def control_unit(unit: str, action: str) -> tuple[bool, str]:
@@ -258,23 +280,26 @@ def application_cards(cookies: dict[str, str] | None = None) -> list[dict]:
 
     # Auth is already in APP_CATALOG — do not insert a second card.
     base_items = catalog_apps(include_auth=True, cookies=cookies)
+    statuses = unit_statuses([str(item.get("unit") or "") for item in base_items])
 
-    def build(item: dict) -> dict:
+    def build(item: dict, client: httpx.Client) -> dict:
+        unit = str(item.get("unit") or "")
         return {
             **item,
             "url": app_public_url(item),
-            "health": probe(health_url(item)),
-            "unit_status": unit_status(item["unit"]),
+            "health": probe(health_url(item), client=client),
+            "unit_status": statuses.get(unit, "unknown" if unit else "local"),
             "version": update_service.current_version(item["id"]),
         }
 
     cards: list[dict] = []
-    with ThreadPoolExecutor(max_workers=min(8, max(1, len(base_items)))) as pool:
-        futures = {pool.submit(build, item): item["id"] for item in base_items}
-        by_id = {}
-        for future in as_completed(futures):
-            card = future.result()
-            by_id[card["id"]] = card
+    with httpx.Client(timeout=TIMEOUT, follow_redirects=True) as client:
+        with ThreadPoolExecutor(max_workers=min(8, max(1, len(base_items)))) as pool:
+            futures = {pool.submit(build, item, client): item["id"] for item in base_items}
+            by_id = {}
+            for future in as_completed(futures):
+                card = future.result()
+                by_id[card["id"]] = card
     for item in base_items:
         cards.append(by_id[item["id"]])
     return cards

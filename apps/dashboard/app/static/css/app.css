@@ -13,6 +13,11 @@
   --gutter: 16px;
   --radius: 18px;
   --tap: 44px;
+  /* Canonical tiers (media queries use literals): phone <720, rail ≥1024, dense ≥1440 */
+  --bp-phone-max: 719px;
+  --bp-tablet: 720px;
+  --bp-laptop: 1024px;
+  --bp-desktop: 1440px;
   --chrome: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -333,7 +338,7 @@ a { color: var(--accent); }
   overscroll-behavior-x: none;
 }
 .main.main-wide {
-  width: min(1100px, 100%);
+  width: 100%;
 }
 .main > :first-child { margin-top: 20px; }
 
@@ -424,7 +429,7 @@ a.card:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
   display: grid;
   gap: 14px;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
-  align-items: stretch;
+  align-items: start;
 }
 @media (min-width: 720px) {
   .services-grid {
@@ -440,7 +445,7 @@ a.card:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
   gap: 12px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
-@media (min-width: 900px) {
+@media (min-width: 1024px) {
   .health-stats {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
@@ -468,10 +473,15 @@ a.card:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
 }
 .service-card-health h3 {
   margin: 0;
+  min-width: 0;
 }
 .service-card-title-link {
   color: inherit;
   text-decoration: none;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .service-card-title-link:hover,
 .service-card-title-link:focus-visible {
@@ -511,16 +521,16 @@ a.card:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
 .service-expand-btn {
   display: none;
   flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   border-color: color-mix(in srgb, var(--line) 80%, transparent);
   color: var(--muted);
   background: transparent;
   transition: transform 160ms ease, border-color 140ms ease, color 140ms ease;
 }
 .service-expand-btn svg {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
 }
 html[data-view-health="expandable"] .service-card-health .service-expand-btn,
 html[data-view-services="expandable"] .service-card .service-expand-btn {
@@ -531,7 +541,7 @@ html[data-view-services="expandable"] .service-card.is-expanded .service-expand-
   transform: rotate(180deg);
 }
 html[data-view-health="expandable"] .service-card-health.is-managed .service-card-head h3 {
-  padding-right: 96px;
+  padding-right: 0;
 }
 .service-open-hint {
   flex: 0 0 auto;
@@ -576,57 +586,66 @@ html[data-view-services-port="0"] [data-services-port] {
   display: none !important;
 }
 .service-card {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  row-gap: 0;
+  height: auto;
+  min-height: 0;
   min-width: 0;
+  align-self: start;
   position: relative;
 }
 .service-card.is-managed .service-card-head {
   padding-right: 0;
 }
 .service-card.is-managed .service-card-head h3 {
-  padding-right: 96px;
+  padding-right: 0;
   margin: 0 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html[data-view-health="expandable"] .service-card-health.is-managed .service-card-head,
+html[data-view-services="expandable"] .service-card.is-managed .service-card-head {
+  padding-right: 0;
 }
 html[data-view-services="expandable"] .service-card.is-managed .service-card-head h3 {
-  padding-right: 140px;
+  padding-right: 0;
 }
 .service-card-actions {
-  position: absolute;
-  top: 12px;
-  right: 12px;
+  grid-column: 2;
+  grid-row: 1;
+  position: static;
+  top: auto;
+  right: auto;
   display: flex;
-  gap: 10px;
+  gap: 6px;
+  align-self: start;
   z-index: 1;
 }
 .service-card-actions .icon-btn {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
 }
 .service-card-actions .icon-btn svg {
-  width: 16px;
-  height: 16px;
+  width: 13px;
+  height: 13px;
 }
 .services-grid .service-meta {
   margin-top: 8px;
-  max-width: 100%;
 }
-.services-grid .service-meta-row {
-  grid-template-columns: 3.5rem minmax(0, 1fr);
-}
-.services-grid .service-meta .meta-value {
-  overflow-wrap: break-word;
-  word-break: normal;
-}.service-card-foot {
-  margin-top: auto;
+.service-card-foot {
+  grid-column: 1 / -1;
+  margin-top: 0;
   padding-top: 14px;
   border-top: 1px solid var(--line);
 }
 .service-card .service-card-head {
-  flex: 1 1 auto;
+  grid-column: 1;
+  grid-row: 1;
   display: flex;
   gap: 12px;
   align-items: flex-start;
@@ -635,11 +654,14 @@ html[data-view-services="expandable"] .service-card.is-managed .service-card-hea
 }
 .service-card .service-card-head > div {
   min-width: 0;
+  flex: 1 1 auto;
 }
 .service-card h3 {
   margin: 0;
-  overflow-wrap: normal;
-  word-break: normal;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .service-card .muted {
   overflow-wrap: normal;
@@ -890,23 +912,27 @@ pre {
 }
 .service-meta {
   display: grid;
-  gap: 4px;
+  gap: 10px;
   margin-top: 8px;
+  min-width: 0;
 }
 .service-meta-row {
   display: grid;
-  grid-template-columns: 3.75rem minmax(0, 1fr);
-  column-gap: 0.65rem;
-  align-items: baseline;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
   font-size: 13px;
   line-height: 1.35;
+  min-width: 0;
 }
 .service-meta .meta-label {
+  font-size: 0.72rem;
   font-weight: 600;
-  color: var(--ink, inherit);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 .service-meta .meta-value {
-  color: var(--muted);
+  color: var(--ink);
   min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -1576,7 +1602,7 @@ details.card[open] > summary { margin-bottom: 10px; }
   padding: 28px 12px;
   font-size: 0.9rem;
 }
-@media (min-width: 900px) {
+@media (min-width: 1024px) {
   .trmnl-designer {
     grid-template-columns: minmax(160px, 220px) 1fr;
     align-items: start;
@@ -1631,16 +1657,18 @@ a.settings-tab {
 a.settings-tab span {
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.2;
 }
 a.settings-tab svg {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   flex: 0 0 auto;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.8;
+  stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
+  overflow: visible;
 }
 a.settings-tab:visited {
   color: var(--muted);
@@ -1752,6 +1780,98 @@ a.chip-btn.is-active:visited {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
+}
+@media (min-width: 1024px) {
+  .palette-picker {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  #view-options {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px 18px;
+    align-items: start;
+  }
+  #view-options > h2,
+  #view-options > .muted:first-of-type,
+  #view-options > .row-actions,
+  #view-options > [data-view-status] {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Settings: stacked panels (same as NewsCast General / form tabs). */
+.settings-panels {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  width: 100%;
+  min-width: 0;
+  align-items: start;
+}
+.settings-panels > .card,
+.settings-panels > form.card,
+.settings-panels > details.card {
+  min-width: 0;
+}
+.settings-card-narrow {
+  width: 100%;
+  max-width: 28rem;
+}
+.section-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  min-width: 0;
+}
+.section-heading svg {
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: var(--accent);
+  overflow: visible;
+}
+/* Keep intentional fills (info dots, wifi pip) — parent fill:none would blank them. */
+.section-heading svg [fill]:not([fill="none"]),
+a.settings-tab svg [fill]:not([fill="none"]),
+.chip-btn svg [fill]:not([fill="none"]),
+.btn-with-icon svg [fill]:not([fill="none"]),
+.icon-btn svg [fill]:not([fill="none"]),
+.nav svg [fill]:not([fill="none"]),
+.launcher-icon svg [fill]:not([fill="none"]),
+.service-icon svg [fill]:not([fill="none"]) {
+  fill: currentColor;
+  stroke: none;
+}
+@media (min-width: 1024px) {
+  .settings-panels {
+    gap: 18px;
+  }
+  .settings-panels label:not(.inline) > input:not([type="checkbox"]):not([type="radio"]),
+  .settings-panels label:not(.inline) > select {
+    max-width: min(36rem, 100%);
+  }
+  .settings-panels .trmnl-markup,
+  .settings-panels .display-preview,
+  .settings-panels textarea[data-trmnl-markup] {
+    max-width: none;
+  }
+  .settings-panels .update-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin-top: 0;
+  }
+}
+@media (min-width: 1440px) {
+  .settings-panels .update-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 .palette-option {
   display: grid;
@@ -2082,7 +2202,7 @@ a.chip-btn.is-active:visited {
   }
 }
 
-@media (min-width: 1100px) {
+@media (min-width: 1440px) {
   .access-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -2148,7 +2268,7 @@ html[data-view-home="list"] .launcher-desc {
     max-width: 720px;
   }
 }
-@media (min-width: 1100px) {
+@media (min-width: 1440px) {
   html[data-view-home="list"] .launcher-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -2213,7 +2333,7 @@ html[data-view-home="icons"] .launcher-icon {
     font-size: 1.05rem;
   }
 }
-@media (min-width: 1100px) {
+@media (min-width: 1440px) {
   html[data-view-home="icons"] .launcher-grid {
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: 18px;
@@ -2406,7 +2526,7 @@ html[data-view-home="icons"] .launcher-form.is-editing .launcher-tile-link {
   }
 }
 
-@media (min-width: 900px) {
+@media (min-width: 1024px) {
   .shell {
     flex-direction: row;
     align-items: stretch;
@@ -2441,12 +2561,26 @@ html[data-view-home="icons"] .launcher-form.is-editing .launcher-tile-link {
     margin: 0;
     padding: 0 28px 40px;
   }
+  /* Admin pages: use the full column beside the rail (no 1200px island). */
   .main.main-wide {
     width: auto;
+    max-width: none;
   }
   .people {
     grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
     align-items: start;
+  }
+}
+
+@media (min-width: 1440px) {
+  .main {
+    padding: 0 36px 48px;
+  }
+  .service-grid {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  }
+  .health-app-grid {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
   }
 }
 
@@ -2479,15 +2613,42 @@ html[data-view-home="icons"] .launcher-form.is-editing .launcher-tile-link {
 .network-detail-list {
   display: grid;
   gap: 6px;
+  min-width: 0;
 }
 .network-detail-list .service-meta-row {
   display: grid;
   grid-template-columns: minmax(7.5rem, 9rem) minmax(0, 1fr);
   gap: 0.5rem 1rem;
   align-items: start;
+  min-width: 0;
 }
 .network-detail-list .meta-label {
   white-space: nowrap;
+}
+.network-detail-list .meta-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.network-detail-list .pill.compact {
+  max-width: 100%;
+  width: auto;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.network-detail-list .pill.compact code {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  font-size: 0.82rem;
+}
+@media (max-width: 719px) {
+  .network-detail-list .service-meta-row {
+    grid-template-columns: 1fr;
+    gap: 2px 0;
+  }
 }
 .network-auth-wait {
   padding: 0.75rem 0 0;
@@ -2531,9 +2692,22 @@ html[data-view-home="icons"] .launcher-form.is-editing .launcher-tile-link {
 .remote-access-magicdns {
   font-size: 0.85rem;
   word-break: break-all;
+  overflow-wrap: anywhere;
+  color: inherit;
 }
-.remote-access-magicdns code {
+.remote-access-col .pill.compact {
+  max-width: 100%;
+  width: auto;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.remote-access-col .pill.compact code,
+.remote-access-col code {
   font-size: 0.8rem;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  max-width: 100%;
 }
 .pill.compact {
   display: inline-flex;
@@ -2541,6 +2715,8 @@ html[data-view-home="icons"] .launcher-form.is-editing .launcher-tile-link {
   gap: 0.35rem;
   padding: 0.15rem 0.55rem;
   font-size: 0.85rem;
-  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 

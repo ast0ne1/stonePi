@@ -13,6 +13,10 @@
   --chrome: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   --serif: "Source Serif 4", Georgia, serif;
   --radius: 18px;
+  --tap: 44px;
+  --gutter: 16px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
 }
 
 [data-theme="dark"] {
@@ -99,12 +103,15 @@ body {
 }
 a { color: var(--accent); }
 .login-body { display: grid; place-items: start center; }
-.login-shell { width: min(440px, calc(100% - 32px)); padding: 48px 0 80px; }
+.login-shell {
+  width: min(440px, calc(100% - 32px));
+  padding: calc(32px + var(--safe-top)) 0 calc(48px + var(--safe-bottom));
+}
 .login-top { margin-bottom: 20px; }
 .status-body {
   min-height: 100dvh;
   place-items: center;
-  padding: max(20px, env(safe-area-inset-top)) 0 max(28px, env(safe-area-inset-bottom));
+  padding: max(20px, var(--safe-top)) 0 max(28px, var(--safe-bottom));
 }
 .status-shell {
   width: min(400px, calc(100% - 28px));
@@ -175,8 +182,8 @@ a { color: var(--accent); }
   color: var(--accent);
 }
 .icon-btn {
-  width: 40px;
-  height: 40px;
+  width: var(--tap);
+  height: var(--tap);
   border-radius: 999px;
   border: 1px solid var(--line);
   background: var(--card);
@@ -203,6 +210,7 @@ a { color: var(--accent); }
   color: var(--error);
 }
 @media (min-width: 720px) {
+  .login-shell { width: min(440px, calc(100% - 48px)); padding: 48px 0 80px; }
   .status-shell { width: min(420px, calc(100% - 48px)); }
   .status-card { padding: 28px 26px 24px; gap: 12px; }
   .hub-secondary {
@@ -211,6 +219,10 @@ a { color: var(--accent); }
     gap: 4px 8px;
   }
   .hub-link { width: auto; }
+}
+@media (max-width: 719px) {
+  .card { padding: 22px 18px; }
+  .login-shell { width: min(440px, calc(100% - 24px)); }
 }
 .brand {
   display: flex;
@@ -291,6 +303,7 @@ input, select, textarea {
   border: 0;
   border-radius: 999px;
   padding: 10px 16px;
+  min-height: var(--tap);
   cursor: pointer;
   text-decoration: none;
   display: inline-flex;

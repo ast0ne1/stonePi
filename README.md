@@ -230,7 +230,11 @@ deploy/install.sh    Pi installer
 deploy/INSTALL.md    fresh OS guide
 deploy/RELEASE.md    release checklist
 deploy/walkthrough.html
+deploy/responsive-audit.md   viewport tiers + audit notes
 scripts/run-dev.bat  Windows
 scripts/copy-to-sd.bat
 scripts/build_release_zips.py
+scripts/responsive/          optional viewport overflow smoke
 ```
+
+Responsive contract (720 / 1024 / 1440) and QA viewports: [deploy/responsive-audit.md](deploy/responsive-audit.md). UX skill: [.cursor/skills/ux-stonepi/SKILL.md](.cursor/skills/ux-stonepi/SKILL.md).
