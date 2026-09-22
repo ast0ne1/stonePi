@@ -1,6 +1,12 @@
 # Changelog
 
-Current version is **0.0.0.5**. New work is appended under that version until you ask to bump it.
+Current version is **0.0.0.9**.
+
+## 0.0.0.9 — 2026-09-22
+
+### Changed
+- Responsive shell: side rail at **≥1024px** (aligned with portal)
+- Laptop/desktop: main column fills width beside the rail; Settings cards lay out in 2–3 columns; Hosted Pages / browse use full width with 2–3 column cards
 
 ## 0.0.0.5 — 2026-09-17
 

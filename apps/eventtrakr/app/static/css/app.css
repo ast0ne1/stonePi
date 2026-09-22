@@ -415,7 +415,7 @@ a {
   border-radius: 999px;
 }
 
-@media (min-width: 860px) {
+@media (min-width: 1024px) {
   .chips-row {
     flex-wrap: wrap;
     overflow-x: visible;
@@ -1405,7 +1405,7 @@ th {
   }
 }
 
-@media (min-width: 800px) {
+@media (min-width: 1024px) {
   :root,
   [data-theme="light"],
   [data-theme="dark"] {
@@ -1464,7 +1464,7 @@ th {
   .app-container {
     grid-column: 2;
     grid-row: 2;
-    width: min(720px, 100%);
+    width: auto; max-width: none;
     overflow: visible;
   }
 }
@@ -1473,13 +1473,13 @@ th {
    instead of staying capped at the mobile/tablet reading width -- mainly so
    data tables (Sources) don't need to scroll horizontally when there's
    plenty of room, and event cards can lay out side by side. */
-@media (min-width: 1100px) {
+@media (min-width: 1440px) {
   .main,
   .app-container {
     /* Padding (--gutter, 24px here) already provides the side margin, so
        there's no need to also shrink via a percentage -- that was leaving
        a lot of the sidebar-adjusted track unused. */
-    width: min(1400px, 100%);
+    width: auto; max-width: none;
   }
 
   .events-grid {
@@ -1494,6 +1494,51 @@ th {
      nested one level deeper and already size themselves via their own grid. */
   form > .form-group > .form-control {
     max-width: 480px;
+  }
+}
+
+
+/* Laptop+: fill column beside side rail; multi-column settings cards */
+@media (min-width: 1024px) {
+  .events-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+  .settings-panel:not([hidden]),
+  .settings-panels {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+  .settings-panel:not([hidden]) > .form-hint,
+  .settings-panel:not([hidden]) > p.form-hint,
+  .settings-panel:not([hidden]) > .hero,
+  .settings-panel:not([hidden]) > .card:only-of-type,
+  .settings-panel:not([hidden]) > form.card:only-of-type,
+  .settings-panel:not([hidden]) > .settings-panel-span,
+  .settings-panels > .settings-panel-span {
+    grid-column: 1 / -1;
+  }
+  .settings-panel:not([hidden]) label:not(.inline) > input:not([type="checkbox"]):not([type="radio"]),
+  .settings-panel:not([hidden]) label:not(.inline) > select,
+  .settings-panel:not([hidden]) .form-control,
+  .settings-panels label:not(.inline) > input:not([type="checkbox"]):not([type="radio"]),
+  .settings-panels label:not(.inline) > select {
+    max-width: min(36rem, 100%);
+  }
+}
+@media (min-width: 1440px) {
+  .events-grid {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  }
+  .settings-panel:not([hidden]),
+  .settings-panels {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .settings-panel:not([hidden]) > .settings-panel-span-2,
+  .settings-panels > .settings-panel-span-2 {
+    grid-column: span 2;
   }
 }
 

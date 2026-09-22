@@ -27,7 +27,7 @@
   {%- elif name == "webpage" -%}
   <circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c2.4 2.8 3.7 5.4 3.7 8s-1.3 5.2-3.7 8M12 4C9.6 6.8 8.3 9.4 8.3 12s1.3 5.2 3.7 8"/>
   {%- elif name == "device" -%}
-  <path d="M4 8h9M17 8h3M4 16h3M11 16h9"/><circle cx="15.5" cy="8" r="2"/><circle cx="8.5" cy="16" r="2"/>
+  <path d="M4 8h9M17 8h3M4 16h3M11 16h9"/><circle cx="15.5" cy="8" r="2" fill="currentColor" stroke="none"/><circle cx="8.5" cy="16" r="2" fill="currentColor" stroke="none"/>
   {%- elif name == "access" -%}
   <rect x="3.5" y="5.5" width="17" height="12" rx="2"/><path d="M8 20h8M12 17.5V20"/>
   {%- elif name == "schedule" -%}
@@ -47,7 +47,7 @@
   {%- elif name == "search" -%}
   <circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/>
   {%- elif name == "llm" -%}
-  <path d="M12 4v3M12 17v3M4 12h3M17 12h3M6.6 6.6l2.1 2.1M15.3 15.3l2.1 2.1M6.6 17.4l2.1-2.1M15.3 8.7l2.1-2.1"/><circle cx="12" cy="12" r="2.4"/>
+  <path d="M12 4v3M12 17v3M4 12h3M17 12h3M6.6 6.6l2.1 2.1M15.3 15.3l2.1 2.1M6.6 17.4l2.1-2.1M15.3 8.7l2.1-2.1"/><circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none"/>
   {%- elif name == "reader" -%}
   <rect x="5" y="4" width="14" height="16" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>
   {%- elif name == "notifications" -%}
@@ -59,9 +59,19 @@
   {%- elif name == "feeds" -%}
   <path d="M5 6h14M5 12h14M5 18h10"/>
   {%- elif name == "status" -%}
-  <circle cx="12" cy="12" r="3"/><path d="M12 4v2M12 18v2M4 12h2M18 12h2M6.2 6.2l1.4 1.4M16.4 16.4l1.4 1.4M6.2 17.8l1.4-1.4M16.4 7.6l1.4-1.4"/>
+  <path d="M4 12h3.2l2.2-6.5 3.2 13 2.4-6.5H20"/>
   {%- elif name == "send" -%}
   <path d="M12 16V5"/><path d="M8 9l4-4 4 4"/><path d="M5 19h14"/>
+  {%- elif name == "delivery" -%}
+  <path d="M4 7h11v10H4z"/><path d="M15 10h3.2L20 13v4h-5"/><circle cx="8" cy="18.5" r="1.6" fill="currentColor" stroke="none"/><circle cx="17" cy="18.5" r="1.6" fill="currentColor" stroke="none"/>
+  {%- elif name == "health" -%}
+  <path d="M4 12h3.2l2.2-6.5 3.2 13 2.4-6.5H20"/>
+  {%- elif name == "catalog-link" -%}
+  <path d="M6 4.5h9.5A2.5 2.5 0 0 1 18 7v12.5H8A2.5 2.5 0 0 1 5.5 17V6.5"/><path d="M8 8.5h7M8 12h7M8 15.5h5"/>
+  {%- elif name == "network" -%}
+  <rect x="3.5" y="5.5" width="17" height="12" rx="2"/><path d="M8 20h8M12 17.5V20"/>
+  {%- elif name == "files" -%}
+  <path d="M8 4h6l4 4v12H8z"/><path d="M14 4v4h4"/>
   {%- elif name == "users" -%}
   <circle cx="9" cy="8" r="3"/><path d="M3.5 18.5c.8-3 2.8-4.5 5.5-4.5s4.7 1.5 5.5 4.5"/><circle cx="17" cy="9" r="2.4"/><path d="M14.2 18.5c.5-2.2 1.8-3.4 3.8-3.4 1.2 0 2.2.4 2.9 1.2"/>
   {%- elif name == "backup" -%}
@@ -69,7 +79,7 @@
   {%- elif name == "update" -%}
   <path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 5v5h-5"/>
   {%- elif name == "about" -%}
-  <circle cx="12" cy="12" r="8"/><path d="M12 11.2V17"/><circle cx="12" cy="8" r="0.7"/>
+  <circle cx="12" cy="12" r="8"/><path d="M12 11.2V17"/><circle cx="12" cy="8" r="1.1" fill="currentColor" stroke="none"/>
   {%- else -%}
   <circle cx="12" cy="12" r="7"/>
   {%- endif -%}

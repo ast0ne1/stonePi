@@ -4,7 +4,7 @@
 {% block content %}
 <section class="hero">
   <h1>{{ t("Sources") }}</h1>
-  <p class="lede">Manage enabled feeds and browse the household catalog.</p>
+  <p class="lede">Feeds you follow, or browse the household Catalog. Use the tabs below to switch.</p>
 </section>
 <div class="page-tabs" role="tablist" aria-label="Sources">
   <a class="chip-btn{% if sources_tab == 'feeds' %} is-active{% endif %}" href="/sources?tab=feeds" role="tab" aria-selected="{{ 'true' if sources_tab == 'feeds' else 'false' }}">{{ filter_icon("feeds") }}<span>{{ t("Feeds") }}</span></a>

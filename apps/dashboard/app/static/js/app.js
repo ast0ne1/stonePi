@@ -1456,8 +1456,25 @@ function showFlash(kind, text) {
       connecting = false;
       stopPoll();
       const dns = panel.querySelector("[data-ts-dns]");
+      const dnsDot = panel.querySelector("[data-ts-dns-dot]");
       const ipv4 = panel.querySelector("[data-ts-ipv4]");
-      if (dns && ts.magicdns_name) dns.innerHTML = "<code>" + ts.magicdns_name + "</code>";
+      if (dnsDot) {
+        dnsDot.classList.toggle("ok", Boolean(ts.magicdns_name || ts.magicdns));
+        dnsDot.classList.toggle("bad", !(ts.magicdns_name || ts.magicdns));
+      }
+      if (dns) {
+        const name = ts.magicdns_name
+          ? "<code>" + ts.magicdns_name + "</code>"
+          : ts.magicdns
+            ? "On"
+            : "Off";
+        dns.innerHTML =
+          '<span class="pill compact"><span class="dot ' +
+          (ts.magicdns_name || ts.magicdns ? "ok" : "bad") +
+          '" data-ts-dns-dot></span> ' +
+          name +
+          "</span>";
+      }
       if (ipv4 && ts.ipv4) ipv4.innerHTML = "<code>" + ts.ipv4 + "</code>";
       if (!panel.querySelector("[data-ts-disconnect-form]")) {
         window.location.reload();

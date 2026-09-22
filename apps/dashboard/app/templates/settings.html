@@ -14,8 +14,9 @@
 </div>
 
 {% if settings_tab == 'general' %}
+<div class="settings-panels">
 <section class="card stack">
-  <h2>Appearance</h2>
+  <h2 class="section-heading">{{ svg("appearance") }} Appearance</h2>
   <p class="muted">Tap a palette — saves on this browser. Light / Dark / Auto stay in the header. Prefs are per hostname (e.g. <code>stonepi.home</code>).</p>
   <div class="palette-picker" role="group" aria-label="Colour palette">
     <button type="button" class="palette-option" data-palette-set="default" aria-pressed="false">
@@ -42,28 +43,8 @@
   <p class="muted" data-palette-status>Using Default — saved for this browser (no Save button).</p>
 </section>
 
-<section class="card stack" id="account-password">
-  <h2>Your password</h2>
-  <p class="muted">Signed in as <strong>{{ user.display_name or user.username }}</strong> (@{{ user.username }}). Change the password you use for every StonePi app.</p>
-  <form method="post" action="/settings/password" class="stack">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    <label>Current password
-      <input type="password" name="current_password" required autocomplete="current-password" />
-    </label>
-    <label>New password
-      <input type="password" name="new_password" required minlength="8" autocomplete="new-password" placeholder="At least 8 characters" />
-    </label>
-    <label>Confirm new password
-      <input type="password" name="new_password_confirm" required minlength="8" autocomplete="new-password" />
-    </label>
-    <div class="row-actions">
-      <button type="submit" class="btn btn-primary btn-with-icon">{{ svg('check') }} Update password</button>
-    </div>
-  </form>
-</section>
-
 <section class="card stack" id="view-options">
-  <h2>View options</h2>
+  <h2 class="section-heading">{{ svg("view") }} View options</h2>
   <p class="muted">Layout density for Home, Health, and Services on this browser (desktop and phone). Choose options, then Save.</p>
 
   <fieldset class="view-fieldset">
@@ -97,11 +78,33 @@
   </div>
   <p class="muted" data-view-status>Choose options, then Save for this browser.</p>
 </section>
+
+<section class="card stack settings-card-narrow" id="account-password">
+  <h2 class="section-heading">{{ svg("auth") }} Your password</h2>
+  <p class="muted">Signed in as <strong>{{ user.display_name or user.username }}</strong> (@{{ user.username }}). Change the password you use for every StonePi app.</p>
+  <form method="post" action="/settings/password" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <label>Current password
+      <input type="password" name="current_password" required autocomplete="current-password" />
+    </label>
+    <label>New password
+      <input type="password" name="new_password" required minlength="8" autocomplete="new-password" placeholder="At least 8 characters" />
+    </label>
+    <label>Confirm new password
+      <input type="password" name="new_password_confirm" required minlength="8" autocomplete="new-password" />
+    </label>
+    <div class="row-actions">
+      <button type="submit" class="btn btn-primary btn-with-icon">{{ svg('check') }} Update password</button>
+    </div>
+  </form>
+</section>
+</div>
 {% endif %}
 
 {% if settings_tab == 'network' and user.is_admin and not settings_appearance_only %}
+<div class="settings-panels">
 <section class="card stack">
-  <h2>Network exposure</h2>
+  <h2 class="section-heading">{{ svg("network") }} Network exposure</h2>
   <p class="muted">Default is home network only. Flip to internet-facing when you put StonePi behind a public HTTPS edge — apps tighten immediately, no restart. Prefer Tailscale remote access below instead of opening the Pi to the internet.</p>
   <form method="post" action="/settings/network/exposure" class="stack">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
@@ -127,8 +130,8 @@
   </form>
 </section>
 
-<section class="card stack" id="remote-access" data-network-panel data-csrf="{{ csrf_token }}">
-  <h2>Remote access</h2>
+<section class="card stack settings-panel-span" id="remote-access" data-network-panel data-csrf="{{ csrf_token }}">
+  <h2 class="section-heading">{{ svg("remote") }} Remote access</h2>
   <p class="muted">Reach StonePi from outside your home network via Tailscale — without opening ports. LAN access (<code>stonepi.local</code> / your Pi IP) keeps working.</p>
 
   {% set ts = (network.tailscale if network else {}) %}
@@ -189,7 +192,12 @@
       </div>
       <div class="service-meta-row">
         <span class="meta-label">MagicDNS</span>
-        <span class="meta-value" data-ts-dns>{% if ts.magicdns_name %}<code>{{ ts.magicdns_name }}</code>{% else %}—{% endif %}</span>
+        <span class="meta-value" data-ts-dns>
+          <span class="pill compact">
+            <span class="dot {% if ts.magicdns_name or ts.magicdns %}ok{% else %}bad{% endif %}" data-ts-dns-dot></span>
+            {% if ts.magicdns_name %}<code>{{ ts.magicdns_name }}</code>{% elif ts.magicdns %}On{% else %}Off{% endif %}
+          </span>
+        </span>
       </div>
     </div>
     <p class="muted">
@@ -234,11 +242,13 @@
   </div>
   {% endif %}
 </section>
+</div>
 {% endif %}
 
 {% if settings_tab == 'display' %}
-<section class="card stack">
-  <h2>Display</h2>
+<div class="settings-panels">
+<section class="card stack settings-panel-span">
+  <h2 class="section-heading">{{ svg("display") }} Display</h2>
   <ol class="muted" style="margin:0;padding-left:1.2rem">
     <li>In TRMNL, create a Private Plugin with strategy <strong>Webhook</strong> and save it.</li>
     <li>Paste the plugin Webhook URL below <em>or</em> store it once in <strong>Vault → Display webhook</strong> — you do not need both.</li>
@@ -326,17 +336,19 @@
   </form>
 </section>
 
-<details class="card stack">
+<details class="card stack settings-panel-span">
   <summary>Raw merge_variables</summary>
   <p class="muted">What the next push will send. Useful for debugging Liquid variables.</p>
   <pre class="display-preview">{{ preview_json }}</pre>
 </details>
 <textarea id="trmnl-designer-data" hidden readonly>{{ designer | tojson }}</textarea>
+</div>
 {% endif %}
 
 {% if settings_tab == 'vault' %}
+<div class="settings-panels">
 <section class="card stack">
-  <h2>Add or update a secret</h2>
+  <h2 class="section-heading">{{ svg("plus") }} Add or update a secret</h2>
   <p class="muted">Pick a known setting from the list, or choose <strong>Custom key</strong> for something else. Values are encrypted on disk and preferred over installer <code>.env</code> when set.</p>
   <form method="post" action="/settings/vault" class="stack" data-vault-form>
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
@@ -370,7 +382,7 @@
 </section>
 
 <section class="card stack">
-  <h2>Stored secrets</h2>
+  <h2 class="section-heading">{{ svg("vault") }} Stored secrets</h2>
   {% if vault_keys %}
   <ul class="vault-list">
     {% for item in vault_keys %}
@@ -396,11 +408,13 @@
   </div>
   {% endif %}
 </section>
+</div>
 {% endif %}
 
 {% if settings_tab == 'automations' %}
-<section class="card stack">
-  <h2>Automations</h2>
+<div class="settings-panels">
+<section class="card stack settings-panel-span-2">
+  <h2 class="section-heading">{{ svg("automations") }} Automations</h2>
   <p class="muted">A handful of StonePi-native jobs — not a full smart-home engine.</p>
   <form method="post" action="/settings/automations" class="stack">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
@@ -413,12 +427,14 @@
     <button class="btn btn-primary btn-with-icon" type="submit">{{ svg('check') }} Save automations</button>
   </form>
 </section>
+</div>
 {% endif %}
 
 {% if settings_tab == 'update' %}
+<div class="settings-panels">
 <form method="post" action="/settings/update/repo" class="card stack">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-  <h2>GitHub repository</h2>
+  <h2 class="section-heading">{{ svg("github") }} GitHub repository</h2>
   <label>
     owner/repo
     <input type="text" name="github_repo" value="{{ github_repo }}" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="owner/stonePi" />
@@ -427,7 +443,7 @@
   <button class="btn btn-primary btn-with-icon" type="submit">{{ svg('check') }} Save</button>
 </form>
 
-<div class="stack update-list" style="margin-top:1.25rem">
+<div class="stack update-list settings-panel-span">
   {% for card in cards %}
   <section class="card">
     <div class="update-meta service-card-head">
@@ -455,11 +471,13 @@
   </section>
   {% endfor %}
 </div>
+</div>
 {% endif %}
 
 {% if settings_tab == 'backup' %}
-<section class="card stack">
-  <h2>Backup/Restore</h2>
+<div class="settings-panels">
+<section class="card stack settings-panel-span-2">
+  <h2 class="section-heading">{{ svg("backup") }} Backup/Restore</h2>
   <p class="muted">Full SD-card recovery is started from Cockpit so the backup can see the USB disk. This page only reports status.</p>
   <p class="pill"><span class="dot {% if backup.get('status') in ['ok', 'complete', 'success'] %}ok{% else %}bad{% endif %}"></span>
     {{ backup.get('status') or 'unknown' }}
@@ -471,14 +489,17 @@
     <a class="btn btn-primary btn-with-icon" href="{{ cockpit_url }}">{{ svg('cockpit') }} Open Cockpit</a>
   </div>
 </section>
+</div>
 {% endif %}
 
 {% if settings_tab == 'about' %}
-<section class="card stack about-card">
-  <h2>{{ app_name }}</h2>
+<div class="settings-panels">
+<section class="card stack about-card settings-panel-span-2">
+  <h2 class="section-heading">{{ svg("about") }} {{ app_name }}</h2>
   <p class="lede">Household LAN portal for NewsCast, FileServe, EventTrakr, Pinboard, Studio, and shared sign-in — plus Display and Vault under Settings.</p>
   <p class="hint">GitHub: <a class="text-link" href="{{ app_github }}" rel="noopener noreferrer" target="_blank">{{ app_github_user }}</a></p>
   <p class="hint">Version: {{ app_version }}</p>
 </section>
+</div>
 {% endif %}
 {% endblock %}

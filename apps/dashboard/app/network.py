@@ -12,7 +12,8 @@ from typing import Any
 
 HELPER = Path("/usr/local/sbin/stonepi-tailscale")
 INTERNET_PROBE_URL = "https://connectivitycheck.gstatic.com/generate_204"
-INTERNET_TIMEOUT_S = 3.0
+INTERNET_TIMEOUT_S = 1.5
+STATUS_HELPER_TIMEOUT_S = 4.0
 
 
 def _repo_data_dir() -> Path:
@@ -198,7 +199,7 @@ def parse_tailscale_status(raw: dict[str, Any] | None, *, wanted: bool) -> dict[
 
 
 def _raw_status_from_helper() -> dict[str, Any]:
-    code, out = _run_helper("status", timeout=12.0)
+    code, out = _run_helper("status", timeout=STATUS_HELPER_TIMEOUT_S)
     if not out:
         if not helper_available():
             return {"Installed": False, "BackendState": "NoState"}
@@ -262,8 +263,13 @@ def disconnect() -> dict[str, Any]:
 
 
 def network_snapshot() -> dict[str, Any]:
-    internet = internet_status()
-    ts = tailscale_status()
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        internet_f = pool.submit(internet_status)
+        ts_f = pool.submit(tailscale_status)
+        internet = internet_f.result()
+        ts = ts_f.result()
     return {
         "internet": internet,
         "tailscale": ts,

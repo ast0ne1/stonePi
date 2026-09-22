@@ -1,31 +1,42 @@
 {% from "_icons.html" import icon %}
-<div class="btn-row send-push">
-  <form method="post" action="/reader/poll" data-busy-label="Checking…">
-    <input type="hidden" name="next" value="/device?tab=send" />
-    <button class="btn btn-secondary btn-with-icon" type="submit">{{ icon("wifi") }} <span class="btn-label-full">Check reader</span><span class="btn-label-short">Check</span></button>
-  </form>
-  <form method="post" action="/reader/push">
-    <input type="hidden" name="next" value="/device?tab=send" />
-    <button class="btn btn-secondary btn-with-icon" type="submit">{{ icon("upload") }} <span class="btn-label-full">Push now</span><span class="btn-label-short">Push</span></button>
-  </form>
-  <form method="post" action="/reader/queue">
-    <input type="hidden" name="next" value="/device?tab=send" />
-    <button class="btn btn-secondary btn-with-icon" type="submit">{{ icon("queue") }} <span class="btn-label-full">Queue library</span><span class="btn-label-short">Queue</span></button>
-  </form>
-</div>
-<p class="hint">Push now sends only what is already waiting. Queue library adds your Send files — not today’s paper. Publish the paper from Device → Status.</p>
-{% if reader.queue %}
-<section class="stack">
-  <h2>Waiting to reach the reader</h2>
+<div class="device-panels">
+<div class="device-pair device-panel-span">
+<div class="card stack">
+  <h2 class="section-heading">{{ icon("upload") }} Push to reader</h2>
+  <p class="hint">
+    {% if reader.checked %}
+      {{ reader.host }} is <strong>{{ 'online' if reader.online else 'asleep' }}</strong>.
+    {% else %}
+      {{ reader.host }} has not been checked this session.
+    {% endif %}
+    {% if reader.pending %}{{ reader.pending }} waiting to reach the reader.{% else %}Nothing waiting.{% endif %}
+  </p>
+  <p class="hint">Push now sends only what is already waiting. Queue library adds your Send files — not today’s paper. Publish the paper from Status.</p>
+  <div class="btn-row send-push">
+    <form method="post" action="/reader/poll" data-busy-label="Checking…">
+      <input type="hidden" name="next" value="/device?tab=send" />
+      <button class="btn btn-secondary btn-with-icon" type="submit">{{ icon("wifi") }} <span class="btn-label-full">Check reader</span><span class="btn-label-short">Check</span></button>
+    </form>
+    <form method="post" action="/reader/push">
+      <input type="hidden" name="next" value="/device?tab=send" />
+      <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("upload") }} <span class="btn-label-full">Push now</span><span class="btn-label-short">Push</span></button>
+    </form>
+    <form method="post" action="/reader/queue">
+      <input type="hidden" name="next" value="/device?tab=send" />
+      <button class="btn btn-secondary btn-with-icon" type="submit">{{ icon("queue") }} <span class="btn-label-full">Queue library</span><span class="btn-label-short">Queue</span></button>
+    </form>
+  </div>
+  {% if reader.queue %}
+  <h3 class="section-heading">{{ icon("queue") }} Waiting to reach the reader</h3>
   {% with queue_next='/device?tab=send' %}
   {% include "_queue.html" %}
   {% endwith %}
-</section>
-{% endif %}
+  {% endif %}
+</div>
 
-<form method="post" action="/library" class="card panel saved-form" enctype="multipart/form-data" data-busy-label="Adding…">
+<form method="post" action="/library" class="card stack panel saved-form" enctype="multipart/form-data" data-busy-label="Adding…">
   <div class="panel-head">
-    <h2>Add a file</h2>
+    <h2 class="section-heading">{{ icon("plus-file") }} Add a file</h2>
     <p class="hint">Goes to your OPDS Library. Optionally queue it for the reader. Not part of your feeds or today’s paper.</p>
   </div>
   <div class="panel-form">
@@ -45,15 +56,16 @@
     <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("plus-file") }} Add to Library</button>
   </div>
 </form>
+</div>
 
-{% if library_files %}
-<section class="stack">
-  <h2>Your files</h2>
-  <ul class="feed-list">
+<div class="card stack device-panel-span">
+  <h2 class="section-heading">{{ icon("files") }} Your files</h2>
+  {% if library_files %}
+  <ul class="feed-list file-list">
     {% for item in library_files %}
-    <li class="card feed-row library-row">
+    <li class="feed-row library-row">
       <div class="feed-copy">
-        <h2>{{ item.title }}</h2>
+        <h3>{{ item.title }}</h3>
         <p class="meta">{{ item.original_name }} · {{ item.size }}{% if item.created_at %} · {{ item.created_at }} UTC{% endif %}</p>
       </div>
       <form method="post" action="/library/{{ item.id }}/push" class="library-push">
@@ -67,10 +79,11 @@
     </li>
     {% endfor %}
   </ul>
-</section>
-{% else %}
-<div class="empty card">
-  <h2>Your files</h2>
-  <p>No files added yet</p>
+  {% else %}
+  <div class="empty">
+    <p>No files in your library yet.</p>
+    <p class="hint">Add an EPUB or PDF above — it appears in OPDS Library and can be queued for the reader.</p>
+  </div>
+  {% endif %}
 </div>
-{% endif %}
+</div>

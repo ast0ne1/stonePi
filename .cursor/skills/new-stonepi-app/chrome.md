@@ -78,7 +78,7 @@ Import the macro in each template that uses it: `{% from "_icons.html" import ic
 confirm sheet (sibling of .app)
 ```
 
-### Phone (< 800px)
+### Phone / tablet (&lt; 1024px)
 
 - `.app`: column flex, `height: 100dvh`, overflow hidden.
 - `.main`: flex 1, `overflow-y: auto`, `-webkit-overflow-scrolling: touch`,
@@ -88,12 +88,14 @@ confirm sheet (sibling of .app)
 - Nav links: column flex, icon 20px, label ~0.55–0.62rem, `min-height: var(--tap)`.
 - ≤559px: stack filter/search forms; wrap dense rows; `--tap: 40px` optional.
 - Confirm `.sheet-card`: margin above nav so actions aren’t covered.
+- Content two-column forms may start at **720px**; side rail does **not**.
 
-### Desktop (≥ 800px)
+### Laptop / desktop (≥ 1024px)
 
 - `.app`: CSS grid — nav column ~200px, main fluid.
 - Nav: sticky side rail, row flex links (icon + label), border-right.
 - `html, body`: restore page scroll (`overflow: auto`); do not leave phone lock.
+- Dense 3–4 column admin grids prefer **1440px**. Match portal — see ux-stonepi.
 
 ### Viewport / PWA-ish
 

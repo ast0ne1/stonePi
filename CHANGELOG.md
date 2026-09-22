@@ -2,6 +2,28 @@
 
 Platform version lives in [`VERSION`](VERSION). App zips use each app’s `__version__` (see `scripts/build_release_zips.py`).
 
+## 0.1.6 — 2026-09-22
+
+### UX
+- **Global responsive contract**: shared viewport tiers **720 / 1024 / 1440** (side rail at ≥1024 for portal and all apps — removes the 800–899 cliff)
+- Auth login/status: phone safe-area, `--tap` targets, denser card padding
+- Portal + all apps: main column fills width beside the rail on laptop/desktop; Settings panels 2–3 columns; list/card pages (Saved, Search, Feeds, Pages, events, offers, projects, listings) use multi-column grids
+- NewsCast OPDS/URL wrap; Studio split panes fit short laptop heights; Pinboard notice/reminder grids on tablet+
+- Docs: [deploy/responsive-audit.md](deploy/responsive-audit.md), ux-stonepi + new-stonepi-app chrome; optional [scripts/responsive](scripts/responsive/) overflow smoke
+
+### App versions in this cut
+| App | Version |
+|-----|---------|
+| dashboard | 0.1.6 |
+| auth | 0.1.6 |
+| newscast | 0.0.3 |
+| eventtrakr | 0.0.3 |
+| fileserve | 0.0.0.9 |
+| pinboard | 0.0.3 |
+| pricescout | 0.0.2 |
+| sportguide | 0.0.2 |
+| studio | 0.0.5 |
+
 ## 0.1.5 — 2026-09-21
 
 ### UX

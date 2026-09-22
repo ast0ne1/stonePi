@@ -1,5 +1,12 @@
 # Changelog — Studio
 
+## 0.0.5 — 2026-09-22
+
+### Changed
+- Responsive shell: side rail at **≥1024px**
+- Editor split panes: chat + preview fill short laptop heights (≥1024) without stacking until narrower viewports
+- Laptop/desktop: main / editor column fills width beside the rail; Settings cards use multi-column layout; Projects list 2–3 columns
+
 ## 0.0.4 — 2026-09-20
 
 ### Added

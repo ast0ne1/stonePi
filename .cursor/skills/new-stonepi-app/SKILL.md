@@ -39,8 +39,8 @@ Also read [ux-stonepi](../ux-stonepi/SKILL.md) for portal IA. Detail refs:
 |-------|------|
 | **Theme accent** | Primary buttons use `var(--accent)` / `var(--accent-ink)`. **Never** override `:root` accent to an app-only colour (e.g. mint green). Shared palettes: default brick, `ocean`, `forest`, `slate` × light/dark — copy token block from NewsCast/Pinboard. |
 | **Theme chrome** | Topbar: light / dark / auto (`data-theme-set`). Include `_theme_boot.html` so palette/theme cookies match the portal. Fonts: IBM Plex Sans + Source Serif 4. |
-| **Nav** | Always include **Home** → `public_origin` / portal (not app `/`). Phone: bottom bar, `grid-template-columns: repeat(N, …)` where **N = actual links**. Desktop ≥800px: sticky side rail. Do not leave Studio’s 4-col comment/grid. |
-| **Mobile shell** | `viewport-fit=cover`; `--safe-bottom` / `env(safe-area-inset-bottom)`; `--tap: 44px` (40px ≤559px); phone: `html,body` overflow locked, `.main` scrolls (`-webkit-overflow-scrolling: touch`); stack filters/forms ≤559px; confirm sheet above nav (`margin-bottom: calc(72px + var(--safe-bottom))`). |
+| **Nav** | Always include **Home** → `public_origin` / portal (not app `/`). Phone/tablet &lt;1024: bottom bar, `grid-template-columns: repeat(N, …)` where **N = actual links**. Laptop+ ≥**1024px**: sticky side rail (same as portal — never 800/900). Do not leave Studio’s 4-col comment/grid. |
+| **Mobile shell** | `viewport-fit=cover`; `--safe-bottom` / `env(safe-area-inset-bottom)`; `--tap: 44px` (40px ≤559px); phone: `html,body` overflow locked, `.main` scrolls (`-webkit-overflow-scrolling: touch`); stack filters/forms ≤559px; confirm sheet above nav (`margin-bottom: calc(72px + var(--safe-bottom))`). Canonical breakpoints: **720 / 1024 / 1440** — see ux-stonepi. |
 | **Icons** | Stroke icons via `_icons.html` macro + CSS `fill: none; stroke: currentColor`. **Settings gear** = shared cog path (Pinboard/Studio), not a sunburst. Settings chips: **icon + `<span>Label</span>`** — General = sliders (`general`/`device`), About = info circle. Nav Settings uses same cog. |
 | **Buttons** | Labelled actions use `btn … btn-with-icon` + stroke icon (Save→check, Add→plus, Remove→trash, Refresh→refresh, Search→search, Clear/Cancel→clear). Icon-only controls use `icon-btn` with `aria-label`. No text-only primary/ghost buttons when siblings show icons. |
 | **Settings IA** | Product settings + About chips. When SSO: no password/Users/Updates tabs — link to Dashboard. Save = `btn btn-primary btn-with-icon` + check icon. |
@@ -64,7 +64,7 @@ Shell
 Nav
 - [ ] Home → portal origin
 - [ ] Column count = link count; labels fit on narrow phones
-- [ ] Desktop rail ≥800px; phone bottom bar + safe-area
+- [ ] Desktop rail ≥1024px; phone/tablet bottom bar + safe-area (&lt;1024)
 - [ ] Every nav item has shared-style stroke icon
 - [ ] Labelled buttons use btn-with-icon + matching glyph
 

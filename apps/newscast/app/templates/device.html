@@ -4,7 +4,7 @@
 {% block content %}
 <section class="hero">
   <h1>{{ t("Device") }}</h1>
-  <p class="lede">{% if device_tab == 'send' %}Send files to your reader and manage the push queue.{% else %}Reader delivery, health, and catalog links for this account.{% endif %}</p>
+  <p class="lede">{% if device_tab == 'send' %}Send files and manage the push queue. Use the Status tab for delivery, health, and catalog links.{% else %}Delivery, health, and catalog links. Use the Send tab to push files to your reader.{% endif %}</p>
 </section>
 <div class="page-tabs" role="tablist" aria-label="Device">
   {% if can_view_status %}

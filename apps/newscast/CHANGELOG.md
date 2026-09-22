@@ -1,5 +1,12 @@
 ﻿# Changelog
 
+## 0.0.3 — 2026-09-22
+
+### Changed
+- Responsive shell: side rail at **≥1024px** (aligned with portal); OPDS / catalog URLs wrap on narrow viewports
+- Laptop/desktop: main column fills width beside the rail; Settings cards lay out in 2–3 columns; Briefing / Saved / Search / Feeds story grids 2–3 columns
+- Device Status/Send: clearer tab icons; section headings (Delivery, Health, Catalog, Push, QR, files) include stroke icons; Status panels use 2–3 column layout on laptop
+
 ## 0.0.2 — 2026-09-21
 
 ### Added

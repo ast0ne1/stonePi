@@ -192,10 +192,13 @@ def _app_status_url(app_id: str, port: int) -> str:
     return f"{origin}{prefix}/api/display"
 
 
-def _fetch_json(url: str) -> dict:
+def _fetch_json(url: str, client: httpx.Client | None = None) -> dict:
     try:
-        with httpx.Client(timeout=2.0, follow_redirects=True) as client:
+        if client is not None:
             response = client.get(url)
+        else:
+            with httpx.Client(timeout=1.0, follow_redirects=True) as owned:
+                response = owned.get(url)
         if response.status_code >= 400:
             return {}
         data = response.json()
@@ -222,15 +225,37 @@ def watch_snapshot(cookies: dict[str, str] | None = None) -> dict:
 
 
 def collect_overview(cookies: dict[str, str] | None = None) -> dict:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     watch = watch_snapshot(cookies)
-    nc = _fetch_json(_app_status_url("newscast", 8001))
-    et = _fetch_json(_app_status_url("eventtrakr", 8003))
-    pinboard = _fetch_json(_app_status_url("pinboard", 8004))
-    fs = _fetch_json(_app_status_url("fileserve", 8002))
-    auth = _fetch_json(_app_status_url("auth", 8011))
-    studio = _fetch_json(_app_status_url("studio", 8005))
-    prices = _fetch_json(_app_status_url("pricescout", 8006))
-    sports = _fetch_json(_app_status_url("sportguide", 8007))
+    status_urls = {
+        "newscast": _app_status_url("newscast", 8001),
+        "eventtrakr": _app_status_url("eventtrakr", 8003),
+        "pinboard": _app_status_url("pinboard", 8004),
+        "fileserve": _app_status_url("fileserve", 8002),
+        "auth": _app_status_url("auth", 8011),
+        "studio": _app_status_url("studio", 8005),
+        "pricescout": _app_status_url("pricescout", 8006),
+        "sportguide": _app_status_url("sportguide", 8007),
+    }
+    fetched: dict[str, dict] = {}
+    with httpx.Client(timeout=1.0, follow_redirects=True) as client:
+        with ThreadPoolExecutor(max_workers=min(8, len(status_urls))) as pool:
+            futures = {
+                pool.submit(_fetch_json, url, client): key for key, url in status_urls.items()
+            }
+            for future in as_completed(futures):
+                key = futures[future]
+                fetched[key] = future.result() or {}
+
+    nc = fetched.get("newscast") or {}
+    et = fetched.get("eventtrakr") or {}
+    pinboard = fetched.get("pinboard") or {}
+    fs = fetched.get("fileserve") or {}
+    auth = fetched.get("auth") or {}
+    studio = fetched.get("studio") or {}
+    prices = fetched.get("pricescout") or {}
+    sports = fetched.get("sportguide") or {}
 
     nc_feeds = int(nc.get("feeds") or 0)
     et_next = str(et.get("next") or "None")

@@ -7,7 +7,7 @@
     <div class="hero-copy">
       <h1>Health</h1>
       <p class="lede">Host status, disk, backup, and whether each app is responding.</p>
-      <p class="muted hero-meta">{{ hostname }}.local · StonePi {{ platform_version }} · {{ user.display_name }}</p>
+      <p class="muted hero-meta">{{ hostname }}.local · StonePi {{ platform_version }}</p>
     </div>
     <a class="btn btn-ghost btn-with-icon" href="{{ cockpit_url }}">{{ svg('cockpit') }} Cockpit</a>
   </div>
@@ -101,7 +101,18 @@
     </div>
     <div class="remote-access-col">
       <span class="meta-label">MagicDNS</span>
-      <span class="meta-value remote-access-magicdns">{% if ts.access_url %}<a href="{{ ts.access_url }}">{{ ts.magicdns_name or ts.access_url }}</a>{% elif ts.magicdns_name %}<code>{{ ts.magicdns_name }}</code>{% elif ts.magicdns %}On{% else %}Off{% endif %}</span>
+      <span class="pill compact">
+        <span class="dot {% if ts.magicdns or ts.magicdns_name %}ok{% else %}bad{% endif %}"></span>
+        {% if ts.access_url %}
+        <a class="remote-access-magicdns" href="{{ ts.access_url }}">{{ ts.magicdns_name or ts.access_url }}</a>
+        {% elif ts.magicdns_name %}
+        <code>{{ ts.magicdns_name }}</code>
+        {% elif ts.magicdns %}
+        On
+        {% else %}
+        Off
+        {% endif %}
+      </span>
     </div>
   </div>
 </section>

@@ -1,17 +1,19 @@
 {% from "_icons.html" import icon %}
+<div class="device-panels">
 <ul class="stat-grid">
   <li class="card stat">
-    <p class="stat-label">Stories stored</p>
+    <p class="stat-label">{{ icon("stories") }} Stories stored</p>
     <p class="stat-value">{{ story_count }}</p>
   </li>
   <li class="card stat">
-    <p class="stat-label">Last push</p>
+    <p class="stat-label">{{ icon("upload") }} Last push</p>
     <p class="stat-value stat-value-sm">{{ delivery.last_push_label or 'None' }}</p>
   </li>
 </ul>
 
+<div class="device-pair device-panel-span">
 <div class="card stack">
-  <h2>Delivery</h2>
+  <h2 class="section-heading">{{ icon("delivery") }} Delivery</h2>
   <p class="lede delivery-trust">{{ delivery.trust }}</p>
   <ul class="stack health-list">
     <li>
@@ -42,7 +44,7 @@
 </div>
 
 <div class="card stack">
-  <h2>Health</h2>
+  <h2 class="section-heading">{{ icon("health") }} Health</h2>
   <ul class="stack health-list">
     <li>
       <p class="stat-label">Disk</p>
@@ -74,9 +76,10 @@
     </li>
   </ul>
 </div>
+</div>
 
-<div class="card stack links-card">
-  <h2>Your catalog URL</h2>
+<div class="card stack links-card device-panel-span">
+  <h2 class="section-heading">{{ icon("catalog") }} Your catalog URL</h2>
   {% if instance_name %}
   <p class="hint">This copy is labelled <strong>{{ instance_name }}</strong> on the briefing.</p>
   {% endif %}
@@ -127,8 +130,8 @@
   <p class="hint">Legacy shared path <code>/opds</code> still serves the admin catalog for older reader bookmarks.</p>
 </div>
 
-<div class="card stack">
-  <h2>Push to reader</h2>
+<div class="card stack device-panel-span">
+  <h2 class="section-heading">{{ icon("upload") }} Push to reader</h2>
   <p class="hint">
     {% if reader.checked %}
       {{ reader.host }} is <strong>{{ 'online' if reader.online else 'asleep' }}</strong>.
@@ -160,8 +163,8 @@
   {% endwith %}
 </div>
 
-<div class="card stack qr-card">
-  <h2>Open on this network</h2>
+<div class="card stack qr-card device-panel-span">
+  <h2 class="section-heading">{{ icon("qr") }} Open on this network</h2>
   <p class="hint">Scan to open NewsCast on your phone. Same Wi‑Fi as this machine.</p>
   <div class="qr-frame" aria-hidden="true">{{ qr_svg|safe }}</div>
   <a class="text-link url-break" href="{{ share_url }}">{{ share_url }}</a>
@@ -180,4 +183,5 @@
       <li>Tap <strong>Add to Home Screen</strong>.</li>
     </ol>
   </div>
+</div>
 </div>
