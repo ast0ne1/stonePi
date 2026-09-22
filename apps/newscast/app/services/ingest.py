@@ -52,6 +52,7 @@ class IngestState:
     last_error: str | None = None
     last_new_stories: int = 0
     last_message: str = "Idle"
+    last_feed_stats: list[dict] = []
 
 
 state = IngestState()
@@ -88,6 +89,7 @@ def _http_get(
     status_out: list[int] | None = None,
     db: Session | None = None,
     fetch_cache: dict[str, tuple[str, int]] | None = None,
+    force: bool = False,
 ) -> str:
     key = (url or "").strip()
     if fetch_cache is not None and key in fetch_cache:
@@ -104,6 +106,7 @@ def _http_get(
                 key,
                 accept=accept,
                 timeout=timeout,
+                force=force,
             )
             if fetch_cache is not None:
                 fetch_cache[key] = (body, code)
@@ -247,10 +250,13 @@ def _try_rss_url(
     *,
     db: Session | None = None,
     fetch_cache: dict[str, tuple[str, int]] | None = None,
+    force: bool = False,
 ) -> list[dict]:
     try:
         return _items_from_parsed(
-            feedparser.parse(_http_get(url, status_out=status_out, db=db, fetch_cache=fetch_cache)),
+            feedparser.parse(
+                _http_get(url, status_out=status_out, db=db, fetch_cache=fetch_cache, force=force)
+            ),
             feed,
         )
     except httpx.HTTPStatusError as exc:
@@ -268,12 +274,15 @@ def _collect_feed_items(
     *,
     db: Session | None = None,
     fetch_cache: dict[str, tuple[str, int]] | None = None,
+    force: bool = False,
 ) -> tuple[list[dict], int | None]:
     status_out: list[int] = []
     mode = (feed.type or "auto").lower()
     # RSS mode (or auto on a feed-shaped URL): fetch the URL as a feed.
     if mode == "rss" or (mode == "auto" and looks_like_feed_url(feed.url)):
-        direct = _try_rss_url(feed.url, feed, status_out, db=db, fetch_cache=fetch_cache)
+        direct = _try_rss_url(
+            feed.url, feed, status_out, db=db, fetch_cache=fetch_cache, force=force
+        )
         if direct:
             return direct, status_out[-1] if status_out else 200
         if mode == "rss":
@@ -281,13 +290,17 @@ def _collect_feed_items(
     # Auto still probes common feed paths before scraping the homepage.
     if mode == "auto":
         for guessed in guess_feed_urls(feed.url):
-            found = _try_rss_url(guessed, feed, status_out, db=db, fetch_cache=fetch_cache)
+            found = _try_rss_url(
+                guessed, feed, status_out, db=db, fetch_cache=fetch_cache, force=force
+            )
             if found:
                 return found, status_out[-1] if status_out else 200
     homepage_error = None
     body = ""
     try:
-        body = _http_get(feed.url, status_out=status_out, db=db, fetch_cache=fetch_cache)
+        body = _http_get(
+            feed.url, status_out=status_out, db=db, fetch_cache=fetch_cache, force=force
+        )
     except Exception as exc:  # noqa: BLE001
         homepage_error = exc
     else:
@@ -295,7 +308,9 @@ def _collect_feed_items(
         if mode == "auto":
             discovered = discover_rss(feed.url, body)
             if discovered and discovered.rstrip("/") != feed.url.rstrip("/"):
-                found = _try_rss_url(discovered, feed, status_out, db=db, fetch_cache=fetch_cache)
+                found = _try_rss_url(
+                    discovered, feed, status_out, db=db, fetch_cache=fetch_cache, force=force
+                )
                 if found:
                     return found, status_out[-1] if status_out else 200
         if mode in {"auto", "webpage"}:
@@ -446,29 +461,50 @@ def run_ingest(db: Session, force: bool = True, feed_id: int | None = None) -> d
             return {"ok": True, "created": 0, "message": state.last_message}
 
         candidates: list[dict] = []
+        feed_stats: list[dict] = []
         for feed in feeds:
             state.progress = feed.name
             uid = int(getattr(feed, "user_id", None) or 1)
             urls, hashes, titles = _lookup_for(uid)
+            stats = {
+                "feed_id": feed.id,
+                "name": feed.name,
+                "parsed": 0,
+                "new": 0,
+                "duplicates": 0,
+                "filtered": 0,
+                "undated": 0,
+                "status_code": None,
+                "error": None,
+                "reason": "",
+            }
             try:
                 try:
-                    collected = _collect_feed_items(feed, db=db, fetch_cache=fetch_cache)
+                    collected = _collect_feed_items(
+                        feed, db=db, fetch_cache=fetch_cache, force=force
+                    )
                 except TypeError:
                     collected = _collect_feed_items(feed)
                 items, status_code = _unpack_collect(collected)
                 feed.last_fetched_at = utcnow()
                 feed.last_error = None
+                stats["parsed"] = len(items)
+                stats["status_code"] = status_code or 200
                 record_fetch(feed, status_code=status_code or 200, item_count=len(items))
                 extracts = 0
                 summarize_feed = bool(getattr(feed, "summarize", True))
                 translate_feed = bool(getattr(feed, "translate", False))
                 include, exclude = feed_keyword_lists(feed, global_include, global_exclude)
+                before = len(candidates)
                 for item in items:
+                    if not item.get("published_at"):
+                        stats["undated"] += 1
                     item["excerpt"] = _plain_text(item.get("excerpt") or "")
                     item["summarize"] = summarize_feed
                     item["user_id"] = uid
                     digest = content_hash(item["title"], item["excerpt"])
                     if _is_known(item["title"], item["published_at"], item["url"], digest, urls, hashes, titles):
+                        stats["duplicates"] += 1
                         continue
                     should_extract = (not summarize_feed) or (
                         extracts < MAX_EXTRACTS_PER_FEED and len(item["excerpt"]) < MIN_EXCERPT_CHARS
@@ -497,6 +533,7 @@ def run_ingest(db: Session, force: bool = True, feed_id: int | None = None) -> d
                     item["content_hash"] = content_hash(item["title"], item["excerpt"])
                     item["cluster_key"] = cluster_key(item["title"])
                     if not story_passes_filters(item["title"], item.get("excerpt") or "", "", include, exclude):
+                        stats["filtered"] += 1
                         continue
                     if _is_known(
                         item["title"],
@@ -507,22 +544,38 @@ def run_ingest(db: Session, force: bool = True, feed_id: int | None = None) -> d
                         hashes,
                         titles,
                     ):
+                        stats["duplicates"] += 1
                         continue
                     candidates.append(item)
                     urls.add(item["url"])
                     hashes.add(item["content_hash"])
                     titles.append((item["title"], item["published_at"]))
+                stats["new"] = len(candidates) - before
+                if stats["parsed"] == 0:
+                    stats["reason"] = "no items in feed"
+                elif stats["new"] == 0 and stats["duplicates"] == stats["parsed"]:
+                    stats["reason"] = "already in library"
+                elif stats["new"] == 0 and stats["filtered"]:
+                    stats["reason"] = "filtered by keywords"
+                elif stats["new"] == 0:
+                    stats["reason"] = "no new stories"
             except httpx.HTTPStatusError as exc:
                 feed.last_error = str(exc)[:500]
+                stats["error"] = feed.last_error
+                stats["status_code"] = exc.response.status_code
+                stats["reason"] = f"HTTP {exc.response.status_code}"
                 record_fetch(feed, status_code=exc.response.status_code, item_count=0)
                 logger.warning("feed %s failed: %s", feed.name, exc)
             except Exception as exc:  # noqa: BLE001
                 feed.last_error = str(exc)[:500]
+                stats["error"] = feed.last_error
+                stats["reason"] = "fetch error"
                 status = getattr(feed, "last_status_code", None)
                 if isinstance(exc, RuntimeError):
                     status = status or 200
                 record_fetch(feed, status_code=status, item_count=0)
                 logger.warning("feed %s failed: %s", feed.name, exc)
+            feed_stats.append(stats)
             db.add(feed)
 
         clusters: dict[str, dict] = {}
@@ -594,10 +647,51 @@ def run_ingest(db: Session, force: bool = True, feed_id: int | None = None) -> d
             translated = _backfill_translations(db)
         _purge_old_stories(db)
         db.commit()
-        if feed_id is not None:
+        # Reconcile "new" count after clustering (candidates may collapse).
+        created_by_source: dict[str, int] = {}
+        for item in clusters.values():
+            name = item.get("source") or ""
+            created_by_source[name] = created_by_source.get(name, 0) + 1
+        feeds_by_id = {feed.id: feed for feed in feeds}
+        for stats in feed_stats:
+            stats["new"] = created_by_source.get(stats["name"], 0)
+            if stats["parsed"] and stats["new"] == 0 and not stats["reason"]:
+                if stats["duplicates"]:
+                    stats["reason"] = "already in library"
+                elif stats["filtered"]:
+                    stats["reason"] = "filtered by keywords"
+                else:
+                    stats["reason"] = "no new stories"
+            feed_row = feeds_by_id.get(stats.get("feed_id"))
+            if feed_row is not None:
+                feed_row.last_new_count = int(stats.get("new") or 0)
+                note = stats.get("error") or stats.get("reason") or ""
+                if stats.get("new"):
+                    note = f"{stats['new']} new"
+                elif note and stats.get("undated") and "undated" not in note:
+                    note = f"{note}; {stats['undated']} undated (All only)"
+                feed_row.last_ingest_note = (note or None) and str(note)[:240]
+        db.commit()
+        if feed_id is not None and feed_stats:
+            row = feed_stats[0]
             message = f"Updated {feeds[0].name}. Added {created} new stor{'y' if created == 1 else 'ies'}."
+            if created == 0 and row.get("reason"):
+                message += f" ({row['reason']}"
+                if row.get("parsed"):
+                    message += f"; parsed {row['parsed']}"
+                if row.get("duplicates"):
+                    message += f", {row['duplicates']} already known"
+                if row.get("undated"):
+                    message += f", {row['undated']} undated (All only)"
+                message += ")."
+            elif row.get("parsed"):
+                message += f" Parsed {row['parsed']} item{'s' if row['parsed'] != 1 else ''}."
         else:
             message = f"Added {created} new stor{'y' if created == 1 else 'ies'}."
+            if created == 0 and feed_stats:
+                reasons = [s["reason"] for s in feed_stats if s.get("reason")]
+                if reasons:
+                    message += f" ({reasons[0]}.)"
         if translated:
             from app.services.translate import target_language_name, translate_target_lang
 
@@ -613,7 +707,19 @@ def run_ingest(db: Session, force: bool = True, feed_id: int | None = None) -> d
         state.last_new_stories = created
         state.last_message = message
         state.last_error = None
-        return {"ok": True, "created": created, "message": message, "llm_ready": llm.ready}
+        state.last_feed_stats = feed_stats
+        # After ingest, refill an empty scheduled paper once stories exist.
+        try:
+            briefing.maybe_publish_daily_briefing(db)
+        except Exception:  # noqa: BLE001
+            logger.exception("post-ingest paper publish failed")
+        return {
+            "ok": True,
+            "created": created,
+            "message": message,
+            "llm_ready": llm.ready,
+            "feed_stats": feed_stats,
+        }
     except Exception as exc:  # noqa: BLE001
         db.rollback()
         state.last_error = str(exc)
@@ -662,4 +768,56 @@ def snapshot() -> dict:
         "last_error": state.last_error,
         "last_new_stories": state.last_new_stories,
         "last_message": state.last_message,
+        "last_feed_stats": list(state.last_feed_stats or []),
+    }
+
+
+def feed_debug(db: Session, feed_id: int) -> dict:
+    """Admin diagnostics: last recorded fetch + a live parse without writing stories."""
+    feed = db.get(Feed, feed_id)
+    if feed is None:
+        return {"ok": False, "error": "Feed not found"}
+    status_out: list[int] = []
+    try:
+        collected = _collect_feed_items(feed, db=db, fetch_cache={}, force=True)
+        items, status_code = _unpack_collect(collected)
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "ok": False,
+            "feed_id": feed.id,
+            "name": feed.name,
+            "error": str(exc)[:240],
+            "last_status_code": feed.last_status_code,
+            "last_item_count": feed.last_item_count,
+            "last_error": feed.last_error,
+        }
+    sample = []
+    for item in items[:8]:
+        sample.append(
+            {
+                "title": (item.get("title") or "")[:120],
+                "url": item.get("url"),
+                "published_at": item["published_at"].isoformat() if item.get("published_at") else None,
+                "excerpt_chars": len(item.get("excerpt") or ""),
+            }
+        )
+    return {
+        "ok": True,
+        "feed_id": feed.id,
+        "name": feed.name,
+        "type": feed.type,
+        "url": feed.url,
+        "summarize": bool(getattr(feed, "summarize", True)),
+        "status_code": status_code or (status_out[0] if status_out else None),
+        "parsed": len(items),
+        "undated": sum(1 for item in items if not item.get("published_at")),
+        "sample": sample,
+        "last_status_code": feed.last_status_code,
+        "last_item_count": feed.last_item_count,
+        "last_fetched_at": feed.last_fetched_at.isoformat() if feed.last_fetched_at else None,
+        "last_error": feed.last_error,
+        "last_ingest_stats": next(
+            (row for row in (state.last_feed_stats or []) if row.get("feed_id") == feed.id),
+            None,
+        ),
     }

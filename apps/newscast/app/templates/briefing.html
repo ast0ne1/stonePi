@@ -1,24 +1,25 @@
 {% extends "base.html" %}
 {% from "_filter_icon.html" import filter_chip, filter_icon %}
+{% from "_icons.html" import icon %}
 {% block title %}Briefing · NewsCast{% endblock %}
 {% block content %}
 <section class="hero">
   <h1>Briefing</h1>
   <p class="lede">
     {% if ingest.last_finished_at %}
-      Last refresh {{ ingest.last_finished_at.replace('T', ' ')[:16] }} UTC.
+      Last refresh {{ ingest.last_finished_at.replace('T', ' ')[:16] }} UTC{% if ingest.last_message %} — {{ ingest.last_message }}{% endif %}.
     {% else %}
       Stories appear here after the first refresh.
     {% endif %}
-    Stories drop off after {{ retention_days }} days unless you favourite them. Bookmark a story to keep the full text on the Saved tab.
+    Today and Yesterday are publish date (Pi local time). Everything else in retention is under All. Undated stories only appear on All.
   </p>
 </section>
 
 <div data-filter-root data-briefing-list>
   <div class="chips">
-    <a class="chip-btn{% if briefing_day == 'today' %} is-active{% endif %}" href="/">{{ filter_icon("today") }}<span>Today</span></a>
-    <a class="chip-btn{% if briefing_day == 'yesterday' %} is-active{% endif %}" href="/?day=yesterday">{{ filter_icon("yesterday") }}<span>Yesterday</span></a>
-    <a class="chip-btn{% if briefing_day == 'all' %} is-active{% endif %}" href="/?day=all">{{ filter_icon("all-days") }}<span>All</span></a>
+    <a class="chip-btn{% if briefing_day == 'today' %} is-active{% endif %}" href="/" title="Published today (local time)">{{ filter_icon("today") }}<span>Today</span></a>
+    <a class="chip-btn{% if briefing_day == 'yesterday' %} is-active{% endif %}" href="/?day=yesterday" title="Published yesterday (local time)">{{ filter_icon("yesterday") }}<span>Yesterday</span></a>
+    <a class="chip-btn{% if briefing_day == 'all' %} is-active{% endif %}" href="/?day=all" title="Full retention window">{{ filter_icon("all-days") }}<span>All</span></a>
   </div>
   {% if stories %}
   <div class="chips" data-chip-group>
@@ -31,6 +32,20 @@
     {% endfor %}
   </div>
   {% endif %}
+  <div class="btn-row" style="margin: 0 0 12px">
+    <form method="post" action="/reader/publish" data-busy-label="Generating…">
+      <input type="hidden" name="next" value="{{ '/' if briefing_day == 'today' else ('/?day=' ~ briefing_day) }}" />
+      <button
+        class="btn btn-secondary btn-with-icon"
+        type="submit"
+        {% if paper and paper.published and not paper.empty %}
+        data-confirm="Generate a new paper?"
+        data-confirm-detail="Replaces today’s frozen paper with the current Briefing ({{ stories|length }} stor{{ 'y' if stories|length == 1 else 'ies' }} on this day filter)."
+        data-confirm-ok="Generate"
+        {% endif %}
+      >{{ icon("publish") }} <span class="btn-label-full">Generate today’s paper</span><span class="btn-label-short">Generate</span></button>
+    </form>
+  </div>
   {% if stories %}
     <ol class="story-list">
       {% for story in stories %}

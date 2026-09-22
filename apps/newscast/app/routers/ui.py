@@ -290,6 +290,7 @@ def _base_context(request: Request, db: Session, active: str) -> dict:
         "paywall_skip_enabled": article_links.paywall_skip_enabled(db),
         "stonepi_prefix": (env.stonepi_prefix or "").rstrip("/"),
         "stonepi_home_url": portal_home_url(request, env.stonepi_public_origin),
+        "platform_managed": platform_managed_settings(),
     }
 
 
@@ -501,6 +502,7 @@ def briefing_page(request: Request, db: Annotated[Session, Depends(get_db)], day
             "category_labels": category_labels(db),
             "retention_days": env.story_retention_days,
             "briefing_day": briefing_day,
+            "paper": paper_status(db, user_id=uid),
         },
         db=db,
     )
@@ -802,6 +804,7 @@ def activity_status(request: Request, db: Annotated[Session, Depends(get_db)]):
                 "progress": ingest.get("progress") or "",
                 "last_message": ingest.get("last_message") or "",
                 "last_error": ingest.get("last_error") or "",
+                "last_new_stories": int(ingest.get("last_new_stories") or 0),
             },
             "reader": {
                 "pending": int(reader.get("pending") or 0),
@@ -889,6 +892,10 @@ def _settings_page_context(request: Request, db: Session, tab: str = "device") -
         "briefing_category_opds_keys": settings.briefing_category_opds_keys(db),
         "briefing_category_shares": settings.briefing_category_shares(db),
         "briefing_publish_at": briefing_publish_at(db),
+        "publication_include_saved": user_settings_service.flag_enabled(db, uid, "publication_include_saved"),
+        "epub_omit_article_links": settings.epub_omit_article_links(db),
+        "epub_chapters_by_source": settings.epub_chapters_by_source(db),
+        "epub_x3_screen": settings.epub_x3_screen(db),
         "github_repo": update.repo_from_db(db),
         "update_check": update.last_check(db),
         "categories": list_categories(db),
@@ -963,15 +970,29 @@ def upload_library_file(
     request: Request,
     db: Annotated[Session, Depends(get_db)],
     title: Annotated[str, Form()] = "",
+    queue_for_reader: Annotated[str, Form()] = "",
     file: UploadFile = File(...),
 ):
     data = file.file.read(library.MAX_UPLOAD_BYTES + 1)
+    queue = str(queue_for_reader or "").strip().lower() in {"1", "on", "true", "yes"}
     try:
-        library.add_library_file(db, file.filename or "document", data, title, user_id=_current_user_id(request))
+        library.add_library_file(
+            db,
+            file.filename or "document",
+            data,
+            title,
+            user_id=_current_user_id(request),
+            queue_for_reader=queue,
+        )
     except ValueError as exc:
         return _form_error(request, str(exc), "/library")
     if _wants_json(request):
-        return JSONResponse({"ok": True, "message": "Queued for the next reader sync. Not summarised."})
+        message = (
+            "Added to Library and queued for the reader."
+            if queue
+            else "Added to Library (OPDS). Not queued for the reader."
+        )
+        return JSONResponse({"ok": True, "message": message})
     return RedirectResponse("/device?tab=send", status_code=303)
 
 
@@ -985,7 +1006,7 @@ def push_library_file(file_id: int, request: Request, db: Annotated[Session, Dep
     except FileNotFoundError as exc:
         return _form_error(request, str(exc), "/library")
     if _wants_json(request):
-        return JSONResponse({"ok": True, "message": "Queued for the next reader sync."})
+        return JSONResponse({"ok": True, "message": "Queued for the reader."})
     return RedirectResponse("/device?tab=send", status_code=303)
 
 
@@ -1006,10 +1027,22 @@ def poll_reader(request: Request, db: Annotated[Session, Depends(get_db)], next:
 def push_reader_now(request: Request, db: Annotated[Session, Depends(get_db)], next: Annotated[str, Form()] = "/status"):
     nxt = _reader_redirect_next(db, request, next, default="/library")
     uid = _current_user_id(request)
-    reader_push.enqueue_briefing_and_library(db, user_id=uid)
+    # Flush only what is already queued — do not sneak in today's paper or re-queue every library file.
+    pending_before = len(reader_push.pending_crosspoint(db, user_id=uid))
     result = reader_push.flush_pending(db, user_id=uid)
     if result.get("online"):
         message = f"Pushed {result.get('uploaded', 0)} file{'s' if result.get('uploaded') != 1 else ''} to the reader."
+        if pending_before == 0 and result.get("uploaded", 0) == 0:
+            message = "Nothing waiting to push. Queue a file or publish today's paper first."
+        failed = (
+            db.query(SyncTask)
+            .filter(SyncTask.user_id == uid)
+            .filter(SyncTask.status == "failed")
+            .order_by(SyncTask.completed_at.desc())
+            .first()
+        )
+        if result.get("uploaded", 0) == 0 and failed and failed.error_message:
+            message = f"Couldn’t send: {failed.error_message}"
     else:
         message = "Reader is asleep. Files are queued until it is on Wi-Fi."
     if _wants_json(request):
@@ -1018,13 +1051,25 @@ def push_reader_now(request: Request, db: Annotated[Session, Depends(get_db)], n
 
 
 @router.post("/reader/queue")
-def queue_reader_later(request: Request, db: Annotated[Session, Depends(get_db)], next: Annotated[str, Form()] = "/status"):
+def queue_reader_later(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    next: Annotated[str, Form()] = "/status",
+    include_paper: Annotated[str, Form()] = "",
+):
     nxt = _reader_redirect_next(db, request, next, default="/library")
     uid = _current_user_id(request)
-    tasks = reader_push.enqueue_briefing_and_library(db, user_id=uid)
+    want_paper = str(include_paper or "").strip().lower() in {"1", "on", "true", "yes"}
+    # Send tab: library files only. Status can opt in to today's paper via include_paper.
+    tasks = reader_push.enqueue_briefing_and_library(
+        db,
+        user_id=uid,
+        include_briefing=want_paper,
+        include_library=True,
+    )
     message = f"Queued {len(tasks)} file{'s' if len(tasks) != 1 else ''} for when the reader is on Wi-Fi."
-    if not paper_status(db, user_id=uid)["published"]:
-        message += " Today's paper is not published yet."
+    if want_paper and not paper_status(db, user_id=uid)["published"]:
+        message += " Today's paper is not published yet — library files were still queued."
     if _wants_json(request):
         return JSONResponse(
             {"ok": True, "message": message, "pending": len(reader_push.pending_crosspoint(db, user_id=uid))}
@@ -1051,12 +1096,21 @@ def cancel_reader_queue(
 def publish_reader_paper(request: Request, db: Annotated[Session, Depends(get_db)], next: Annotated[str, Form()] = "/status"):
     nxt = _reader_redirect_next(db, request, next, default="/library")
     uid = _current_user_id(request)
+    from app.services.briefing import current_stories
+
     publish_daily_briefing(db, overwrite=True, user_id=uid)
-    if reader_config.reader_push_enabled(db, uid):
-        reader_push.enqueue_frozen_briefing(db, user_id=uid)
-    message = "Published today's paper."
+    story_count = len(list(current_stories(db, day="today", user_id=uid)))
+    queued = None
+    if story_count and reader_config.reader_push_enabled(db, uid):
+        queued = reader_push.enqueue_frozen_briefing(db, user_id=uid)
+    if story_count == 0:
+        message = "Generated an empty paper — no stories in today’s briefing yet. Nothing was queued for the reader."
+    elif queued is not None:
+        message = f"Generated today’s paper ({story_count} stories) and queued it for the reader."
+    else:
+        message = f"Generated today’s paper ({story_count} stories)."
     if _wants_json(request):
-        return JSONResponse({"ok": True, "message": message})
+        return JSONResponse({"ok": True, "message": message, "stories": story_count})
     return RedirectResponse(nxt, status_code=303)
 
 
@@ -1345,6 +1399,10 @@ async def save_settings(
     briefing_min_importance: Annotated[str, Form()] = "",
     briefing_category_mix: Annotated[str, Form()] = "",
     briefing_publish_at: Annotated[str, Form()] = "",
+    publication_include_saved: Annotated[str, Form()] = "",
+    epub_omit_article_links: Annotated[str, Form()] = "",
+    epub_chapters_by_source: Annotated[str, Form()] = "",
+    epub_x3_screen: Annotated[str, Form()] = "",
     github_repo: Annotated[str, Form()] = "",
     keyword_include: Annotated[str, Form()] = "",
     keyword_exclude: Annotated[str, Form()] = "",
@@ -1653,6 +1711,27 @@ async def save_settings(
             if form.get(f"category_opds_{category.key}"):
                 opds_keys.add(category.key)
         settings.set_value(db, "briefing_category_opds_keys", settings.encode_category_opds_keys(opds_keys))
+        user_settings_service.set_value(
+            db,
+            uid,
+            "publication_include_saved",
+            "1" if str(publication_include_saved or "").strip() else "0",
+        )
+        settings.set_value(
+            db,
+            "epub_omit_article_links",
+            "1" if str(epub_omit_article_links or "").strip() else "0",
+        )
+        settings.set_value(
+            db,
+            "epub_chapters_by_source",
+            "1" if str(epub_chapters_by_source or "").strip() else "0",
+        )
+        settings.set_value(
+            db,
+            "epub_x3_screen",
+            "1" if str(epub_x3_screen or "").strip() else "0",
+        )
     if is_admin and briefing_publish_at.strip():
         settings.set_value(db, "briefing_publish_at", normalize_publish_at(briefing_publish_at))
     if is_admin and not platform_managed_settings():

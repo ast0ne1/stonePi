@@ -115,9 +115,18 @@ def complete_task(
 def _resolve_push_file(filename: str) -> Path | None:
     safe = Path(filename).name
     for folder in (LIBRARY_DIR, BRIEFING_DIR):
-        path = folder / safe
-        if path.exists():
-            return path
+        direct = folder / safe
+        if direct.exists():
+            return direct
+        if not folder.exists():
+            continue
+        # Per-user trees: library/{uid}/file.epub, briefings/{uid}/news-….epub
+        for child in folder.iterdir():
+            if not child.is_dir():
+                continue
+            nested = child / safe
+            if nested.exists():
+                return nested
     return None
 
 

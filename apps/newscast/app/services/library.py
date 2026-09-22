@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from posixpath import join as posix_join
 
 from sqlalchemy.orm import Session
 
 from app.config import LIBRARY_DIR
-from app.models import LibraryFile, utcnow
+from app.models import LibraryFile, SyncTask, utcnow
 from app.services.briefing import enqueue_sync_file
 
 LIBRARY_DIR.mkdir(parents=True, exist_ok=True)
@@ -76,7 +77,10 @@ def add_library_file(
     data: bytes,
     title: str = "",
     user_id: int | None = None,
+    *,
+    queue_for_reader: bool = False,
 ) -> LibraryFile:
+    """Store an EPUB/PDF for OPDS Library. Optionally queue a CrossPoint/Kobo push."""
     uid = int(user_id or 1)
     suffix = validate_upload(filename, data)
     basename = f"{utcnow().strftime('%Y%m%d-%H%M%S')}-{_safe_stem(filename)}{suffix}"
@@ -95,15 +99,29 @@ def add_library_file(
     db.add(item)
     db.commit()
     db.refresh(item)
-    enqueue_sync_file(db, path, item.original_name, user_id=uid)
+    if queue_for_reader:
+        enqueue_library_file(db, item)
     return item
 
 
-def enqueue_library_file(db: Session, item: LibraryFile):
+def enqueue_library_file(db: Session, item: LibraryFile) -> SyncTask:
+    """Queue a library file for the user's reader (CrossPoint HTTP or Kobo SFTP)."""
+    from app.services import reader_push
+
     path = library_path(item)
     if not path.exists():
         raise FileNotFoundError("File is missing from the library folder.")
-    return enqueue_sync_file(db, path, item.original_name, user_id=item.user_id)
+    uid = int(item.user_id or 1)
+    name = item.original_name or path.name
+    dest = reader_push.reader_upload_dir(db, user_id=uid)
+    return enqueue_sync_file(
+        db,
+        path,
+        name,
+        kind="crosspoint",
+        save_path=posix_join(dest, name),
+        user_id=uid,
+    )
 
 
 def delete_library_file(db: Session, item: LibraryFile) -> None:

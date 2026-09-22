@@ -89,7 +89,8 @@ def test_today_vs_yesterday_selection(monkeypatch):
     today = current_stories(db, day="today")
     yesterday = current_stories(db, day="yesterday")
     all_days = current_stories(db, day="all")
-    assert [story.title for story in today] == ["Saved long-read", "Today story"]
+    # Saved long-reads follow publish date — last week's saved is All only, not Today.
+    assert [story.title for story in today] == ["Today story"]
     assert [story.title for story in yesterday] == ["Yesterday story"]
     assert {story.title for story in all_days} >= {
         "Today story",
@@ -149,3 +150,78 @@ def test_undated_stories_only_appear_on_all(monkeypatch):
     assert [story.title for story in current_stories(db, day="today")] == []
     assert [story.title for story in current_stories(db, day="yesterday")] == []
     assert [story.title for story in current_stories(db, day="all")] == ["No publish date"]
+
+
+def test_saved_long_read_follows_publish_day(monkeypatch):
+    now = datetime(2026, 9, 13, 15, tzinfo=timezone.utc)
+    monkeypatch.setattr("app.services.briefing.utcnow", lambda: now)
+    monkeypatch.setattr("app.services.briefing._local_today", lambda now=None: date(2026, 9, 13))
+    monkeypatch.setattr("app.services.briefing._local_tz", lambda: timezone.utc)
+    monkeypatch.setattr("app.services.briefing.env.story_retention_days", 7)
+    db = _session()
+    db.add(
+        Story(
+            title="Saved yesterday",
+            summary="Long read",
+            source_name="Saved",
+            canonical_url="https://example.com/saved-y",
+            content_hash="sy",
+            cluster_key="sy",
+            saved=True,
+            published_at=now - timedelta(days=1),
+            created_at=now - timedelta(days=1),
+            importance=3,
+        )
+    )
+    db.commit()
+    assert [story.title for story in current_stories(db, day="today")] == []
+    assert [story.title for story in current_stories(db, day="yesterday")] == ["Saved yesterday"]
+
+
+def test_publication_include_saved_only_affects_payload(monkeypatch):
+    from app.services import user_settings
+    from app.services.briefing import current_briefing_payload
+
+    now = datetime(2026, 9, 13, 15, tzinfo=timezone.utc)
+    monkeypatch.setattr("app.services.briefing.utcnow", lambda: now)
+    monkeypatch.setattr("app.services.briefing._local_today", lambda now=None: date(2026, 9, 13))
+    monkeypatch.setattr("app.services.briefing._local_tz", lambda: timezone.utc)
+    monkeypatch.setattr("app.services.briefing.env.story_retention_days", 7)
+    db = _session()
+    db.add_all(
+        [
+            Story(
+                user_id=1,
+                title="Today story",
+                summary="Today",
+                source_name="BBC",
+                canonical_url="https://example.com/today-p",
+                content_hash="tp",
+                cluster_key="tp",
+                published_at=now,
+                created_at=now,
+                importance=3,
+            ),
+            Story(
+                user_id=1,
+                title="Old saved",
+                summary="Keep",
+                source_name="Saved",
+                canonical_url="https://example.com/old-saved",
+                content_hash="os",
+                cluster_key="os",
+                saved=True,
+                published_at=now - timedelta(days=4),
+                created_at=now - timedelta(days=4),
+                importance=3,
+            ),
+        ]
+    )
+    db.commit()
+    off = current_briefing_payload(db, day="today", user_id=1)
+    assert {s["title"] for s in off["stories"]} == {"Today story"}
+    user_settings.set_value(db, 1, "publication_include_saved", "1")
+    on = current_briefing_payload(db, day="today", user_id=1)
+    assert {s["title"] for s in on["stories"]} == {"Today story", "Old saved"}
+    # Live chip stays publish-day only.
+    assert [story.title for story in current_stories(db, day="today", user_id=1)] == ["Today story"]

@@ -49,6 +49,7 @@ USER_SETTING_KEYS = (
     "ntfy_last_push_notified_day",
     "x3_sync_token",
     "ui_lang",
+    "display_name",
 )
 
 OWNED_TABLES = ("feeds", "stories", "library_files", "sync_tasks")
@@ -121,8 +122,11 @@ def create_user(
 
 
 def get_or_create_from_platform(db: Session, platform) -> User:
+    from app.services import user_settings as user_settings_service
+
     auth_id = str(getattr(platform, "user_id", "") or "")
     username = (getattr(platform, "username", "") or "").strip()
+    display_name = (getattr(platform, "display_name", "") or "").strip()
     if not auth_id or not username:
         raise ValueError("Platform user is missing an id or username.")
     existing = db.query(User).filter(User.auth_user_id == auth_id).one_or_none()
@@ -141,8 +145,30 @@ def get_or_create_from_platform(db: Session, platform) -> User:
             user.can_use_ntfy = bool(perms.get("can_use_ntfy"))
             user.can_view_status = bool(perms.get("can_view_status"))
 
+    def store_display_name(user: User) -> None:
+        if not display_name:
+            return
+        user_settings_service.set_value(db, int(user.id), "display_name", display_name)
+        # Keep the CrossPoint / Kobo folder aligned with the human label.
+        from app.services import reader_config
+
+        device = reader_config.reader_device(db, int(user.id))
+        stored = user_settings_service.get_value(db, int(user.id), "reader_upload_path").strip()
+        if stored or device:
+            folder = reader_config.namespaced_upload_path(
+                stored or reader_config.default_upload_folder(device),
+                reader_config.reader_folder_label(db, user, display_name=display_name),
+                device,
+            )
+            user_settings_service.set_value(db, int(user.id), "reader_upload_path", folder)
+            if user.role == "admin":
+                from app.services import settings as settings_service
+
+                settings_service.set_value(db, "reader_upload_path", folder)
+
     if existing is not None:
         apply_platform_flags(existing)
+        store_display_name(existing)
         db.commit()
         return existing
     by_name = db.query(User).filter(User.username == username).one_or_none()
@@ -150,6 +176,7 @@ def get_or_create_from_platform(db: Session, platform) -> User:
         if not by_name.auth_user_id:
             by_name.auth_user_id = auth_id
             apply_platform_flags(by_name)
+            store_display_name(by_name)
             db.commit()
             return by_name
         username = f"{username}-{auth_id[:8]}"
@@ -166,6 +193,8 @@ def get_or_create_from_platform(db: Session, platform) -> User:
     db.add(user)
     db.commit()
     db.refresh(user)
+    store_display_name(user)
+    db.commit()
     return user
 
 
@@ -403,6 +432,7 @@ def _rebuild_feeds_table(conn) -> None:
                 summarize BOOLEAN,
                 translate BOOLEAN,
                 translate_provider VARCHAR(20),
+                paywall_skip BOOLEAN,
                 created_at DATETIME,
                 last_fetched_at DATETIME,
                 last_error TEXT,
@@ -412,6 +442,8 @@ def _rebuild_feeds_table(conn) -> None:
                 keyword_exclude TEXT,
                 last_status_code INTEGER,
                 last_item_count INTEGER,
+                last_new_count INTEGER,
+                last_ingest_note VARCHAR(240),
                 empty_since DATETIME,
                 CONSTRAINT uq_feeds_user_url UNIQUE (user_id, url),
                 CONSTRAINT uq_feeds_user_catalog UNIQUE (user_id, catalog_id)
@@ -434,6 +466,7 @@ def _rebuild_feeds_table(conn) -> None:
         "summarize" if "summarize" in cols else "1",
         "translate" if "translate" in cols else "0",
         "translate_provider" if "translate_provider" in cols else "'global'",
+        "paywall_skip" if "paywall_skip" in cols else "0",
         "created_at" if "created_at" in cols else "CURRENT_TIMESTAMP",
         "last_fetched_at" if "last_fetched_at" in cols else "NULL",
         "last_error" if "last_error" in cols else "NULL",
@@ -443,6 +476,8 @@ def _rebuild_feeds_table(conn) -> None:
         "keyword_exclude" if "keyword_exclude" in cols else "''",
         "last_status_code" if "last_status_code" in cols else "NULL",
         "last_item_count" if "last_item_count" in cols else "NULL",
+        "last_new_count" if "last_new_count" in cols else "NULL",
+        "last_ingest_note" if "last_ingest_note" in cols else "NULL",
         "empty_since" if "empty_since" in cols else "NULL",
     ]
     conn.execute(text(f"INSERT INTO feeds_new SELECT {', '.join(select_cols)} FROM feeds"))

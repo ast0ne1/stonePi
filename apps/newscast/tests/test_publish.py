@@ -93,6 +93,39 @@ def test_maybe_publish_waits_until_publish_at(tmp_path: Path, monkeypatch):
     assert maybe_publish_daily_briefing(db, now=datetime(2026, 9, 14, 8, 0)) is None
 
 
+def test_maybe_publish_skips_empty_briefing(tmp_path: Path, monkeypatch):
+    _freeze_briefing_clock(monkeypatch, tmp_path)
+    db = _session()
+    settings.set_value(db, "briefing_publish_at", "06:30")
+    assert maybe_publish_daily_briefing(db, now=datetime(2026, 9, 14, 7, 0)) is None
+    assert not (tmp_path / "1" / "news-2026-09-14.epub").exists()
+
+
+def test_maybe_publish_refills_empty_shell(tmp_path: Path, monkeypatch):
+    from app.services.briefing import frozen_paper_is_empty
+
+    _freeze_briefing_clock(monkeypatch, tmp_path)
+    db = _session()
+    settings.set_value(db, "briefing_publish_at", "06:30")
+    root = tmp_path / "1"
+    root.mkdir(parents=True, exist_ok=True)
+    # Pre-existing empty shell from early publish.
+    (root / "news-2026-09-14.txt").write_text(
+        "NewsCast briefing\n2026-09-14T04:30:00Z\n\nNo stories yet\n\nNo stories yet. Refresh from the NewsCast UI.\n",
+        encoding="utf-8",
+    )
+    (root / "news-2026-09-14.epub").write_bytes(b"PK\x03\x04empty-shell")
+    assert frozen_paper_is_empty(user_id=1, day=date(2026, 9, 14))
+    _seed_story(db)
+    path = maybe_publish_daily_briefing(db, now=datetime(2026, 9, 14, 8, 0))
+    assert path is not None
+    assert path.exists()
+    assert not frozen_paper_is_empty(user_id=1, day=date(2026, 9, 14))
+    txt = (tmp_path / "1" / "news-2026-09-14.txt").read_text(encoding="utf-8")
+    assert "Morning headline" in txt
+    assert "No stories yet" not in txt
+
+
 def test_prune_keeps_seven_dated_files(tmp_path: Path, monkeypatch):
     monkeypatch.setattr("app.services.briefing.BRIEFING_DIR", tmp_path)
     root = tmp_path / "1"
@@ -192,9 +225,22 @@ def test_paper_status_message(tmp_path: Path, monkeypatch):
     status = paper_status(db, now=now)
     assert status["published"] is False
     assert "not ready" in status["message"]
-    paper = tmp_path / "1" / "news-2026-09-14.epub"
-    paper.parent.mkdir(parents=True, exist_ok=True)
-    paper.write_bytes(b"x")
+    root = tmp_path / "1"
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "news-2026-09-14.epub").write_bytes(b"x")
+    (root / "news-2026-09-14.txt").write_text(
+        "NewsCast briefing\n2026-09-14T04:30:00Z\n\nNo stories yet\n",
+        encoding="utf-8",
+    )
     status = paper_status(db, now=now)
     assert status["published"] is True
-    assert "published at 06:30" in status["message"]
+    assert status["empty"] is True
+    assert "empty" in status["message"]
+    (root / "news-2026-09-14.txt").write_text(
+        "NewsCast briefing\n2026-09-14T07:00:00Z\n\n1. Morning headline\nA short summary.\n",
+        encoding="utf-8",
+    )
+    (root / "news-2026-09-14.epub").write_bytes(b"x" * 25_000)
+    status = paper_status(db, now=now)
+    assert status["empty"] is False
+    assert "ready" in status["message"]

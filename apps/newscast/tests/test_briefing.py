@@ -176,3 +176,79 @@ def test_group_stories_by_source_keeps_first_seen_order():
     )
     assert [name for name, _items in grouped] == ["BBC", "Reuters"]
     assert [story["title"] for story in grouped[0][1]] == ["A", "C"]
+
+
+def test_write_epub_x3_layout_omits_links_and_chapters_by_source(tmp_path: Path):
+    from app.services.briefing import EpubLayout, write_epub
+    from PIL import Image
+    import io
+
+    dest = tmp_path / "x3.epub"
+    payload = {
+        "title": "NewsCast briefing",
+        "generated_at": "2026-09-14T06:30:00Z",
+        "paper_date": "2026-09-14",
+        "stories": [
+            {
+                "id": "1",
+                "title": "First BBC",
+                "summary": '<p>Body <a href="https://example.com/a">link</a>.</p>',
+                "source": "BBC",
+                "url": "https://example.com/a",
+                "published_label": "14 Sep 2026",
+                "category": "news",
+                "category_label": "World News",
+            },
+            {
+                "id": "2",
+                "title": "Second BBC",
+                "summary": "<p>More.</p>",
+                "source": "BBC",
+                "url": "https://example.com/b",
+                "published_label": "14 Sep 2026",
+                "category": "news",
+                "category_label": "World News",
+            },
+            {
+                "id": "3",
+                "title": "Reuters piece",
+                "summary": "<p>Wire.</p>",
+                "source": "Reuters",
+                "url": "https://example.com/c",
+                "published_label": "14 Sep 2026",
+                "category": "news",
+                "category_label": "World News",
+            },
+        ],
+    }
+    layout = EpubLayout(omit_article_links=True, chapters_by_source=True, x3_screen=True)
+    write_epub(payload, dest, layout=layout)
+    with zipfile.ZipFile(dest) as archive:
+        names = archive.namelist()
+        assert any(name.endswith("source-1.xhtml") for name in names)
+        assert any(name.endswith("source-2.xhtml") for name in names)
+        assert not any("/story-" in name.replace("\\", "/") for name in names)
+        html_all = "\n".join(
+            archive.read(name).decode("utf-8", errors="ignore")
+            for name in names
+            if name.endswith(".xhtml")
+        )
+        assert "Original article" not in html_all
+        assert "https://example.com/a" not in html_all
+        assert "source-chapter" in html_all
+        assert "First BBC" in html_all and "Second BBC" in html_all
+        css = archive.read(next(n for n in names if n.endswith("eink.css"))).decode("utf-8")
+        assert "528px" in css or "0.45em" in css
+        cover = archive.read(next(n for n in names if n.endswith("cover.jpg")))
+        img = Image.open(io.BytesIO(cover))
+        assert img.size == (528, 792)
+
+
+def test_render_txt_omits_urls_when_configured():
+    from app.services.briefing import EpubLayout, render_txt, stories_payload
+
+    payload = stories_payload([FakeStory()])
+    classic = render_txt(payload, layout=EpubLayout.classic())
+    assert "https://example.com/story" in classic
+    x3 = render_txt(payload, layout=EpubLayout())
+    assert "https://example.com/story" not in x3

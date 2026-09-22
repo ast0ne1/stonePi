@@ -71,31 +71,37 @@ def get_or_fetch_feed(
     force: bool = False,
     timeout: httpx.Timeout | None = None,
 ) -> tuple[str, int]:
-    """Return (body, status_code), reusing SourceFetch when possible."""
+    """Return (body, status_code).
+
+    Always revalidates with the origin (ETag / Last-Modified) unless force=True,
+    which skips validators and downloads a fresh body. Falls back to the last
+    cached body only when the network request fails.
+    """
     key = (url or "").strip()
     row = db.get(SourceFetch, key)
-    if row and not force:
-        body = _read_cached_body(row)
-        if body is not None:
-            return body, int(row.status_code or 200)
+    cached = _read_cached_body(row) if row else None
 
-    etag = row.etag if row else None
-    last_modified = row.last_modified if row else None
-    with httpx.Client(
-        timeout=timeout or HTTP_TIMEOUT,
-        follow_redirects=True,
-        headers=_headers(accept or RSS_ACCEPT, etag=etag, last_modified=last_modified),
-    ) as client:
-        response = client.get(key)
-        if response.status_code == 304 and row:
-            body = _read_cached_body(row)
-            if body is not None:
+    etag = None if force else (row.etag if row else None)
+    last_modified = None if force else (row.last_modified if row else None)
+    try:
+        with httpx.Client(
+            timeout=timeout or HTTP_TIMEOUT,
+            follow_redirects=True,
+            headers=_headers(accept or RSS_ACCEPT, etag=etag, last_modified=last_modified),
+        ) as client:
+            response = client.get(key)
+            if response.status_code == 304 and cached is not None:
                 row.fetched_at = utcnow()
                 db.add(row)
                 db.commit()
-                return body, int(row.status_code or 200)
-        response.raise_for_status()
-        body = response.text
+                return cached, int(row.status_code or 200)
+            response.raise_for_status()
+            body = response.text
+    except Exception:
+        if cached is not None:
+            logger.warning("feed fetch failed for %s; using cached body", key)
+            return cached, int(row.status_code or 200) if row else 200
+        raise
 
     path = _feed_body_path(key)
     if len(body) > MAX_INLINE_BODY:

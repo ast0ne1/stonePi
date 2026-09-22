@@ -83,6 +83,10 @@ def _ensure_schema() -> None:
                 conn.execute(text("ALTER TABLE feeds ADD COLUMN last_status_code INTEGER"))
             if "last_item_count" not in feed_cols:
                 conn.execute(text("ALTER TABLE feeds ADD COLUMN last_item_count INTEGER"))
+            if "last_new_count" not in feed_cols:
+                conn.execute(text("ALTER TABLE feeds ADD COLUMN last_new_count INTEGER"))
+            if "last_ingest_note" not in feed_cols:
+                conn.execute(text("ALTER TABLE feeds ADD COLUMN last_ingest_note VARCHAR(240)"))
             if "empty_since" not in feed_cols:
                 conn.execute(text("ALTER TABLE feeds ADD COLUMN empty_since DATETIME"))
             if "paywall_skip" not in feed_cols:
