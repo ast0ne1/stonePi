@@ -28,6 +28,27 @@ def username_slug(username: str) -> str:
     return cleaned or "user"
 
 
+def reader_folder_label(
+    db: Session,
+    user: User | None,
+    *,
+    username: str | None = None,
+    display_name: str | None = None,
+) -> str:
+    """Human folder name on the reader — prefer Display name over login username.
+
+    Avoids stock /News/admin when the account is still named admin / Admin.
+    """
+    name = (username or (user.username if user else "") or "user").strip()
+    label = (display_name or "").strip()
+    if not label and user is not None:
+        label = user_settings.get_value(db, int(user.id), "display_name").strip()
+    candidate = label or name
+    if username_slug(candidate) in {"admin", "administrator"}:
+        return "home"
+    return candidate
+
+
 def default_upload_folder(device: str) -> str:
     return settings.DEFAULT_KOBO_FOLDER if device == "kobo" else settings.DEFAULT_XTEINK_FOLDER
 
@@ -40,12 +61,16 @@ def normalize_upload_folder(folder: str, device: str) -> str:
     return raw.rstrip("/") or default
 
 
-def namespaced_upload_path(folder: str, username: str, device: str) -> str:
-    """Ensure upload folder ends with /{username}, re-rooting stock/default trees."""
+def namespaced_upload_path(folder: str, label: str, device: str) -> str:
+    """Ensure upload folder ends with /{label}, re-rooting stock/default trees.
+
+    CrossPoint HTTP upload cannot invent nested dirs by itself, but NewsCast
+    creates missing folders via POST /mkdir before each upload.
+    """
     device = settings.normalize_reader_device(device)
     default = default_upload_folder(device)
     base = normalize_upload_folder(folder, device)
-    slug = username_slug(username)
+    slug = username_slug(label)
     if base == f"/{slug}" or base.endswith(f"/{slug}"):
         return base
     default_root = default.rstrip("/")
@@ -82,8 +107,8 @@ def reader_upload_dir(db: Session, user_id: int, *, username: str | None = None)
     device = reader_device(db, user_id)
     stored = (_raw(db, user_id, "reader_upload_path") or "").strip()
     user = db.get(User, int(user_id))
-    name = username or (user.username if user else "user")
-    return namespaced_upload_path(stored or default_upload_folder(device), name, device)
+    label = reader_folder_label(db, user, username=username)
+    return namespaced_upload_path(stored or default_upload_folder(device), label, device)
 
 
 def reader_push_enabled(db: Session, user_id: int) -> bool:
@@ -162,7 +187,8 @@ def save_reader_settings(
         user_settings.set_value(db, uid, "reader_host", host)
         _mirror_admin_instance(db, user, "reader_host", host)
 
-    folder = namespaced_upload_path(reader_upload_path_value, user.username, device)
+    label = reader_folder_label(db, user)
+    folder = namespaced_upload_path(reader_upload_path_value, label, device)
     user_settings.set_value(db, uid, "reader_upload_path", folder)
     _mirror_admin_instance(db, user, "reader_upload_path", folder)
 
@@ -215,7 +241,7 @@ def copy_admin_reader_settings(db: Session, target: User) -> None:
     folder = namespaced_upload_path(
         user_settings.get_value(db, target.id, "reader_upload_path")
         or default_upload_folder(device),
-        target.username,
+        reader_folder_label(db, target),
         device,
     )
     user_settings.set_value(db, target.id, "reader_upload_path", folder)

@@ -5,7 +5,7 @@
 <section class="hero hero-row">
   <div>
     <h1>Feeds</h1>
-    <p class="lede">Each source can follow the global schedule ({{ global_interval_label }}) or use its own. Tap a card to edit schedule and filters. Tap the circular arrow to fetch just that source. Turn off Summarise to keep the full article text. Language can follow Settings → Translation (Google or LLM) or force one engine per source.</p>
+    <p class="lede">Each source can follow the global schedule ({{ global_interval_label }}) or use its own. Tap a card to edit schedule and filters. Tap the circular arrow to fetch just that source. <strong>Summarise</strong> uses the LLM (or extracted text if no key). <strong>Full article</strong> keeps the RSS description or scraped body without summarising. Language can follow Settings → Translation (Google or LLM) or force one engine per source.</p>
   </div>
   {% if can_add_custom_sources %}
   <button class="btn btn-secondary btn-with-icon" type="button" data-open-sheet>
@@ -72,6 +72,10 @@
         {{ feed.last_error }}
       {% elif feed.last_fetched_at %}
         Fetched {{ feed.last_fetched_at.strftime('%d %b %Y %H:%M') }}
+        {% if feed.last_item_count is not none %} · {{ feed.last_item_count }} item{{ '' if feed.last_item_count == 1 else 's' }}{% endif %}
+        {% if feed.last_new_count is not none %} · {{ feed.last_new_count }} new{% endif %}
+        {% if feed.last_ingest_note and (feed.last_new_count is none or feed.last_new_count == 0) %} · {{ feed.last_ingest_note }}{% endif %}
+        {% if feed.last_status_code %} · HTTP {{ feed.last_status_code }}{% endif %}
       {% else %}
         Not fetched yet
       {% endif %}

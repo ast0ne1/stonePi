@@ -98,6 +98,8 @@ class Feed(Base):
     keyword_exclude: Mapped[str] = mapped_column(Text, default="")
     last_status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
     last_item_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_new_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_ingest_note: Mapped[str | None] = mapped_column(String(240), nullable=True)
     empty_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 

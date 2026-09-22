@@ -273,6 +273,11 @@ function applyActivity(data) {
   if (activityState.ingestKey && activityState.ingestKey !== ingestKey && activityState.ingestRunning && !ingest.running) {
     if (ingest.last_error) toast(ingest.last_error, "error");
     else if (ingest.last_message) toast(ingest.last_message, "ok");
+    const created = Number(ingest.last_new_stories || 0);
+    const onBriefing = /^\/(\?|$)/.test(window.location.pathname + window.location.search) || window.location.pathname === "/";
+    if (created > 0 && onBriefing) {
+      window.setTimeout(() => window.location.reload(), 600);
+    }
   }
   activityState.ingestRunning = Boolean(ingest.running);
   activityState.ingestKey = ingestKey;

@@ -112,6 +112,18 @@
     <a class="text-link" href="{{ x3_path }}/news.epub?day=yesterday">Download yesterday.epub</a>
   </div>
   <p class="hint">{{ paper.message }}</p>
+  <form method="post" action="/reader/publish" class="btn-row" data-busy-label="Generating…">
+    <input type="hidden" name="next" value="/device?tab=status" />
+    <button
+      class="btn btn-primary btn-with-icon"
+      type="submit"
+      {% if paper.published and not paper.empty %}
+      data-confirm="Generate a new paper?"
+      data-confirm-detail="This replaces today’s frozen EPUB/TXT with the current Briefing ({{ paper.story_count }} stor{{ 'y' if paper.story_count == 1 else 'ies' }}). Readers that already downloaded the old file keep it until they refresh."
+      data-confirm-ok="Generate"
+      {% endif %}
+    >{{ icon("publish") }} <span class="btn-label-full">{% if paper.published and paper.empty %}Generate today’s paper{% elif paper.published %}Generate new paper{% else %}Generate today’s paper{% endif %}</span><span class="btn-label-short">Generate</span></button>
+  </form>
   <p class="hint">Legacy shared path <code>/opds</code> still serves the admin catalog for older reader bookmarks.</p>
 </div>
 
@@ -139,11 +151,8 @@
     </form>
     <form method="post" action="/reader/queue">
       <input type="hidden" name="next" value="/device?tab=status" />
+      <input type="hidden" name="include_paper" value="1" />
       <button class="btn btn-secondary btn-with-icon" type="submit">{{ icon("queue") }} <span class="btn-label-full">Queue for later</span><span class="btn-label-short">Queue</span></button>
-    </form>
-    <form method="post" action="/reader/publish">
-      <input type="hidden" name="next" value="/device?tab=status" />
-      <button class="btn btn-secondary btn-with-icon" type="submit">{{ icon("publish") }} <span class="btn-label-full">Publish now</span><span class="btn-label-short">Publish</span></button>
     </form>
   </div>
   {% with queue_next='/device?tab=status' %}

@@ -74,11 +74,41 @@ On Settings → Reader, pick **Xteink** or **Kobo**. Both use OPDS for today’s
 
 ### Xteink (CrossPoint)
 
-Add the OPDS server in CrossPoint. Leave username/password blank unless catalog login is on (Basic can crash CrossPoint). Push uses HTTP File Transfer to the reader host (default `crosspoint.local`).
+Add the OPDS server in CrossPoint. Leave username/password blank unless catalog login is on (Basic can crash CrossPoint). Push uses HTTP File Transfer to the reader host (default `crosspoint.local`). File Transfer must be on for **Push now**.
 
 ### Kobo (KOReader)
 
 Add the OPDS catalog in KOReader. Push uses KOReader’s **SSH server** (default port 2222) and SFTP into `/mnt/onboard/News` (or your chosen folder).
+
+### Send, Library, and queue
+
+| Action | What happens |
+|--------|----------------|
+| **Add to Library** | Stores EPUB/PDF for OPDS **Library** only — no device push |
+| **Queue for reader** (checkbox or per-file button) | Enqueues a `crosspoint` sync task; label is **File · {name}**, never “Today’s paper” |
+| **Queue for later** | Enqueues today’s frozen paper (if published) + library files; does not upload yet |
+| **Push now** | Enqueues then flushes pending uploads while the reader is online |
+
+OPDS catalogs already list Daily Briefings and Library. Queue state does not affect OPDS visibility.
+
+### Briefing days vs frozen paper
+
+| Chip | Stories shown |
+|------|----------------|
+| **Today** / **Yesterday** | `published_at` on that local calendar day only (favourites and saved long-reads follow the same rule) |
+| **All** | Full retention window, including undated items |
+
+Settings → Publication → **Include saved long-reads in today’s paper** (default off) appends active Saved-tab items to the frozen reader EPUB/OPDS edition only — the live Today chip stays publish-date filtered.
+
+### Publications / RSS summarise modes
+
+| Source | Summarise | Briefing text |
+|--------|-----------|---------------|
+| RSS | On | Title + LLM summary (or extract fallback if no key) |
+| RSS | Off | Title + RSS description/content; full-page extract only when the excerpt is very short |
+| Scrape | same flag | Same rules on extracted body |
+
+Sources shows last parse item count, how many were **new**, and a short reason when a refresh adds 0 (duplicates, filters, etc.).
 
 ### Xteink Sync (optional)
 
