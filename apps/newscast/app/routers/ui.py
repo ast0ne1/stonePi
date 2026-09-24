@@ -54,7 +54,7 @@ from app.services.schedule import feed_is_muted, normalize_optional_clock
 from app.services import saved as saved_articles
 from app.services.catalog import catalog_with_status, grouped_catalog
 from app.services import catalog as catalog_service
-from app.services.categories import category_labels, list_categories
+from app.services.categories import category_labels, list_categories, group_feeds_by_category
 from app.services.ingest import snapshot, start_ingest
 from app.services import categories as category_service
 from app.services import packages as package_service
@@ -121,6 +121,92 @@ SETTINGS_LEDES = {
     "update": "Check GitHub Releases and install a newer zip.",
     "about": "App name, description, GitHub, and the version running here.",
 }
+# Short hub row subtexts (phone/tablet grouped list).
+SETTINGS_HUB_SUBTEXTS = {
+    "device": "Instance name, language, network.",
+    "publication": "Naming, story count, category mix.",
+    "schedule": "Refresh interval and publish time.",
+    "filters": "Words to keep or drop.",
+    "translation": "Target language for Translate feeds.",
+    "llm": "OpenAI or Ollama for summaries.",
+    "reader": "Device, catalog login, and sync.",
+    "notifications": "ntfy connection and alerts.",
+    "categories": "Topics that shape the paper.",
+    "catalog": "Import packages and approvals.",
+    "users": "Household accounts and access.",
+    "backup": "Download, restore, or roll back.",
+    "update": "Check GitHub Releases.",
+    "about": "Version and project links.",
+}
+SETTINGS_HUB_LEDE = "Everything that shapes your paper, in one place."
+# Phone/tablet hub groups: (id, label, tab keys in order).
+SETTINGS_GROUPS = (
+    ("your_paper", "Your paper", ("publication", "schedule", "filters", "categories", "catalog")),
+    ("intelligence", "Intelligence", ("translation", "llm")),
+    ("delivery", "Delivery", ("reader", "notifications")),
+    ("app", "App", ("device", "users", "backup", "update", "about")),
+)
+# Multi-card sections: tab → ((panel_id, label, card_ids), ...)
+# Single-card tabs omit an entry (or use an empty tuple) so the sub-chip row is skipped.
+SETTINGS_SECTION_PANELS: dict[str, tuple[tuple[str, str, tuple[str, ...]], ...]] = {
+    "device": (
+        ("access", "Access", ("access",)),
+        ("network", "Network", ("network",)),
+        ("interface", "Interface", ("interface",)),
+    ),
+    "publication": (
+        ("naming", "Naming", ("naming",)),
+        ("stories", "Stories", ("stories",)),
+        ("topics", "Topics", ("topics-mix", "topics-opds")),
+        ("x3", "X3 layout", ("x3",)),
+    ),
+    "schedule": (
+        ("refresh", "Refresh", ("refresh",)),
+        ("publish", "Publish", ("publish",)),
+    ),
+    "catalog": (
+        ("packages", "Packages", ("packages",)),
+        ("approvals", "Approvals", ("approvals",)),
+    ),
+    "reader": (
+        ("device", "Device", ("reader-device",)),
+        ("sync", "Sync", ("reader-sync",)),
+    ),
+    "notifications": (
+        ("connection", "Connection", ("connection",)),
+        ("alerts", "Alerts", ("alerts",)),
+    ),
+    "users": (
+        ("people", "People", ("people",)),
+        ("add", "Add", ("add",)),
+    ),
+    "update": (
+        ("repo", "Repo", ("repo",)),
+        ("install", "Install", ("install",)),
+    ),
+}
+# L2 list icons — match the section-heading icons on each panel card.
+SETTINGS_PANEL_ICONS: dict[str, str] = {
+    "access": "security",
+    "network": "network",
+    "interface": "translation",
+    "naming": "publication",
+    "stories": "today",
+    "topics": "categories",
+    "x3": "reader",
+    "refresh": "schedule",
+    "publish": "send",
+    "packages": "files",
+    "approvals": "catalog",
+    "device": "reader",
+    "sync": "update",
+    "connection": "network",
+    "alerts": "notifications",
+    "people": "users",
+    "add": "users",
+    "repo": "update",
+    "install": "update",
+}
 
 
 def platform_managed_settings() -> bool:
@@ -149,6 +235,73 @@ def settings_tabs_for(
     if platform_managed:
         tabs = tuple((key, label) for key, label in tabs if key not in PLATFORM_HIDDEN_SETTINGS_TABS)
     return tabs
+
+
+def settings_groups_for(
+    role: str | None,
+    *,
+    can_use_ntfy: bool = False,
+    platform_managed: bool | None = None,
+) -> tuple[tuple[str, str, tuple[tuple[str, str, str], ...]], ...]:
+    """Grouped hub rows: (group_id, label, ((tab_key, tab_label, subtext), ...))."""
+    allowed = {
+        key: label
+        for key, label in settings_tabs_for(
+            role, can_use_ntfy=can_use_ntfy, platform_managed=platform_managed
+        )
+    }
+    groups: list[tuple[str, str, tuple[tuple[str, str, str], ...]]] = []
+    for group_id, label, tab_keys in SETTINGS_GROUPS:
+        rows = tuple(
+            (key, allowed[key], SETTINGS_HUB_SUBTEXTS.get(key, SETTINGS_LEDES.get(key, "")))
+            for key in tab_keys
+            if key in allowed
+        )
+        if rows:
+            groups.append((group_id, label, rows))
+    return tuple(groups)
+
+
+def settings_section_panels_for(
+    tab: str,
+    *,
+    is_admin: bool = False,
+    platform_managed: bool = False,
+) -> tuple[tuple[str, str, tuple[str, ...]], ...]:
+    """Visible sub-chips for a section. Empty when ≤1 chip (skip the row)."""
+    panels = SETTINGS_SECTION_PANELS.get(tab, ())
+    if tab == "device":
+        filtered: list[tuple[str, str, tuple[str, ...]]] = []
+        for panel_id, label, cards in panels:
+            if panel_id == "access" and not (is_admin and not platform_managed):
+                continue
+            if panel_id == "network" and not is_admin:
+                continue
+            filtered.append((panel_id, label, cards))
+        panels = tuple(filtered)
+    if len(panels) <= 1:
+        return ()
+    return panels
+
+
+def normalize_settings_panel(
+    tab: str,
+    value: str | None,
+    *,
+    is_admin: bool = False,
+    platform_managed: bool = False,
+) -> str | None:
+    panels = settings_section_panels_for(
+        tab, is_admin=is_admin, platform_managed=platform_managed
+    )
+    if not panels:
+        return None
+    key = (value or "").strip().lower()
+    if not key:
+        return None
+    if any(panel_id == key for panel_id, _label, _cards in panels):
+        return key
+    return panels[0][0]
 
 
 def normalize_settings_tab_for_role(
@@ -216,8 +369,11 @@ def _reader_redirect_next(db: Session, request: Request, next_value: str, *, def
     return nxt
 
 
-def settings_path(tab: str | None = "device") -> str:
-    return f"/settings?tab={normalize_settings_tab(tab)}"
+def settings_path(tab: str | None = "device", panel: str | None = None) -> str:
+    path = f"/settings?tab={normalize_settings_tab(tab)}"
+    if panel:
+        path = f"{path}&panel={panel.strip().lower()}"
+    return path
 
 
 def _current_user_id(request: Request) -> int:
@@ -493,6 +649,8 @@ def briefing_page(request: Request, db: Annotated[Session, Depends(get_db)], day
             favicon.host_key(favicon.homepage_url(story.canonical_url)),
         )
         story.open_url = article_links.story_open_url(db, story, feeds_by_name)
+        feed = feeds_by_name.get(story.source_name)
+        story.is_summary = True if feed is None else bool(getattr(feed, "summarize", True))
     return render(
         request,
         "briefing.html",
@@ -579,6 +737,8 @@ def search_page(request: Request, db: Annotated[Session, Depends(get_db)], q: st
     feeds_by_name = {feed.name: feed for feed in db.query(Feed).filter(Feed.user_id == uid).all()}
     for story in stories:
         story.open_url = article_links.story_open_url(db, story, feeds_by_name)
+        feed = feeds_by_name.get(story.source_name)
+        story.is_summary = True if feed is None else bool(getattr(feed, "summarize", True))
     return render(
         request,
         "search.html",
@@ -668,6 +828,8 @@ def _feeds_panel_context(request: Request, db: Session) -> dict:
     now = utcnow()
     from app.services.catalog import catalog_rss_url, find_catalog_item
 
+    labels = category_labels(db)
+    global_interval = settings.get_int(db, "ingest_interval_minutes", env.ingest_interval_minutes)
     for feed in feeds:
         feed.is_muted = feed_is_muted(feed, now)
         feed.health = feed_health(feed, now)
@@ -675,17 +837,23 @@ def _feeds_panel_context(request: Request, db: Session) -> dict:
         feed.translate_mode = feed_translate_mode(feed)
         item = find_catalog_item(feed.catalog_id) if feed.catalog_id else None
         feed.has_rss_alternate = bool(item and catalog_rss_url(item))
+        if (feed.schedule_mode or "global") == "custom":
+            feed.schedule_label = f"Every {settings.format_interval_short(feed.interval_minutes)}"
+        else:
+            feed.schedule_label = "Global schedule"
+        type_label = "Scrape" if feed.type == "webpage" else ("RSS" if feed.type == "rss" else "Auto")
+        article_label = "Summarise" if feed.summarize is not False else "Full article"
+        feed.meta_line = f"{type_label} · {article_label} · {feed.schedule_label}"
     return {
         **_base_context(request, db, "sources"),
         "sources_tab": "feeds",
         "source_next": "/sources?tab=feeds",
         "feeds": feeds,
-        "category_labels": category_labels(db),
+        "feed_groups": group_feeds_by_category(feeds, labels),
+        "category_labels": labels,
         "refresh_intervals": settings.REFRESH_INTERVALS,
-        "global_interval": settings.get_int(db, "ingest_interval_minutes", env.ingest_interval_minutes),
-        "global_interval_label": settings.format_interval_short(
-            settings.get_int(db, "ingest_interval_minutes", env.ingest_interval_minutes)
-        ),
+        "global_interval": global_interval,
+        "global_interval_label": settings.format_interval_short(global_interval),
         "translate_modes": FEED_PROVIDER_CHOICES,
         "global_translate_provider": settings.translate_provider(db),
         "can_add_custom_sources": can_add_custom,
@@ -714,6 +882,9 @@ def _catalog_panel_context(request: Request, db: Session) -> dict:
         "translate_modes": FEED_PROVIDER_CHOICES,
         "can_add_custom_sources": can_add_custom,
         "is_admin": is_admin,
+        "global_interval_label": settings.format_interval_short(
+            settings.get_int(db, "ingest_interval_minutes", env.ingest_interval_minutes)
+        ),
     }
 
 
@@ -840,29 +1011,74 @@ def library_page():
 
 
 
-def _settings_page_context(request: Request, db: Session, tab: str = "device") -> dict:
+def _settings_page_context(
+    request: Request,
+    db: Session,
+    tab: str | None = "device",
+    *,
+    panel: str | None = None,
+    hub: bool | None = None,
+) -> dict:
     session = session_from_request(request)
     role = session.role if session else "user"
     can_ntfy = _session_can_use_ntfy(db, request)
     platform_managed = platform_managed_settings()
-    settings_tab = normalize_settings_tab_for_role(
-        tab, role, can_use_ntfy=can_ntfy, platform_managed=platform_managed
+    is_admin = role == "admin"
+    settings_hub = bool(hub)
+    if settings_hub:
+        settings_tab = "device"
+    else:
+        settings_tab = normalize_settings_tab_for_role(
+            tab, role, can_use_ntfy=can_ntfy, platform_managed=platform_managed
+        )
+    section_panels = settings_section_panels_for(
+        settings_tab, is_admin=is_admin, platform_managed=platform_managed
     )
+    settings_panel = normalize_settings_panel(
+        settings_tab,
+        panel,
+        is_admin=is_admin,
+        platform_managed=platform_managed,
+    )
+    # JSON-friendly map for client-side sub-chip switching across all tabs.
+    panels_by_tab: dict[str, list[dict[str, object]]] = {}
+    for tab_key in SETTINGS_TAB_KEYS:
+        panels = settings_section_panels_for(
+            tab_key, is_admin=is_admin, platform_managed=platform_managed
+        )
+        panels_by_tab[tab_key] = [
+            {
+                "id": panel_id,
+                "label": label,
+                "cards": list(cards),
+                "icon": SETTINGS_PANEL_ICONS.get(panel_id, panel_id),
+            }
+            for panel_id, label, cards in panels
+        ]
     uid = _current_user_id(request)
     ntfy.migrate_user_ntfy_from_instance(db, uid)
     user_server = user_settings_service.get_value(db, uid, "ntfy_server").strip()
     household_server = settings.get_value(db, "ntfy_server") or "https://ntfy.sh"
     return {
         **_base_context(request, db, "settings"),
+        "settings_hub": settings_hub,
         "settings_tab": settings_tab,
+        "settings_panel": settings_panel,
+        "settings_section_panels": section_panels,
+        "settings_panels_by_tab": panels_by_tab,
+        "settings_groups": settings_groups_for(
+            role, can_use_ntfy=can_ntfy, platform_managed=platform_managed
+        ),
+        "settings_hub_lede": SETTINGS_HUB_LEDE,
+        "settings_hub_subtexts": SETTINGS_HUB_SUBTEXTS,
         "settings_tabs": settings_tabs_for(
             role, can_use_ntfy=can_ntfy, platform_managed=platform_managed
         ),
-        "is_admin": role == "admin",
+        "is_admin": is_admin,
         "can_use_ntfy": can_ntfy,
         "platform_managed": platform_managed,
         "settings_save_tabs": SETTINGS_SAVE_TABS,
-        "settings_lede": SETTINGS_LEDES[settings_tab],
+        "settings_lede": SETTINGS_HUB_LEDE if settings_hub else SETTINGS_LEDES[settings_tab],
         "settings_ledes": SETTINGS_LEDES,
         "admin_username": settings.get_value(db, "admin_username"),
         "openai_key": settings.secret_hint(db, "openai_api_key"),
@@ -896,6 +1112,8 @@ def _settings_page_context(request: Request, db: Session, tab: str = "device") -
         "epub_omit_article_links": settings.epub_omit_article_links(db),
         "epub_chapters_by_source": settings.epub_chapters_by_source(db),
         "epub_x3_screen": settings.epub_x3_screen(db),
+        "epub_toc_outline_numbers": settings.epub_toc_outline_numbers(db),
+        "epub_cover_first": settings.epub_cover_first(db),
         "github_repo": update.repo_from_db(db),
         "update_check": update.last_check(db),
         "categories": list_categories(db),
@@ -961,8 +1179,20 @@ def _settings_page_context(request: Request, db: Session, tab: str = "device") -
 
 
 @router.get("/settings")
-def settings_page(request: Request, db: Annotated[Session, Depends(get_db)], tab: str = "device"):
-    return render(request, "settings.html", _settings_page_context(request, db, tab), db=db)
+def settings_page(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    tab: str | None = None,
+    panel: str | None = None,
+):
+    raw = (tab or "").strip()
+    hub = raw == "" or raw.lower() == "hub"
+    return render(
+        request,
+        "settings.html",
+        _settings_page_context(request, db, None if hub else raw, panel=panel, hub=hub),
+        db=db,
+    )
 
 
 @router.post("/library")
@@ -1157,7 +1387,9 @@ def create_feed_form(
     request: Request,
     db: Annotated[Session, Depends(get_db)],
     name: Annotated[str, Form()],
-    url: Annotated[str, Form()],
+    url: Annotated[str, Form()] = "",
+    homepage_url: Annotated[str, Form()] = "",
+    rss_url: Annotated[str, Form()] = "",
     category: Annotated[str, Form()] = "news",
     source_type: Annotated[str, Form()] = "auto",
     summarize: Annotated[str, Form()] = "1",
@@ -1168,13 +1400,24 @@ def create_feed_form(
     if nxt not in SOURCES_NEXT:
         nxt = "/sources?tab=feeds"
     nxt = _normalize_sources_next(nxt)
-    parsed = urlparse(url.strip())
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        if _wants_json(request):
-            return JSONResponse({"ok": False, "message": "Enter a valid http(s) site or feed URL."}, status_code=400)
-        return RedirectResponse(nxt, status_code=303)
-    kind = source_type if source_type in {"auto", "rss", "webpage"} else "auto"
+    from app.services import feed_urls
     from app.services.translate import parse_feed_translate_mode
+
+    kind = feed_urls.normalize_feed_type(source_type, default="auto")
+    home = feed_urls.clean_http_url(homepage_url)
+    rss = feed_urls.clean_http_url(rss_url)
+    legacy = feed_urls.clean_http_url(url)
+    # Legacy single-url form: map into the matching side for the chosen type.
+    if legacy and not home and not rss:
+        if kind == "rss":
+            rss = legacy
+        else:
+            home = legacy
+    err = feed_urls.required_url_for_type(kind, home, rss)
+    if err:
+        if _wants_json(request):
+            return JSONResponse({"ok": False, "message": err}, status_code=400)
+        return _form_error(request, err, nxt, 400)
 
     do_translate, translate_provider = parse_feed_translate_mode(translate)
     uid = _current_user_id(request)
@@ -1186,23 +1429,26 @@ def create_feed_form(
         if _wants_json(request):
             return JSONResponse({"ok": False, "message": msg}, status_code=403)
         return _form_error(request, msg, nxt, 403)
-    existing = db.query(Feed).filter(Feed.user_id == uid, Feed.url == url.strip()).one_or_none()
+    active = feed_urls.active_url_for(kind, home, rss)
+    existing = db.query(Feed).filter(Feed.user_id == uid, Feed.url == active).one_or_none()
     if existing is None:
-        db.add(
-            Feed(
-                user_id=uid,
-                name=name.strip() or parsed.netloc,
-                url=url.strip(),
-                category=category,
-                type=kind,
-                enabled=True,
-                summarize=summarize != "0",
-                translate=do_translate,
-                translate_provider=translate_provider,
-            )
+        feed = Feed(
+            user_id=uid,
+            name=name.strip() or (urlparse(active).netloc or "Source"),
+            url=active,
+            homepage_url=home or None,
+            rss_url=rss or None,
+            category=category,
+            type=kind,
+            enabled=True,
+            summarize=summarize != "0",
+            translate=do_translate,
+            translate_provider=translate_provider,
         )
+        feed_urls.sync_feed_urls(feed)
+        db.add(feed)
         db.commit()
-        added = db.query(Feed).filter(Feed.user_id == uid, Feed.url == url.strip()).one_or_none()
+        added = db.query(Feed).filter(Feed.user_id == uid, Feed.url == feed.url).one_or_none()
         if added:
             favicon.capture_for_feed_async(added.id)
     if _wants_json(request):
@@ -1223,26 +1469,61 @@ def save_feed_schedule(
     keyword_exclude: Annotated[str, Form()] = "",
     paywall_skip: Annotated[str, Form()] = "",
     feed_type: Annotated[str, Form()] = "",
+    homepage_url: Annotated[str, Form()] = "",
+    rss_url: Annotated[str, Form()] = "",
 ):
     feed = db.get(Feed, feed_id)
     if feed is None:
         if _wants_json(request):
             return JSONResponse({"ok": False, "message": "Feed not found."}, status_code=404)
         return RedirectResponse("/sources?tab=feeds", status_code=303)
+    from app.services import feed_urls
     from app.services.catalog import SOURCE_LABELS, apply_catalog_type, find_catalog_item
     from app.services.translate import parse_feed_translate_mode
 
     wanted_type = (feed_type or feed.type or "rss").strip().lower()
     if wanted_type not in SOURCE_LABELS:
         wanted_type = (feed.type or "rss").strip().lower()
-    if feed.catalog_id:
+
+    home = feed_urls.clean_http_url(homepage_url)
+    rss = feed_urls.clean_http_url(rss_url)
+    err = feed_urls.required_url_for_type(wanted_type, home, rss)
+    if err and feed.catalog_id:
         item = find_catalog_item(feed.catalog_id)
         if item is not None:
-            apply_catalog_type(feed, item, wanted_type)
+            # Keep user-submitted sides; catalog fills any still-missing alternate.
+            feed.homepage_url = home or None
+            feed.rss_url = rss or None
+            try:
+                apply_catalog_type(feed, item, wanted_type)
+                err = None
+            except ValueError as exc:
+                err = str(exc)
         else:
             feed.type = wanted_type
-    else:
+    elif not err:
+        feed.homepage_url = home or None
+        feed.rss_url = rss or None
         feed.type = wanted_type
+        try:
+            feed_urls.sync_feed_urls(feed)
+        except ValueError as exc:
+            err = str(exc)
+    if err:
+        if _wants_json(request):
+            return JSONResponse({"ok": False, "message": err}, status_code=400)
+        return _form_error(request, err, "/sources?tab=feeds", 400)
+
+    clash = (
+        db.query(Feed)
+        .filter(Feed.user_id == feed.user_id, Feed.url == feed.url, Feed.id != feed.id)
+        .one_or_none()
+    )
+    if clash is not None:
+        msg = "Another source already uses that active URL."
+        if _wants_json(request):
+            return JSONResponse({"ok": False, "message": msg}, status_code=409)
+        return _form_error(request, msg, "/sources?tab=feeds", 409)
 
     feed.schedule_mode = schedule_mode if schedule_mode in {"global", "custom"} else "global"
     if feed.schedule_mode == "custom":
@@ -1403,6 +1684,8 @@ async def save_settings(
     epub_omit_article_links: Annotated[str, Form()] = "",
     epub_chapters_by_source: Annotated[str, Form()] = "",
     epub_x3_screen: Annotated[str, Form()] = "",
+    epub_toc_outline_numbers: Annotated[str, Form()] = "",
+    epub_cover_first: Annotated[str, Form()] = "",
     github_repo: Annotated[str, Form()] = "",
     keyword_include: Annotated[str, Form()] = "",
     keyword_exclude: Annotated[str, Form()] = "",
@@ -1731,6 +2014,16 @@ async def save_settings(
             db,
             "epub_x3_screen",
             "1" if str(epub_x3_screen or "").strip() else "0",
+        )
+        settings.set_value(
+            db,
+            "epub_toc_outline_numbers",
+            "1" if str(epub_toc_outline_numbers or "").strip() else "0",
+        )
+        settings.set_value(
+            db,
+            "epub_cover_first",
+            "1" if str(epub_cover_first or "").strip() else "0",
         )
     if is_admin and briefing_publish_at.strip():
         settings.set_value(db, "briefing_publish_at", normalize_publish_at(briefing_publish_at))

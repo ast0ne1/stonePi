@@ -4,7 +4,7 @@ from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import DATA_DIR, env
-from app.models import Base
+from app.models import Base, Feed
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -32,6 +32,34 @@ def init_db() -> None:
     from app.services.users import migrate_multi_user
 
     migrate_multi_user()
+    _backfill_catalog_url_pairs()
+
+
+def _backfill_catalog_url_pairs() -> None:
+    """Fill missing homepage/rss sides from catalog for feeds that have a catalog_id."""
+    from app.services.catalog import find_catalog_item
+    from app.services.feed_urls import apply_catalog_url_pair, clean_http_url
+
+    db = SessionLocal()
+    try:
+        feeds = db.query(Feed).filter(Feed.catalog_id.isnot(None)).all()
+        changed = False
+        for feed in feeds:
+            item = find_catalog_item(feed.catalog_id or "")
+            if item is None:
+                continue
+            before_home = clean_http_url(getattr(feed, "homepage_url", None))
+            before_rss = clean_http_url(getattr(feed, "rss_url", None))
+            try:
+                apply_catalog_url_pair(feed, item, feed.type)
+            except ValueError:
+                continue
+            if clean_http_url(feed.homepage_url) != before_home or clean_http_url(feed.rss_url) != before_rss:
+                changed = True
+        if changed:
+            db.commit()
+    finally:
+        db.close()
 
 
 def _table_names(conn) -> set[str]:
@@ -92,7 +120,37 @@ def _ensure_schema() -> None:
             if "paywall_skip" not in feed_cols:
                 conn.execute(text("ALTER TABLE feeds ADD COLUMN paywall_skip BOOLEAN DEFAULT 0"))
                 conn.execute(text("UPDATE feeds SET paywall_skip = 0 WHERE paywall_skip IS NULL"))
-        if "users" in tables:
+            feed_cols = _table_columns(conn, "feeds")
+            if "homepage_url" not in feed_cols:
+                conn.execute(text("ALTER TABLE feeds ADD COLUMN homepage_url VARCHAR(1000)"))
+            if "rss_url" not in feed_cols:
+                conn.execute(text("ALTER TABLE feeds ADD COLUMN rss_url VARCHAR(1000)"))
+            # Backfill pair from active url once columns exist (idempotent for already-filled rows).
+            conn.execute(
+                text(
+                    "UPDATE feeds SET rss_url = url "
+                    "WHERE (rss_url IS NULL OR rss_url = '') "
+                    "AND url IS NOT NULL AND url != '' "
+                    "AND lower(coalesce(type, 'rss')) = 'rss'"
+                )
+            )
+            conn.execute(
+                text(
+                    "UPDATE feeds SET homepage_url = url "
+                    "WHERE (homepage_url IS NULL OR homepage_url = '') "
+                    "AND url IS NOT NULL AND url != '' "
+                    "AND lower(coalesce(type, 'rss')) IN ('webpage', 'auto')"
+                )
+            )
+            # Orphan active urls with unknown/blank type: treat as rss pair.
+            conn.execute(
+                text(
+                    "UPDATE feeds SET rss_url = url "
+                    "WHERE (rss_url IS NULL OR rss_url = '') "
+                    "AND (homepage_url IS NULL OR homepage_url = '') "
+                    "AND url IS NOT NULL AND url != ''"
+                )
+            )
             user_cols = _table_columns(conn, "users")
             if "auth_user_id" not in user_cols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN auth_user_id VARCHAR(36)"))

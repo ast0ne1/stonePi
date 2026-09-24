@@ -1587,3 +1587,241 @@ function showFlash(kind, text) {
     })
     .catch(() => {});
 })();
+
+const settingsShell = document.querySelector("[data-settings-shell]");
+if (settingsShell) {
+  const DESKTOP_MQ = window.matchMedia("(min-width: 1024px)");
+  const hubList = settingsShell.querySelector("[data-settings-hub-list]");
+  const panelList = settingsShell.querySelector("[data-settings-panel-list]");
+  const panelListRows = settingsShell.querySelector("[data-settings-panel-list-rows]");
+  const sectionEl = settingsShell.querySelector("[data-settings-section]");
+  const settingsBack = document.querySelector("[data-settings-hub-back]");
+  const settingsTitle = document.querySelector("[data-settings-title]");
+  const settingsLede = document.querySelector("[data-settings-lede]");
+  const hubLede = settingsShell.dataset.settingsHubLede || "Household portal settings.";
+
+  function readJson(selector, fallback) {
+    const node = settingsShell.querySelector(selector);
+    if (!node?.textContent) return fallback;
+    try {
+      return JSON.parse(node.textContent);
+    } catch (_err) {
+      return fallback;
+    }
+  }
+
+  const panelsByTab = readJson("[data-settings-panels-json]", {});
+  const ledesByTab = readJson("[data-settings-ledes-json]", {});
+  const labelsByTab = readJson("[data-settings-labels-json]", {});
+
+  function isDesktop() {
+    return DESKTOP_MQ.matches;
+  }
+
+  function tabHasPanels(tab) {
+    return (panelsByTab[tab] || []).length > 1;
+  }
+
+  function syncDesktopClass() {
+    settingsShell.classList.toggle("is-desktop-settings", isDesktop());
+  }
+
+  function updateBack(mode, tab) {
+    if (!settingsBack) return;
+    if (mode === "hub" || isDesktop()) {
+      settingsBack.hidden = true;
+      settingsBack.dataset.backTo = "hub";
+      settingsBack.textContent = "← Settings";
+      return;
+    }
+    settingsBack.hidden = false;
+    if (mode === "form" && tabHasPanels(tab)) {
+      settingsBack.dataset.backTo = "panelList";
+      settingsBack.textContent = `← ${labelsByTab[tab] || "Back"}`;
+    } else {
+      settingsBack.dataset.backTo = "hub";
+      settingsBack.textContent = "← Settings";
+    }
+  }
+
+  function renderPanelList(tab) {
+    if (!panelListRows) return;
+    panelListRows.innerHTML = "";
+    (panelsByTab[tab] || []).forEach((panel) => {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "settings-hub-row settings-panel-row";
+      row.dataset.settingsPanelRow = panel.id;
+      row.innerHTML =
+        `<span class="settings-hub-icon" aria-hidden="true"></span>` +
+        `<span class="settings-hub-copy">` +
+        `<span class="settings-hub-title"></span>` +
+        `<span class="settings-hub-sub"></span>` +
+        `</span>` +
+        `<span class="settings-hub-chevron" aria-hidden="true">›</span>`;
+      const iconHost = row.querySelector(".settings-hub-icon");
+      const iconSrc = document.querySelector(
+        `[data-settings-panel-icon="${tab}-${panel.id}"]`
+      );
+      if (iconHost && iconSrc) {
+        iconHost.innerHTML = iconSrc.innerHTML;
+      }
+      row.querySelector(".settings-hub-title").textContent = panel.label;
+      row.querySelector(".settings-hub-sub").textContent =
+        panel.subtext || "Open this section";
+      panelListRows.appendChild(row);
+    });
+  }
+
+  function applyPanelCards(tab, panelId) {
+    const panels = panelsByTab[tab] || [];
+    const active = panels.find((p) => p.id === panelId) || panels[0] || null;
+    const cards = new Set(active?.cards || []);
+    const filterCards = panels.length > 1 && !isDesktop();
+    settingsShell.querySelectorAll("[data-settings-panel-card]").forEach((card) => {
+      const inTab = card.closest("[data-settings-panel]")?.dataset.settingsPanel === tab;
+      const hide = filterCards && inTab && cards.size > 0 && !cards.has(card.dataset.settingsPanelCard);
+      card.classList.toggle("is-panel-hidden", hide);
+    });
+    settingsShell.dataset.settingsActivePanel = active?.id || "";
+    return active?.id || null;
+  }
+
+  function setMode({ hub = false, panelListMode = false } = {}) {
+    const onHub = Boolean(hub) && !isDesktop();
+    const onList = Boolean(panelListMode) && !isDesktop() && !onHub;
+    settingsShell.dataset.settingsHub = onHub ? "true" : "false";
+    settingsShell.dataset.settingsPanelList = onList ? "true" : "false";
+    settingsShell.classList.toggle("is-hub", onHub);
+    settingsShell.classList.toggle("is-panel-list", onList);
+    if (hubList) hubList.hidden = !onHub;
+    if (panelList) panelList.hidden = !onList;
+    if (sectionEl) sectionEl.hidden = (onHub || onList) && !isDesktop();
+  }
+
+  function showSettings(tab, { hub = false, panel = null, panelListMode = false } = {}) {
+    const next = labelsByTab[tab] ? tab : "general";
+    const showHub = Boolean(hub) && !isDesktop();
+    const showList = Boolean(panelListMode) && !isDesktop() && !showHub && tabHasPanels(next);
+    setMode({ hub: showHub, panelListMode: showList });
+    settingsShell.dataset.settingsActiveTab = next;
+
+    if (showHub) {
+      if (settingsTitle) settingsTitle.textContent = "Settings";
+      if (settingsLede) settingsLede.textContent = hubLede;
+      updateBack("hub", next);
+    } else if (showList) {
+      renderPanelList(next);
+      if (settingsTitle) settingsTitle.textContent = labelsByTab[next] || next;
+      if (settingsLede) settingsLede.textContent = "Tap a section to edit it.";
+      updateBack("panelList", next);
+    } else {
+      const panels = panelsByTab[next] || [];
+      const active = panels.find((p) => p.id === panel) || panels[0];
+      if (settingsTitle) {
+        settingsTitle.textContent =
+          !isDesktop() && active?.label ? active.label : labelsByTab[next] || next;
+      }
+      if (settingsLede) settingsLede.textContent = ledesByTab[next] || "";
+      updateBack("form", next);
+    }
+
+    let applied = null;
+    if (!showHub && !showList) {
+      applied = applyPanelCards(next, panel);
+    }
+
+    const url = new URL(window.location.href);
+    if (showHub) {
+      url.searchParams.delete("tab");
+      url.searchParams.delete("panel");
+    } else {
+      url.searchParams.set("tab", next);
+      if (showList || !applied) url.searchParams.delete("panel");
+      else url.searchParams.set("panel", applied);
+    }
+    window.history.replaceState(null, "", url);
+  }
+
+  settingsShell.querySelectorAll("[data-settings-hub-row]").forEach((row) => {
+    row.addEventListener("click", (event) => {
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      const tab = row.dataset.settingsHubRow;
+      // Always navigate — hub HTML only includes the default tab's panels.
+      window.location.href = `/settings?tab=${encodeURIComponent(tab)}`;
+    });
+  });
+
+  if (panelList) {
+    panelList.addEventListener("click", (event) => {
+      const row = event.target.closest("[data-settings-panel-row]");
+      if (!row || !panelList.contains(row)) return;
+      event.preventDefault();
+      const tab = settingsShell.dataset.settingsActiveTab || "general";
+      const panel = row.dataset.settingsPanelRow;
+      window.location.href = `/settings?tab=${encodeURIComponent(tab)}&panel=${encodeURIComponent(panel)}`;
+    });
+  }
+
+  if (settingsBack) {
+    settingsBack.addEventListener("click", (event) => {
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      const tab = settingsShell.dataset.settingsActiveTab || "general";
+      if (settingsBack.dataset.backTo === "panelList") {
+        showSettings(tab, { panelListMode: true });
+      } else {
+        window.location.href = "/settings";
+      }
+    });
+  }
+
+  syncDesktopClass();
+  const initialHub = settingsShell.dataset.settingsHub === "true";
+  const url = new URL(window.location.href);
+  const urlPanel = url.searchParams.get("panel");
+  const hash = (window.location.hash || "").replace(/^#/, "");
+  const hashPanel =
+    hash === "account-password" || hash === "view-options" || hash === "appearance" || hash === "remote-access"
+      ? { "account-password": "password", "view-options": "view", appearance: "appearance", "remote-access": "remote" }[hash]
+      : null;
+
+  if (isDesktop()) {
+    if (initialHub) {
+      window.location.replace("/settings?tab=general");
+      // keep page usable until navigate
+      setMode({ hub: false });
+      applyPanelCards("general", null);
+    } else {
+      setMode({ hub: false });
+      applyPanelCards(settingsShell.dataset.settingsActiveTab || "general", urlPanel);
+      updateBack("form", settingsShell.dataset.settingsActiveTab || "general");
+    }
+  } else if (initialHub) {
+    updateBack("hub", "general");
+  } else {
+    const tab = settingsShell.dataset.settingsActiveTab || "general";
+    // Only an explicit ?panel= / hash opens a section; otherwise show the L2 list.
+    const panel = urlPanel || hashPanel || null;
+    if (tabHasPanels(tab) && !panel) {
+      showSettings(tab, { panelListMode: true });
+    } else {
+      setMode({ hub: false });
+      applyPanelCards(tab, panel);
+      updateBack("form", tab);
+      if (!isDesktop() && tabHasPanels(tab)) {
+        const panels = panelsByTab[tab] || [];
+        const active = panels.find((p) => p.id === panel) || panels[0];
+        if (settingsTitle && active?.label) settingsTitle.textContent = active.label;
+      }
+    }
+  }
+
+  if (typeof DESKTOP_MQ.addEventListener === "function") {
+    DESKTOP_MQ.addEventListener("change", () => {
+      syncDesktopClass();
+      window.location.reload();
+    });
+  }
+}

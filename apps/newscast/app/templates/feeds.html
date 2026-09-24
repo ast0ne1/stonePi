@@ -99,9 +99,15 @@
               {% endif %}
             </select>
           </label>
-          {% if feed.has_rss_alternate %}
-          <p class="hint schedule-span">Switching type also switches between the homepage and the known RSS feed.</p>
-          {% endif %}
+          <label class="schedule-span">
+            Homepage / scrape URL
+            <input type="url" name="homepage_url" value="{{ feed.homepage_url or '' }}" inputmode="url" autocomplete="off" placeholder="https://" />
+          </label>
+          <label class="schedule-span">
+            RSS feed URL
+            <input type="url" name="rss_url" value="{{ feed.rss_url or '' }}" inputmode="url" autocomplete="off" placeholder="https://" />
+          </label>
+          <p class="hint schedule-span">You can keep both. Only the selected source type is fetched (active: {{ feed.url }}).</p>
           <label>
             Schedule
             <select name="schedule_mode" data-schedule-mode>

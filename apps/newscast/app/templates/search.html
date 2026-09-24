@@ -27,8 +27,9 @@
     {% for story in stories %}
     <li class="card story-card">
       <div class="story-kicker">
-        {% if story.favicon %}<img class="source-icon" src="{{ story.favicon }}" alt="" width="20" height="20">{% endif %}
+        {% if story.favicon %}<img class="source-icon" src="{{ story.favicon }}" alt="" width="28" height="28">{% endif %}
         <p class="chip chip-source">{{ story.source_name }}</p>
+        <span class="chip chip-quiet story-kind">{{ 'Summarise' if story.is_summary else 'Full article' }}</span>
         {% if story.saved %}<span class="chip chip-quiet">Saved</span>{% endif %}
         {% if story.favourited %}<span class="chip chip-quiet">Favourite</span>{% endif %}
         {% if story.published_label %}<time class="chip chip-quiet story-date">{{ story.published_label }}</time>{% endif %}

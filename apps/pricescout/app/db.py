@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import threading
@@ -246,9 +247,27 @@ def update_source_status(
 
 def replace_source_offers(source_id: str, rows: list[dict[str, Any]]) -> int:
     now = _utc_now()
+    # API pages can repeat an offer id; empty ids would all collide on UNIQUE(source_id, external_id).
+    deduped: dict[str, dict[str, Any]] = {}
+    for index, row in enumerate(rows):
+        ext = str(row.get("external_id") or "").strip()
+        if not ext:
+            basis = "|".join(
+                [
+                    str(row.get("title") or ""),
+                    str(row.get("price_dkk") or ""),
+                    str(row.get("valid_from") or ""),
+                    str(row.get("valid_to") or ""),
+                    str(index),
+                ]
+            )
+            ext = "auto-" + hashlib.sha1(basis.encode("utf-8")).hexdigest()[:20]
+            row = {**row, "external_id": ext}
+        deduped[ext] = row
+    unique_rows = list(deduped.values())
     with db() as conn:
         conn.execute("DELETE FROM offers WHERE source_id = ?", (source_id,))
-        for row in rows:
+        for row in unique_rows:
             product_id = _ensure_product(conn, row["title"], row.get("category") or "Other")
             conn.execute(
                 """
@@ -289,9 +308,9 @@ def replace_source_offers(source_id: str, rows: list[dict[str, Any]]) -> int:
             SET last_ok_at = ?, last_error = NULL, offer_count = ?
             WHERE id = ?
             """,
-            (now, len(rows), source_id),
+            (now, len(unique_rows), source_id),
         )
-    return len(rows)
+    return len(unique_rows)
 
 
 def _enrich_offer_row(row: dict[str, Any]) -> dict[str, Any]:

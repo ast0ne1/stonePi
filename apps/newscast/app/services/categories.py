@@ -108,3 +108,23 @@ def ensure_category(db: Session, key: str, label: str) -> Category:
     if row:
         return row
     return add_category(db, label or slug, slug)
+
+
+def group_feeds_by_category(feeds: list, labels: dict[str, str] | None = None) -> list[tuple[str, str, list]]:
+    """Return [(category_key, label, feeds)] in label order; unknown keys follow."""
+    order = dict(labels or BUILTIN_LABELS)
+    buckets: dict[str, list] = {key: [] for key in order}
+    extras: dict[str, list] = {}
+    for feed in feeds:
+        key = (getattr(feed, "category", None) or DEFAULT_CATEGORY).strip() or DEFAULT_CATEGORY
+        if key in buckets:
+            buckets[key].append(feed)
+        else:
+            extras.setdefault(key, []).append(feed)
+    groups: list[tuple[str, str, list]] = []
+    for key, label in order.items():
+        if buckets[key]:
+            groups.append((key, label, buckets[key]))
+    for key, items in sorted(extras.items(), key=lambda pair: pair[0]):
+        groups.append((key, order.get(key, key), items))
+    return groups

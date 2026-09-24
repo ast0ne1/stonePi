@@ -2,7 +2,7 @@ from pathlib import Path
 from zipfile import ZipFile
 
 from app.services.briefing import write_epub
-from app.services.cover_image import render_newspaper_cover
+from app.services.cover_image import render_category_icon, render_newspaper_cover
 
 
 def test_render_newspaper_cover_is_jpeg():
@@ -29,6 +29,13 @@ def test_render_newspaper_cover_is_jpeg():
     )
     assert data[:3] == b"\xff\xd8\xff"
     assert len(data) > 5000
+
+
+def test_render_category_icon_is_png():
+    data = render_category_icon("technology")
+    assert data[:8] == b"\x89PNG\r\n\x1a\n"
+    fallback = render_category_icon("custom-topic")
+    assert fallback[:8] == b"\x89PNG\r\n\x1a\n"
 
 
 def test_write_epub_includes_cover_image(tmp_path: Path):

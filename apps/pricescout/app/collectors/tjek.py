@@ -198,6 +198,7 @@ class TjekClient:
 
     def fetch_dealer_offers(self, *, source_id: str, dealer_id: str) -> list[OfferRow]:
         rows: list[OfferRow] = []
+        seen: set[str] = set()
         offset = 0
         page_size = 100
         while len(rows) < self.max_offers:
@@ -206,8 +207,12 @@ class TjekClient:
                 break
             for item in batch:
                 row = self._map_offer(source_id, item)
-                if row:
-                    rows.append(row)
+                if not row:
+                    continue
+                if row.external_id in seen:
+                    continue
+                seen.add(row.external_id)
+                rows.append(row)
                 if len(rows) >= self.max_offers:
                     break
             if len(batch) < page_size:
@@ -259,8 +264,11 @@ class TjekClient:
 
         urls = offer_public_urls(str(item.get("id") or ""), item)
         currency = str(pricing.get("currency") or "DKK").upper() or "DKK"
+        external_id = str(item.get("id") or "").strip()
+        if not external_id:
+            return None
         return OfferRow(
-            external_id=str(item.get("id") or ""),
+            external_id=external_id,
             title=title,
             price_dkk=price_f,
             source_id=source_id,

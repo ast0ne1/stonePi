@@ -150,6 +150,9 @@ def test_write_epub_strips_unsafe_html_and_groups_toc(tmp_path: Path):
         assert cover.index("World News") < cover.index("BBC")
         assert cover.index("BBC") < cover.index("Wire story")
         assert cover.index("Reuters") < cover.index("Second wire")
+        # Classic layout leaves Contents unnumbered.
+        assert "1. World News" not in cover
+        assert any(name.endswith("category-1.xhtml") for name in names)
         toc_name = next(name for name in names if name.endswith(("nav.xhtml", "toc.ncx")))
         toc = archive.read(toc_name).decode("utf-8", errors="ignore")
         assert "Long reads" in toc
@@ -159,8 +162,11 @@ def test_write_epub_strips_unsafe_html_and_groups_toc(tmp_path: Path):
         assert toc.index("World News") < toc.index("BBC")
         assert toc.index("BBC") < toc.index("Wire story")
         css = next(name for name in names if name.endswith("eink.css"))
-        assert "Georgia" in archive.read(css).decode("utf-8")
-        assert "toc-stories" in archive.read(css).decode("utf-8")
+        css_text = archive.read(css).decode("utf-8")
+        assert "Georgia" in css_text
+        assert "toc-stories" in css_text
+        assert "word-spacing: normal" in css_text
+        assert "category-plate" in css_text
         assert any(name.endswith("cover.jpg") for name in names)
 
 
@@ -179,7 +185,7 @@ def test_group_stories_by_source_keeps_first_seen_order():
 
 
 def test_write_epub_x3_layout_omits_links_and_chapters_by_source(tmp_path: Path):
-    from app.services.briefing import EpubLayout, write_epub
+    from app.services.briefing import CATEGORY_TURN_HINT, EpubLayout, write_epub
     from PIL import Image
     import io
 
@@ -225,9 +231,11 @@ def test_write_epub_x3_layout_omits_links_and_chapters_by_source(tmp_path: Path)
     write_epub(payload, dest, layout=layout)
     with zipfile.ZipFile(dest) as archive:
         names = archive.namelist()
-        assert any(name.endswith("source-1.xhtml") for name in names)
+        assert any(name.endswith("category-1.xhtml") for name in names)
         assert any(name.endswith("source-2.xhtml") for name in names)
+        assert any(name.endswith("source-3.xhtml") for name in names)
         assert not any("/story-" in name.replace("\\", "/") for name in names)
+        assert any("cat-news.png" in name.replace("\\", "/") for name in names)
         html_all = "\n".join(
             archive.read(name).decode("utf-8", errors="ignore")
             for name in names
@@ -236,12 +244,70 @@ def test_write_epub_x3_layout_omits_links_and_chapters_by_source(tmp_path: Path)
         assert "Original article" not in html_all
         assert "https://example.com/a" not in html_all
         assert "source-chapter" in html_all
+        assert "category-plate" in html_all
+        assert CATEGORY_TURN_HINT in html_all
         assert "First BBC" in html_all and "Second BBC" in html_all
+        cover = archive.read("EPUB/cover.xhtml").decode("utf-8", errors="ignore")
+        assert "1. World News" in cover
+        assert "1.1 BBC" in cover
+        assert "1.2 Reuters" in cover
         css = archive.read(next(n for n in names if n.endswith("eink.css"))).decode("utf-8")
         assert "528px" in css or "0.45em" in css
-        cover = archive.read(next(n for n in names if n.endswith("cover.jpg")))
-        img = Image.open(io.BytesIO(cover))
+        assert "word-spacing: normal" in css
+        assert "category-plate" in css
+        cover_jpg = archive.read(next(n for n in names if n.endswith("cover.jpg")))
+        img = Image.open(io.BytesIO(cover_jpg))
         assert img.size == (528, 792)
+        opf = archive.read("EPUB/content.opf").decode("utf-8", errors="ignore")
+        spine = opf[opf.find("<spine") : opf.find("</spine>")]
+        # Default: nav before cover (first body chapter).
+        assert spine.index('idref="nav"') < spine.index('idref="chapter_0"')
+
+
+def test_write_epub_toc_numbers_off_and_cover_first(tmp_path: Path):
+    from app.services.briefing import EpubLayout, write_epub
+
+    dest = tmp_path / "cover-first.epub"
+    payload = {
+        "title": "NewsCast briefing",
+        "generated_at": "2026-09-14T06:30:00Z",
+        "paper_date": "2026-09-14",
+        "stories": [
+            {
+                "id": "1",
+                "title": "Wire",
+                "summary": "<p>Hello   world.</p>",
+                "source": "BBC",
+                "url": "https://example.com/a",
+                "published_label": "14 Sep 2026",
+                "category": "news",
+                "category_label": "World News",
+            },
+        ],
+    }
+    layout = EpubLayout(
+        omit_article_links=True,
+        chapters_by_source=True,
+        x3_screen=True,
+        toc_outline_numbers=False,
+        cover_first=True,
+    )
+    write_epub(payload, dest, layout=layout)
+    with zipfile.ZipFile(dest) as archive:
+        cover = archive.read("EPUB/cover.xhtml").decode("utf-8", errors="ignore")
+        assert "1. World News" not in cover
+        assert "<h3>World News</h3>" in cover
+        assert "1.1 BBC" not in cover
+        assert "<h4>BBC</h4>" in cover
+        opf = archive.read("EPUB/content.opf").decode("utf-8", errors="ignore")
+        spine = opf[opf.find("<spine") : opf.find("</spine>")]
+        assert spine.index('idref="chapter_0"') < spine.index('idref="nav"')
+        body = "\n".join(
+            archive.read(name).decode("utf-8", errors="ignore")
+            for name in archive.namelist()
+            if name.endswith(".xhtml")
+        )
+        assert "Hello world." in body
 
 
 def test_render_txt_omits_urls_when_configured():

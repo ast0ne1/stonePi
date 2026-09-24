@@ -155,6 +155,8 @@ Dashboard launcher needs a matching glyph in
 
 ### Settings chips
 
+**Laptop+ (≥1024):** horizontal `.chips.settings-chips` / `.settings-top-chips` tablist.
+
 ```html
 <a class="chip-btn{% if settings_tab == 'general' %} is-active{% endif %}" …>
   {{ icon("general") }}<span>General</span>
@@ -163,6 +165,16 @@ Dashboard launcher needs a matching glyph in
 
 Never text-only chips when siblings show icons. Active chip: ink fill / paper text
 (sibling `.chip-btn.is-active` rules).
+
+**Phone/tablet (&lt;1024):** when an app has many settings sections, use NewsCast’s
+**grouped hub** instead of a scrolling top-level chip row:
+
+1. `/settings` — grouped list (section heading + card rows: icon, title, subtext, chevron).
+2. `/settings?tab=` — section with `< Settings` back link, title, lede; optional
+   `.settings-section-chips` sub-chips for multi-card panels (`?panel=`).
+3. Single-card sections skip sub-chips. Reference markup/CSS/JS:
+   `apps/newscast/app/templates/settings.html`, `.settings-hub*` in `app.css`,
+   `[data-settings-tabs]` in `app.js`.
 
 ## Settings content
 

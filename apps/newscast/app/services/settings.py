@@ -409,6 +409,16 @@ def epub_x3_screen(db: Session) -> bool:
     return publication_flag(db, "epub_x3_screen", default=True)
 
 
+def epub_toc_outline_numbers(db: Session) -> bool:
+    """Number cover Contents as 1 / 1.1 (category / source)."""
+    return publication_flag(db, "epub_toc_outline_numbers", default=True)
+
+
+def epub_cover_first(db: Session) -> bool:
+    """Open EPUB on cover/Contents instead of the nav outline."""
+    return publication_flag(db, "epub_cover_first", default=False)
+
+
 def normalize_reader_device(value: str | None) -> str:
     key = (value or "").strip().lower()
     return key if key in READER_DEVICE_IDS else DEFAULT_READER_DEVICE

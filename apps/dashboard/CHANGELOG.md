@@ -1,17 +1,21 @@
 # Changelog — Dashboard
 
+## 0.1.7 — 2026-09-24
+
+### Added
+- **Settings hub (phone/tablet):** grouped hub → section list → panel; L2 rows use the same icons as panel headings plus short subtexts
+- **Settings → Network**: network exposure (moved from General) + Tailscale remote access (enable, connect, auth-wait polling)
+- **Health**: single Remote access card (internet, enabled, Tailscale, MagicDNS)
+
+### Changed
+- Version aligned to platform **0.1.7**
+
 ## 0.1.6 — 2026-09-22
 
 ### Changed
 - Responsive shell: side rail at **≥1024px** (was 900); Health / TRMNL two-column at 1024; Home list/icons and Users access denser at **≥1440**
 - Admin `.main-wide` fills the column beside the rail (no width island); Settings panels lay out 2–3 columns on laptop/desktop
 - Version aligned to platform **0.1.6**
-
-## Unreleased
-
-### Added
-- **Settings → Network**: network exposure (moved from General) + Tailscale remote access (enable, connect, auth-wait polling)
-- **Health**: single Remote access card (internet, enabled, Tailscale, MagicDNS)
 
 ## 0.1.5 — 2026-09-21
 

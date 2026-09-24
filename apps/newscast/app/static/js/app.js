@@ -336,6 +336,10 @@ function askConfirm({ title, body, okLabel }) {
     const finish = (value) => {
       sheet.hidden = true;
       sheet.classList.remove("is-open");
+      if (!document.querySelector(".sheet.is-open")) {
+        document.documentElement.classList.remove("sheet-open");
+        document.body.classList.remove("sheet-open");
+      }
       sheet.removeEventListener("click", onBackdrop);
       okBtn?.removeEventListener("click", onOk);
       cancelBtn?.removeEventListener("click", onCancel);
@@ -354,8 +358,13 @@ function askConfirm({ title, body, okLabel }) {
     okBtn?.addEventListener("click", onOk);
     cancelBtn?.addEventListener("click", onCancel);
     document.addEventListener("keydown", onKey);
+    if (sheet.parentElement !== document.body) {
+      document.body.appendChild(sheet);
+    }
     sheet.hidden = false;
     sheet.classList.add("is-open");
+    document.documentElement.classList.add("sheet-open");
+    document.body.classList.add("sheet-open");
     okBtn?.focus();
   });
 }
@@ -411,27 +420,127 @@ document.querySelectorAll("form").forEach((form) => {
   });
 });
 
-const sheet = document.querySelector("[data-sheet]");
-const openSheet = document.querySelector("[data-open-sheet]");
-const closeSheet = document.querySelector("[data-close-sheet]");
-if (sheet && openSheet) {
-  openSheet.addEventListener("click", () => {
-    sheet.hidden = false;
-    sheet.classList.add("is-open");
-  });
+function findSheet(name) {
+  if (name) {
+    return document.querySelector(`[data-sheet="${name}"]`);
+  }
+  return document.querySelector("[data-sheet]");
 }
-if (sheet && closeSheet) {
-  closeSheet.addEventListener("click", () => {
-    sheet.hidden = true;
-    sheet.classList.remove("is-open");
-  });
-  sheet.addEventListener("click", (event) => {
-    if (event.target === sheet) {
-      sheet.hidden = true;
-      sheet.classList.remove("is-open");
+
+/** Sheets inside scrolling `.main` break `position:fixed` on iOS — hoist to body. */
+function mountSheetsToBody() {
+  document.querySelectorAll(".sheet").forEach((sheet) => {
+    if (sheet.parentElement !== document.body) {
+      document.body.appendChild(sheet);
     }
   });
 }
+mountSheetsToBody();
+
+function openSheetEl(sheet) {
+  if (!sheet) return;
+  if (sheet.parentElement !== document.body) {
+    document.body.appendChild(sheet);
+  }
+  sheet.hidden = false;
+  sheet.classList.add("is-open");
+  document.documentElement.classList.add("sheet-open");
+  document.body.classList.add("sheet-open");
+}
+
+function closeSheetEl(sheet) {
+  if (!sheet) return;
+  sheet.hidden = true;
+  sheet.classList.remove("is-open");
+  if (!document.querySelector(".sheet.is-open")) {
+    document.documentElement.classList.remove("sheet-open");
+    document.body.classList.remove("sheet-open");
+  }
+}
+
+function syncFilterPicker(sheet) {
+  if (!sheet) return;
+  const root =
+    document.querySelector("[data-filter-root]") ||
+    document;
+  const group = [...root.querySelectorAll("[data-chip-group]")].find(
+    (item) => (item.dataset.filterKey || "category") === "category"
+  );
+  const active = group?.querySelector("[data-filter].is-active")?.dataset.filter || "all";
+  sheet.querySelectorAll("[data-filter-pick]").forEach((option) => {
+    const on = option.dataset.filterPick === active;
+    option.classList.toggle("is-active", on);
+    option.setAttribute("aria-selected", on ? "true" : "false");
+  });
+}
+
+function applyFilterPick(option) {
+  const value = option.dataset.filterPick;
+  if (!value) return;
+  const filterKey = option.dataset.filterKey || "category";
+  const sheet = option.closest("[data-sheet]");
+  const root =
+    document.querySelector("[data-filter-root]") ||
+    document;
+  const group = [...root.querySelectorAll("[data-chip-group]")].find(
+    (item) => (item.dataset.filterKey || "category") === filterKey
+  );
+  if (!group) return;
+  const chip = [...group.querySelectorAll("[data-filter]")].find((item) => item.dataset.filter === value);
+  if (!chip) return;
+  group.querySelectorAll("[data-filter]").forEach((other) => other.classList.toggle("is-active", other === chip));
+  applyChipFilters(root);
+  writeStoredFilters(root);
+  resetFilterScroll();
+  requestAnimationFrame(resetFilterScroll);
+  closeSheetEl(sheet);
+}
+
+document.querySelectorAll("[data-open-sheet]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const name = btn.getAttribute("data-open-sheet") || "";
+    const sheet = findSheet(name);
+    if (name === "filters") syncFilterPicker(sheet);
+    openSheetEl(sheet);
+  });
+});
+
+document.querySelectorAll("[data-sheet]").forEach((sheet) => {
+  sheet.querySelectorAll("[data-close-sheet]").forEach((closeBtn) => {
+    closeBtn.addEventListener("click", () => closeSheetEl(sheet));
+  });
+  sheet.addEventListener("click", (event) => {
+    if (event.target === sheet) closeSheetEl(sheet);
+  });
+});
+
+document.querySelectorAll("[data-filter-pick]").forEach((option) => {
+  option.addEventListener("click", () => applyFilterPick(option));
+});
+
+function openFeedFromHash() {
+  const match = /^#feed-(\d+)$/.exec(window.location.hash || "");
+  if (!match) return;
+  const row = document.getElementById(`feed-${match[1]}`);
+  if (!row) return;
+  const details = row.matches("details") ? row : row.querySelector("details");
+  if (details) details.open = true;
+  row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+openFeedFromHash();
+window.addEventListener("hashchange", openFeedFromHash);
+
+document.querySelectorAll("[data-story-expand]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const card = button.closest(".story-card");
+    if (!card) return;
+    const open = !card.classList.contains("is-expanded");
+    card.classList.toggle("is-expanded", open);
+    button.setAttribute("aria-expanded", open ? "true" : "false");
+    button.setAttribute("aria-label", open ? "Collapse story" : "Expand story");
+  });
+});
 
 document.querySelectorAll("[data-keep-days]").forEach((select) => {
   const custom = select.closest("form")?.querySelector("[data-custom-expiry]");
@@ -662,11 +771,25 @@ function applyChipFilters(root) {
     });
   } else {
     root.querySelectorAll("[data-category]").forEach((item) => {
+      if (item.matches("[data-filter-section]")) return;
       const hide =
         category !== "all" &&
         (category === "favourites" ? item.dataset.favourited !== "1" : item.dataset.category !== category);
       item.hidden = hide;
       if (!hide) visible += 1;
+    });
+    root.querySelectorAll("[data-filter-section]").forEach((section) => {
+      const items = section.querySelectorAll("[data-category]:not([data-filter-section])");
+      if (!items.length) {
+        const hide =
+          category !== "all" &&
+          section.dataset.category &&
+          section.dataset.category !== category;
+        section.hidden = hide;
+        return;
+      }
+      const any = [...items].some((item) => !item.hidden);
+      section.hidden = !any;
     });
   }
   const empty = root.querySelector("[data-filter-empty]");
@@ -741,29 +864,211 @@ document.querySelectorAll("[data-chip-group]").forEach((group) => {
 const settingsRoot = document.querySelector("[data-settings-tabs]");
 if (settingsRoot) {
   const SETTINGS_SAVE_TABS = new Set(["device", "schedule", "publication", "filters", "translation", "llm", "reader", "notifications", "update"]);
+  const DESKTOP_MQ = window.matchMedia("(min-width: 1024px)");
   const settingsForm = settingsRoot.querySelector("[data-settings]");
   const settingsLede = document.querySelector("[data-settings-lede]");
+  const settingsTitle = document.querySelector("[data-settings-title]");
+  const settingsBack = document.querySelector("[data-settings-hub-back]");
   const settingsTabField = settingsRoot.querySelector("[data-settings-tab-field]");
   const settingsChips = settingsRoot.querySelectorAll("[data-settings-tab]");
+  const hubList = settingsRoot.querySelector("[data-settings-hub-list]");
+  const panelList = settingsRoot.querySelector("[data-settings-panel-list]");
+  const panelListRows = settingsRoot.querySelector("[data-settings-panel-list-rows]");
+  const sectionEl = settingsRoot.querySelector("[data-settings-section]");
+  const sectionChips = settingsRoot.querySelector("[data-settings-section-chips]");
+  const hubLede = settingsRoot.dataset.settingsHubLede || "Everything that shapes your paper, in one place.";
 
-  function showSettingsTab(tab) {
+  function readJson(selector, fallback) {
+    const node = settingsRoot.querySelector(selector);
+    if (!node?.textContent) return fallback;
+    try {
+      return JSON.parse(node.textContent);
+    } catch (_err) {
+      return fallback;
+    }
+  }
+
+  const panelsByTab = readJson("[data-settings-panels-json]", {});
+  const ledesByTab = readJson("[data-settings-ledes-json]", {});
+  const labelsByTab = readJson("[data-settings-labels-json]", {});
+
+  function isDesktopSettings() {
+    return DESKTOP_MQ.matches;
+  }
+
+  function syncDesktopClass() {
+    settingsRoot.classList.toggle("is-desktop-settings", isDesktopSettings());
+  }
+
+  function tabHasPanelList(tab) {
+    return (panelsByTab[tab] || []).length > 0;
+  }
+
+  function updateBackControl(mode, tab) {
+    if (!settingsBack) return;
+    if (mode === "hub" || isDesktopSettings()) {
+      settingsBack.hidden = true;
+      settingsBack.dataset.backTo = "hub";
+      settingsBack.textContent = "← Settings";
+      return;
+    }
+    settingsBack.hidden = false;
+    if (mode === "form" && tabHasPanelList(tab)) {
+      settingsBack.dataset.backTo = "panelList";
+      settingsBack.textContent = `← ${labelsByTab[tab] || "Back"}`;
+    } else {
+      settingsBack.dataset.backTo = "hub";
+      settingsBack.textContent = "← Settings";
+    }
+  }
+
+  function renderPanelList(tab) {
+    if (!panelListRows) return;
+    panelListRows.innerHTML = "";
+    (panelsByTab[tab] || []).forEach((panel) => {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "settings-hub-row settings-panel-row";
+      row.dataset.settingsPanelRow = panel.id;
+      row.innerHTML =
+        `<span class="settings-hub-icon" aria-hidden="true"></span>` +
+        `<span class="settings-hub-copy">` +
+        `<span class="settings-hub-title"></span>` +
+        `<span class="settings-hub-sub">Open this section</span>` +
+        `</span>` +
+        `<span class="settings-hub-chevron" aria-hidden="true">›</span>`;
+      const iconHost = row.querySelector(".settings-hub-icon");
+      const iconSrc = document.querySelector(
+        `[data-settings-panel-icon="${tab}-${panel.id}"]`
+      );
+      if (iconHost && iconSrc) {
+        iconHost.innerHTML = iconSrc.innerHTML;
+      }
+      row.querySelector(".settings-hub-title").textContent = panel.label;
+      panelListRows.appendChild(row);
+    });
+  }
+
+  function setViewMode({ hub = false, panelListMode = false } = {}) {
+    const onHub = Boolean(hub) && !isDesktopSettings();
+    const onPanelList = Boolean(panelListMode) && !isDesktopSettings() && !onHub;
+    settingsRoot.dataset.settingsHub = onHub ? "true" : "false";
+    settingsRoot.dataset.settingsPanelList = onPanelList ? "true" : "false";
+    settingsRoot.classList.toggle("is-hub", onHub);
+    settingsRoot.classList.toggle("is-panel-list", onPanelList);
+    if (hubList) hubList.hidden = !onHub;
+    if (panelList) panelList.hidden = !onPanelList;
+    if (sectionEl) sectionEl.hidden = (onHub || onPanelList) && !isDesktopSettings();
+  }
+
+  function applySectionPanel(tab, panelId) {
+    const panels = panelsByTab[tab] || [];
+    const activePanel = panels.find((p) => p.id === panelId) || panels[0] || null;
+    const activeCards = new Set(activePanel?.cards || []);
+    const hasPanels = panels.length > 0 && !isDesktopSettings();
+
+    if (sectionChips) {
+      // Mobile uses the panel list; chips remain for any transitional layout and are hidden in CSS.
+      sectionChips.hidden = !hasPanels || settingsRoot.classList.contains("is-panel-list");
+      sectionChips.classList.toggle("is-empty", !hasPanels);
+      sectionChips.innerHTML = "";
+      if (hasPanels) {
+        panels.forEach((panel) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = `chip-btn${panel.id === activePanel.id ? " is-active" : ""}`;
+          btn.setAttribute("role", "tab");
+          btn.dataset.settingsSectionPanel = panel.id;
+          btn.dataset.settingsSectionCards = (panel.cards || []).join(",");
+          btn.setAttribute("aria-selected", panel.id === activePanel.id ? "true" : "false");
+          btn.textContent = panel.label;
+          sectionChips.appendChild(btn);
+        });
+      }
+    }
+
+    settingsRoot.querySelectorAll("[data-settings-panel-card]").forEach((card) => {
+      const cardId = card.dataset.settingsPanelCard;
+      const inActiveTab = card.closest("[data-settings-panel]")?.dataset.settingsPanel === tab;
+      const hide = hasPanels && inActiveTab && activeCards.size > 0 && !activeCards.has(cardId);
+      card.classList.toggle("is-panel-hidden", hide);
+    });
+
+    settingsRoot.dataset.settingsActivePanel = activePanel?.id || "";
+    return activePanel?.id || null;
+  }
+
+  function showSettingsTab(tab, { panel = null, hub = false, panelListMode = false } = {}) {
     const next = [...settingsChips].some((chip) => chip.dataset.settingsTab === tab) ? tab : "device";
+    const showHub = Boolean(hub) && !isDesktopSettings();
+    const showPanelList =
+      Boolean(panelListMode) && !isDesktopSettings() && !showHub && tabHasPanelList(next);
+
+    setViewMode({ hub: showHub, panelListMode: showPanelList });
+
     settingsChips.forEach((chip) => {
       const on = chip.dataset.settingsTab === next;
       chip.classList.toggle("is-active", on);
       chip.setAttribute("aria-selected", on ? "true" : "false");
     });
-    settingsRoot.querySelectorAll("[data-settings-panel]").forEach((panel) => {
-      panel.hidden = panel.dataset.settingsPanel !== next;
+    settingsRoot.querySelectorAll("[data-settings-panel]").forEach((panelEl) => {
+      const isTab = panelEl.dataset.settingsPanel === next;
+      if (showHub || showPanelList || !isTab) {
+        panelEl.hidden = true;
+        return;
+      }
+      panelEl.hidden = false;
     });
-    if (settingsForm) settingsForm.hidden = !SETTINGS_SAVE_TABS.has(next);
+    if (settingsForm) settingsForm.hidden = showHub || showPanelList || !SETTINGS_SAVE_TABS.has(next);
     if (settingsTabField) settingsTabField.value = next;
-    const activeChip = [...settingsChips].find((chip) => chip.dataset.settingsTab === next);
-    if (settingsLede && activeChip?.dataset.settingsLede) {
-      settingsLede.textContent = activeChip.dataset.settingsLede;
+    settingsRoot.dataset.settingsActiveTab = next;
+
+    if (showHub) {
+      if (settingsTitle) settingsTitle.textContent = "Settings";
+      if (settingsLede) settingsLede.textContent = hubLede;
+      updateBackControl("hub", next);
+    } else if (showPanelList) {
+      renderPanelList(next);
+      if (settingsTitle) settingsTitle.textContent = labelsByTab[next] || next;
+      if (settingsLede) settingsLede.textContent = "Tap a section to edit it.";
+      updateBackControl("panelList", next);
+    } else {
+      if (settingsTitle) {
+        const panels = panelsByTab[next] || [];
+        const active = panels.find((p) => p.id === panel) || panels[0];
+        settingsTitle.textContent =
+          !isDesktopSettings() && active?.label ? active.label : labelsByTab[next] || next;
+      }
+      if (settingsLede) settingsLede.textContent = ledesByTab[next] || "";
+      updateBackControl("form", next);
     }
+
+    let panelId = panel;
+    if (!showHub && !showPanelList) {
+      if (!panelId || !(panelsByTab[next] || []).some((p) => p.id === panelId)) {
+        panelId = (panelsByTab[next] || [])[0]?.id || null;
+      }
+    }
+    const appliedPanel = showHub || showPanelList ? null : applySectionPanel(next, panelId);
+
+    if (!showHub && !showPanelList && !isDesktopSettings() && tabHasPanelList(next)) {
+      settingsRoot.querySelectorAll(`[data-settings-panel="${next}"]`).forEach((panelEl) => {
+        const cards = panelEl.querySelectorAll("[data-settings-panel-card]");
+        if (!cards.length) return;
+        const anyVisible = [...cards].some((card) => !card.classList.contains("is-panel-hidden"));
+        panelEl.hidden = !anyVisible;
+      });
+    }
+
     const url = new URL(window.location.href);
-    url.searchParams.set("tab", next);
+    if (showHub) {
+      url.searchParams.delete("tab");
+      url.searchParams.delete("panel");
+    } else {
+      url.searchParams.set("tab", next);
+      if (showPanelList || !appliedPanel) url.searchParams.delete("panel");
+      else url.searchParams.set("panel", appliedPanel);
+    }
     window.history.replaceState(null, "", url);
     resetFilterScroll();
     requestAnimationFrame(resetFilterScroll);
@@ -773,9 +1078,114 @@ if (settingsRoot) {
     chip.addEventListener("click", (event) => {
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       event.preventDefault();
-      showSettingsTab(chip.dataset.settingsTab);
+      const tab = chip.dataset.settingsTab;
+      if (!isDesktopSettings() && tabHasPanelList(tab)) {
+        showSettingsTab(tab, { panelListMode: true });
+      } else {
+        showSettingsTab(tab, { hub: false });
+      }
     });
   });
+
+  settingsRoot.querySelectorAll("[data-settings-hub-row]").forEach((row) => {
+    row.addEventListener("click", (event) => {
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      const tab = row.dataset.settingsHubRow;
+      if (!isDesktopSettings() && tabHasPanelList(tab)) {
+        showSettingsTab(tab, { panelListMode: true });
+      } else {
+        showSettingsTab(tab, { hub: false });
+      }
+    });
+  });
+
+  if (panelList) {
+    panelList.addEventListener("click", (event) => {
+      const row = event.target.closest("[data-settings-panel-row]");
+      if (!row || !panelList.contains(row)) return;
+      event.preventDefault();
+      showSettingsTab(settingsRoot.dataset.settingsActiveTab || "device", {
+        hub: false,
+        panel: row.dataset.settingsPanelRow,
+      });
+    });
+  }
+
+  if (settingsBack) {
+    settingsBack.addEventListener("click", (event) => {
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      const tab = settingsRoot.dataset.settingsActiveTab || "device";
+      if (settingsBack.dataset.backTo === "panelList") {
+        showSettingsTab(tab, { panelListMode: true });
+      } else {
+        showSettingsTab(tab, { hub: true });
+      }
+    });
+  }
+
+  if (sectionChips) {
+    sectionChips.addEventListener("click", (event) => {
+      const btn = event.target.closest("[data-settings-section-panel]");
+      if (!btn || !sectionChips.contains(btn)) return;
+      event.preventDefault();
+      showSettingsTab(settingsRoot.dataset.settingsActiveTab || "device", {
+        hub: false,
+        panel: btn.dataset.settingsSectionPanel,
+      });
+    });
+  }
+
+  function onViewportChange() {
+    syncDesktopClass();
+    const hubAttr = settingsRoot.dataset.settingsHub === "true";
+    const listAttr = settingsRoot.dataset.settingsPanelList === "true";
+    if (isDesktopSettings()) {
+      showSettingsTab(settingsRoot.dataset.settingsActiveTab || "device", {
+        hub: false,
+        panel: settingsRoot.dataset.settingsActivePanel || null,
+      });
+    } else if (hubAttr) {
+      showSettingsTab(settingsRoot.dataset.settingsActiveTab || "device", { hub: true });
+    } else if (listAttr) {
+      showSettingsTab(settingsRoot.dataset.settingsActiveTab || "device", { panelListMode: true });
+    } else {
+      showSettingsTab(settingsRoot.dataset.settingsActiveTab || "device", {
+        hub: false,
+        panel: settingsRoot.dataset.settingsActivePanel || null,
+      });
+    }
+  }
+
+  syncDesktopClass();
+  const initialHub = settingsRoot.dataset.settingsHub === "true";
+  const urlPanel = new URL(window.location.href).searchParams.get("panel");
+  if (isDesktopSettings()) {
+    showSettingsTab(settingsRoot.dataset.settingsActiveTab || "device", {
+      hub: false,
+      panel: settingsRoot.dataset.settingsActivePanel || null,
+    });
+  } else if (initialHub) {
+    // Hub HTML already visible.
+    updateBackControl("hub", settingsRoot.dataset.settingsActiveTab || "device");
+  } else {
+    const tab = settingsRoot.dataset.settingsActiveTab || "device";
+    if (tabHasPanelList(tab) && !urlPanel) {
+      showSettingsTab(tab, { panelListMode: true });
+    } else {
+      showSettingsTab(tab, {
+        hub: false,
+        panel: settingsRoot.dataset.settingsActivePanel || null,
+      });
+    }
+  }
+
+  if (typeof DESKTOP_MQ.addEventListener === "function") {
+    DESKTOP_MQ.addEventListener("change", onViewportChange);
+  } else if (typeof DESKTOP_MQ.addListener === "function") {
+    DESKTOP_MQ.addListener(onViewportChange);
+  }
 }
 
 document.querySelectorAll("[data-dismiss-login-qr]").forEach((button) => {

@@ -14,7 +14,9 @@ router = APIRouter(dependencies=[Depends(require_admin)])
 
 class FeedCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
-    url: str = Field(min_length=8, max_length=1000)
+    url: str = Field(default="", max_length=1000)
+    homepage_url: str = Field(default="", max_length=1000)
+    rss_url: str = Field(default="", max_length=1000)
     category: str = "news"
     type: str = "auto"
     enabled: bool = True
@@ -23,8 +25,11 @@ class FeedCreate(BaseModel):
 class FeedUpdate(BaseModel):
     name: str | None = None
     url: str | None = None
+    homepage_url: str | None = None
+    rss_url: str | None = None
     category: str | None = None
     enabled: bool | None = None
+    type: str | None = None
     schedule_mode: str | None = None
     interval_minutes: int | None = None
     summarize: bool | None = None
@@ -37,6 +42,8 @@ def _feed_dict(feed: Feed) -> dict:
         "catalog_id": feed.catalog_id,
         "name": feed.name,
         "url": feed.url,
+        "homepage_url": getattr(feed, "homepage_url", None) or None,
+        "rss_url": getattr(feed, "rss_url", None) or None,
         "enabled": feed.enabled,
         "type": feed.type,
         "category": feed.category,
@@ -60,6 +67,7 @@ def list_feeds(db: Annotated[Session, Depends(get_db)]):
 def create_feed(payload: FeedCreate, request: Request, db: Annotated[Session, Depends(get_db)]):
     from app.auth import effective_user_id, session_from_request
     from app.models import User
+    from app.services import feed_urls
 
     session = session_from_request(request)
     uid = effective_user_id(session)
@@ -67,17 +75,33 @@ def create_feed(payload: FeedCreate, request: Request, db: Annotated[Session, De
     user_row = db.get(User, uid) if uid else None
     if not is_admin and not (user_row and user_row.can_add_custom_sources):
         raise HTTPException(status_code=403, detail="Custom sources are not enabled for your account.")
-    existing = db.query(Feed).filter(Feed.user_id == uid, Feed.url == payload.url.strip()).one_or_none()
+    kind = feed_urls.normalize_feed_type(payload.type, default="auto")
+    home = feed_urls.clean_http_url(payload.homepage_url)
+    rss = feed_urls.clean_http_url(payload.rss_url)
+    legacy = feed_urls.clean_http_url(payload.url)
+    if legacy and not home and not rss:
+        if kind == "rss":
+            rss = legacy
+        else:
+            home = legacy
+    err = feed_urls.required_url_for_type(kind, home, rss)
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+    active = feed_urls.active_url_for(kind, home, rss)
+    existing = db.query(Feed).filter(Feed.user_id == uid, Feed.url == active).one_or_none()
     if existing:
         raise HTTPException(status_code=409, detail="That feed URL is already added.")
     feed = Feed(
         user_id=uid,
         name=payload.name.strip(),
-        url=payload.url.strip(),
+        url=active,
+        homepage_url=home or None,
+        rss_url=rss or None,
         category=payload.category,
-        type=payload.type,
+        type=kind,
         enabled=payload.enabled,
     )
+    feed_urls.sync_feed_urls(feed)
     db.add(feed)
     db.commit()
     db.refresh(feed)
@@ -89,13 +113,40 @@ def create_feed(payload: FeedCreate, request: Request, db: Annotated[Session, De
 
 @router.patch("/api/feeds/{feed_id}")
 def update_feed(feed_id: int, payload: FeedUpdate, db: Annotated[Session, Depends(get_db)]):
+    from app.services import feed_urls
+
     feed = db.get(Feed, feed_id)
     if feed is None:
         raise HTTPException(status_code=404, detail="Feed not found")
     if payload.name is not None:
         feed.name = payload.name.strip()
-    if payload.url is not None:
-        feed.url = payload.url.strip()
+    if payload.homepage_url is not None or payload.rss_url is not None or payload.type is not None:
+        home = feed_urls.clean_http_url(
+            payload.homepage_url if payload.homepage_url is not None else getattr(feed, "homepage_url", None)
+        )
+        rss = feed_urls.clean_http_url(
+            payload.rss_url if payload.rss_url is not None else getattr(feed, "rss_url", None)
+        )
+        kind = feed_urls.normalize_feed_type(
+            payload.type if payload.type is not None else feed.type,
+            default=feed.type or "rss",
+        )
+        err = feed_urls.required_url_for_type(kind, home, rss)
+        if err:
+            raise HTTPException(status_code=400, detail=err)
+        feed.homepage_url = home or None
+        feed.rss_url = rss or None
+        feed.type = kind
+        feed_urls.sync_feed_urls(feed)
+    elif payload.url is not None:
+        cleaned = feed_urls.clean_http_url(payload.url)
+        if not feed_urls.is_http_url(cleaned):
+            raise HTTPException(status_code=400, detail="Enter a valid http(s) URL.")
+        if (feed.type or "rss") == "rss":
+            feed.rss_url = cleaned
+        else:
+            feed.homepage_url = cleaned
+        feed_urls.sync_feed_urls(feed)
     if payload.category is not None:
         feed.category = payload.category
     if payload.enabled is not None:
@@ -142,11 +193,15 @@ def add_catalog_feed(db: Session, catalog_id: str, user_id: int = 1, *, require_
 
         if not is_catalog_approved(db, catalog_id):
             raise HTTPException(status_code=403, detail="That source is not approved for this household.")
-    from app.services.catalog import apply_catalog_type, catalog_rss_url
+    from app.services.catalog import apply_catalog_type, catalog_homepage_url, catalog_rss_url
+    from app.services.feed_urls import clean_http_url
 
     uid = int(user_id or 1)
     rss_alt = catalog_rss_url(item)
+    home = catalog_homepage_url(item)
     url_match = (Feed.url == item["url"]) | (Feed.url == rss_alt) if rss_alt else (Feed.url == item["url"])
+    if home and home != item["url"]:
+        url_match = url_match | (Feed.url == home)
     feed = (
         db.query(Feed)
         .filter(Feed.user_id == uid)
@@ -159,6 +214,8 @@ def add_catalog_feed(db: Session, catalog_id: str, user_id: int = 1, *, require_
             catalog_id=item["id"],
             name=item["name"],
             url=item["url"],
+            homepage_url=home or None,
+            rss_url=rss_alt or None,
             enabled=True,
             type=item.get("type", "rss"),
             category=item.get("category", "news"),
@@ -171,6 +228,11 @@ def add_catalog_feed(db: Session, catalog_id: str, user_id: int = 1, *, require_
         feed.catalog_id = feed.catalog_id or item["id"]
         feed.category = item.get("category", feed.category)
         feed.translate = bool(item.get("translate"))
+        if not clean_http_url(getattr(feed, "homepage_url", None)) and home:
+            feed.homepage_url = home
+        if not clean_http_url(getattr(feed, "rss_url", None)) and rss_alt:
+            feed.rss_url = rss_alt
+        apply_catalog_type(feed, item, feed.type or item.get("type", "rss"))
     db.commit()
     db.refresh(feed)
     from app.services.favicon import capture_for_feed_async

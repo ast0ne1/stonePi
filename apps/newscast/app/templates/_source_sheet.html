@@ -1,7 +1,7 @@
-<div class="sheet" hidden data-sheet>
+<div class="sheet" hidden data-sheet="add-source">
   <div class="sheet-card card">
     <h2>Add a custom source</h2>
-    <p class="hint">Paste an RSS feed URL, or a website to scrape when there is no feed.</p>
+    <p class="hint">Enter a homepage to scrape, an RSS feed URL, or both. Only the mode you pick under How to fetch is used.</p>
     <form method="post" action="/feeds" class="stack">
       <input type="hidden" name="next" value="{{ source_next }}" />
       <label>
@@ -9,8 +9,12 @@
         <input type="text" name="name" required autocomplete="off" />
       </label>
       <label>
-        Site or RSS URL
-        <input type="url" name="url" required inputmode="url" autocomplete="off" placeholder="https://" />
+        Homepage / scrape URL
+        <input type="url" name="homepage_url" inputmode="url" autocomplete="off" placeholder="https://example.com/" />
+      </label>
+      <label>
+        RSS feed URL
+        <input type="url" name="rss_url" inputmode="url" autocomplete="off" placeholder="https://example.com/feed/" />
       </label>
       <label>
         How to fetch
@@ -20,6 +24,7 @@
           <option value="webpage">Website scrape</option>
         </select>
       </label>
+      <p class="hint">Scrape needs a homepage URL. RSS needs a feed URL. Auto prefers the homepage and can discover a feed.</p>
       <label>
         Category
         <select name="category">

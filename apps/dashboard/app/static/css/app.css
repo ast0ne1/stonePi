@@ -1626,7 +1626,7 @@ details.card[open] > summary { margin-bottom: 10px; }
   overflow: visible;
 }
 .settings-tablist {
-  display: grid;
+  display: none;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin: 0 0 18px;
@@ -1679,6 +1679,168 @@ a.settings-tab.is-active:visited {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
   background: color-mix(in srgb, var(--accent) 10%, var(--card));
 }
+.settings-back {
+  display: inline-block;
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.settings-back[hidden] { display: none !important; }
+.settings-back:hover,
+.settings-back:focus-visible { text-decoration: underline; color: var(--ink); }
+.settings-page-status { margin: 0 0 8px; }
+.page-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+.page-status-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+.section-label {
+  font-family: var(--chrome);
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 8px;
+  padding: 0 2px;
+}
+.group-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.settings-hub,
+.settings-panel-list {
+  display: grid;
+  gap: 18px;
+  margin: 4px 0 8px;
+}
+.settings-hub[hidden],
+.settings-panel-list[hidden] { display: none !important; }
+.settings-hub-heading {
+  margin: 0 0 8px;
+  padding: 0 2px;
+  font-family: var(--chrome);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.settings-hub-card {
+  display: grid;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+a.settings-hub-row,
+button.settings-hub-row {
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--tap, 44px);
+  margin: 0;
+  padding: 12px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink) !important;
+  font: inherit;
+  text-align: left;
+  text-decoration: none !important;
+  cursor: pointer;
+}
+a.settings-hub-row:visited {
+  color: var(--ink) !important;
+}
+a.settings-hub-row:last-child,
+button.settings-hub-row:last-child { border-bottom: 0; }
+a.settings-hub-row:hover,
+a.settings-hub-row:focus-visible,
+button.settings-hub-row:hover,
+button.settings-hub-row:focus-visible {
+  background: color-mix(in srgb, var(--ink) 4%, var(--card));
+  outline: none;
+}
+.settings-hub-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  flex: 0 0 40px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ink) 5%, var(--paper));
+  color: var(--ink);
+}
+.settings-hub-icon svg {
+  width: 18px !important;
+  height: 18px !important;
+  max-width: 18px;
+  max-height: 18px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  overflow: hidden;
+}
+.settings-hub-copy {
+  display: flex !important;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.settings-hub-title {
+  display: block;
+  font-family: var(--chrome);
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1.25;
+  color: var(--ink);
+}
+.settings-hub-sub {
+  display: block;
+  font-family: var(--chrome);
+  font-size: 0.8rem;
+  font-weight: 400;
+  line-height: 1.35;
+  color: var(--muted);
+}
+.settings-hub-chevron {
+  color: var(--muted);
+  font-size: 1.35rem;
+  line-height: 1;
+}
+.settings-section[hidden] { display: none !important; }
+.settings-shell.is-hub .settings-section,
+.settings-shell.is-panel-list .settings-section { display: none !important; }
+.settings-shell:not(.is-hub) .settings-hub { display: none !important; }
+.settings-shell:not(.is-panel-list) .settings-panel-list { display: none !important; }
+.settings-shell:not(.is-desktop-settings) [data-settings-panel-card].is-panel-hidden {
+  display: none !important;
+}
 @media (min-width: 720px) {
   .settings-tablist {
     display: flex;
@@ -1703,6 +1865,29 @@ a.settings-tab.is-active:visited {
   a.settings-tab.is-active:visited {
     border-bottom-color: var(--ink);
     background: transparent;
+  }
+}
+@media (max-width: 1023px) {
+  .settings-tablist {
+    display: none !important;
+  }
+}
+@media (min-width: 1024px) {
+  .settings-shell.is-hub .settings-section,
+  .settings-shell.is-panel-list .settings-section,
+  .settings-shell .settings-section {
+    display: block !important;
+  }
+  .settings-hub,
+  .settings-panel-list,
+  .settings-back {
+    display: none !important;
+  }
+  .settings-tablist {
+    display: flex !important;
+  }
+  .settings-shell [data-settings-panel-card].is-panel-hidden {
+    display: revert !important;
   }
 }
 .settings-chips {
@@ -1844,7 +2029,8 @@ a.settings-tab svg [fill]:not([fill="none"]),
 .icon-btn svg [fill]:not([fill="none"]),
 .nav svg [fill]:not([fill="none"]),
 .launcher-icon svg [fill]:not([fill="none"]),
-.service-icon svg [fill]:not([fill="none"]) {
+.service-icon svg [fill]:not([fill="none"]),
+.settings-hub-icon svg [fill]:not([fill="none"]) {
   fill: currentColor;
   stroke: none;
 }

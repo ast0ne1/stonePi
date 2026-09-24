@@ -1,5 +1,19 @@
 ﻿# Changelog
 
+## 0.0.4 — 2026-09-24
+
+### Added
+- **Settings hub (phone/tablet):** grouped hub → section drill-in; L2 publication panels show matching icons and short subtexts
+- Feed URL helpers for dual-mode / catalog seed paths
+
+### Changed
+- Briefing, Sources, Feeds, and catalog panels: denser mobile chrome, filter/help sheets that scroll correctly, icon-only expand controls
+- Catalog seed only creates default feeds; existing stubs are not treated as “added” until enabled
+- Cover image and category helpers tightened for briefing packages
+
+### Fixed
+- Mobile sheets (category filter, help/info) no longer trapped under nav or unscrollable inside `main`
+
 ## 0.0.3 — 2026-09-22
 
 ### Changed
