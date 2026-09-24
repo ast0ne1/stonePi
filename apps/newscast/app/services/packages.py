@@ -150,20 +150,31 @@ def import_package(db: Session, payload) -> dict:
             continue
         if any(row.catalog_id == catalog_id for row in existing):
             continue
-        db.add(
-            Feed(
-                user_id=admin.id,
-                catalog_id=catalog_id,
-                name=feed["name"],
-                url=feed["url"],
-                enabled=bool(feed.get("default_enabled")),
-                type=feed.get("type") or "rss",
-                category=package["category"]["key"],
-                translate=bool(feed.get("translate")),
-                translate_provider="global",
-            )
+        kind = feed.get("type") or "rss"
+        url = feed["url"]
+        homepage = feed.get("homepage_url") or (url if kind in {"webpage", "auto"} else None)
+        rss = feed.get("rss_url") or (url if kind == "rss" else None)
+        row = Feed(
+            user_id=admin.id,
+            catalog_id=catalog_id,
+            name=feed["name"],
+            url=url,
+            homepage_url=homepage,
+            rss_url=rss,
+            enabled=True,
+            type=kind,
+            category=package["category"]["key"],
+            translate=bool(feed.get("translate")),
+            translate_provider="global",
         )
-        used_urls.add(feed["url"])
+        from app.services.feed_urls import sync_feed_urls
+
+        try:
+            sync_feed_urls(row)
+        except ValueError:
+            pass
+        db.add(row)
+        used_urls.add(row.url)
         created += 1
     db.commit()
     return {"package": package, "created": created}
@@ -204,6 +215,8 @@ def export_category(db: Session, category_key: str, catalog_items: list[dict]) -
                 "id": slugify(feed.catalog_id or feed.name) or f"feed-{feed.id}",
                 "name": feed.name,
                 "url": feed.url,
+                "homepage_url": getattr(feed, "homepage_url", None) or None,
+                "rss_url": getattr(feed, "rss_url", None) or None,
                 "type": feed.type or "rss",
                 "translate": bool(feed.translate),
                 "default_enabled": False,

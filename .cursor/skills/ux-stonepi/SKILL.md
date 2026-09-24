@@ -23,6 +23,11 @@ Users/Updates/Services. Product apps keep their own product settings.
 - Prefer shared confirm sheets (NewsCast/FileServe) over bare `confirm()` where
   the shell already has them.
 - Theme/palette: light/dark/auto in header; palette can apply immediately without Save.
+- **Settings IA (phone/tablet):** Prefer a **grouped hub → section drill-in** over a long
+  horizontal chip scroller when an app has many settings tabs. NewsCast is the
+  reference: `/settings` hub with labeled groups; `/settings?tab=` opens a section
+  with optional sub-chips for multi-card panels. **Laptop+ (≥1024)** may keep the
+  chip bar + stacked cards. Hide Users/Update tabs under SSO as today.
 
 ## Do not apply
 

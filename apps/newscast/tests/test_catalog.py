@@ -36,9 +36,13 @@ def test_apply_catalog_type_switches_url():
     apply_catalog_type(feed, item, "rss")
     assert feed.type == "rss"
     assert feed.url == item["rss_url"]
+    assert feed.homepage_url == item["url"]
+    assert feed.rss_url == item["rss_url"]
     apply_catalog_type(feed, item, "webpage")
     assert feed.type == "webpage"
     assert feed.url == item["url"]
+    assert feed.homepage_url == item["url"]
+    assert feed.rss_url == item["rss_url"]
 
 
 def test_catalog_includes_techcrunch_rss():
@@ -96,3 +100,95 @@ def test_remove_recommended_deletes_enabled_feed():
     assert remove_recommended("techcrunch", db) == {"ok": True, "removed": True}
     assert db.query(Feed).filter(Feed.catalog_id == "techcrunch").one_or_none() is None
     assert any(item["id"] == "techcrunch" and not item["added"] for item in catalog_with_status(db))
+
+
+def test_disabled_feed_still_counts_as_added():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from app.models import Base, Feed
+    from app.routers.feeds import add_catalog_feed
+    from app.services.catalog import catalog_with_status
+
+    engine = create_engine("sqlite://", future=True)
+    Base.metadata.create_all(engine)
+    db = Session(engine)
+    add_catalog_feed(db, "techcrunch")
+    feed = db.query(Feed).filter(Feed.catalog_id == "techcrunch").one()
+    feed.enabled = False
+    db.commit()
+    status = next(item for item in catalog_with_status(db) if item["id"] == "techcrunch")
+    assert status["added"] is True
+    assert status["enabled"] is False
+
+
+def test_seed_only_creates_default_enabled_feeds(monkeypatch):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from app.models import Base, Feed, User
+    from app.services import catalog as catalog_service
+    import app.services.users as users_service
+
+    engine = create_engine("sqlite://", future=True)
+    Base.metadata.create_all(engine)
+    db = Session(engine)
+    admin = User(id=1, username="admin", role="admin", password="x")
+    db.add(admin)
+    db.commit()
+
+    monkeypatch.setattr(catalog_service.env, "seed_recommended_feeds", True)
+    monkeypatch.setattr(users_service, "ensure_admin_user", lambda _db: admin)
+
+    catalog_service.seed_recommended_feeds(db)
+    feeds = db.query(Feed).filter(Feed.user_id == admin.id).all()
+    assert feeds
+    assert all(feed.enabled for feed in feeds)
+    seeded_ids = {feed.catalog_id for feed in feeds}
+    defaults = {item["id"] for item in catalog_service.load_catalog() if item.get("default_enabled")}
+    assert seeded_ids == defaults
+
+
+def test_seed_removes_unused_disabled_catalog_stubs(monkeypatch):
+    from datetime import datetime, timezone
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from app.models import Base, Feed, User
+    from app.services import catalog as catalog_service
+    import app.services.users as users_service
+
+    engine = create_engine("sqlite://", future=True)
+    Base.metadata.create_all(engine)
+    db = Session(engine)
+    admin = User(id=1, username="admin", role="admin", password="x")
+    db.add(admin)
+    stub = Feed(
+        user_id=1,
+        catalog_id="techcrunch",
+        name="TechCrunch",
+        url="https://techcrunch.com/feed/",
+        enabled=False,
+        type="rss",
+        category="technology",
+    )
+    kept = Feed(
+        user_id=1,
+        catalog_id="the-verge",
+        name="The Verge",
+        url="https://www.theverge.com/rss/index.xml",
+        enabled=False,
+        type="rss",
+        category="technology",
+        last_fetched_at=datetime.now(timezone.utc),
+    )
+    db.add_all([stub, kept])
+    db.commit()
+
+    monkeypatch.setattr(catalog_service.env, "seed_recommended_feeds", True)
+    monkeypatch.setattr(users_service, "ensure_admin_user", lambda _db: admin)
+
+    catalog_service.seed_recommended_feeds(db)
+    assert db.query(Feed).filter(Feed.catalog_id == "techcrunch").one_or_none() is None
+    assert db.query(Feed).filter(Feed.catalog_id == "the-verge").one() is not None

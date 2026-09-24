@@ -1,165 +1,195 @@
-{% from "_filter_icon.html" import filter_chip %}
+{% from "_filter_icon.html" import filter_chip, filter_icon %}
 {% set source_next = source_next|default('/sources?tab=feeds') %}
-<section class="hero hero-row">
-  <div>
-    <h1>Feeds</h1>
-    <p class="lede">Each source can follow the global schedule ({{ global_interval_label }}) or use its own. Tap a card to edit schedule and filters. Tap the circular arrow to fetch just that source. <strong>Summarise</strong> uses the LLM (or extracted text if no key). <strong>Full article</strong> keeps the RSS description or scraped body without summarising. Language can follow Settings → Translation (Google or LLM) or force one engine per source.</p>
-  </div>
-  {% if can_add_custom_sources %}
-  <button class="btn btn-secondary btn-with-icon" type="button" data-open-sheet>
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-    <span>Add custom</span>
-  </button>
-  {% endif %}
-</section>
 
 <div data-filter-root>
-<div class="chips" data-chip-group>
-  {{ filter_chip("all", "All", true) }}
-  {% for key, label in category_labels.items() %}
-    {% if feeds | selectattr('category', 'equalto', key) | list %}
-    {{ filter_chip(key, label) }}
-    {% endif %}
-  {% endfor %}
-</div>
-
-<ul class="feed-list">
-  {% for feed in feeds %}
-  <li id="feed-{{ feed.id }}" class="card feed-card {% if not feed.enabled %}is-off{% endif %}" data-category="{{ feed.category }}">
-    <header class="feed-head">
-      <div class="feed-copy">
-        <h2 class="feed-title">{% if favicons.get(feed.name) %}<img class="source-icon source-icon-lg" src="{{ favicons[feed.name] }}" alt="" width="20" height="20">{% endif %}{{ feed.name }}</h2>
-        <p class="feed-kicker">
-          <span class="chip chip-quiet">{{ category_labels.get(feed.category, feed.category) }}</span>
-          <span class="chip chip-quiet {% if feed.type == 'webpage' %}chip-scrape{% endif %}">{{ 'Scrape' if feed.type == 'webpage' else ('RSS' if feed.type == 'rss' else 'Auto') }}</span>
-          <span class="chip chip-quiet">{{ 'Summarise' if feed.summarize != false else 'Full article' }}</span>
-          {% if feed.translate %}<span class="chip chip-quiet">{{ 'LLM' if feed.translate_mode == 'llm' else ('Google' if feed.translate_mode == 'google' else 'Translate') }}</span>{% endif %}
-          {% if paywall_skip_enabled and feed.paywall_skip %}<span class="chip chip-quiet">PaywallSkip</span>{% endif %}
-          <span class="chip chip-quiet chip-health chip-health-{{ feed.health }}">{{ feed.health_label }}</span>
-          {% if feed.is_muted %}<span class="chip chip-quiet">Muted until {{ feed.muted_until.strftime('%d %b %Y %H:%M') }} UTC</span>{% endif %}
-        </p>
-      </div>
-      <div class="feed-actions">
-        <form method="post" action="/feeds/{{ feed.id }}/toggle">
-          <button class="toggle {% if feed.enabled %}is-on{% endif %}" type="submit" aria-pressed="{{ 'true' if feed.enabled else 'false' }}" aria-label="{{ 'Disable ' ~ feed.name if feed.enabled else 'Enable ' ~ feed.name }}">
-            {{ 'Enabled' if feed.enabled else 'Disabled' }}
-          </button>
-        </form>
-        <form method="post" action="/feeds/{{ feed.id }}/refresh">
-          <button class="icon-btn icon-btn-quiet{% if ingest.running %} is-busy{% endif %}" type="submit" data-feed-refresh aria-label="Update {{ feed.name }}" title="Update this source"{% if ingest.running %} disabled{% endif %}>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 4v6h-6"/></svg>
-          </button>
-        </form>
-        {% if feed.is_muted %}
-        <form method="post" action="/feeds/{{ feed.id }}/unmute">
-          <button class="btn btn-secondary" type="submit">Unmute</button>
-        </form>
-        {% else %}
-        <form method="post" action="/feeds/{{ feed.id }}/mute">
-          <button class="btn btn-secondary" type="submit">Mute 24 hrs</button>
-        </form>
-        {% endif %}
-        <form method="post" action="/feeds/{{ feed.id }}/delete" data-confirm="Remove {{ feed.name }}?" data-confirm-detail="Existing stories stay in the briefing until they expire." data-confirm-ok="Remove">
-          <input type="hidden" name="next" value="{{ source_next }}" />
-          <button class="icon-btn" type="submit" aria-label="Delete {{ feed.name }}" title="Remove feed">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M9 7V5h6v2M7 7l1 13h8l1-13"/></svg>
-          </button>
-        </form>
-      </div>
-    </header>
-    <p class="feed-status {% if feed.last_error %}is-error{% endif %}">
-      {% if feed.last_error %}
-        {{ feed.last_error }}
-      {% elif feed.last_fetched_at %}
-        Fetched {{ feed.last_fetched_at.strftime('%d %b %Y %H:%M') }}
-        {% if feed.last_item_count is not none %} · {{ feed.last_item_count }} item{{ '' if feed.last_item_count == 1 else 's' }}{% endif %}
-        {% if feed.last_new_count is not none %} · {{ feed.last_new_count }} new{% endif %}
-        {% if feed.last_ingest_note and (feed.last_new_count is none or feed.last_new_count == 0) %} · {{ feed.last_ingest_note }}{% endif %}
-        {% if feed.last_status_code %} · HTTP {{ feed.last_status_code }}{% endif %}
-      {% else %}
-        Not fetched yet
+<div class="chips-with-action">
+  <div class="chips" data-chip-group>
+    {{ filter_chip("all", "All", true) }}
+    {% for key, label in category_labels.items() %}
+      {% if feeds | selectattr('category', 'equalto', key) | list %}
+      {{ filter_chip(key, label) }}
       {% endif %}
-    </p>
-    <details class="feed-settings">
-      <summary class="feed-settings-toggle">
-        <span class="feed-settings-toggle-row">
-          <span>Schedule &amp; filters</span>
-          <svg class="feed-settings-chevron" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-        </span>
-      </summary>
-      <div class="feed-settings-panel">
-        <form method="post" action="/feeds/{{ feed.id }}/schedule" class="schedule-form">
-          <label>
-            Source type
-            <select name="feed_type">
-              <option value="webpage" {% if (feed.type or 'rss') == 'webpage' %}selected{% endif %}>Scrape</option>
-              <option value="rss" {% if (feed.type or 'rss') == 'rss' %}selected{% endif %}>RSS</option>
-              {% if (feed.type or '') == 'auto' %}
-              <option value="auto" selected>Auto</option>
-              {% endif %}
-            </select>
-          </label>
-          {% if feed.has_rss_alternate %}
-          <p class="hint schedule-span">Switching type also switches between the homepage and the known RSS feed.</p>
-          {% endif %}
-          <label>
-            Schedule
-            <select name="schedule_mode" data-schedule-mode>
-              <option value="global" {% if (feed.schedule_mode or 'global') == 'global' %}selected{% endif %}>Global ({{ global_interval_label }})</option>
-              <option value="custom" {% if feed.schedule_mode == 'custom' %}selected{% endif %}>Custom</option>
-            </select>
-          </label>
-          <label data-custom-interval {% if feed.schedule_mode != 'custom' %}hidden{% endif %}>
-            Every
-            <select name="interval_minutes">
-              {% for value, label in refresh_intervals %}
-              <option value="{{ value }}" {% if feed.interval_minutes == value %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label>
-            Article text
-            <select name="summarize">
-              <option value="1" {% if feed.summarize != false %}selected{% endif %}>Summarise</option>
-              <option value="0" {% if feed.summarize == false %}selected{% endif %}>Full article</option>
-            </select>
-          </label>
-          <label>
-            Language
-            <select name="translate">
-              {% for value, label in translate_modes %}
-              <option value="{{ value }}" {% if feed.translate_mode == value %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <p class="hint schedule-span">Global translation is currently {{ 'LLM' if global_translate_provider == 'llm' else 'Google' }} (Settings → Translation).</p>
-          <label class="check schedule-span">
-            <input type="checkbox" name="paywall_skip" value="1" {% if feed.paywall_skip %}checked{% endif %} {% if not paywall_skip_enabled %}disabled{% endif %} />
-            Use PaywallSkip for View article links
-          </label>
-          {% if not paywall_skip_enabled %}
-          <p class="hint schedule-span">Turn on PaywallSkip under Settings → General first.</p>
-          {% endif %}
-          <label class="schedule-span">
-            Include words
-            <input type="text" name="keyword_include" value="{{ feed.keyword_include or '' }}" autocomplete="off" placeholder="optional, comma-separated" />
-          </label>
-          <label class="schedule-span">
-            Exclude words
-            <input type="text" name="keyword_exclude" value="{{ feed.keyword_exclude or '' }}" autocomplete="off" placeholder="optional, comma-separated" />
-          </label>
-          <button class="btn btn-secondary" type="submit">Save</button>
-        </form>
-      </div>
-    </details>
-  </li>
-  {% else %}
-  <li class="empty card">No feeds yet. Add one from Catalog, or tap Add custom.</li>
-  {% endfor %}
-  <li class="empty card" hidden data-filter-empty>No feeds in this category.</li>
-</ul>
+    {% endfor %}
+  </div>
+  <button class="chips-action" type="button" data-open-sheet="filters" aria-label="Choose category" title="Choose category">
+    {{ filter_icon("sliders") }}
+  </button>
 </div>
 
-{% if can_add_custom_sources %}
-{% include "_source_sheet.html" %}
+{% if feed_groups %}
+<div class="feed-groups">
+  {% for category, label, group_feeds in feed_groups %}
+  <section class="feed-group" data-filter-section data-category="{{ category }}">
+    <h2 class="section-label">{{ label }}</h2>
+    <ul class="group-card">
+      {% for feed in group_feeds %}
+      <li id="feed-{{ feed.id }}" class="feed-row {% if not feed.enabled %}is-off{% endif %}" data-filter-item data-category="{{ feed.category }}">
+        <div class="feed-row-layout">
+          <details class="feed-settings feed-row-details">
+            <summary class="feed-row-summary">
+              <div class="feed-row-summary-inner">
+                {% if favicons.get(feed.name) %}
+                <img class="feed-row-icon" src="{{ favicons[feed.name] }}" alt="" width="40" height="40">
+                {% else %}
+                <span class="feed-row-icon-fallback" aria-hidden="true"></span>
+                {% endif %}
+                <div class="feed-row-copy">
+                  <h3 class="feed-row-title">{{ feed.name }}</h3>
+                  <p class="feed-row-meta">
+                    {{ feed.meta_line }}
+                    {% if feed.translate %} · {{ 'LLM' if feed.translate_mode == 'llm' else ('Google' if feed.translate_mode == 'google' else 'Translate') }}{% endif %}
+                    {% if paywall_skip_enabled and feed.paywall_skip %} · PaywallSkip{% endif %}
+                    {% if feed.is_muted %} · Muted{% endif %}
+                  </p>
+                  <p class="feed-row-health feed-row-health-{{ feed.health }}">
+                    <span class="feed-row-health-dot" aria-hidden="true"></span>
+                    {{ feed.health_label }}
+                  </p>
+                </div>
+              </div>
+            </summary>
+            <div class="feed-row-panel">
+              <div class="feed-actions">
+                <form method="post" action="/feeds/{{ feed.id }}/toggle">
+                  <button class="toggle {% if feed.enabled %}is-on{% endif %}" type="submit" aria-pressed="{{ 'true' if feed.enabled else 'false' }}" aria-label="{{ 'Disable ' ~ feed.name if feed.enabled else 'Enable ' ~ feed.name }}">
+                    {{ 'Enabled' if feed.enabled else 'Disabled' }}
+                  </button>
+                </form>
+                {% if feed.is_muted %}
+                <form method="post" action="/feeds/{{ feed.id }}/unmute">
+                  <button class="btn btn-secondary" type="submit">Unmute</button>
+                </form>
+                {% else %}
+                <form method="post" action="/feeds/{{ feed.id }}/mute">
+                  <button class="btn btn-secondary" type="submit">Mute 24 hrs</button>
+                </form>
+                {% endif %}
+                <form method="post" action="/feeds/{{ feed.id }}/delete" data-confirm="Remove {{ feed.name }}?" data-confirm-detail="Existing stories stay in the briefing until they expire." data-confirm-ok="Remove">
+                  <input type="hidden" name="next" value="{{ source_next }}" />
+                  <button class="icon-btn" type="submit" aria-label="Delete {{ feed.name }}" title="Remove feed">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M9 7V5h6v2M7 7l1 13h8l1-13"/></svg>
+                  </button>
+                </form>
+              </div>
+              <p class="feed-status {% if feed.last_error %}is-error{% endif %}">
+                {% if feed.last_error %}
+                  {{ feed.last_error }}
+                {% elif feed.last_fetched_at %}
+                  Fetched {{ feed.last_fetched_at.strftime('%d %b %Y %H:%M') }}
+                  {% if feed.last_item_count is not none %} · {{ feed.last_item_count }} item{{ '' if feed.last_item_count == 1 else 's' }}{% endif %}
+                  {% if feed.last_new_count is not none %} · {{ feed.last_new_count }} new{% endif %}
+                  {% if feed.last_ingest_note and (feed.last_new_count is none or feed.last_new_count == 0) %} · {{ feed.last_ingest_note }}{% endif %}
+                  {% if feed.last_status_code %} · HTTP {{ feed.last_status_code }}{% endif %}
+                {% else %}
+                  Not fetched yet
+                {% endif %}
+              </p>
+              <div class="feed-settings-panel">
+                <form method="post" action="/feeds/{{ feed.id }}/schedule" class="schedule-form">
+                  <label>
+                    Source type
+                    <select name="feed_type">
+                      <option value="webpage" {% if (feed.type or 'rss') == 'webpage' %}selected{% endif %}>Scrape</option>
+                      <option value="rss" {% if (feed.type or 'rss') == 'rss' %}selected{% endif %}>RSS</option>
+                      {% if (feed.type or '') == 'auto' %}
+                      <option value="auto" selected>Auto</option>
+                      {% endif %}
+                    </select>
+                  </label>
+                  <label class="schedule-span">
+                    Homepage / scrape URL
+                    <input type="url" name="homepage_url" value="{{ feed.homepage_url or '' }}" inputmode="url" autocomplete="off" placeholder="https://" />
+                  </label>
+                  <label class="schedule-span">
+                    RSS feed URL
+                    <input type="url" name="rss_url" value="{{ feed.rss_url or '' }}" inputmode="url" autocomplete="off" placeholder="https://" />
+                  </label>
+                  <p class="hint schedule-span">You can keep both. Only the selected source type is fetched (active: {{ feed.url }}).</p>
+                  <label>
+                    Schedule
+                    <select name="schedule_mode" data-schedule-mode>
+                      <option value="global" {% if (feed.schedule_mode or 'global') == 'global' %}selected{% endif %}>Global ({{ global_interval_label }})</option>
+                      <option value="custom" {% if feed.schedule_mode == 'custom' %}selected{% endif %}>Custom</option>
+                    </select>
+                  </label>
+                  <label data-custom-interval {% if feed.schedule_mode != 'custom' %}hidden{% endif %}>
+                    Every
+                    <select name="interval_minutes">
+                      {% for value, label in refresh_intervals %}
+                      <option value="{{ value }}" {% if feed.interval_minutes == value %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                  <label>
+                    Article text
+                    <select name="summarize">
+                      <option value="1" {% if feed.summarize != false %}selected{% endif %}>Summarise</option>
+                      <option value="0" {% if feed.summarize == false %}selected{% endif %}>Full article</option>
+                    </select>
+                  </label>
+                  <label>
+                    Language
+                    <select name="translate">
+                      {% for value, label in translate_modes %}
+                      <option value="{{ value }}" {% if feed.translate_mode == value %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                  <p class="hint schedule-span">Global translation is currently {{ 'LLM' if global_translate_provider == 'llm' else 'Google' }} (Settings → Translation).</p>
+                  <label class="check schedule-span">
+                    <input type="checkbox" name="paywall_skip" value="1" {% if feed.paywall_skip %}checked{% endif %} {% if not paywall_skip_enabled %}disabled{% endif %} />
+                    Use PaywallSkip for View article links
+                  </label>
+                  {% if not paywall_skip_enabled %}
+                  <p class="hint schedule-span">Turn on PaywallSkip under Settings → General first.</p>
+                  {% endif %}
+                  <label class="schedule-span">
+                    Include words
+                    <input type="text" name="keyword_include" value="{{ feed.keyword_include or '' }}" autocomplete="off" placeholder="optional, comma-separated" />
+                  </label>
+                  <label class="schedule-span">
+                    Exclude words
+                    <input type="text" name="keyword_exclude" value="{{ feed.keyword_exclude or '' }}" autocomplete="off" placeholder="optional, comma-separated" />
+                  </label>
+                  <button class="btn btn-secondary" type="submit">Save</button>
+                </form>
+              </div>
+            </div>
+          </details>
+          <form method="post" action="/feeds/{{ feed.id }}/refresh" class="feed-row-refresh">
+            <button class="icon-btn icon-btn-quiet{% if ingest.running %} is-busy{% endif %}" type="submit" data-feed-refresh aria-label="Update {{ feed.name }}" title="Update this source"{% if ingest.running %} disabled{% endif %}>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 4v6h-6"/></svg>
+            </button>
+          </form>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endfor %}
+</div>
+<div class="empty card" hidden data-filter-empty>
+  <h2>No feeds in this category</h2>
+  <p>Try another category, or leave the filter on All.</p>
+</div>
+{% else %}
+<div class="empty card">No feeds yet. Add one from Catalog, or tap Add feed.</div>
 {% endif %}
+</div>
+
+<div class="sheet" hidden data-sheet="filters">
+  <div class="sheet-card card">
+    <h2>Category</h2>
+    <div class="filter-picker" role="listbox" aria-label="Category">
+      <button class="filter-picker-option" type="button" role="option" data-filter-pick="all">{{ filter_icon("all") }}<span>All</span></button>
+      {% for key, label in category_labels.items() %}
+        {% if feeds | selectattr('category', 'equalto', key) | list %}
+        <button class="filter-picker-option" type="button" role="option" data-filter-pick="{{ key }}">{{ filter_icon(key) }}<span>{{ label }}</span></button>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" type="button" data-close-sheet>Cancel</button>
+    </div>
+  </div>
+</div>

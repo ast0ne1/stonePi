@@ -16,7 +16,7 @@ from app.config import BRIEFING_DIR, env
 from app.models import Feed, Story, SyncTask, utcnow
 from app.services import settings
 from app.services.categories import BUILTIN_LABELS, DEFAULT_CATEGORY, category_labels, slugify
-from app.services.cover_image import render_newspaper_cover
+from app.services.cover_image import render_category_icon, render_newspaper_cover
 from app.services.filters import story_kept
 from app.services.paper_naming import (
     day_from_briefing_path,
@@ -63,6 +63,8 @@ class EpubLayout:
     omit_article_links: bool = True
     chapters_by_source: bool = True
     x3_screen: bool = True
+    toc_outline_numbers: bool = True
+    cover_first: bool = False
 
     @classmethod
     def from_db(cls, db: Session) -> "EpubLayout":
@@ -70,12 +72,20 @@ class EpubLayout:
             omit_article_links=settings.epub_omit_article_links(db),
             chapters_by_source=settings.epub_chapters_by_source(db),
             x3_screen=settings.epub_x3_screen(db),
+            toc_outline_numbers=settings.epub_toc_outline_numbers(db),
+            cover_first=settings.epub_cover_first(db),
         )
 
     @classmethod
     def classic(cls) -> "EpubLayout":
         """Legacy layout: per-story chapters, article links, desktop-sized cover."""
-        return cls(omit_article_links=False, chapters_by_source=False, x3_screen=False)
+        return cls(
+            omit_article_links=False,
+            chapters_by_source=False,
+            x3_screen=False,
+            toc_outline_numbers=False,
+            cover_first=False,
+        )
 
 
 EINK_CSS = """
@@ -86,6 +96,9 @@ body {
   color: #111;
   background: #fff;
   margin: 1.1em 1.2em 1.6em;
+  text-align: left;
+  word-spacing: normal;
+  letter-spacing: normal;
 }
 h1 {
   font-size: 1.55em;
@@ -112,7 +125,7 @@ h4 {
   font-weight: normal;
   font-style: italic;
 }
-p { margin: 0 0 0.75em; }
+p { margin: 0 0 0.75em; text-align: left; word-spacing: normal; letter-spacing: normal; }
 a { color: #111; text-decoration: underline; }
 .meta { font-style: italic; color: #333; margin: 0 0 0.35em; }
 .byline { font-style: italic; color: #333; margin: 0 0 1em; }
@@ -130,11 +143,11 @@ a { color: #111; text-decoration: underline; }
   padding-bottom: 0.25em;
   border-bottom: 1px solid #111;
 }
-.contents .toc-source { margin: 0 0 0.85em; }
+.contents .toc-source { margin: 0 0 0.85em 0.75em; }
 .contents .toc-source h4 { margin: 0.7em 0 0.4em; }
 .contents ol.toc-stories {
   list-style: none;
-  padding: 0;
+  padding: 0 0 0 0.35em;
   margin: 0;
 }
 .contents ol.toc-stories li {
@@ -162,7 +175,7 @@ a { color: #111; text-decoration: underline; }
 }
 .story { page-break-before: always; }
 .story h1 { margin-bottom: 0.45em; }
-.story .body p { margin-bottom: 0.85em; }
+.story .body p { margin-bottom: 0.85em; text-align: left; word-spacing: normal; letter-spacing: normal; }
 .story .original { margin-top: 1.2em; }
 .source-chapter { page-break-before: always; }
 .source-chapter > h1 {
@@ -186,7 +199,31 @@ a { color: #111; text-decoration: underline; }
   font-size: 1.15em;
   margin: 0 0 0.35em;
 }
+.category-plate {
+  page-break-before: always;
+  text-align: center;
+  padding: 2.5em 0.5em 1.5em;
+}
+.category-plate .category-icon {
+  display: block;
+  margin: 0 auto 1.2em;
+  width: 96px;
+  height: 96px;
+}
+.category-plate h1 {
+  margin: 0 0 0.75em;
+  border-bottom: 0;
+  font-size: 1.45em;
+}
+.category-plate .hint {
+  font-style: italic;
+  color: #333;
+  font-size: 0.95em;
+  margin: 1.5em 0 0;
+}
 img { display: none; }
+.cover-image img,
+.category-plate img { display: block; }
 """
 
 # Tuned for Xteink X3: 3.7" / 528×792, button page-turns, no touch.
@@ -198,6 +235,9 @@ body {
   color: #000;
   background: #fff;
   margin: 0.45em 0.55em 0.75em;
+  text-align: left;
+  word-spacing: normal;
+  letter-spacing: normal;
 }
 h1 {
   font-size: 1.28em;
@@ -224,7 +264,7 @@ h4 {
   font-weight: normal;
   font-style: italic;
 }
-p { margin: 0 0 0.55em; }
+p { margin: 0 0 0.55em; text-align: left; word-spacing: normal; letter-spacing: normal; }
 a { color: #000; text-decoration: none; }
 .meta { font-style: italic; color: #222; margin: 0 0 0.3em; font-size: 0.92em; }
 .byline { font-style: italic; color: #222; margin: 0 0 0.65em; font-size: 0.9em; }
@@ -243,11 +283,11 @@ a { color: #000; text-decoration: none; }
   border-bottom: 1px solid #000;
   font-size: 1em;
 }
-.contents .toc-source { margin: 0 0 0.55em; }
+.contents .toc-source { margin: 0 0 0.55em 0.65em; }
 .contents .toc-source h4 { margin: 0.45em 0 0.25em; font-size: 0.95em; }
 .contents ol.toc-stories {
   list-style: none;
-  padding: 0;
+  padding: 0 0 0 0.25em;
   margin: 0;
 }
 .contents ol.toc-stories li {
@@ -277,7 +317,7 @@ a { color: #000; text-decoration: none; }
 }
 .story { page-break-before: always; }
 .story h1 { margin-bottom: 0.35em; font-size: 1.2em; }
-.story .body p { margin-bottom: 0.55em; }
+.story .body p { margin-bottom: 0.55em; text-align: left; word-spacing: normal; letter-spacing: normal; }
 .story .original { display: none; }
 .source-chapter { page-break-before: always; }
 .source-chapter > h1 {
@@ -301,11 +341,211 @@ a { color: #000; text-decoration: none; }
   font-size: 1.05em;
   margin: 0 0 0.25em;
 }
+.category-plate {
+  page-break-before: always;
+  text-align: center;
+  padding: 1.8em 0.35em 1em;
+}
+.category-plate .category-icon {
+  display: block;
+  margin: 0 auto 0.85em;
+  width: 72px;
+  height: 72px;
+}
+.category-plate h1 {
+  margin: 0 0 0.55em;
+  border-bottom: 0;
+  font-size: 1.22em;
+}
+.category-plate .hint {
+  font-style: italic;
+  color: #222;
+  font-size: 0.88em;
+  margin: 1.1em 0 0;
+}
 img { display: none; }
+.cover-image img,
+.category-plate img { display: block; }
 """
 _ALLOWED_TAGS = {"p", "br", "em", "strong", "b", "i", "u", "a", "ul", "ol", "li", "blockquote", "h3", "h4", "h5", "h6"}
 _SKIP_TAGS = {"script", "style"}
 _DROP_TAGS = {"img", "video", "audio", "source", "iframe", "object", "embed"}
+_WS_RE = re.compile(r"[ \t\f\v]+")
+CATEGORY_TURN_HINT = "Turn the page for stories in this section."
+
+
+def _category_plate_html(label: str, icon_href: str) -> str:
+    return (
+        '<div class="category-plate">'
+        f'<img class="category-icon" alt="" src="{html.escape(icon_href, quote=True)}"/>'
+        f"<h1>{html.escape(label)}</h1>"
+        f'<p class="hint">{html.escape(CATEGORY_TURN_HINT)}</p>'
+        "</div>"
+    )
+
+
+def _cover_contents_html(groups: list[tuple[str, str, list[dict]]], *, opts: EpubLayout) -> list[str]:
+    blurb_limit = 90 if opts.x3_screen else 160
+    bits = ['<div class="contents"><h2>Contents</h2>']
+    for cat_index, (_key, label, group) in enumerate(groups, start=1):
+        cat_heading = f"{cat_index}. {label}" if opts.toc_outline_numbers else label
+        bits.append(f'<div class="toc-category"><h3>{html.escape(cat_heading)}</h3>')
+        for src_index, (source, source_stories) in enumerate(group_stories_by_source(group), start=1):
+            src_heading = f"{cat_index}.{src_index} {source}" if opts.toc_outline_numbers else source
+            bits.append(f'<div class="toc-source"><h4>{html.escape(src_heading)}</h4>')
+            bits.append('<ol class="toc-stories">')
+            for story in source_stories:
+                title = story.get("title") or "Untitled"
+                blurb = digest_blurb(story.get("summary") or "", limit=blurb_limit)
+                bits.append("<li>")
+                bits.append(f'<span class="toc-title">{html.escape(title)}</span>')
+                if blurb:
+                    bits.append(f'<span class="toc-digest">{html.escape(blurb)}</span>')
+                bits.append("</li>")
+            bits.append("</ol></div>")
+        bits.append("</div>")
+    bits.append("</div>")
+    return bits
+
+
+def write_epub(payload: dict, dest: Path, *, layout: EpubLayout | None = None) -> None:
+    opts = layout if layout is not None else EpubLayout.classic()
+    book = epub.EpubBook()
+    heading = payload.get("title") or "NewsCast briefing"
+    date_label = _payload_date_label(payload)
+    paper_day = _payload_paper_date(payload)
+    paper_title = (payload.get("paper_title") or "").strip() or f"{heading} {paper_day}"
+    stories = payload.get("stories") or []
+    book.set_identifier((payload.get("paper_id") or "").strip() or f"newscast-{paper_day}")
+    book.set_title(paper_title)
+    book.set_language("en")
+    book.add_author("NewsCast")
+
+    cover_bytes = render_newspaper_cover(
+        heading=heading,
+        date_label=date_label,
+        stories=stories,
+        x3_screen=opts.x3_screen,
+    )
+    book.set_cover("cover.jpg", cover_bytes, create_page=False)
+
+    css_text = X3_EINK_CSS if opts.x3_screen else EINK_CSS
+    style = epub.EpubItem(uid="style", file_name="style/eink.css", media_type="text/css", content=css_text.encode())
+    book.add_item(style)
+
+    groups = group_stories(stories)
+    cover_bits = [
+        '<div class="cover-image"><img alt="Front page" src="cover.jpg"/></div>',
+        f"<h1>{html.escape(heading)}</h1>",
+        f'<p class="meta">{html.escape(date_label)}</p>',
+    ]
+    if stories:
+        cover_bits.append(f'<p class="masthead">{html.escape(masthead_line(stories))}</p>')
+        cover_bits.append('<hr class="cover-rule"/>')
+        cover_bits.extend(_cover_contents_html(groups, opts=opts))
+    else:
+        cover_bits.append(f'<p class="masthead">{html.escape(masthead_line(stories))}</p>')
+        cover_bits.append("<p>No stories yet.</p>")
+
+    cover = epub.EpubHtml(title="Cover", file_name="cover.xhtml", lang="en")
+    cover.content = "".join(cover_bits)
+    cover.add_item(style)
+    cover.add_link(href="style/eink.css", rel="stylesheet", type="text/css")
+    book.add_item(cover)
+
+    body_chapters: list = []
+    toc: list = []
+    index = 1
+    icon_uids: set[str] = set()
+
+    def _ensure_category_icon(category_key: str) -> str:
+        slug = slugify(category_key) or DEFAULT_CATEGORY
+        file_name = f"images/cat-{slug}.png"
+        uid = f"cat-icon-{slug}"
+        if uid not in icon_uids:
+            icon_item = epub.EpubItem(
+                uid=uid,
+                file_name=file_name,
+                media_type="image/png",
+                content=render_category_icon(category_key),
+            )
+            book.add_item(icon_item)
+            icon_uids.add(uid)
+        return file_name
+
+    if opts.chapters_by_source:
+        for key, label, group in groups:
+            cat_file = f"category-{index}.xhtml"
+            cat_chapter = epub.EpubHtml(title=label[:120], file_name=cat_file, lang="en")
+            icon_href = _ensure_category_icon(key)
+            cat_chapter.content = _category_plate_html(label, icon_href)
+            cat_chapter.add_item(style)
+            cat_chapter.add_link(href="style/eink.css", rel="stylesheet", type="text/css")
+            book.add_item(cat_chapter)
+            body_chapters.append(cat_chapter)
+            index += 1
+            source_sections = [cat_chapter]
+            for source, source_stories in group_stories_by_source(group):
+                chapter = epub.EpubHtml(
+                    title=source[:120],
+                    file_name=f"source-{index}.xhtml",
+                    lang="en",
+                )
+                parts = [f'<div class="source-chapter"><h1>{html.escape(source)}</h1>']
+                for story in source_stories:
+                    parts.append(_story_block_html(story, heading="h2", opts=opts))
+                parts.append("</div>")
+                chapter.content = "".join(parts)
+                chapter.add_item(style)
+                chapter.add_link(href="style/eink.css", rel="stylesheet", type="text/css")
+                book.add_item(chapter)
+                body_chapters.append(chapter)
+                source_sections.append(chapter)
+                index += 1
+            if len(source_sections) > 1:
+                toc.append((cat_chapter, tuple(source_sections[1:])))
+            else:
+                toc.append(cat_chapter)
+    else:
+        for key, label, group in groups:
+            cat_file = f"category-{index}.xhtml"
+            cat_chapter = epub.EpubHtml(title=label[:120], file_name=cat_file, lang="en")
+            icon_href = _ensure_category_icon(key)
+            cat_chapter.content = _category_plate_html(label, icon_href)
+            cat_chapter.add_item(style)
+            cat_chapter.add_link(href="style/eink.css", rel="stylesheet", type="text/css")
+            book.add_item(cat_chapter)
+            body_chapters.append(cat_chapter)
+            index += 1
+            source_sections = []
+            for source, source_stories in group_stories_by_source(group):
+                source_chapters = []
+                for story in source_stories:
+                    title = story.get("title") or "Untitled"
+                    chapter = epub.EpubHtml(title=title[:120], file_name=f"story-{index}.xhtml", lang="en")
+                    chapter.content = _story_block_html(story, heading="h1", opts=opts)
+                    chapter.add_item(style)
+                    chapter.add_link(href="style/eink.css", rel="stylesheet", type="text/css")
+                    book.add_item(chapter)
+                    body_chapters.append(chapter)
+                    source_chapters.append(chapter)
+                    index += 1
+                if source_chapters:
+                    source_sections.append((epub.Section(source), tuple(source_chapters)))
+            if source_sections:
+                toc.append((cat_chapter, tuple(source_sections)))
+            else:
+                toc.append(cat_chapter)
+
+    book.toc = toc or [cover]
+    book.add_item(epub.EpubNcx())
+    book.add_item(epub.EpubNav())
+    if opts.cover_first:
+        book.spine = [cover, "nav", *body_chapters]
+    else:
+        book.spine = ["nav", cover, *body_chapters]
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    epub.write_epub(str(dest), book)
 
 
 def normalize_briefing_day(value: str | None) -> str:
@@ -1067,13 +1307,16 @@ class _HtmlSanitizer(HTMLParser):
     def handle_data(self, data: str) -> None:
         if self._skip:
             return
-        self.parts.append(html.escape(data))
+        # Collapse runs of spaces/tabs so e-ink readers don't show uneven gaps.
+        cleaned = _WS_RE.sub(" ", data or "")
+        if cleaned:
+            self.parts.append(html.escape(cleaned))
 
 
 def sanitize_html(value: str, *, strip_links: bool = False) -> str:
     raw = value or ""
     if "<" not in raw:
-        return html.escape(raw)
+        return html.escape(_WS_RE.sub(" ", raw))
     parser = _HtmlSanitizer(strip_links=strip_links)
     parser.feed(raw)
     parser.close()
@@ -1256,125 +1499,6 @@ def _story_block_html(story: dict, *, heading: str, opts: EpubLayout) -> str:
         f'<div class="story"><{heading}>{html.escape(title)}</{heading}>{byline}'
         f'<div class="body">{body}</div>{link}</div>'
     )
-
-
-def write_epub(payload: dict, dest: Path, *, layout: EpubLayout | None = None) -> None:
-    opts = layout if layout is not None else EpubLayout.classic()
-    book = epub.EpubBook()
-    heading = payload.get("title") or "NewsCast briefing"
-    date_label = _payload_date_label(payload)
-    paper_day = _payload_paper_date(payload)
-    paper_title = (payload.get("paper_title") or "").strip() or f"{heading} {paper_day}"
-    stories = payload.get("stories") or []
-    book.set_identifier((payload.get("paper_id") or "").strip() or f"newscast-{paper_day}")
-    book.set_title(paper_title)
-    book.set_language("en")
-    book.add_author("NewsCast")
-
-    cover_bytes = render_newspaper_cover(
-        heading=heading,
-        date_label=date_label,
-        stories=stories,
-        x3_screen=opts.x3_screen,
-    )
-    book.set_cover("cover.jpg", cover_bytes, create_page=False)
-
-    css_text = X3_EINK_CSS if opts.x3_screen else EINK_CSS
-    style = epub.EpubItem(uid="style", file_name="style/eink.css", media_type="text/css", content=css_text.encode())
-    book.add_item(style)
-
-    groups = group_stories(stories)
-    blurb_limit = 90 if opts.x3_screen else 160
-    cover_bits = [
-        '<div class="cover-image"><img alt="Front page" src="cover.jpg"/></div>',
-        f"<h1>{html.escape(heading)}</h1>",
-        f'<p class="meta">{html.escape(date_label)}</p>',
-    ]
-    if stories:
-        cover_bits.append(f'<p class="masthead">{html.escape(masthead_line(stories))}</p>')
-        cover_bits.append('<hr class="cover-rule"/>')
-        cover_bits.append('<div class="contents"><h2>Contents</h2>')
-        for _key, label, group in groups:
-            cover_bits.append(f'<div class="toc-category"><h3>{html.escape(label)}</h3>')
-            for source, source_stories in group_stories_by_source(group):
-                cover_bits.append(f'<div class="toc-source"><h4>{html.escape(source)}</h4>')
-                cover_bits.append('<ol class="toc-stories">')
-                for story in source_stories:
-                    title = story.get("title") or "Untitled"
-                    blurb = digest_blurb(story.get("summary") or "", limit=blurb_limit)
-                    cover_bits.append("<li>")
-                    cover_bits.append(f'<span class="toc-title">{html.escape(title)}</span>')
-                    if blurb and not opts.x3_screen:
-                        cover_bits.append(f'<span class="toc-digest">{html.escape(blurb)}</span>')
-                    elif blurb and opts.x3_screen:
-                        # Short digests only — small screen.
-                        cover_bits.append(f'<span class="toc-digest">{html.escape(blurb)}</span>')
-                    cover_bits.append("</li>")
-                cover_bits.append("</ol></div>")
-            cover_bits.append("</div>")
-        cover_bits.append("</div>")
-    else:
-        cover_bits.append(f'<p class="masthead">{html.escape(masthead_line(stories))}</p>')
-        cover_bits.append("<p>No stories yet.</p>")
-
-    cover = epub.EpubHtml(title="Cover", file_name="cover.xhtml", lang="en")
-    cover.content = "".join(cover_bits)
-    cover.add_item(style)
-    cover.add_link(href="style/eink.css", rel="stylesheet", type="text/css")
-    book.add_item(cover)
-
-    chapters = [cover]
-    toc: list = []
-    index = 1
-
-    if opts.chapters_by_source:
-        for _key, label, group in groups:
-            source_sections = []
-            for source, source_stories in group_stories_by_source(group):
-                chapter = epub.EpubHtml(
-                    title=source[:120],
-                    file_name=f"source-{index}.xhtml",
-                    lang="en",
-                )
-                parts = [f'<div class="source-chapter"><h1>{html.escape(source)}</h1>']
-                for story in source_stories:
-                    parts.append(_story_block_html(story, heading="h2", opts=opts))
-                parts.append("</div>")
-                chapter.content = "".join(parts)
-                chapter.add_item(style)
-                chapter.add_link(href="style/eink.css", rel="stylesheet", type="text/css")
-                book.add_item(chapter)
-                chapters.append(chapter)
-                source_sections.append(chapter)
-                index += 1
-            if source_sections:
-                toc.append((epub.Section(label), tuple(source_sections)))
-    else:
-        for _key, label, group in groups:
-            source_sections = []
-            for source, source_stories in group_stories_by_source(group):
-                source_chapters = []
-                for story in source_stories:
-                    title = story.get("title") or "Untitled"
-                    chapter = epub.EpubHtml(title=title[:120], file_name=f"story-{index}.xhtml", lang="en")
-                    chapter.content = _story_block_html(story, heading="h1", opts=opts)
-                    chapter.add_item(style)
-                    chapter.add_link(href="style/eink.css", rel="stylesheet", type="text/css")
-                    book.add_item(chapter)
-                    chapters.append(chapter)
-                    source_chapters.append(chapter)
-                    index += 1
-                if source_chapters:
-                    source_sections.append((epub.Section(source), tuple(source_chapters)))
-            if source_sections:
-                toc.append((epub.Section(label), tuple(source_sections)))
-
-    book.toc = toc or [cover]
-    book.add_item(epub.EpubNcx())
-    book.add_item(epub.EpubNav())
-    book.spine = ["nav", *chapters]
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    epub.write_epub(str(dest), book)
 
 
 def write_briefing_files(

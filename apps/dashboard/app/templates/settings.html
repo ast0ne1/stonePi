@@ -2,20 +2,71 @@
 {% from "_icons.html" import svg, service_icon, tab_icon %}
 {% block title %}Settings · StonePi{% endblock %}
 {% block content %}
-<section class="hero">
-  <h1>Settings</h1>
-  <p class="lede">{{ settings_lede }}</p>
+<section class="hero" data-settings-hero>
+  <a class="settings-back" href="/settings" data-settings-hub-back{% if settings_hub %} hidden{% endif %}>&larr; Settings</a>
+  <h1 data-settings-title>{% if settings_hub %}Settings{% else %}{{ settings_labels.get(settings_tab, settings_tab|title) }}{% endif %}</h1>
+  <div class="page-status settings-page-status">
+    <p class="page-status-text" data-settings-lede>{{ settings_lede }}</p>
+  </div>
 </section>
 
+<div
+  class="settings-shell{% if settings_hub %} is-hub{% endif %}"
+  data-settings-shell
+  data-settings-hub="{{ 'true' if settings_hub else 'false' }}"
+  data-settings-active-tab="{{ settings_tab }}"
+  data-settings-active-panel="{{ settings_panel or '' }}"
+  data-settings-hub-lede="{{ settings_hub_lede }}"
+>
+<script type="application/json" data-settings-panels-json>{{ settings_panels_by_tab | tojson }}</script>
+<script type="application/json" data-settings-ledes-json>{{ settings_ledes | tojson }}</script>
+<script type="application/json" data-settings-labels-json>{{ settings_labels | tojson }}</script>
+
+<nav class="settings-hub" data-settings-hub-list aria-label="Settings groups"{% if not settings_hub %} hidden{% endif %}>
+  {% for group_id, group_label, rows in settings_groups %}
+  <div class="settings-hub-group">
+    <h2 class="section-label settings-hub-heading">{{ group_label }}</h2>
+    <div class="group-card settings-hub-card">
+      {% for key, label, subtext in rows %}
+      <a class="settings-hub-row" href="/settings?tab={{ key }}" data-settings-hub-row="{{ key }}">
+        <span class="settings-hub-icon" aria-hidden="true">{{ tab_icon(key) }}</span>
+        <span class="settings-hub-copy">
+          <span class="settings-hub-title">{{ label }}</span>
+          <span class="settings-hub-sub">{{ subtext }}</span>
+        </span>
+        <span class="settings-hub-chevron" aria-hidden="true">&rsaquo;</span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</nav>
+
+<nav class="settings-panel-list" data-settings-panel-list aria-label="Settings sections" hidden>
+  <div class="settings-hub-group">
+    <h2 class="section-label settings-hub-heading">Sections</h2>
+    <div class="group-card settings-hub-card" data-settings-panel-list-rows></div>
+  </div>
+</nav>
+
+<div hidden aria-hidden="true" data-settings-panel-icon-bank>
+  {% for tab_key, panels in settings_panels_by_tab.items() %}
+    {% for panel in panels %}
+    <span data-settings-panel-icon="{{ tab_key }}-{{ panel.id }}">{{ svg(panel.icon or panel.id) }}</span>
+    {% endfor %}
+  {% endfor %}
+</div>
+
+<div class="settings-section" data-settings-section{% if settings_hub %} hidden{% endif %}>
 <div class="settings-tablist" role="tablist" aria-label="Settings sections">
   {% for key, label in settings_tabs %}
-  <a class="settings-tab{% if settings_tab == key %} is-active{% endif %}" href="/settings?tab={{ key }}" role="tab" aria-selected="{{ 'true' if settings_tab == key else 'false' }}">{{ tab_icon(key) }}<span>{{ label }}</span></a>
+  <a class="settings-tab{% if settings_tab == key %} is-active{% endif %}" href="/settings?tab={{ key }}" role="tab" aria-selected="{{ 'true' if settings_tab == key else 'false' }}" data-settings-tab="{{ key }}">{{ tab_icon(key) }}<span>{{ label }}</span></a>
   {% endfor %}
 </div>
 
 {% if settings_tab == 'general' %}
-<div class="settings-panels">
-<section class="card stack">
+<div class="settings-panels" data-settings-panel="general">
+<section class="card stack" data-settings-panel-card="appearance" id="appearance">
   <h2 class="section-heading">{{ svg("appearance") }} Appearance</h2>
   <p class="muted">Tap a palette — saves on this browser. Light / Dark / Auto stay in the header. Prefs are per hostname (e.g. <code>stonepi.home</code>).</p>
   <div class="palette-picker" role="group" aria-label="Colour palette">
@@ -43,7 +94,7 @@
   <p class="muted" data-palette-status>Using Default — saved for this browser (no Save button).</p>
 </section>
 
-<section class="card stack" id="view-options">
+<section class="card stack" id="view-options" data-settings-panel-card="view">
   <h2 class="section-heading">{{ svg("view") }} View options</h2>
   <p class="muted">Layout density for Home, Health, and Services on this browser (desktop and phone). Choose options, then Save.</p>
 
@@ -79,7 +130,7 @@
   <p class="muted" data-view-status>Choose options, then Save for this browser.</p>
 </section>
 
-<section class="card stack settings-card-narrow" id="account-password">
+<section class="card stack settings-card-narrow" id="account-password" data-settings-panel-card="password">
   <h2 class="section-heading">{{ svg("auth") }} Your password</h2>
   <p class="muted">Signed in as <strong>{{ user.display_name or user.username }}</strong> (@{{ user.username }}). Change the password you use for every StonePi app.</p>
   <form method="post" action="/settings/password" class="stack">
@@ -102,8 +153,8 @@
 {% endif %}
 
 {% if settings_tab == 'network' and user.is_admin and not settings_appearance_only %}
-<div class="settings-panels">
-<section class="card stack">
+<div class="settings-panels" data-settings-panel="network">
+<section class="card stack" data-settings-panel-card="exposure">
   <h2 class="section-heading">{{ svg("network") }} Network exposure</h2>
   <p class="muted">Default is home network only. Flip to internet-facing when you put StonePi behind a public HTTPS edge — apps tighten immediately, no restart. Prefer Tailscale remote access below instead of opening the Pi to the internet.</p>
   <form method="post" action="/settings/network/exposure" class="stack">
@@ -130,7 +181,7 @@
   </form>
 </section>
 
-<section class="card stack settings-panel-span" id="remote-access" data-network-panel data-csrf="{{ csrf_token }}">
+<section class="card stack settings-panel-span" id="remote-access" data-settings-panel-card="remote" data-network-panel data-csrf="{{ csrf_token }}">
   <h2 class="section-heading">{{ svg("remote") }} Remote access</h2>
   <p class="muted">Reach StonePi from outside your home network via Tailscale — without opening ports. LAN access (<code>stonepi.local</code> / your Pi IP) keeps working.</p>
 
@@ -502,4 +553,6 @@
 </section>
 </div>
 {% endif %}
+</div><!-- /.settings-section -->
+</div><!-- /.settings-shell -->
 {% endblock %}

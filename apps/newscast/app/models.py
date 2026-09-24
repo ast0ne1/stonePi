@@ -80,6 +80,8 @@ class Feed(Base):
     catalog_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     name: Mapped[str] = mapped_column(String(200))
     url: Mapped[str] = mapped_column(String(1000))
+    homepage_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    rss_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     type: Mapped[str] = mapped_column(String(20), default="rss")
     category: Mapped[str] = mapped_column(String(40), default="news")
