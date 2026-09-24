@@ -60,3 +60,22 @@ def test_rename_user_category():
     add_category(db, "Romania")
     rename_category(db, "romania", "România")
     assert category_labels(db)["romania"] == "România"
+
+
+def test_group_feeds_by_category_orders_and_skips_empty():
+    from types import SimpleNamespace
+
+    from app.services.categories import group_feeds_by_category
+
+    feeds = [
+        SimpleNamespace(name="SVT", category="nordic"),
+        SimpleNamespace(name="ABC", category="australia"),
+        SimpleNamespace(name="Age", category="australia"),
+        SimpleNamespace(name="Odd", category="custom-slot"),
+    ]
+    labels = {"news": "World News", "nordic": "Nordic", "australia": "Australia"}
+    groups = group_feeds_by_category(feeds, labels)
+    assert [key for key, _, _ in groups] == ["nordic", "australia", "custom-slot"]
+    assert [name for name in (f.name for f in groups[1][2])] == ["ABC", "Age"]
+    assert groups[0][1] == "Nordic"
+    assert groups[2][1] == "custom-slot"

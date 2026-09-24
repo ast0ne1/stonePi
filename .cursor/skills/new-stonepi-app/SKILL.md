@@ -30,8 +30,8 @@ Also read [ux-stonepi](../ux-stonepi/SKILL.md) for portal IA. Detail refs:
 4. **Platform wire** — catalog, nginx, systemd, `install.sh`, `run_dev.py`,
    dashboard icon, allowed ports, data dir (see [platform.md](platform.md)).
 5. **Parity pass** — run the checklist below before calling it done.
-6. **Pi update** — use a dedicated push/apply script (PriceScout pattern:
-   zip + bootstrap + `apply-*-on-pi.sh`); do not rely on ad-hoc file scp.
+6. **Pi update** — use [push-to-pi](../push-to-pi/SKILL.md): package the overlay,
+   then give the user `cmd /c "scripts\….cmd -Apply"` (never run scp/ssh yourself).
 
 ## Non-negotiables (fixes we keep re-doing)
 
@@ -109,7 +109,7 @@ Beyond PriceScout chrome fixes, these keep biting new apps:
 | **`platform_managed`** | NewsCast, FileServe, EventTrakr | When `STONEPI_SESSION_SECRET` is set, hide Users / Updates / password / TLS ownership tabs; link to Dashboard. Solo mode may keep them. |
 | **Factory admin banner** | NewsCast, Dashboard | If still `admin`/`admin`, surface an in-UI nudge (settings or dashboard), not docs-only. |
 | **Asset cache bust** | NewsCast | Prefer `?v={{ app_version }}-{{ asset_rev }}` (bump `__asset_rev__` on CSS/JS change) over one-off date stamps. |
-| **Settings chips wrap** | EventTrakr | `.settings-chips { flex-wrap: wrap; overflow-x: visible }` so About isn’t lost off-screen on narrow phones. |
+| **Settings chips wrap** | EventTrakr | `.settings-chips { flex-wrap: wrap; overflow-x: visible }` so About isn’t lost off-screen on narrow phones. NewsCast uses a **grouped hub** on phone/tablet instead — see [chrome.md](chrome.md) Settings chips. |
 | **About is a chip with icon** | EventTrakr | Never text-only About; same chip pattern as General. |
 | **Capability defaults** | Dashboard Users | New household users get Dashboard only; admins grant app access. Declare real `capabilities` in catalog. |
 | **Display scrape privacy** | Pinboard / platform | Public nginx denies `/api/display`; dashboard scrapes via loopback. Don’t expose scrape JSON on the edge. |

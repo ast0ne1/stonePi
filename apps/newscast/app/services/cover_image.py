@@ -258,6 +258,87 @@ def render_newspaper_cover(
     return buffer.getvalue()
 
 
+def render_category_icon(category_key: str, *, size: int = 160) -> bytes:
+    """Simple 1-bit-friendly PNG glyph for category divider pages."""
+    key = (category_key or "").strip().lower() or "news"
+    image = Image.new("RGB", (size, size), (255, 255, 255))
+    draw = ImageDraw.Draw(image)
+    ink = INK
+    pad = size // 6
+    left, top, right, bottom = pad, pad, size - pad, size - size // 6
+    cx = size // 2
+    cy = size // 2
+    stroke = max(2, size // 28)
+
+    def line(*xy: tuple[int, int]) -> None:
+        draw.line(list(xy), fill=ink, width=stroke)
+
+    if key == "technology":
+        draw.rectangle([cx - size // 5, cy - size // 5, cx + size // 5, cy + size // 5], outline=ink, width=stroke)
+        for dx in (-size // 5, 0, size // 5):
+            line((cx + dx, top + pad // 2), (cx + dx, cy - size // 5))
+            line((cx + dx, cy + size // 5), (cx + dx, bottom - pad // 2))
+        for dy in (-size // 5, 0, size // 5):
+            line((left + pad // 2, cy + dy), (cx - size // 5, cy + dy))
+            line((cx + size // 5, cy + dy), (right - pad // 2, cy + dy))
+    elif key == "security":
+        draw.polygon(
+            [
+                (cx, top + pad // 2),
+                (right - pad // 3, top + pad),
+                (right - pad // 3, cy + size // 10),
+                (cx, bottom - pad // 3),
+                (left + pad // 3, cy + size // 10),
+                (left + pad // 3, top + pad),
+            ],
+            outline=ink,
+            width=stroke,
+        )
+    elif key == "science":
+        line((cx, top + pad // 2), (cx, cy - size // 12))
+        draw.ellipse([cx - size // 4, cy - size // 12, cx + size // 4, bottom - pad // 3], outline=ink, width=stroke)
+        line((cx - size // 6, cy + size // 8), (cx + size // 6, cy + size // 8))
+        line((cx - size // 10, top + pad // 2), (cx + size // 10, top + pad // 2))
+    elif key == "business":
+        draw.rectangle([left + pad // 3, cy - size // 10, right - pad // 3, bottom - pad // 4], outline=ink, width=stroke)
+        draw.rectangle([cx - size // 6, top + pad, cx + size // 6, cy - size // 10], outline=ink, width=stroke)
+        line((left + pad // 3, cy + size // 12), (right - pad // 3, cy + size // 12))
+    elif key == "sport":
+        r = size // 3
+        draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=ink, width=stroke)
+        line((cx, cy - r), (cx, cy + r))
+        line((cx - r, cy), (cx + r, cy))
+        draw.arc([cx - r, cy - r // 2, cx + r, cy + r // 2], 0, 180, fill=ink, width=stroke)
+        draw.arc([cx - r, cy - r // 2, cx + r, cy + r // 2], 180, 360, fill=ink, width=stroke)
+    elif key == "culture":
+        draw.polygon(
+            [(cx, top + pad), (right - pad // 2, bottom - pad // 2), (left + pad // 2, bottom - pad // 2)],
+            outline=ink,
+            width=stroke,
+        )
+        line((cx, top + pad), (cx, bottom - pad // 2))
+    elif key in {"nordic", "australia"}:
+        r = size // 3
+        draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=ink, width=stroke)
+        line((cx, cy - r), (cx, cy + r))
+        line((cx - r, cy), (cx + r, cy))
+    elif key == "longreads":
+        draw.rectangle([left + pad // 2, top + pad // 2, right - pad // 2, bottom - pad // 3], outline=ink, width=stroke)
+        for i in range(3):
+            y = top + pad + (i + 1) * (size // 7)
+            line((left + pad, y), (right - pad, y))
+    else:
+        # news / default: newspaper
+        draw.rectangle([left + pad // 3, top + pad // 2, right - pad // 3, bottom - pad // 3], outline=ink, width=stroke)
+        for i in range(3):
+            y = top + pad + size // 6 + i * (size // 8)
+            line((left + pad, y), (right - pad, y))
+
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG", optimize=True)
+    return buffer.getvalue()
+
+
 def _draw_flank(
     draw: ImageDraw.ImageDraw,
     story: dict,

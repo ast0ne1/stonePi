@@ -2,19 +2,57 @@
 {% from "_filter_icon.html" import filter_icon %}
 {% block title %}Sources · NewsCast{% endblock %}
 {% block content %}
-<section class="hero">
+<section class="hero hero-row hero-row-inline">
   <h1>{{ t("Sources") }}</h1>
-  <p class="lede">Feeds you follow, or browse the household Catalog. Use the tabs below to switch.</p>
+  {% if can_add_custom_sources %}
+  <button class="btn btn-secondary btn-with-icon" type="button" data-open-sheet="add-source">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    <span>Add feed</span>
+  </button>
+  {% endif %}
 </section>
-<div class="page-tabs" role="tablist" aria-label="Sources">
-  <a class="chip-btn{% if sources_tab == 'feeds' %} is-active{% endif %}" href="/sources?tab=feeds" role="tab" aria-selected="{{ 'true' if sources_tab == 'feeds' else 'false' }}">{{ filter_icon("feeds") }}<span>{{ t("Feeds") }}</span></a>
-  <a class="chip-btn{% if sources_tab == 'catalog' %} is-active{% endif %}" href="/sources?tab=catalog" role="tab" aria-selected="{{ 'true' if sources_tab == 'catalog' else 'false' }}">{{ filter_icon("catalog") }}<span>{{ t("Catalog") }}</span></a>
+
+<div class="page-status">
+  <p class="page-status-text">
+    {% if sources_tab == 'catalog' %}
+      Browse the household Catalog and tap Add or Remove.
+    {% else %}
+      Tap a feed to edit it. Default schedule: every {{ global_interval_label }}
+    {% endif %}
+  </p>
+  <button class="page-status-action" type="button" data-open-sheet="help" aria-label="About sources" title="About sources">
+    {{ filter_icon("info") }}
+  </button>
 </div>
+
+<div class="page-tabs seg-control" role="tablist" aria-label="Sources">
+  <a class="seg-btn{% if sources_tab == 'feeds' %} is-active{% endif %}" href="/sources?tab=feeds" role="tab" aria-selected="{{ 'true' if sources_tab == 'feeds' else 'false' }}">{{ t("Feeds") }}</a>
+  <a class="seg-btn{% if sources_tab == 'catalog' %} is-active{% endif %}" href="/sources?tab=catalog" role="tab" aria-selected="{{ 'true' if sources_tab == 'catalog' else 'false' }}">{{ t("Catalog") }}</a>
+</div>
+
 {% if sources_tab == 'catalog' %}
   {% set source_next = '/sources?tab=catalog' %}
   {% include "_catalog_panel.html" %}
 {% else %}
   {% set source_next = '/sources?tab=feeds' %}
   {% include "_feeds_panel.html" %}
+{% endif %}
+
+<div class="sheet" hidden data-sheet="help">
+  <div class="sheet-card card">
+    <h2>Sources</h2>
+    <div class="help-sheet-body">
+      <p><strong>Feeds</strong> are sources you follow. Tap a row to change schedule, fetch mode, summarise, language, and keywords. The circular arrow fetches just that source.</p>
+      <p>Each feed can follow the global schedule (every {{ global_interval_label }}) or use its own. <strong>Summarise</strong> uses the LLM (or extracted text if no key). <strong>Full article</strong> keeps the RSS description or scraped body.</p>
+      <p><strong>Catalog</strong> is the household library — tap Add or Remove. Import and export packages under Settings → Catalog.</p>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" type="button" data-close-sheet>Got it</button>
+    </div>
+  </div>
+</div>
+
+{% if can_add_custom_sources %}
+{% include "_source_sheet.html" %}
 {% endif %}
 {% endblock %}

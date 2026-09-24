@@ -1,5 +1,10 @@
 # PriceScout changelog
 
+## 0.0.3 — 2026-09-24
+
+### Fixed
+- Tjek offer refresh: skip duplicate external ids across pages; synthesize stable ids when the API omits one (avoids UNIQUE collisions on replace)
+
 ## 0.0.2 — 2026-09-22
 
 ### Changed

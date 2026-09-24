@@ -3,15 +3,75 @@
 {% from "_icons.html" import icon %}
 {% block title %}Settings · NewsCast{% endblock %}
 {% block content %}
-<section class="hero">
-  <h1>Settings</h1>
-  <p class="lede" data-settings-lede>{{ settings_lede }}</p>
+{% set tab_labels = dict(settings_tabs) %}
+<section class="hero" data-settings-hero>
+  <a class="settings-back" href="/settings" data-settings-hub-back{% if settings_hub %} hidden{% endif %}>&larr; Settings</a>
+  <h1 data-settings-title>{% if settings_hub %}Settings{% else %}{{ tab_labels.get(settings_tab, settings_tab|title) }}{% endif %}</h1>
+  <div class="page-status settings-page-status">
+    <p class="page-status-text" data-settings-lede>{{ settings_lede }}</p>
+    <button class="page-status-action" type="button" data-open-sheet="settings-help" aria-label="About settings" title="About settings">
+      {{ filter_icon("info") }}
+    </button>
+  </div>
 </section>
 
-<div class="settings-tabs" data-settings-tabs>
-<div class="chips settings-chips" role="tablist" aria-label="Settings sections">
+<div
+  class="settings-tabs{% if settings_hub %} is-hub{% endif %}"
+  data-settings-tabs
+  data-settings-hub="{{ 'true' if settings_hub else 'false' }}"
+  data-settings-active-tab="{{ settings_tab }}"
+  data-settings-active-panel="{{ settings_panel or '' }}"
+  data-settings-hub-lede="{{ settings_hub_lede }}"
+>
+<script type="application/json" data-settings-panels-json>{{ settings_panels_by_tab | tojson }}</script>
+<script type="application/json" data-settings-ledes-json>{{ settings_ledes | tojson }}</script>
+<script type="application/json" data-settings-labels-json>{{ tab_labels | tojson }}</script>
+
+<nav class="settings-hub" data-settings-hub-list aria-label="Settings groups"{% if not settings_hub %} hidden{% endif %}>
+  {% for group_id, group_label, rows in settings_groups %}
+  <div class="settings-hub-group" data-settings-hub-group="{{ group_id }}">
+    <h2 class="section-label settings-hub-heading">{{ group_label }}</h2>
+    <div class="group-card settings-hub-card">
+      {% for key, label, subtext in rows %}
+      <a class="settings-hub-row" href="/settings?tab={{ key }}" data-settings-hub-row="{{ key }}">
+        <span class="settings-hub-icon" aria-hidden="true">{{ filter_icon(key) }}</span>
+        <span class="settings-hub-copy">
+          <span class="settings-hub-title">{{ label }}</span>
+          <span class="settings-hub-sub">{{ subtext }}</span>
+        </span>
+        <span class="settings-hub-chevron" aria-hidden="true">&rsaquo;</span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</nav>
+
+<nav class="settings-panel-list" data-settings-panel-list aria-label="Settings sections" hidden>
+  <div class="settings-hub-group">
+    <h2 class="section-label settings-hub-heading">Sections</h2>
+    <div class="group-card settings-hub-card" data-settings-panel-list-rows></div>
+  </div>
+</nav>
+
+<div hidden aria-hidden="true" data-settings-panel-icon-bank>
+  {% for tab_key, panels in settings_panels_by_tab.items() %}
+    {% for panel in panels %}
+    <span data-settings-panel-icon="{{ tab_key }}-{{ panel.id }}">{{ filter_icon(panel.icon or panel.id) }}</span>
+    {% endfor %}
+  {% endfor %}
+</div>
+
+<div class="settings-section" data-settings-section{% if settings_hub %} hidden{% endif %}>
+<div class="chips settings-chips settings-top-chips" role="tablist" aria-label="Settings sections">
   {% for key, label in settings_tabs %}
   <a class="chip-btn{% if settings_tab == key %} is-active{% endif %}" href="/settings?tab={{ key }}" role="tab" id="settings-tab-{{ key }}" data-settings-tab="{{ key }}" data-settings-lede="{{ settings_ledes[key] }}" aria-selected="{{ 'true' if settings_tab == key else 'false' }}" aria-controls="settings-panel-{{ key }}">{{ filter_icon(key) }}<span>{{ label }}</span></a>
+  {% endfor %}
+</div>
+
+<div class="chips settings-chips settings-section-chips{% if not settings_section_panels %} is-empty{% endif %}" role="tablist" aria-label="Section panels" data-settings-section-chips{% if not settings_section_panels %} hidden{% endif %}>
+  {% for panel_id, label, cards in settings_section_panels %}
+  <button type="button" class="chip-btn{% if settings_panel == panel_id %} is-active{% endif %}" role="tab" data-settings-section-panel="{{ panel_id }}" data-settings-section-cards="{{ cards | join(',') }}" aria-selected="{{ 'true' if settings_panel == panel_id else 'false' }}">{{ label }}</button>
   {% endfor %}
 </div>
 
@@ -26,7 +86,7 @@
     {% endif %}
 
     {% if is_admin and not platform_managed %}
-    <div class="card stack">
+    <div class="card stack" data-settings-panel-card="access">
       <h2 class="section-heading">{{ filter_icon("security") }} Admin access</h2>
       <label>
         Username
@@ -60,7 +120,7 @@
     {% endif %}
 
     {% if is_admin %}
-    <div class="card stack">
+    <div class="card stack" data-settings-panel-card="network">
       <h2 class="section-heading">{{ filter_icon("network") }} Network</h2>
       <label>
         Hostname
@@ -115,7 +175,7 @@
       {% endif %}
     </div>
     {% endif %}
-    <div class="card stack">
+    <div class="card stack" data-settings-panel-card="interface">
       <h2 class="section-heading">{{ filter_icon("translation") }} Interface</h2>
       <label>
         {{ t("Interface language") }}
@@ -143,7 +203,7 @@
   </div>
 
   <div class="stack settings-panel settings-panel-stack" id="settings-panel-publication" role="tabpanel" data-settings-panel="publication" aria-labelledby="settings-tab-publication"{% if settings_tab != 'publication' %} hidden{% endif %}>
-    <div class="card stack" data-paper-naming>
+    <div class="card stack" data-paper-naming data-settings-panel-card="naming">
       <h2 class="section-heading">{{ filter_icon("publication") }} Paper naming</h2>
       <label>
         Paper label
@@ -183,7 +243,7 @@
       <p class="hint">Date style applies to both the full paper and category papers.</p>
     </div>
 
-    <div class="card stack">
+    <div class="card stack" data-settings-panel-card="stories">
       <h2 class="section-heading">{{ filter_icon("today") }} Briefing</h2>
       <label>
         Stories on Briefing
@@ -210,7 +270,7 @@
       <p class="hint">When on, active Saved-tab long-reads are appended to the frozen reader EPUB/OPDS daily briefing (even if their publish date is older). The live Today chip stays publish-date only. Default is off.</p>
     </div>
 
-    <div class="card stack">
+    <div class="card stack" data-settings-panel-card="x3">
       <h2 class="section-heading">{{ filter_icon("reader") }} Xteink / X3 paper</h2>
       <p class="hint">Layout aimed at the Xteink X3 (3.7″, 528×792, buttons only — no touchscreen). Turn options off for a larger reader or KOReader if you prefer the classic paper.</p>
       <label class="check">
@@ -228,9 +288,19 @@
         <span>Compact layout for X3 screen</span>
       </label>
       <p class="hint">Tighter margins, 528×792 cover, and CSS tuned for the small e-ink panel. Generate today’s paper again after changing these.</p>
+      <label class="check">
+        <input type="checkbox" name="epub_toc_outline_numbers" value="1" {% if epub_toc_outline_numbers %}checked{% endif %} />
+        <span>Numbered Contents (1 / 1.1)</span>
+      </label>
+      <p class="hint">Categories as 1, 2… and sources underneath as 1.1, 1.2… on the cover Contents page.</p>
+      <label class="check">
+        <input type="checkbox" name="epub_cover_first" value="1" {% if epub_cover_first %}checked{% endif %} />
+        <span>Open on cover / Contents first</span>
+      </label>
+      <p class="hint">When off (default), the reader opens on the outline. When on, the newspaper front page comes first; the outline stays available from the device TOC.</p>
     </div>
 
-    <div class="card stack">
+    <div class="card stack" data-settings-panel-card="topics-mix">
       <h2 class="section-heading">{{ filter_icon("categories") }} Category mix</h2>
       <label class="check">
         <input type="checkbox" name="briefing_category_mix" value="1" {% if briefing_category_mix %}checked{% endif %} />
@@ -251,7 +321,7 @@
       <p class="hint">Example: World News 25, Tech 50, leave the rest blank — leftover slots split evenly across blank categories.</p>
     </div>
 
-    <div class="card stack">
+    <div class="card stack" data-settings-panel-card="topics-opds">
       <h2 class="section-heading">{{ filter_icon("catalog") }} Category papers (OPDS)</h2>
       <p class="hint">Choose which topics also get their own EPUB in the OPDS catalog, under Categories. The full daily paper is always published. Republish (or wait for the next publish time) after changing this.</p>
       <div class="category-opds-grid">
@@ -268,7 +338,7 @@
 
   {% if is_admin %}
   <div class="stack settings-panel settings-panel-stack" id="settings-panel-schedule" role="tabpanel" data-settings-panel="schedule" aria-labelledby="settings-tab-schedule"{% if settings_tab != 'schedule' %} hidden{% endif %}>
-    <div class="card stack">
+    <div class="card stack" data-settings-panel-card="refresh">
       <h2 class="section-heading">{{ filter_icon("schedule") }} Refresh schedule</h2>
       <label>
         Global interval
@@ -292,7 +362,7 @@
       <p class="hint">Optional local hours for Global sources only. Example: every hour from 09:00 until 12:00. Leave either blank for all day. Custom sources ignore this window.</p>
     </div>
 
-    <div class="card stack">
+    <div class="card stack" data-settings-panel-card="publish">
       <h2 class="section-heading">{{ icon("publish") }} Publish</h2>
       <label>
         Publish at
@@ -413,7 +483,7 @@
   {% endif %}
 
   <div class="stack settings-panel settings-panel-stack" id="settings-panel-reader" role="tabpanel" data-settings-panel="reader" aria-labelledby="settings-tab-reader"{% if settings_tab != 'reader' %} hidden{% endif %}>
-    <div class="card stack">
+    <div class="card stack" data-settings-panel-card="reader-device">
       <h2 class="section-heading">{{ filter_icon("reader") }} Reader</h2>
       <label>
         Device
@@ -451,7 +521,7 @@
       </label>
     </div>
 
-    <div class="card stack">
+    <div class="card stack" data-settings-panel-card="reader-sync">
       <h2 class="section-heading">{{ icon("update") }} Sync</h2>
       <div class="provider-panel" data-reader-panel="xteink" {% if reader_device != 'xteink' %}hidden{% endif %}>
         <label>
@@ -505,7 +575,7 @@
 
   {% if can_use_ntfy %}
   <div class="stack settings-panel settings-panel-stack" id="settings-panel-notifications" role="tabpanel" data-settings-panel="notifications" aria-labelledby="settings-tab-notifications"{% if settings_tab != 'notifications' %} hidden{% endif %}>
-    <div class="card stack">
+    <div class="card stack" data-settings-panel-card="connection">
       <h2 class="section-heading">{{ icon("wifi") }} Connection</h2>
       <label class="check">
         <input type="checkbox" name="ntfy_enabled" value="1" {% if ntfy_enabled %}checked{% endif %} />
@@ -538,7 +608,7 @@
         Clear saved access token
       </label>
     </div>
-    <div class="card stack">
+    <div class="card stack" data-settings-panel-card="alerts">
       <h2 class="section-heading">{{ filter_icon("notifications") }} When to notify</h2>
       <p class="hint">These only apply when phone alerts are enabled above.</p>
       <label class="check">
@@ -557,7 +627,7 @@
 
   {% if is_admin %}
   <div class="stack settings-panel" id="settings-panel-update-form" role="tabpanel" data-settings-panel="update" aria-labelledby="settings-tab-update"{% if settings_tab != 'update' %} hidden{% endif %}>
-    <div class="card stack">
+    <div class="card stack" data-settings-panel-card="repo">
       <h2 class="section-heading">{{ filter_icon("update") }} Updates</h2>
       <label>
         GitHub repository
@@ -577,15 +647,15 @@
       <p class="hint update-notes">{{ update_check.notes[:1200] }}</p>
       {% endif %}
       <p class="hint">Save the repository, then use Check for updates below. Install validates the zip and makes a backup first. Code is replaced; your data folder and .env stay put.</p>
+      <button class="btn btn-primary btn-with-icon settings-save" type="submit">{{ icon("check") }} {{ t("Save settings") }}</button>
     </div>
-    <button class="btn btn-primary btn-with-icon settings-save" type="submit">{{ icon("check") }} {{ t("Save settings") }}</button>
   </div>
   {% endif %}
 </form>
 
 {% if is_admin %}
 <div class="stack settings-panel" id="settings-panel-users" role="tabpanel" data-settings-panel="users" aria-labelledby="settings-tab-users"{% if settings_tab != 'users' %} hidden{% endif %}>
-  <div class="card stack">
+  <div class="card stack" data-settings-panel-card="people">
     <h2 class="section-heading">{{ filter_icon("users") }} Users</h2>
     <p class="lede">Each person keeps their own feeds, papers, library, and reader catalog. You control what they can change.</p>
     {% if users_notice %}
@@ -599,7 +669,7 @@
   </div>
 
   {% if login_qr_user and login_qr_svg %}
-  <div class="card stack user-qr-card" id="login-qr">
+  <div class="card stack user-qr-card" id="login-qr" data-settings-panel-card="people">
     <div class="user-card-head">
       <div class="user-card-meta">
         <h2 class="user-card-name">Login QR for {{ login_qr_user }}</h2>
@@ -618,7 +688,7 @@
   </script>
   {% endif %}
 
-  <div class="user-cards">
+  <div class="user-cards" data-settings-panel-card="people">
     {% for user in household_users %}
     <article class="card stack user-card{% if not user.active %} is-inactive{% endif %}">
       <div class="user-card-head">
@@ -733,7 +803,7 @@
     {% endfor %}
   </div>
 
-  <div class="card stack">
+  <div class="card stack" data-settings-panel-card="add">
     <h2 class="section-heading">{{ icon("plus") }} Add someone</h2>
     <p class="hint">They sign in with this username. You can change permissions later on their card.</p>
     <form method="post" action="/settings/users" class="stack user-create-form" autocomplete="off" data-native>
@@ -811,7 +881,7 @@
 </div>
 
 <div class="stack settings-panel" id="settings-panel-update" role="tabpanel" data-settings-panel="update" aria-labelledby="settings-tab-update"{% if settings_tab != 'update' %} hidden{% endif %}>
-  <div class="card stack">
+  <div class="card stack" data-settings-panel-card="install">
     <h2 class="section-heading">{{ filter_icon("update") }} Check and install</h2>
     <form method="post" action="/settings/updates/check">
       <button class="btn btn-secondary btn-with-icon" type="submit">{{ icon("update") }} Check for updates</button>
@@ -865,7 +935,7 @@
 
 {% if is_admin %}
 <div class="stack settings-panel settings-panel-stack" id="settings-panel-catalog" role="tabpanel" data-settings-panel="catalog" aria-labelledby="settings-tab-catalog"{% if settings_tab != 'catalog' %} hidden{% endif %}>
-  <div class="card stack">
+  <div class="card stack" data-settings-panel-card="packages">
     <h2 class="section-heading">{{ icon("files") }} Packages</h2>
     <p class="hint">Import adds sources to the Catalog library. Export shares one of your categories as a JSON file. After importing, enable sources on Catalog.</p>
     <div class="package-toolbar">
@@ -890,7 +960,7 @@
     </div>
   </div>
   {% if session_role == 'admin' %}
-  <div class="card stack">
+  <div class="card stack" data-settings-panel-card="approvals">
     <h2 class="section-heading">{{ icon("check") }} Approved for user viewing</h2>
     <p class="hint">Non-admin users only see and can Add sources you tick here. You still see the full Catalog.</p>
     <form method="post" action="/settings/catalog/approvals" class="stack">
@@ -921,5 +991,19 @@
     <p class="hint">Version: {{ app_version }}</p>
   </div>
 </div>
+</div><!-- /.settings-section -->
+</div><!-- /.settings-tabs -->
+
+<div class="sheet" hidden data-sheet="settings-help">
+  <div class="sheet-card card">
+    <h2>Settings</h2>
+    <div class="help-sheet-body">
+      <p>Grouped by what they affect. Tap a row to open it. Sections with several cards (like Publication) open a second list first.</p>
+      <p>On a larger screen, Settings uses the tab bar and shows every card in the section.</p>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" type="button" data-close-sheet>Got it</button>
+    </div>
+  </div>
 </div>
 {% endblock %}

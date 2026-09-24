@@ -731,6 +731,91 @@ SETTINGS_LEDES = {
     "backup": "Full SD recovery starts from Cockpit so backup can see the USB disk.",
     "about": "Name, description, GitHub, and the version running here.",
 }
+SETTINGS_HUB_LEDE = "Household portal settings — appearance, network, display, and system."
+SETTINGS_HUB_SUBTEXTS = {
+    "general": "Palette, view density, and your password.",
+    "network": "LAN vs internet-facing, Tailscale.",
+    "display": "TRMNL layout and push.",
+    "vault": "Encrypted secrets for apps.",
+    "automations": "USB backup and display jobs.",
+    "update": "GitHub Releases for packages.",
+    "backup": "Full SD recovery via Cockpit.",
+    "about": "Version and project links.",
+}
+SETTINGS_GROUPS = (
+    ("you", "You", ("general",)),
+    ("house", "House", ("network", "display", "vault", "automations")),
+    ("system", "System", ("update", "backup", "about")),
+)
+# Multi-card tabs: (panel_id, label, card_ids)
+SETTINGS_SECTION_PANELS = {
+    "general": (
+        ("appearance", "Appearance", ("appearance",)),
+        ("view", "View options", ("view",)),
+        ("password", "Your password", ("password",)),
+    ),
+    "network": (
+        ("exposure", "Network exposure", ("exposure",)),
+        ("remote", "Remote access", ("remote",)),
+    ),
+}
+# L2 list icons — match section-heading icons on each panel card.
+SETTINGS_PANEL_ICONS = {
+    "appearance": "appearance",
+    "view": "view",
+    "password": "auth",
+    "exposure": "network",
+    "remote": "remote",
+}
+SETTINGS_PANEL_SUBTEXTS = {
+    "appearance": "Palette for this browser",
+    "view": "Home, Health, and Services density",
+    "password": "Change your sign-in password",
+    "exposure": "LAN vs internet-facing",
+    "remote": "Tailscale remote access",
+}
+
+
+def _panel_list_entry(panel_id: str, label: str, cards: tuple[str, ...]) -> dict:
+    return {
+        "id": panel_id,
+        "label": label,
+        "cards": list(cards),
+        "icon": SETTINGS_PANEL_ICONS.get(panel_id, panel_id),
+        "subtext": SETTINGS_PANEL_SUBTEXTS.get(panel_id, "Open this section"),
+    }
+
+
+def settings_groups_for(*, appearance_only: bool = False) -> list[tuple[str, str, list[tuple[str, str, str]]]]:
+    allowed = {"general"} if appearance_only else {key for key, _ in SETTINGS_TABS}
+    labels = dict(SETTINGS_TABS)
+    groups: list[tuple[str, str, list[tuple[str, str, str]]]] = []
+    for group_id, group_label, tab_keys in SETTINGS_GROUPS:
+        rows = [
+            (key, labels[key], SETTINGS_HUB_SUBTEXTS.get(key, SETTINGS_LEDES.get(key, "")))
+            for key in tab_keys
+            if key in allowed
+        ]
+        if rows:
+            groups.append((group_id, group_label, rows))
+    return groups
+
+
+def settings_section_panels_for(tab: str) -> list[tuple[str, str, tuple[str, ...]]]:
+    panels = SETTINGS_SECTION_PANELS.get(tab, ())
+    return list(panels) if len(panels) > 1 else []
+
+
+def normalize_settings_panel(tab: str, value: str | None) -> str | None:
+    panels = settings_section_panels_for(tab)
+    if not panels:
+        return None
+    key = (value or "").strip().lower()
+    if not key:
+        return None
+    if any(panel_id == key for panel_id, _label, _cards in panels):
+        return key
+    return panels[0][0]
 
 # Friendly catalog for Settings → Vault (dropdown). Values are env/Vault key names.
 VAULT_KEY_CATALOG = [
@@ -777,7 +862,7 @@ def _vault_label_map() -> dict[str, str]:
 
 
 @router.get("/settings", response_class=HTMLResponse)
-def settings_page(request: Request, tab: str = "general"):
+def settings_page(request: Request, tab: str | None = None, panel: str | None = None):
     import app as dashboard_app
     from app import display, update_service
 
@@ -786,7 +871,9 @@ def settings_page(request: Request, tab: str = "general"):
     user, redirected = _user_or_login(request, require_dashboard=False)
     if redirected:
         return redirected
-    settings_tab = (tab or "general").strip().lower()
+    raw = (tab or "").strip().lower()
+    settings_hub = raw == "" or raw == "hub"
+    settings_tab = "general" if settings_hub else raw
     if settings_tab in {"trmnl", "trmnl-integration"}:
         settings_tab = "display"
     if settings_tab in {"updates"}:
@@ -805,12 +892,29 @@ def settings_page(request: Request, tab: str = "general"):
 
     if not user.is_admin:
         # Household members: Appearance + own password on General.
-        settings_tab = "general"
+        if not settings_hub:
+            settings_tab = "general"
+        section_panels = settings_section_panels_for("general")
+        settings_panel = None if settings_hub else normalize_settings_panel("general", panel)
+        panels_by_tab = {
+            "general": [
+                _panel_list_entry(panel_id, label, cards)
+                for panel_id, label, cards in SETTINGS_SECTION_PANELS.get("general", ())
+            ]
+        }
         extra = {
             "active": "settings",
+            "settings_hub": settings_hub,
             "settings_tab": "general",
+            "settings_panel": settings_panel,
+            "settings_section_panels": section_panels,
+            "settings_panels_by_tab": panels_by_tab,
+            "settings_groups": settings_groups_for(appearance_only=True),
             "settings_tabs": [("general", "General")],
-            "settings_lede": "Appearance and your password for this browser.",
+            "settings_lede": SETTINGS_HUB_LEDE if settings_hub else SETTINGS_LEDES["general"],
+            "settings_hub_lede": SETTINGS_HUB_LEDE,
+            "settings_ledes": {"general": SETTINGS_LEDES["general"]},
+            "settings_labels": {"general": "General"},
             "message": request.query_params.get("msg") or None,
             "error": request.query_params.get("err") or None,
             **about,
@@ -822,19 +926,41 @@ def settings_page(request: Request, tab: str = "general"):
         return RedirectResponse("/overview", status_code=303)
 
     known = {key for key, _ in SETTINGS_TABS}
-    if settings_tab not in known:
+    if not settings_hub and settings_tab not in known:
         settings_tab = "general"
+        settings_hub = False
+
+    section_panels = [] if settings_hub else settings_section_panels_for(settings_tab)
+    settings_panel = None if settings_hub else normalize_settings_panel(settings_tab, panel)
+    panels_by_tab = {
+        key: [
+            _panel_list_entry(panel_id, label, cards)
+            for panel_id, label, cards in SETTINGS_SECTION_PANELS.get(key, ())
+        ]
+        for key, _ in SETTINGS_TABS
+        if key in SETTINGS_SECTION_PANELS
+    }
     extra = {
         "active": "settings",
+        "settings_hub": settings_hub,
         "settings_tab": settings_tab,
+        "settings_panel": settings_panel,
+        "settings_section_panels": section_panels,
+        "settings_panels_by_tab": panels_by_tab,
+        "settings_groups": settings_groups_for(appearance_only=False),
         "settings_tabs": SETTINGS_TABS,
-        "settings_lede": SETTINGS_LEDES[settings_tab],
+        "settings_lede": SETTINGS_HUB_LEDE if settings_hub else SETTINGS_LEDES[settings_tab],
+        "settings_hub_lede": SETTINGS_HUB_LEDE,
+        "settings_ledes": SETTINGS_LEDES,
+        "settings_labels": dict(SETTINGS_TABS),
         "message": request.query_params.get("msg") or None,
         "error": request.query_params.get("err") or None,
         **about,
         "settings_appearance_only": False,
     }
-    if settings_tab == "general":
+    if settings_hub:
+        pass
+    elif settings_tab == "general":
         pass
     elif settings_tab == "network":
         from app import network as network_svc

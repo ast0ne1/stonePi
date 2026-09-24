@@ -51,14 +51,10 @@ def catalog_url_for_type(item: dict, feed_type: str) -> str | None:
 
 
 def apply_catalog_type(feed: Feed, item: dict, feed_type: str) -> None:
-    """Set feed.type and swap URL when the catalog lists homepage + rss_url."""
-    kind = (feed_type or "").strip().lower()
-    if kind not in SOURCE_LABELS:
-        kind = source_kind(item)
-    feed.type = kind
-    next_url = catalog_url_for_type(item, kind)
-    if next_url:
-        feed.url = next_url
+    """Set feed.type and sync active url from stored/catalog homepage + rss pair."""
+    from app.services.feed_urls import apply_catalog_url_pair
+
+    apply_catalog_url_pair(feed, item, feed_type)
 
 
 def load_bundled_catalog() -> list[dict]:
@@ -125,8 +121,30 @@ def seed_recommended_feeds(db: Session) -> None:
     existing = db.query(Feed).filter(Feed.user_id == admin.id).all()
     by_catalog = {feed.catalog_id: feed for feed in existing if feed.catalog_id}
     used_urls = {feed.url for feed in existing}
+    catalog_items = load_catalog()
+    catalog_by_id = {item["id"]: item for item in catalog_items}
     changed = False
-    for item in load_catalog():
+
+    # Drop leftover catalog stubs (full-catalog seed with enabled=0, never fetched).
+    # Added-then-disabled sources that have been fetched stay on Feeds.
+    for feed in db.query(Feed).filter(Feed.catalog_id.isnot(None), Feed.enabled.is_(False)).all():
+        if feed.last_fetched_at is not None:
+            continue
+        item = catalog_by_id.get(feed.catalog_id)
+        if item is None or item.get("default_enabled"):
+            continue
+        if feed.user_id == admin.id:
+            used_urls.discard(feed.url)
+            by_catalog.pop(feed.catalog_id, None)
+        db.delete(feed)
+        changed = True
+
+    # Refresh admin feed maps after stub cleanup.
+    if changed:
+        existing = db.query(Feed).filter(Feed.user_id == admin.id).all()
+        by_catalog = {feed.catalog_id: feed for feed in existing if feed.catalog_id}
+        used_urls = {feed.url for feed in existing}
+    for item in catalog_items:
         feed = by_catalog.get(item["id"])
         if feed:
             # Preserve user-chosen type/URL (e.g. scrape vs RSS for dual-mode sources),
@@ -148,22 +166,29 @@ def seed_recommended_feeds(db: Session) -> None:
                 feed.category = wanted_category
                 changed = True
             continue
+        # Only auto-add onboarding sources. Everything else waits for Catalog → Add.
+        if not item.get("default_enabled"):
+            continue
         if item["url"] in used_urls:
             continue
-        db.add(
-            Feed(
-                user_id=admin.id,
-                catalog_id=item["id"],
-                name=item["name"],
-                url=catalog_url_for_type(item, item.get("type", "rss")) or item["url"],
-                enabled=bool(item.get("default_enabled")),
-                type=item.get("type", "rss"),
-                category=item.get("category", "news"),
-                translate=bool(item.get("translate")),
-                translate_provider="global",
-            )
+        from app.services.feed_urls import apply_catalog_url_pair
+
+        feed = Feed(
+            user_id=admin.id,
+            catalog_id=item["id"],
+            name=item["name"],
+            url=item["url"],
+            enabled=True,
+            type=item.get("type", "rss"),
+            category=item.get("category", "news"),
+            translate=bool(item.get("translate")),
+            translate_provider="global",
+            homepage_url=catalog_homepage_url(item) or None,
+            rss_url=catalog_rss_url(item) or None,
         )
-        used_urls.add(item["url"])
+        apply_catalog_url_pair(feed, item, item.get("type", "rss"))
+        db.add(feed)
+        used_urls.add(feed.url)
         changed = True
     if changed:
         db.commit()
@@ -188,7 +213,8 @@ def catalog_with_status(
         if approved_only and item["id"] not in approved:
             continue
         existing = by_catalog.get(item["id"]) or by_url.get(item["url"])
-        added = bool(existing and existing.enabled)
+        # Presence on Feeds = added. Enabled/disabled is a separate Feeds toggle.
+        added = existing is not None
         items.append(
             {
                 **item,
@@ -196,6 +222,7 @@ def catalog_with_status(
                 "source_kind": source_kind(item),
                 "source_label": source_label(item),
                 "added": added,
+                "enabled": bool(existing.enabled) if existing is not None else False,
                 "feed_id": existing.id if existing else None,
                 "favicon": (src_for_feed(existing) if existing else None) or src_for_url(item["url"]),
                 "approved": item["id"] in approved,

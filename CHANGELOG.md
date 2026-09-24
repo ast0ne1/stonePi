@@ -2,6 +2,26 @@
 
 Platform version lives in [`VERSION`](VERSION). App zips use each app’s `__version__` (see `scripts/build_release_zips.py`).
 
+## 0.1.7 — 2026-09-24
+
+### UX
+- **Settings hub (phone/tablet):** Dashboard and NewsCast use a grouped hub → section drill-in (with L2 panel icons + short subtexts); laptop+ keeps chips/stacked cards
+- NewsCast: briefing/sources/filter sheets, catalog seed vs added feeds, mobile sheet scroll fixes
+- PriceScout: safer offer ingest when Tjek pages repeat or omit ids
+
+### App versions in this cut
+| App | Version |
+|-----|---------|
+| dashboard | 0.1.7 |
+| auth | 0.1.6 |
+| newscast | 0.0.4 |
+| eventtrakr | 0.0.3 |
+| fileserve | 0.0.0.9 |
+| pinboard | 0.0.3 |
+| pricescout | 0.0.3 |
+| sportguide | 0.0.2 |
+| studio | 0.0.5 |
+
 ## 0.1.6 — 2026-09-22
 
 ### UX
