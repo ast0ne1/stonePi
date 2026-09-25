@@ -82,6 +82,8 @@ def _ensure_schema() -> None:
                 # service resolves/normalizes it against the managed list
                 # afterwards (see backfill_event_source_categories).
                 conn.execute(text("UPDATE event_sources SET category = category_filter WHERE category IS NULL"))
+        if "schedule_config" not in source_cols:
+            conn.execute(text("ALTER TABLE event_sources ADD COLUMN schedule_config TEXT DEFAULT ''"))
         if "category_filter" in source_cols:
             # Drop the renamed-away legacy column outright -- it's still
             # NOT NULL and the ORM model no longer sets it, so leaving it in

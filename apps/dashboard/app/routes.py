@@ -586,6 +586,34 @@ async def settings_password_change(request: Request):
     return RedirectResponse("/settings?tab=general&msg=Password+updated#account-password", status_code=303)
 
 
+@router.post("/settings/app-colours")
+async def settings_app_colours_save(request: Request):
+    user, redirected = _user_or_login(request, require_dashboard=False)
+    if redirected:
+        return redirected
+    form = await request.form()
+    if not _require_csrf(request, form):
+        return RedirectResponse(
+            "/settings?tab=general&panel=app-colours&err=Form+expired",
+            status_code=303,
+        )
+    if str(form.get("action") or "").strip().lower() == "reset":
+        services.save_app_colors({}, reset=True)
+        return RedirectResponse(
+            "/settings?tab=general&panel=app-colours&msg=App+colours+reset+to+defaults",
+            status_code=303,
+        )
+    colors = {
+        item["id"]: str(form.get(f"color_{item['id']}") or "")
+        for item in services.app_color_items()
+    }
+    services.save_app_colors(colors)
+    return RedirectResponse(
+        "/settings?tab=general&panel=app-colours&msg=App+colours+saved",
+        status_code=303,
+    )
+
+
 @router.post("/applications/availability")
 async def applications_availability(request: Request):
     user, redirected = _user_or_login(request, admin=True)
@@ -722,7 +750,7 @@ SETTINGS_TABS = [
     ("about", "About"),
 ]
 SETTINGS_LEDES = {
-    "general": "Appearance, password, and view options. Accounts stay under Users.",
+    "general": "Appearance, app colours, password, and view options. Accounts stay under Users.",
     "network": "Home network vs internet-facing posture, and Tailscale remote access.",
     "display": "TRMNL layout and household display push.",
     "vault": "Encrypted secrets for apps and platform services.",
@@ -733,7 +761,7 @@ SETTINGS_LEDES = {
 }
 SETTINGS_HUB_LEDE = "Household portal settings — appearance, network, display, and system."
 SETTINGS_HUB_SUBTEXTS = {
-    "general": "Palette, view density, and your password.",
+    "general": "Palette, app colours, view density, and your password.",
     "network": "LAN vs internet-facing, Tailscale.",
     "display": "TRMNL layout and push.",
     "vault": "Encrypted secrets for apps.",
@@ -751,6 +779,7 @@ SETTINGS_GROUPS = (
 SETTINGS_SECTION_PANELS = {
     "general": (
         ("appearance", "Appearance", ("appearance",)),
+        ("app-colours", "App colours", ("app-colours",)),
         ("view", "View options", ("view",)),
         ("password", "Your password", ("password",)),
     ),
@@ -762,6 +791,7 @@ SETTINGS_SECTION_PANELS = {
 # L2 list icons — match section-heading icons on each panel card.
 SETTINGS_PANEL_ICONS = {
     "appearance": "appearance",
+    "app-colours": "appearance",
     "view": "view",
     "password": "auth",
     "exposure": "network",
@@ -769,6 +799,7 @@ SETTINGS_PANEL_ICONS = {
 }
 SETTINGS_PANEL_SUBTEXTS = {
     "appearance": "Palette for this browser",
+    "app-colours": "Tile accents on Home, Health, and Services",
     "view": "Home, Health, and Services density",
     "password": "Change your sign-in password",
     "exposure": "LAN vs internet-facing",
@@ -917,6 +948,7 @@ def settings_page(request: Request, tab: str | None = None, panel: str | None = 
             "settings_labels": {"general": "General"},
             "message": request.query_params.get("msg") or None,
             "error": request.query_params.get("err") or None,
+            "app_color_items": services.app_color_items(),
             **about,
             "settings_appearance_only": True,
         }
@@ -955,6 +987,7 @@ def settings_page(request: Request, tab: str | None = None, panel: str | None = 
         "settings_labels": dict(SETTINGS_TABS),
         "message": request.query_params.get("msg") or None,
         "error": request.query_params.get("err") or None,
+        "app_color_items": services.app_color_items(),
         **about,
         "settings_appearance_only": False,
     }

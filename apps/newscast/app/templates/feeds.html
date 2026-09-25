@@ -92,9 +92,11 @@
           <label>
             Source type
             <select name="feed_type">
+              {% if feed.allow_scrape|default(true) %}
               <option value="webpage" {% if (feed.type or 'rss') == 'webpage' %}selected{% endif %}>Scrape</option>
-              <option value="rss" {% if (feed.type or 'rss') == 'rss' %}selected{% endif %}>RSS</option>
-              {% if (feed.type or '') == 'auto' %}
+              {% endif %}
+              <option value="rss" {% if (feed.type or 'rss') == 'rss' or not (feed.allow_scrape|default(true)) %}selected{% endif %}>RSS</option>
+              {% if (feed.type or '') == 'auto' and (feed.allow_scrape|default(true)) %}
               <option value="auto" selected>Auto</option>
               {% endif %}
             </select>

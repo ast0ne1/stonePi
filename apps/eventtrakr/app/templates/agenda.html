@@ -4,60 +4,141 @@
 {% block title %}{{ view_title }} · EventTrakr{% endblock %}
 
 {% block content %}
-<div data-favourites-view="{{ '1' if is_favourites_view else '0' }}" hidden></div>
-<section class="hero">
-  <h1>{{ view_title }}</h1>
-  <p class="lede">
+{% macro agenda_qs(day=None, category=None, source=None, free=None) -%}
+?day={{ (day if day is not none else selected_day)|urlencode }}&category={{ (category if category is not none else selected_category)|urlencode }}&source={{ source if source is not none else selected_source }}&free={{ free if free is not none else ('1' if free_only else '0') }}
+{%- endmacro %}
+<section class="hero" data-favourites-view="{{ '1' if is_favourites_view else '0' }}">
+  <h1>{% if is_favourites_view %}My Favourites <span class="hero-title-mark" aria-hidden="true">{{ icon('star') }}</span>{% else %}{{ view_title }}{% endif %}</h1>
+  <div class="page-status">
     {% if is_favourites_view %}
-      Your starred events — automatically synced to your connected Google Calendar.
+    <p class="page-status-text">Starred events sync to your connected Google Calendar.</p>
     {% else %}
-      Upcoming events from your subscribed sources for the next 7 days.
+    <p class="page-status-text">Upcoming events from your subscribed sources for the next 7 days.</p>
+    <button class="page-status-action" type="button" data-open-sheet="agenda-help" aria-label="About agenda filters" title="About agenda filters">
+      {{ icon('about') }}
+    </button>
     {% endif %}
-  </p>
+  </div>
 </section>
 
 {% if not is_favourites_view %}
-<!-- 7-Day Filter Tabs -->
-<div class="chips-row">
-  {% for tab in day_tabs %}
-  <a class="chip-btn {% if selected_day == tab.key %}active{% endif %}" href="?day={{ tab.key }}&category={{ selected_category|urlencode }}&source={{ selected_source }}&free={{ '1' if free_only else '0' }}">
-    {{ icon('calendar') }}
-    <span>{{ tab.label }}</span>
-  </a>
-  {% endfor %}
+<div class="agenda-toolbar">
+<div class="chips-with-action">
+  <div class="chips" data-chip-group data-filter-key="day" role="group" aria-label="Day">
+    {% for tab in day_tabs %}
+    <a class="chip-btn{% if selected_day == tab.key %} is-active{% endif %}" href="{{ agenda_qs(day=tab.key) }}">
+      {{ icon('calendar') }}
+      <span>{{ tab.label }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  <button class="chips-action" type="button" data-open-sheet="day-filters" aria-label="Choose day" title="Choose day">
+    {{ icon('sliders') }}
+  </button>
 </div>
 
-<!-- Category & Free Filter Row -->
-<div class="chips-row" style="margin-top: -10px;">
-  <a class="chip-btn {% if selected_category == 'all' %}active{% endif %}" href="?day={{ selected_day }}&category=all&source={{ selected_source }}&free={{ '1' if free_only else '0' }}">
-    All Categories
-  </a>
-  {% for cat in categories %}
-  <a class="chip-btn {% if selected_category == cat %}active{% endif %}" href="?day={{ selected_day }}&category={{ cat|urlencode }}&source={{ selected_source }}&free={{ '1' if free_only else '0' }}">
-    {{ cat }}
-  </a>
-  {% endfor %}
-  <a class="chip-btn {% if free_only %}active{% endif %}" href="?day={{ selected_day }}&category={{ selected_category|urlencode }}&source={{ selected_source }}&free={{ '0' if free_only else '1' }}" style="margin-left: auto;">
-    {% if free_only %}✓ Free Events Only{% else %}Free Events Only{% endif %}
-  </a>
+<div class="chips-with-action chips-with-action-sticky">
+  <div class="chips" data-chip-group data-filter-key="category" role="group" aria-label="Category">
+    <a class="chip-btn{% if selected_category == 'all' %} is-active{% endif %}" href="{{ agenda_qs(category='all') }}">
+      <span>All</span>
+    </a>
+    {% for cat in categories %}
+    <a class="chip-btn{% if selected_category == cat %} is-active{% endif %}" href="{{ agenda_qs(category=cat) }}">
+      <span>{{ cat }}</span>
+    </a>
+    {% endfor %}
+    <a class="chip-btn{% if free_only %} is-active{% endif %}" href="{{ agenda_qs(free=('0' if free_only else '1')) }}">
+      <span>{% if free_only %}Free only{% else %}Free{% endif %}</span>
+    </a>
+  </div>
+  <button class="chips-action" type="button" data-open-sheet="filters" aria-label="Choose category" title="Choose category">
+    {{ icon('sliders') }}
+  </button>
 </div>
 
 {% if source_options %}
-<!-- Source Filter Row -->
-<div class="chips-row" style="margin-bottom: 24px;">
-  <a class="chip-btn {% if selected_source == 'all' %}active{% endif %}" href="?day={{ selected_day }}&category={{ selected_category|urlencode }}&source=all&free={{ '1' if free_only else '0' }}">
-    All Sources
-  </a>
-  {% for src in source_options %}
-  <a class="chip-btn {% if selected_source == src.id|string %}active{% endif %}" href="?day={{ selected_day }}&category={{ selected_category|urlencode }}&source={{ src.id }}&free={{ '1' if free_only else '0' }}">
-    {{ src.name }}
-  </a>
-  {% endfor %}
+<div class="chips-with-action">
+  <div class="chips" data-chip-group data-filter-key="source" role="group" aria-label="Source">
+    <a class="chip-btn{% if selected_source == 'all' %} is-active{% endif %}" href="{{ agenda_qs(source='all') }}">
+      <span>All sources</span>
+    </a>
+    {% for src in source_options %}
+    <a class="chip-btn{% if selected_source == src.id|string %} is-active{% endif %}" href="{{ agenda_qs(source=src.id) }}">
+      <span>{{ src.name }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  <button class="chips-action" type="button" data-open-sheet="source-filters" aria-label="Choose source" title="Choose source">
+    {{ icon('sliders') }}
+  </button>
 </div>
 {% endif %}
+</div>
+
+<div class="sheet" hidden data-sheet="day-filters">
+  <div class="sheet-card card">
+    <h2>Day</h2>
+    <div class="filter-picker" role="listbox" aria-label="Day">
+      {% for tab in day_tabs %}
+      <a class="filter-picker-option{% if selected_day == tab.key %} is-active{% endif %}" href="{{ agenda_qs(day=tab.key) }}" role="option" aria-selected="{{ 'true' if selected_day == tab.key else 'false' }}">{{ icon('calendar') }}<span>{{ tab.label }}</span></a>
+      {% endfor %}
+    </div>
+    <div class="btn-row row-actions">
+      <button class="btn btn-ghost" type="button" data-close-sheet>Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet" hidden data-sheet="filters">
+  <div class="sheet-card card">
+    <h2>Category</h2>
+    <div class="filter-picker" role="listbox" aria-label="Category">
+      <a class="filter-picker-option{% if selected_category == 'all' %} is-active{% endif %}" href="{{ agenda_qs(category='all') }}" role="option" aria-selected="{{ 'true' if selected_category == 'all' else 'false' }}">{{ icon('tag') }}<span>All categories</span></a>
+      {% for cat in categories %}
+      <a class="filter-picker-option{% if selected_category == cat %} is-active{% endif %}" href="{{ agenda_qs(category=cat) }}" role="option" aria-selected="{{ 'true' if selected_category == cat else 'false' }}">{{ icon('tag') }}<span>{{ cat }}</span></a>
+      {% endfor %}
+      <a class="filter-picker-option{% if free_only %} is-active{% endif %}" href="{{ agenda_qs(free=('0' if free_only else '1')) }}" role="option" aria-selected="{{ 'true' if free_only else 'false' }}">{{ icon('check') }}<span>{% if free_only %}Show paid too{% else %}Free events only{% endif %}</span></a>
+    </div>
+    <div class="btn-row row-actions">
+      <button class="btn btn-ghost" type="button" data-close-sheet>Cancel</button>
+    </div>
+  </div>
+</div>
+
+{% if source_options %}
+<div class="sheet" hidden data-sheet="source-filters">
+  <div class="sheet-card card">
+    <h2>Source</h2>
+    <div class="filter-picker" role="listbox" aria-label="Source">
+      <a class="filter-picker-option{% if selected_source == 'all' %} is-active{% endif %}" href="{{ agenda_qs(source='all') }}" role="option" aria-selected="{{ 'true' if selected_source == 'all' else 'false' }}">{{ icon('sources') }}<span>All sources</span></a>
+      {% for src in source_options %}
+      <a class="filter-picker-option{% if selected_source == src.id|string %} is-active{% endif %}" href="{{ agenda_qs(source=src.id) }}" role="option" aria-selected="{{ 'true' if selected_source == src.id|string else 'false' }}">{{ icon('sources') }}<span>{{ src.name }}</span></a>
+      {% endfor %}
+    </div>
+    <div class="btn-row row-actions">
+      <button class="btn btn-ghost" type="button" data-close-sheet>Cancel</button>
+    </div>
+  </div>
+</div>
 {% endif %}
 
-<!-- Events Grid -->
+<div class="sheet" hidden data-sheet="agenda-help">
+  <div class="sheet-card card">
+    <h2>Agenda filters</h2>
+    <div class="help-sheet-body">
+      <p><strong>Day</strong> narrows to one calendar day, or All 7 Days for the full window. Use the sliders button when the day list is long.</p>
+      <p><strong>Category</strong> chips (and the sliders button) hide events from other categories. <strong>Free</strong> keeps only free events.</p>
+      {% if source_options %}
+      <p><strong>Source</strong> limits the list to one feed you follow — same sliders button opens the full list.</p>
+      {% endif %}
+    </div>
+    <div class="btn-row row-actions">
+      <button class="btn btn-ghost" type="button" data-close-sheet>Got it</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% if events %}
 <div class="events-grid">
   {% for ev in events %}
@@ -66,7 +147,7 @@
       <div class="event-header">
         <div class="event-badges">
           <span class="badge category">{{ ev.category }}</span>
-          <span class="badge {% if ev.is_free %}cost-free{% endif %}">{{ ev.cost }}</span>
+          <span class="badge {{ ev.cost_badge_class }}">{{ ev.cost_label }}</span>
           {% if ev.is_cancelled %}
           <span class="badge cancelled">Cancelled</span>
           {% endif %}
@@ -98,18 +179,18 @@
 
     <div class="event-footer">
       {% if ev.url %}
-      <a href="{{ ev.url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm">
-        Details {{ icon('external-link') }}
+      <a class="btn btn-outline btn-sm btn-icon" href="{{ ev.url }}" target="_blank" rel="noopener noreferrer" aria-label="Open event details" title="Open event details">
+        {{ icon('external-link') }}
       </a>
       {% else %}
       <div></div>
       {% endif %}
 
       <div class="dropdown">
-        <button type="button" class="btn btn-primary btn-sm dropdown-toggle">
-          {{ icon('calendar') }} Add to Cal ▾
+        <button type="button" class="btn btn-primary btn-sm btn-icon dropdown-toggle" aria-label="Add to calendar" title="Add to calendar">
+          {{ icon('calendar-plus') }}
         </button>
-        <div class="dropdown-content">
+        <div class="dropdown-content dropdown-content-end">
           <a href="{{ ev.gcal_url }}" target="_blank" rel="noopener noreferrer" class="dropdown-item">
             Google Calendar
           </a>

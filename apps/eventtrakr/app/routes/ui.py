@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
@@ -16,6 +15,12 @@ from app.services.calendar_sync import (
     build_facebook_share_url,
     build_google_calendar_url,
 )
+from app.services.cost import (
+    UNSPECIFIED_COST,
+    cost_badge_class,
+    cost_display_label,
+    is_free_cost,
+)
 from app.services.dedupe import compute_event_fingerprint
 from app.services.scrapers.base import ScrapedEvent
 from app.services.scrapers.brightdata_facebook import BrightDataError, fetch_single_event
@@ -25,33 +30,14 @@ logger = logging.getLogger("eventtrakr.ui")
 
 bp = Blueprint("ui", __name__)
 
-_COST_NUMBER_RE = re.compile(r"\d+(?:[.,]\d+)?")
-
-
-def is_free_cost(cost: str | None) -> bool:
-    """True only when the cost is literally "free" or a numeric amount of 0.
-
-    A naive "0.00" substring check (the old approach) wrongly flags any price
-    that happens to end in a round number, e.g. "DKK 250.00" or "kr 100.00".
-    """
-    if not cost:
-        return False
-    if "free" in cost.lower():
-        return True
-    match = _COST_NUMBER_RE.search(cost)
-    if not match:
-        return False
-    try:
-        return float(match.group(0).replace(",", ".")) == 0
-    except ValueError:
-        return False
-
 
 def _enrich_events(events: list[Event]) -> None:
     for ev in events:
         ev.gcal_url = build_google_calendar_url(ev)
         ev.fb_share_url = build_facebook_share_url(ev)
         ev.is_free = is_free_cost(ev.cost)
+        ev.cost_label = cost_display_label(ev.cost)
+        ev.cost_badge_class = cost_badge_class(ev.cost)
 
 
 def _ordinal(n: int) -> str:
@@ -185,7 +171,7 @@ def favourites():
         free_only=False,
         categories=[],
         source_options=[],
-        view_title="My Favourites ⭐",
+        view_title="My Favourites",
         is_favourites_view=True,
     )
 
@@ -419,7 +405,7 @@ def add_event_save():
     end_date_raw = request.form.get("end_date", "").strip()
     end_time_raw = request.form.get("end_time", "").strip()
     location = request.form.get("location", "").strip() or "Unspecified"
-    cost = request.form.get("cost", "").strip() or "Free / Unspecified"
+    cost = request.form.get("cost", "").strip() or UNSPECIFIED_COST
     description = request.form.get("description", "").strip()
     category_key = request.form.get("category", "general").strip()
     event_url = request.form.get("url", "").strip()

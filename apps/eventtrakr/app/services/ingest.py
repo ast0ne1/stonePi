@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.config import env
 from app.db import SessionLocal
 from app.models import Category, Event, EventSource, SourceFetch, utcnow
+from app.services.cost import is_unspecified_cost
 from app.services.dedupe import compute_event_fingerprint
 from app.services.scrapers.base import ScrapedEvent
 from app.services.scrapers.bandsintown import is_listing_url as is_bandsintown_listing_url
@@ -358,7 +359,7 @@ def _apply_scraped_events(
 
         if existing:
             # Update mutable fields without disturbing user favourite/calendar state
-            if ev.cost and ev.cost != "Free / Unspecified":
+            if ev.cost and not is_unspecified_cost(ev.cost):
                 existing.cost = ev.cost
             if ev.location and ev.location != "Unspecified":
                 existing.location = ev.location

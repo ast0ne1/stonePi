@@ -1,4 +1,4 @@
 __version__ = "0.0.4"
-__asset_rev__ = "20260924o"
+__asset_rev__ = "20260925a"
 __github_user__ = "ast0ne1"
 __github__ = "https://github.com/ast0ne1"

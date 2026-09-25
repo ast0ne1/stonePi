@@ -28,6 +28,24 @@ def article_link_label(db: Session, user_id: int | None) -> str:
     return normalize_article_link_label(user_settings.get_value(db, int(user_id), "article_link_label"))
 
 
+def _user_flag_default_on(db: Session, user_id: int | None, key: str) -> bool:
+    """Per-user flag that defaults to on when unset."""
+    if user_id is None:
+        return True
+    raw = user_settings.get_value(db, int(user_id), key).strip().lower()
+    if not raw:
+        return True
+    return raw in {"1", "true", "on", "yes"}
+
+
+def briefing_article_open_enabled(db: Session, user_id: int | None) -> bool:
+    return _user_flag_default_on(db, user_id, "briefing_article_open_enabled")
+
+
+def briefing_article_open_button(db: Session, user_id: int | None) -> bool:
+    return _user_flag_default_on(db, user_id, "briefing_article_open_button")
+
+
 def article_open_url(canonical_url: str, *, use_paywall_skip: bool) -> str:
     url = (canonical_url or "").strip()
     if not url:

@@ -140,15 +140,15 @@ const VIEW_DATASET = {
 
 function readViewPref(set) {
   const key = VIEW_KEYS[set];
-  const allowed = VIEW_ALLOWED[set] || [];
+  const allowed = VIEW_ALLOWED[set];
   const fallback = VIEW_DEFAULTS[set];
   let value = readCookie(key) || localStorage.getItem(key) || fallback;
-  if (!allowed.includes(value)) value = fallback;
+  if (Array.isArray(allowed) && !allowed.includes(value)) value = fallback;
   return value;
 }
 
 function applyViewPrefsToDocument() {
-  Object.keys(VIEW_KEYS).forEach((set) => {
+  Object.keys(VIEW_DATASET).forEach((set) => {
     const value = readViewPref(set);
     document.documentElement.dataset[VIEW_DATASET[set]] = value;
   });
@@ -206,8 +206,10 @@ function syncViewFormDraftState() {
 function saveViewPrefsFromForm() {
   Object.keys(VIEW_KEYS).forEach((set) => {
     let value = draftViewValue(set);
-    const allowed = VIEW_ALLOWED[set] || [];
-    if (!allowed.includes(value)) value = VIEW_DEFAULTS[set];
+    const allowed = VIEW_ALLOWED[set];
+    if (Array.isArray(allowed) && !allowed.includes(value)) {
+      value = VIEW_DEFAULTS[set];
+    }
     persistPref(VIEW_KEYS[set], value);
   });
   applyViewPrefsToDocument();
@@ -227,6 +229,15 @@ document.querySelectorAll("[data-view-set]").forEach((el) => {
 });
 document.querySelector("[data-view-save]")?.addEventListener("click", () => {
   saveViewPrefsFromForm();
+});
+
+document.querySelectorAll("[data-app-color-swatch]").forEach((el) => {
+  if (!(el instanceof HTMLInputElement)) return;
+  el.addEventListener("input", () => {
+    const row = el.closest(".app-color-row");
+    const icon = row?.querySelector(".service-icon");
+    if (icon instanceof HTMLElement) icon.style.setProperty("--tile-accent", el.value);
+  });
 });
 
 (function expandableCards() {
@@ -1783,8 +1794,8 @@ if (settingsShell) {
   const urlPanel = url.searchParams.get("panel");
   const hash = (window.location.hash || "").replace(/^#/, "");
   const hashPanel =
-    hash === "account-password" || hash === "view-options" || hash === "appearance" || hash === "remote-access"
-      ? { "account-password": "password", "view-options": "view", appearance: "appearance", "remote-access": "remote" }[hash]
+    hash === "account-password" || hash === "view-options" || hash === "appearance" || hash === "app-colours" || hash === "remote-access"
+      ? { "account-password": "password", "view-options": "view", appearance: "appearance", "app-colours": "app-colours", "remote-access": "remote" }[hash]
       : null;
 
   if (isDesktop()) {

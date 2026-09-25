@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from datetime import datetime
 from flask import Flask, g, request, send_from_directory
 
@@ -10,24 +9,9 @@ from app.services import auth, favicon, ingest, schedule
 from stonepi_auth.http import portal_home_url
 
 __version__ = "0.0.3"
+__asset_rev__ = "20260925s"
 __github_user__ = "ast0ne1"
 __github__ = "https://github.com/ast0ne1"
-
-_STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
-
-
-def _asset_version(relative_path: str) -> str:
-    """Cache-busting token for a static asset, derived from its own
-    last-modified time. A hardcoded version string never changes across
-    deploys, so browsers can keep serving a stale cached app.js/app.css
-    indefinitely after an update -- tying it to mtime forces a refetch
-    whenever the file actually changes, and restarting the server is enough
-    to pick that up (no separate build/versioning step needed)."""
-    path = os.path.join(_STATIC_DIR, relative_path)
-    try:
-        return str(int(os.path.getmtime(path)))
-    except OSError:
-        return "0"
 
 
 def create_app() -> Flask:
@@ -78,9 +62,6 @@ def create_app() -> Flask:
     def load_user():
         g.current_user = auth.get_current_user()
 
-    app_js_version = _asset_version("js/app.js")
-    app_css_version = _asset_version("css/app.css")
-
     @app.context_processor
     def inject_globals():
         factory = False
@@ -93,10 +74,12 @@ def create_app() -> Flask:
         return {
             "current_user": g.get("current_user"),
             "ingest_state": ingest.state,
-            "app_js_version": app_js_version,
-            "app_css_version": app_css_version,
+            "app_version": __version__,
+            "asset_rev": __asset_rev__,
             "using_factory_admin": factory,
+            "platform_managed": bool(env.stonepi_session_secret.strip()),
             "stonepi_home_url": portal_home_url(request, env.stonepi_public_origin),
+            "stonepi_prefix": env.stonepi_prefix,
         }
 
     @app.template_filter("format_datetime")

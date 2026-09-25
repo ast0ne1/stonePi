@@ -12,7 +12,7 @@ class ScrapedEvent:
     start_time: datetime
     end_time: datetime | None = None
     location: str = "Unspecified"
-    cost: str = "Free / Unspecified"
+    cost: str = "Unspecified"
     category: str = "General"
     url: str = ""
     image_url: str | None = None

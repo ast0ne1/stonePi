@@ -7,6 +7,7 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 import dateparser
 
+from app.services.cost import UNSPECIFIED_COST
 from app.services.scrapers.base import BaseScraper, ScrapedEvent
 
 # Madbillet's date cells are plain Danish text with no year, e.g. "20. sep"
@@ -76,7 +77,7 @@ class MadbilletExtractor(BaseScraper):
             ev_url = urljoin(base_url, link_el["href"]) if link_el else base_url
 
             price_el = item.select_one(".event-price")
-            cost = f"{price_el.get_text(strip=True)}" if price_el else "Free / Unspecified"
+            cost = f"{price_el.get_text(strip=True)}" if price_el else UNSPECIFIED_COST
 
             pretitle_el = item.select_one(".event-pre-title")
             description = pretitle_el.get_text(strip=True) if pretitle_el else ""

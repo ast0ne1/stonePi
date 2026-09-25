@@ -47,6 +47,39 @@ def format_local(iso_utc: str, tz_name: str | None) -> str:
     return local.strftime("%a %H:%M")
 
 
+def parse_utc(iso_utc: str) -> datetime | None:
+    try:
+        return datetime.strptime(iso_utc, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        try:
+            return datetime.fromisoformat(iso_utc.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
+
+def enrich_listing_row(row: dict, tz_name: str | None, *, now: datetime | None = None) -> dict:
+    """Add day/time/live fields for the Now feed card layout."""
+    tz = resolve_tz(tz_name)
+    now_utc = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    starts = parse_utc(str(row.get("starts_at") or ""))
+    if starts is None:
+        row["day_label"] = ""
+        row["time_label"] = row.get("local_time") or ""
+        row["is_live"] = False
+    else:
+        local = starts.astimezone(tz)
+        row["day_label"] = local.strftime("%a").upper()
+        row["time_label"] = local.strftime("%H:%M")
+        # Still “on” for up to 3 hours after kick-off (matches Now window).
+        row["is_live"] = starts <= now_utc and starts >= (now_utc - timedelta(hours=3))
+    channels = row.get("channels") or []
+    if isinstance(channels, list) and channels:
+        row["channel_label"] = " · ".join(str(c) for c in channels if c)
+    else:
+        row["channel_label"] = "Check guide"
+    return row
+
+
 def needs_daily_refresh(last_refresh_iso: str | None, tz_name: str | None) -> bool:
     """True if we have never refreshed today (local calendar day) after the daily hour."""
     local = now_local(tz_name)

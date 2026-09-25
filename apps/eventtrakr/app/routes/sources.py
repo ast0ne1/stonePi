@@ -33,6 +33,10 @@ def list_sources():
         global_schedule_summary = settings.describe_schedule(global_schedule)
         category_list = categories.list_categories(db)
         category_labels = {c.key: c.label for c in category_list}
+        source_schedules = {
+            s.id: settings.get_source_schedule(s, env.default_sync_interval_minutes) or {"mode": "interval", "interval_minutes": 60}
+            for s in user_sources
+        }
 
     return render_template(
         "sources.html",
@@ -43,6 +47,9 @@ def list_sources():
         global_schedule_summary=global_schedule_summary,
         category_list=category_list,
         category_labels=category_labels,
+        source_schedules=source_schedules,
+        weekdays=settings.WEEKDAYS,
+        interval_choices=settings.INTERVAL_CHOICES,
     )
 
 
@@ -89,9 +96,9 @@ def add_source():
     category_key = request.form.get("category", "general").strip()
     inc = request.form.get("keywords_include", "").strip()
     exc = request.form.get("keywords_exclude", "").strip()
-    schedule_mode = request.form.get("schedule_mode", "global")
-    interval = request.form.get("interval_minutes")
-    interval_val = int(interval) if interval and interval.isdigit() else None
+    custom_schedule = settings.schedule_config_from_form(
+        request.form, default_minutes=env.default_sync_interval_minutes
+    )
 
     if not name or not url:
         flash("Source Name and URL are required.", "error")
@@ -123,10 +130,9 @@ def add_source():
             category=category_key,
             keywords_include=inc,
             keywords_exclude=exc,
-            schedule_mode=schedule_mode,
-            interval_minutes=interval_val,
             enabled=True,
         )
+        settings.apply_source_schedule(src, custom_schedule)
         db.add(src)
         db.commit()
 
@@ -195,17 +201,22 @@ def update_category(source_id: int):
 @auth.login_required
 def update_schedule(source_id: int):
     user = auth.get_current_user()
-    schedule_mode = "custom" if request.form.get("schedule_mode") == "custom" else "global"
-    interval = request.form.get("interval_minutes")
-    interval_val = int(interval) if interval and interval.isdigit() else None
+    custom_schedule = settings.schedule_config_from_form(
+        request.form, default_minutes=env.default_sync_interval_minutes
+    )
 
     with SessionLocal() as db:
         src = db.get(EventSource, source_id)
         if src and src.user_id == user.user_id:
-            src.schedule_mode = schedule_mode
-            src.interval_minutes = max(15, interval_val) if schedule_mode == "custom" and interval_val else None
+            settings.apply_source_schedule(src, custom_schedule)
             db.commit()
-            flash(f"Schedule updated for '{src.name}'.", "success")
+            if custom_schedule is None:
+                flash(f"Schedule for '{src.name}' now follows Global.", "success")
+            else:
+                flash(
+                    f"Schedule for '{src.name}' set to: {settings.describe_schedule(custom_schedule)}.",
+                    "success",
+                )
     return redirect(url_for("sources.list_sources"))
 
 

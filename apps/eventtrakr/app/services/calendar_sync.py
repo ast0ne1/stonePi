@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import CalendarConnection, Event
+from app.services.cost import cost_value_label, is_unspecified_cost
 
 logger = logging.getLogger("eventtrakr.calendar")
 
@@ -27,8 +28,8 @@ def build_google_calendar_url(event: Event) -> str:
     end_str = format_gcal_datetime(end_time)
 
     details = event.description or ""
-    if event.cost and event.cost != "Free / Unspecified":
-        details = f"Cost: {event.cost}\n\n{details}"
+    if event.cost and not is_unspecified_cost(event.cost):
+        details = f"Cost: {cost_value_label(event.cost)}\n\n{details}"
     if event.url:
         details = f"{details}\n\nEvent Link: {event.url}"
 
@@ -64,8 +65,8 @@ def build_event_ics(event: Event) -> bytes:
     ie.add("uid", f"event-{event.id}-{event.fingerprint[:12]}@eventtrakr")
 
     details = event.description or ""
-    if event.cost and event.cost != "Free / Unspecified":
-        details = f"Cost: {event.cost}\n\n{details}"
+    if event.cost and not is_unspecified_cost(event.cost):
+        details = f"Cost: {cost_value_label(event.cost)}\n\n{details}"
     if event.url:
         details = f"{details}\n\nSource: {event.url}"
 

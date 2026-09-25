@@ -18,11 +18,15 @@
 {% else %}
 <section class="hero">
   {% if is_favourites %}
-  <h1>{{ target_user.username }}'s Favourites ⭐</h1>
-  <p class="lede">Events {{ target_user.username }} has starred.</p>
+  <h1>{{ target_user.username }}'s Favourites</h1>
+  <div class="page-status">
+    <p class="page-status-text">Events {{ target_user.username }} has starred.</p>
+  </div>
   {% else %}
   <h1>{{ target_user.username }}'s Public Agenda</h1>
-  <p class="lede">Upcoming curated events for the next 7 days in {{ target_user.default_location }}.</p>
+  <div class="page-status">
+    <p class="page-status-text">Upcoming curated events for the next 7 days in {{ target_user.default_location }}.</p>
+  </div>
   {% endif %}
 </section>
 
@@ -34,7 +38,7 @@
       <div class="event-header">
         <div class="event-badges">
           <span class="badge category">{{ ev.category }}</span>
-          <span class="badge {% if ev.is_free %}cost-free{% endif %}">{{ ev.cost }}</span>
+          <span class="badge {{ ev.cost_badge_class }}">{{ ev.cost_label }}</span>
           {% if ev.is_cancelled %}
           <span class="badge cancelled">Cancelled</span>
           {% endif %}
@@ -60,18 +64,18 @@
 
     <div class="event-footer">
       {% if ev.url %}
-      <a href="{{ ev.url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm">
-        Details {{ icon('external-link') }}
+      <a href="{{ ev.url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm btn-icon" aria-label="Open event details" title="Open event details">
+        {{ icon('external-link') }}
       </a>
       {% else %}
       <div></div>
       {% endif %}
 
       <div class="dropdown">
-        <button type="button" class="btn btn-primary btn-sm dropdown-toggle">
-          {{ icon('calendar') }} Add to Cal ▾
+        <button type="button" class="btn btn-primary btn-sm btn-icon dropdown-toggle" aria-label="Add to calendar" title="Add to calendar">
+          {{ icon('calendar-plus') }}
         </button>
-        <div class="dropdown-content">
+        <div class="dropdown-content dropdown-content-end">
           <a href="{{ ev.gcal_url }}" target="_blank" rel="noopener noreferrer" class="dropdown-item">
             Google Calendar
           </a>

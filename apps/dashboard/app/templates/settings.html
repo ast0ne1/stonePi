@@ -94,6 +94,35 @@
   <p class="muted" data-palette-status>Using Default — saved for this browser (no Save button).</p>
 </section>
 
+<section class="card stack" id="app-colours" data-settings-panel-card="app-colours">
+  <h2 class="section-heading">{{ svg("appearance") }} App colours</h2>
+  <p class="muted">Accent colour for each app tile on Home, Health, and Services. Saved for the household (not just this browser).</p>
+  <form method="post" action="/settings/app-colours" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <ul class="app-color-list">
+      {% for item in app_color_items or [] %}
+      <li class="app-color-row">
+        {{ service_icon(item.id, item.color) }}
+        <label class="app-color-label" for="color-{{ item.id }}">{{ item.name }}</label>
+        <input
+          type="color"
+          id="color-{{ item.id }}"
+          name="color_{{ item.id }}"
+          value="{{ item.color }}"
+          data-app-color-default="{{ item.default }}"
+          data-app-color-swatch
+          aria-label="{{ item.name }} tile colour"
+        />
+      </li>
+      {% endfor %}
+    </ul>
+    <div class="row-actions">
+      <button type="submit" class="btn btn-primary btn-with-icon" name="action" value="save">{{ svg('check') }} Save app colours</button>
+      <button type="submit" class="btn btn-ghost btn-with-icon" name="action" value="reset">{{ svg('refresh') }} Reset defaults</button>
+    </div>
+  </form>
+</section>
+
 <section class="card stack" id="view-options" data-settings-panel-card="view">
   <h2 class="section-heading">{{ svg("view") }} View options</h2>
   <p class="muted">Layout density for Home, Health, and Services on this browser (desktop and phone). Choose options, then Save.</p>

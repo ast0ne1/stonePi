@@ -24,6 +24,86 @@ WEEKDAY_CODES = [code for code, _ in WEEKDAYS]
 WEEKDAY_LABELS = dict(WEEKDAYS)
 _TIME_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 
+INTERVAL_CHOICES = [
+    (15, "Every 15 minutes"),
+    (30, "Every 30 minutes"),
+    (60, "Every hour"),
+    (120, "Every 2 hours"),
+    (240, "Every 4 hours"),
+    (360, "Every 6 hours"),
+    (720, "Every 12 hours"),
+    (1440, "Every 24 hours"),
+]
+
+
+def normalize_schedule_config(config: dict | None, default_minutes: int = 60) -> dict:
+    """Validate a schedule dict into interval or weekly form."""
+    if isinstance(config, dict):
+        if config.get("mode") == "weekly" and config.get("days") and config.get("times"):
+            days = [d for d in config["days"] if d in WEEKDAY_CODES]
+            times = [t for t in config["times"] if _TIME_RE.match(t)]
+            if days and times:
+                return {"mode": "weekly", "days": days, "times": sorted(set(times))}
+        if config.get("mode") == "interval" and isinstance(config.get("interval_minutes"), int):
+            return {"mode": "interval", "interval_minutes": max(15, config["interval_minutes"])}
+        if isinstance(config.get("interval_minutes"), int):
+            return {"mode": "interval", "interval_minutes": max(15, config["interval_minutes"])}
+    return {"mode": "interval", "interval_minutes": max(15, default_minutes)}
+
+
+def parse_schedule_json(raw: str | None, default_minutes: int = 60) -> dict:
+    if raw:
+        try:
+            return normalize_schedule_config(json.loads(raw), default_minutes)
+        except (ValueError, TypeError):
+            pass
+    return {"mode": "interval", "interval_minutes": max(15, default_minutes)}
+
+
+def schedule_config_from_form(form, *, default_minutes: int = 60) -> dict | None:
+    """Build a custom schedule dict from request.form, or None when Global."""
+    if form.get("schedule_mode") != "custom":
+        return None
+    schedule_type = form.get("schedule_type", "interval")
+    if schedule_type == "weekly":
+        days = [d for d in form.getlist("schedule_days") if d in WEEKDAY_CODES]
+        times = sorted({t for t in form.getlist("schedule_times") if _TIME_RE.match(t)})
+        if days and times:
+            return {"mode": "weekly", "days": days, "times": times}
+        return {"mode": "interval", "interval_minutes": max(15, default_minutes)}
+    raw = form.get("interval_minutes", "")
+    minutes = int(raw) if str(raw).isdigit() else default_minutes
+    return {"mode": "interval", "interval_minutes": max(15, minutes)}
+
+
+def get_source_schedule(source, default_minutes: int = 60) -> dict | None:
+    """Per-source custom schedule, or None when the source follows Global."""
+    if getattr(source, "schedule_mode", "global") != "custom":
+        return None
+    raw = (getattr(source, "schedule_config", None) or "").strip()
+    if raw:
+        return parse_schedule_json(raw, default_minutes)
+    minutes = getattr(source, "interval_minutes", None)
+    if minutes and minutes > 0:
+        return {"mode": "interval", "interval_minutes": max(15, int(minutes))}
+    return {"mode": "interval", "interval_minutes": max(15, default_minutes)}
+
+
+def apply_source_schedule(source, config: dict | None) -> None:
+    """Persist Global vs Custom schedule onto an EventSource row."""
+    if config is None:
+        source.schedule_mode = "global"
+        source.interval_minutes = None
+        source.schedule_config = ""
+        return
+    normalized = normalize_schedule_config(config)
+    source.schedule_mode = "custom"
+    source.schedule_config = json.dumps(normalized)
+    if normalized.get("mode") == "interval":
+        source.interval_minutes = normalized["interval_minutes"]
+    else:
+        source.interval_minutes = None
+
 
 def get_value(db: Session, key: str, default: str = "") -> str:
     row = db.get(Setting, key)
@@ -67,17 +147,9 @@ def get_global_schedule(db: Session, default_minutes: int) -> dict:
     raw = get_value(db, "global_schedule", "")
     if raw:
         try:
-            config = json.loads(raw)
+            return normalize_schedule_config(json.loads(raw), default_minutes)
         except (ValueError, TypeError):
-            config = None
-        if isinstance(config, dict):
-            if config.get("mode") == "weekly" and config.get("days") and config.get("times"):
-                days = [d for d in config["days"] if d in WEEKDAY_CODES]
-                times = [t for t in config["times"] if _TIME_RE.match(t)]
-                if days and times:
-                    return {"mode": "weekly", "days": days, "times": sorted(times)}
-            elif config.get("mode") == "interval" and isinstance(config.get("interval_minutes"), int):
-                return {"mode": "interval", "interval_minutes": max(15, config["interval_minutes"])}
+            pass
     return {"mode": "interval", "interval_minutes": max(15, default_minutes)}
 
 

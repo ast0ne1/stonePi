@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timezone
 from icalendar import Calendar
 
+from app.services.cost import UNSPECIFIED_COST
 from app.services.scrapers.base import BaseScraper, ScrapedEvent
 
 logger = logging.getLogger("eventtrakr.scrapers.ics")
@@ -60,7 +61,7 @@ class IcsFeedExtractor(BaseScraper):
                         start_time=start_time,
                         end_time=end_time,
                         location=location[:250],
-                        cost="Free / Unspecified",
+                        cost=UNSPECIFIED_COST,
                         category=cat_str[:60],
                         url=url or base_url,
                         image_url=None,

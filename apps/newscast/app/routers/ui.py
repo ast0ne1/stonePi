@@ -153,6 +153,7 @@ SETTINGS_SECTION_PANELS: dict[str, tuple[tuple[str, str, tuple[str, ...]], ...]]
         ("access", "Access", ("access",)),
         ("network", "Network", ("network",)),
         ("interface", "Interface", ("interface",)),
+        ("view", "View options", ("view",)),
     ),
     "publication": (
         ("naming", "Naming", ("naming",)),
@@ -190,6 +191,7 @@ SETTINGS_PANEL_ICONS: dict[str, str] = {
     "access": "security",
     "network": "network",
     "interface": "translation",
+    "view": "sliders",
     "naming": "publication",
     "stories": "today",
     "topics": "categories",
@@ -206,6 +208,29 @@ SETTINGS_PANEL_ICONS: dict[str, str] = {
     "add": "users",
     "repo": "update",
     "install": "update",
+}
+# Short L2 row subtexts (phone/tablet section list).
+SETTINGS_PANEL_SUBTEXTS: dict[str, str] = {
+    "access": "Admin login and password",
+    "network": "Hostname and LAN HTTPS",
+    "interface": "Language and PaywallSkip",
+    "view": "Briefing open link and label",
+    "naming": "Paper title pattern",
+    "stories": "How many stories to keep",
+    "topics": "Category mix and OPDS",
+    "x3": "E-ink layout options",
+    "refresh": "Global feed interval",
+    "publish": "Daily paper time",
+    "packages": "Import feed packages",
+    "approvals": "Pending catalog requests",
+    "device": "Reader host and folder",
+    "sync": "Push when online",
+    "connection": "ntfy server and topic",
+    "alerts": "Which events to notify",
+    "people": "Household accounts",
+    "add": "Create a new account",
+    "repo": "GitHub release source",
+    "install": "Install or check updates",
 }
 
 
@@ -651,6 +676,7 @@ def briefing_page(request: Request, db: Annotated[Session, Depends(get_db)], day
         story.open_url = article_links.story_open_url(db, story, feeds_by_name)
         feed = feeds_by_name.get(story.source_name)
         story.is_summary = True if feed is None else bool(getattr(feed, "summarize", True))
+        story.feed_type = (getattr(feed, "type", None) or "rss") if feed else "rss"
     return render(
         request,
         "briefing.html",
@@ -661,6 +687,8 @@ def briefing_page(request: Request, db: Annotated[Session, Depends(get_db)], day
             "retention_days": env.story_retention_days,
             "briefing_day": briefing_day,
             "paper": paper_status(db, user_id=uid),
+            "briefing_article_open_enabled": article_links.briefing_article_open_enabled(db, uid),
+            "briefing_article_open_button": article_links.briefing_article_open_button(db, uid),
         },
         db=db,
     )
@@ -739,6 +767,7 @@ def search_page(request: Request, db: Annotated[Session, Depends(get_db)], q: st
         story.open_url = article_links.story_open_url(db, story, feeds_by_name)
         feed = feeds_by_name.get(story.source_name)
         story.is_summary = True if feed is None else bool(getattr(feed, "summarize", True))
+        story.feed_type = (getattr(feed, "type", None) or "rss") if feed else "rss"
     return render(
         request,
         "search.html",
@@ -769,6 +798,8 @@ def saved_page(request: Request, db: Annotated[Session, Depends(get_db)]):
     feeds_by_name = {feed.name: feed for feed in db.query(Feed).filter(Feed.user_id == uid).all()}
     for item in items:
         item.open_url = article_links.story_open_url(db, item, feeds_by_name)
+        feed = feeds_by_name.get(item.source_name)
+        item.feed_type = (getattr(feed, "type", None) or "rss") if feed else "rss"
     return render(
         request,
         "saved.html",
@@ -826,7 +857,7 @@ def _feeds_panel_context(request: Request, db: Session) -> dict:
         .all()
     )
     now = utcnow()
-    from app.services.catalog import catalog_rss_url, find_catalog_item
+    from app.services.catalog import catalog_allows_scrape, catalog_rss_url, find_catalog_item
 
     labels = category_labels(db)
     global_interval = settings.get_int(db, "ingest_interval_minutes", env.ingest_interval_minutes)
@@ -837,6 +868,7 @@ def _feeds_panel_context(request: Request, db: Session) -> dict:
         feed.translate_mode = feed_translate_mode(feed)
         item = find_catalog_item(feed.catalog_id) if feed.catalog_id else None
         feed.has_rss_alternate = bool(item and catalog_rss_url(item))
+        feed.allow_scrape = catalog_allows_scrape(item) if item else True
         if (feed.schedule_mode or "global") == "custom":
             feed.schedule_label = f"Every {settings.format_interval_short(feed.interval_minutes)}"
         else:
@@ -1052,6 +1084,7 @@ def _settings_page_context(
                 "label": label,
                 "cards": list(cards),
                 "icon": SETTINGS_PANEL_ICONS.get(panel_id, panel_id),
+                "subtext": SETTINGS_PANEL_SUBTEXTS.get(panel_id, "Open this section"),
             }
             for panel_id, label, cards in panels
         ]
@@ -1168,6 +1201,8 @@ def _settings_page_context(
         "paywall_skip_enabled": article_links.paywall_skip_enabled(db),
         "article_link_label": article_links.article_link_label(db, uid),
         "article_link_label_default": article_links.DEFAULT_ARTICLE_LINK_LABEL,
+        "briefing_article_open_enabled": article_links.briefing_article_open_enabled(db, uid),
+        "briefing_article_open_button": article_links.briefing_article_open_button(db, uid),
         "household_users": users_service.list_users(db),
         "login_qr_user": None,
         "login_qr_svg": None,
@@ -1478,18 +1513,29 @@ def save_feed_schedule(
             return JSONResponse({"ok": False, "message": "Feed not found."}, status_code=404)
         return RedirectResponse("/sources?tab=feeds", status_code=303)
     from app.services import feed_urls
-    from app.services.catalog import SOURCE_LABELS, apply_catalog_type, find_catalog_item
+    from app.services.catalog import (
+        SOURCE_LABELS,
+        apply_catalog_type,
+        catalog_allows_scrape,
+        find_catalog_item,
+    )
     from app.services.translate import parse_feed_translate_mode
 
     wanted_type = (feed_type or feed.type or "rss").strip().lower()
     if wanted_type not in SOURCE_LABELS:
         wanted_type = (feed.type or "rss").strip().lower()
 
+    item = find_catalog_item(feed.catalog_id) if feed.catalog_id else None
+    if wanted_type in {"webpage", "auto"} and item is not None and not catalog_allows_scrape(item):
+        msg = "This catalog source is RSS-only."
+        if _wants_json(request):
+            return JSONResponse({"ok": False, "message": msg}, status_code=400)
+        return _form_error(request, msg, "/sources?tab=feeds", 400)
+
     home = feed_urls.clean_http_url(homepage_url)
     rss = feed_urls.clean_http_url(rss_url)
     err = feed_urls.required_url_for_type(wanted_type, home, rss)
     if err and feed.catalog_id:
-        item = find_catalog_item(feed.catalog_id)
         if item is not None:
             # Keep user-submitted sides; catalog fills any still-missing alternate.
             feed.homepage_url = home or None
@@ -1801,6 +1847,20 @@ async def save_settings(
             "article_link_label",
             article_links.normalize_article_link_label(label_raw),
         )
+        # Briefing View options — default-on flags; unchecked checkboxes omit the key.
+        if tab == "device":
+            user_settings_service.set_value(
+                db,
+                session.user_id,
+                "briefing_article_open_enabled",
+                "1" if str(form.get("briefing_article_open_enabled") or "").strip() else "0",
+            )
+            user_settings_service.set_value(
+                db,
+                session.user_id,
+                "briefing_article_open_button",
+                "1" if str(form.get("briefing_article_open_button") or "").strip() else "0",
+            )
 
     if is_admin and tab == "device":
         settings.set_value(db, "paywall_skip_enabled", "1" if str(form.get("paywall_skip_enabled") or "").strip() else "0")

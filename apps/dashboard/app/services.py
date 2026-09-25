@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -11,10 +12,12 @@ from urllib.parse import urljoin
 
 import httpx
 
-from app.config import env
+from app.config import DATA_DIR, env
 from stonepi_auth import APP_CATALOG, LAUNCHER_APP_IDS, COOKIE_NAME, decode_session
 
 TIMEOUT = 1.0
+APP_COLORS_PATH = DATA_DIR / "app-colors.json"
+_HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
 def session_secret() -> str:
@@ -253,6 +256,84 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def normalize_hex_color(value: str | None, fallback: str = "") -> str:
+    raw = str(value or "").strip()
+    if _HEX_COLOR_RE.match(raw):
+        return raw.lower()
+    if re.match(r"^#[0-9a-fA-F]{3}$", raw):
+        return f"#{raw[1]*2}{raw[2]*2}{raw[3]*2}".lower()
+    return fallback.lower() if fallback else ""
+
+
+def default_app_colors() -> dict[str, str]:
+    return {
+        str(item["id"]): normalize_hex_color(str(item.get("color") or ""), "#6d645a")
+        for item in APP_CATALOG
+    }
+
+
+def load_app_color_overrides() -> dict[str, str]:
+    if not APP_COLORS_PATH.exists():
+        return {}
+    try:
+        data = json.loads(APP_COLORS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    known = {item["id"] for item in APP_CATALOG}
+    out: dict[str, str] = {}
+    for app_id, color in data.items():
+        key = str(app_id)
+        if key not in known:
+            continue
+        hex_color = normalize_hex_color(str(color or ""))
+        if hex_color:
+            out[key] = hex_color
+    return out
+
+
+def resolved_app_colors() -> dict[str, str]:
+    colors = default_app_colors()
+    colors.update(load_app_color_overrides())
+    return colors
+
+
+def app_color_items() -> list[dict]:
+    defaults = default_app_colors()
+    current = resolved_app_colors()
+    return [
+        {
+            "id": item["id"],
+            "name": item["name"],
+            "color": current.get(item["id"], defaults.get(item["id"], "#6d645a")),
+            "default": defaults.get(item["id"], "#6d645a"),
+        }
+        for item in APP_CATALOG
+    ]
+
+
+def save_app_colors(colors: dict[str, str], *, reset: bool = False) -> dict[str, str]:
+    """Persist per-app tile accents. Only diffs from catalog defaults are stored."""
+    APP_COLORS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if reset:
+        if APP_COLORS_PATH.exists():
+            APP_COLORS_PATH.unlink()
+        return resolved_app_colors()
+
+    defaults = default_app_colors()
+    overrides: dict[str, str] = {}
+    for app_id, default in defaults.items():
+        hex_color = normalize_hex_color(colors.get(app_id), default)
+        if hex_color and hex_color != default:
+            overrides[app_id] = hex_color
+    if overrides:
+        APP_COLORS_PATH.write_text(json.dumps(overrides, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    elif APP_COLORS_PATH.exists():
+        APP_COLORS_PATH.unlink()
+    return resolved_app_colors()
+
+
 def catalog_apps(*, include_auth: bool = True, cookies: dict[str, str] | None = None) -> list[dict]:
     disabled: set[str] = set()
     if cookies is not None:
@@ -265,11 +346,17 @@ def catalog_apps(*, include_auth: bool = True, cookies: dict[str, str] | None = 
     else:
         remote = {}
 
+    color_overrides = load_app_color_overrides()
     items = []
     for item in APP_CATALOG:
         if not include_auth and item["id"] == "auth":
             continue
         merged = {**item, **(remote.get(item["id"]) or {})}
+        # Household tile accents win over catalog / auth payload defaults.
+        if item["id"] in color_overrides:
+            merged["color"] = color_overrides[item["id"]]
+        elif not merged.get("color"):
+            merged["color"] = item.get("color") or ""
         merged["enabled"] = item["id"] not in disabled and merged.get("enabled", True) is not False
         items.append(merged)
     return items

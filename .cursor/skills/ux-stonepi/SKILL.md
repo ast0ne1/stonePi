@@ -23,11 +23,19 @@ Users/Updates/Services. Product apps keep their own product settings.
 - Prefer shared confirm sheets (NewsCast/FileServe) over bare `confirm()` where
   the shell already has them.
 - Theme/palette: light/dark/auto in header; palette can apply immediately without Save.
-- **Settings IA (phone/tablet):** Prefer a **grouped hub → section drill-in** over a long
-  horizontal chip scroller when an app has many settings tabs. NewsCast is the
-  reference: `/settings` hub with labeled groups; `/settings?tab=` opens a section
-  with optional sub-chips for multi-card panels. **Laptop+ (≥1024)** may keep the
-  chip bar + stacked cards. Hide Users/Update tabs under SSO as today.
+- **Topbar:** brand → theme → optional **global Refresh** (beside logout) → POST sign-out.
+  Product apps with a sync action should follow NewsCast’s Refresh placement.
+- **Settings IA (phone/tablet):** Prefer a **grouped hub → L2 section list → panel**
+  over a long horizontal chip scroller when an app has many settings tabs. NewsCast
+  is the reference: `/settings` hub with labeled groups (icon + title + **subtext** +
+  chevron); `/settings?tab=` opens L2 rows (same icon the panel heading uses + short
+  subtext, never “Open this section”); `/settings?tab=&panel=` shows one card.
+  **Laptop+ (≥1024)** keeps the chip bar + stacked cards. Hide Users/Update under SSO.
+  Full chrome contract: [new-stonepi-app/chrome.md](../new-stonepi-app/chrome.md).
+- **Sheets / mobile:** hoist sheets to `document.body`; clear bottom nav with safe-area;
+  do not nest `position:fixed` UI inside scrolling `.main` (iOS).
+- **Icons:** stroke SVGs with explicit CSS sizes (nav 22px, actions 18px, chips 14px,
+  hub tile glyph 18px in 40px) — see chrome.md SVG matrix.
 
 ## Do not apply
 
@@ -45,6 +53,9 @@ Users/Updates/Services. Product apps keep their own product settings.
 6. Sign-out via POST forms, not GET links.
 7. Naming consistent (e.g. Services nav vs page title).
 8. Layout matches the **viewport tier model** below (no 800–899 portal/app cliff).
+9. Settings L2 rows have icons + real subtexts; hub grouping is scannable.
+10. Expandable rows/cards have a visible affordance (chevron / “Tap for …”).
+11. Global Refresh (if any) sits in the topbar next to logout, not buried in-page only.
 
 ## Viewport tiers (responsive contract)
 

@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from app.collectors.base import ListingRow
+from app.collectors.channels import channel_from_icon_src, channels_from_icon_srcs
 from app.timeutil import normalize_sport
 
 logger = logging.getLogger("sportguide.ausportguide")
@@ -25,9 +26,12 @@ _SECTION_SPLIT = re.compile(
 )
 
 _CHANNEL_NAMES = (
+    "Kayo Sports",
     "Kayo",
     "Fox Sports",
     "Fox Footy",
+    "Fox League",
+    "Fox Cricket",
     "7plus",
     "9Now",
     "10 Play",
@@ -39,6 +43,8 @@ _CHANNEL_NAMES = (
     "Channel 10",
     "SBS",
     "ABC",
+    "ABC iview",
+    "beIN Sports",
 )
 
 _TIME_ONLY = re.compile(r"^(\d{1,2}):(\d{2})\s*(AM|PM)?$", re.I)
@@ -50,6 +56,32 @@ _DATED = re.compile(
     re.I,
 )
 _VS_HINT = re.compile(r"\bvs\.?\b|\bv\b|\s[-–]\s", re.I)
+
+_PAGE_EVAL = """
+() => {
+  const body = (document.body && document.body.innerText) || '';
+  const icons = [];
+  const imgs = document.querySelectorAll(
+    'img[src*="channel-live-guide"], img[src*="/images/channel"]'
+  );
+  imgs.forEach((img) => {
+    const src = img.getAttribute('src') || '';
+    const alt = img.getAttribute('alt') || '';
+    let near = '';
+    let node = img.parentElement;
+    for (let i = 0; i < 8 && node; i++) {
+      const t = (node.innerText || '').replace(/\\s+/g, ' ').trim();
+      if (t.length >= 12 && (/\\bvs\\.?\\b|\\bv\\b|\\d{1,2}:\\d{2}/i.test(t))) {
+        near = t.slice(0, 700);
+        break;
+      }
+      node = node.parentElement;
+    }
+    icons.push({ src, alt, near });
+  });
+  return { body, icons };
+}
+"""
 
 
 def _browser():
@@ -134,6 +166,45 @@ def _extract_channels(text: str) -> list[str]:
     return found
 
 
+def _merge_channels(*groups: list[str] | None) -> list[str]:
+    out: list[str] = []
+    for group in groups:
+        for ch in group or ():
+            label = (ch or "").strip()
+            if not label:
+                continue
+            # Prefer longer labels (Kayo Sports over Kayo) when both present.
+            drop = [x for x in out if x.lower() in label.lower() or label.lower() in x.lower()]
+            for d in drop:
+                if len(label) >= len(d) and d in out:
+                    out.remove(d)
+            if not any(x.lower() == label.lower() for x in out):
+                out.append(label)
+    return out
+
+
+def _channels_near_title(title: str, icons: list[dict]) -> list[str]:
+    """Match channel logos whose nearby card text mentions this fixture."""
+    title_low = re.sub(r"\s+", " ", (title or "").lower()).strip()
+    if not title_low:
+        return []
+    tokens = [t for t in re.split(r"[^a-z0-9]+", title_low) if len(t) >= 4][:4]
+    found: list[str] = []
+    for icon in icons:
+        near = re.sub(r"\s+", " ", str(icon.get("near") or "").lower())
+        if not near:
+            continue
+        if title_low[:24] in near or (tokens and sum(1 for t in tokens if t in near) >= min(2, len(tokens))):
+            label = channel_from_icon_src(str(icon.get("src") or ""))
+            if not label:
+                alt = str(icon.get("alt") or "").strip()
+                if alt and len(alt) < 40:
+                    label = alt
+            if label and label not in found:
+                found.append(label)
+    return found
+
+
 def _clean_title(raw: str) -> str:
     title = re.sub(r"\s+", " ", (raw or "").strip())
     title = re.sub(r"^(Today|Tomorrow)\s*[|–-]?\s*", "", title, flags=re.I)
@@ -163,12 +234,13 @@ def fetch_listings() -> list[ListingRow]:
             page.wait_for_timeout(1500)
             _dismiss_cookies(page)
             page.wait_for_timeout(1000)
-            body = page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
+            payload = page.evaluate(_PAGE_EVAL) or {}
         finally:
             browser.close()
 
-    rows: list[ListingRow] = []
-    seen: set[str] = set()
+    body = str(payload.get("body") or "")
+    icons = list(payload.get("icons") or [])
+    rows_by_id: dict[str, ListingRow] = {}
 
     # Split body into sport sections by known headings
     parts = _SECTION_SPLIT.split("\n" + body + "\n")
@@ -179,7 +251,7 @@ def fetch_listings() -> list[ListingRow]:
         sections.append((parts[i], parts[i + 1]))
         i += 2
 
-    def add(sport: str, title: str, starts: str | None, blob: str) -> None:
+    def add(sport: str, title: str, starts: str | None, blob: str, *, extra_channels: list[str] | None = None) -> None:
         title = _clean_title(title)
         if len(title) < 6 or not _VS_HINT.search(title):
             if len(title) < 10:
@@ -201,21 +273,26 @@ def fetch_listings() -> list[ListingRow]:
         if not starts:
             return
         eid = _external_id(sport, title, starts)
-        if eid in seen:
-            return
-        seen.add(eid)
+        channels = _merge_channels(
+            extra_channels,
+            _channels_near_title(title, icons),
+            _extract_channels(blob),
+            _extract_channels(title),
+        )
         league = {"afl": "AFL", "cricket": "Cricket", "rugby": "Rugby"}.get(sport, "")
-        rows.append(
-            ListingRow(
-                external_id=eid,
-                source_id=SOURCE_ID,
-                sport=sport,
-                league=league,
-                title=title,
-                starts_at=starts,
-                channels=_extract_channels(blob),
-                source_url=BASE_URL,
-            )
+        existing = rows_by_id.get(eid)
+        if existing:
+            existing.channels = _merge_channels(existing.channels, channels)
+            return
+        rows_by_id[eid] = ListingRow(
+            external_id=eid,
+            source_id=SOURCE_ID,
+            sport=sport,
+            league=league,
+            title=title,
+            starts_at=starts,
+            channels=channels,
+            source_url=BASE_URL,
         )
 
     for heading, chunk in sections:
@@ -267,5 +344,37 @@ def fetch_listings() -> list[ListingRow]:
         if sport in _KEEP_SPORTS:
             add(sport, title, _parse_kickoff_line(when), when + " " + title)
 
-    logger.info("ausportguide fetched %s rows", len(rows))
+    # Card-local pass: each channel logo + nearby text can fill gaps / attach channels.
+    for icon in icons:
+        near = str(icon.get("near") or "")
+        if not near:
+            continue
+        chans = channels_from_icon_srcs([str(icon.get("src") or "")])
+        alt = str(icon.get("alt") or "").strip()
+        if alt and len(alt) < 40:
+            chans = _merge_channels(chans, [alt])
+        starts = _parse_kickoff_line(near)
+        # Prefer a vs-line inside the card text.
+        title = ""
+        for part in re.split(r"[\n|]", near):
+            part = part.strip()
+            if _VS_HINT.search(part) and len(part) >= 8:
+                title = part
+                break
+        if not title:
+            continue
+        sport = normalize_sport(title) or normalize_sport(near)
+        if sport not in _KEEP_SPORTS:
+            # Infer from nearby section words
+            if re.search(r"\bafl\b|aussie", near, re.I):
+                sport = "afl"
+            elif re.search(r"cricket|\bodi\b|\bt20\b", near, re.I):
+                sport = "cricket"
+            elif re.search(r"rugby|\bnrl\b", near, re.I):
+                sport = "rugby"
+        if sport in _KEEP_SPORTS:
+            add(sport, title, starts, near, extra_channels=chans)
+
+    rows = list(rows_by_id.values())
+    logger.info("ausportguide fetched %s rows (%s channel icons)", len(rows), len(icons))
     return rows

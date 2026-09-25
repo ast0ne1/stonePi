@@ -38,6 +38,13 @@ def catalog_rss_url(item: dict) -> str:
     return (item.get("rss_url") or "").strip()
 
 
+def catalog_allows_scrape(item: dict | None) -> bool:
+    """False only when catalog explicitly disallows scrape (The Local Denmark)."""
+    if not item:
+        return True
+    return item.get("allow_scrape", True) is not False
+
+
 def catalog_url_for_type(item: dict, feed_type: str) -> str | None:
     """Pick homepage vs RSS URL when a catalog entry supports both."""
     kind = (feed_type or source_kind(item)).strip().lower()
@@ -147,14 +154,43 @@ def seed_recommended_feeds(db: Session) -> None:
     for item in catalog_items:
         feed = by_catalog.get(item["id"])
         if feed:
+            from app.services.feed_urls import clean_http_url, sync_feed_urls
+
             # Preserve user-chosen type/URL (e.g. scrape vs RSS for dual-mode sources),
             # but rewrite known-dead RSS URLs to the current catalog entry.
             repairs = FEED_URL_REPAIRS.get(item["id"], set())
-            if feed.url in repairs and item["url"] not in used_urls:
+            catalog_rss = catalog_rss_url(item)
+            catalog_home = catalog_homepage_url(item)
+            active_wanted = catalog_url_for_type(item, feed.type or item.get("type") or "rss")
+            if feed.url in repairs and active_wanted and active_wanted not in used_urls:
                 used_urls.discard(feed.url)
-                feed.url = item["url"]
-                used_urls.add(item["url"])
+                feed.url = active_wanted
+                used_urls.add(active_wanted)
                 changed = True
+            # Backfill missing homepage / rss sides from catalog (never flip enabled).
+            before_home = clean_http_url(getattr(feed, "homepage_url", None))
+            before_rss = clean_http_url(getattr(feed, "rss_url", None))
+            if not before_home and catalog_home:
+                feed.homepage_url = catalog_home
+                changed = True
+            if not before_rss and catalog_rss:
+                feed.rss_url = catalog_rss
+                changed = True
+            # Legacy: homepage was the RSS URL before catalog split.
+            if (
+                catalog_home
+                and catalog_rss
+                and before_home == catalog_rss
+                and before_home != catalog_home
+            ):
+                feed.homepage_url = catalog_home
+                if not before_rss:
+                    feed.rss_url = catalog_rss
+                changed = True
+            try:
+                sync_feed_urls(feed)
+            except ValueError:
+                pass
             wanted_translate = bool(item.get("translate"))
             if bool(getattr(feed, "translate", False)) != wanted_translate:
                 feed.translate = wanted_translate
@@ -169,7 +205,9 @@ def seed_recommended_feeds(db: Session) -> None:
         # Only auto-add onboarding sources. Everything else waits for Catalog → Add.
         if not item.get("default_enabled"):
             continue
-        if item["url"] in used_urls:
+        # Prefer RSS URL for uniqueness when present (url is now the website).
+        seed_key = catalog_rss_url(item) or item["url"]
+        if seed_key in used_urls or item["url"] in used_urls:
             continue
         from app.services.feed_urls import apply_catalog_url_pair
 

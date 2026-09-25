@@ -19,6 +19,13 @@ logger = logging.getLogger("sportguide")
 async def lifespan(_app: FastAPI):
     db.init_db()
     try:
+        from app.services import favicon
+
+        favicon.ensure_dir()
+        favicon.capture_all_async()
+    except Exception:
+        logger.exception("favicon bootstrap failed")
+    try:
         ingest.maybe_daily_refresh(async_=True)
     except Exception:
         logger.exception("daily refresh check failed")
@@ -36,4 +43,15 @@ _static = str(ROOT_DIR / "app" / "static")
 app.mount("/static", StaticFiles(directory=_static), name="static")
 if _prefix:
     app.mount(f"{_prefix}/static", StaticFiles(directory=_static), name="static_prefixed")
+
+from app.services import favicon as _favicon  # noqa: E402
+
+_favicon.ensure_dir()
+app.mount("/favicons", StaticFiles(directory=str(_favicon.FAVICON_DIR)), name="favicons")
+if _prefix:
+    app.mount(
+        f"{_prefix}/favicons",
+        StaticFiles(directory=str(_favicon.FAVICON_DIR)),
+        name="favicons_prefixed",
+    )
 app.include_router(router)
