@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 import httpx
 
+from app.services.cost import UNSPECIFIED_COST
 from app.services.scrapers.base import ScrapedEvent
 
 logger = logging.getLogger("eventtrakr.scrapers.brightdata_facebook")
@@ -65,10 +66,10 @@ def _parse_dt(raw: str | None) -> datetime | None:
 
 def _format_cost(tickets_obj) -> str:
     if not isinstance(tickets_obj, dict):
-        return "Free / Unspecified"
+        return UNSPECIFIED_COST
     min_price = tickets_obj.get("min_price")
     if min_price is None:
-        return "Free / Unspecified"
+        return UNSPECIFIED_COST
     currency = (tickets_obj.get("currency") or "").strip()
     max_price = tickets_obj.get("max_price")
     if max_price and max_price != min_price:

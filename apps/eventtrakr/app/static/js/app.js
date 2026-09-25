@@ -205,24 +205,48 @@
       });
     });
 
-    // --- Global schedule editor (interval vs. specific days & times) ---
-    var scheduleTypeSelect = document.querySelector("[data-schedule-type]");
-    if (scheduleTypeSelect) {
-      var scheduleForm = scheduleTypeSelect.closest("[data-schedule-global-form]");
+    // --- Schedule editors (global settings + per-source custom) ---
+    function bindScheduleForm(form) {
+      if (!form || form.dataset.scheduleBound === "1") return;
+      form.dataset.scheduleBound = "1";
 
-      function syncSchedulePanels() {
-        var mode = scheduleTypeSelect.value;
-        scheduleForm.querySelectorAll("[data-schedule-panel]").forEach(function (panel) {
+      var modeSelect = form.querySelector("[data-schedule-mode]");
+      var customBlock = form.querySelector("[data-schedule-custom]");
+      var typeSelect = form.querySelector("[data-schedule-type]");
+
+      function syncMode() {
+        if (!customBlock) return;
+        var isCustom = !modeSelect || modeSelect.value === "custom";
+        customBlock.hidden = !isCustom;
+      }
+
+      function syncTypePanels() {
+        if (!typeSelect) return;
+        var mode = typeSelect.value;
+        form.querySelectorAll("[data-schedule-panel]").forEach(function (panel) {
           panel.hidden = panel.dataset.schedulePanel !== mode;
         });
       }
-      scheduleTypeSelect.addEventListener("change", syncSchedulePanels);
 
-      var timeList = scheduleForm.querySelector("[data-time-list]");
-      var addTimeBtn = scheduleForm.querySelector("[data-add-time]");
+      if (modeSelect) {
+        modeSelect.addEventListener("change", function () {
+          syncMode();
+          syncTypePanels();
+        });
+      }
+      if (typeSelect) {
+        typeSelect.addEventListener("change", syncTypePanels);
+      }
+      syncMode();
+      syncTypePanels();
+
+      var timeList = form.querySelector("[data-time-list]");
+      var addTimeBtn = form.querySelector("[data-add-time]");
+      if (!timeList) return;
 
       function bindRemoveButton(row) {
         var btn = row.querySelector("[data-remove-time]");
+        if (!btn) return;
         btn.addEventListener("click", function () {
           if (timeList.querySelectorAll("[data-time-row]").length > 1) {
             row.remove();
@@ -234,7 +258,9 @@
 
       if (addTimeBtn) {
         addTimeBtn.addEventListener("click", function () {
-          var row = timeList.querySelector("[data-time-row]").cloneNode(true);
+          var template = timeList.querySelector("[data-time-row]");
+          if (!template) return;
+          var row = template.cloneNode(true);
           row.querySelector('input[type="time"]').value = "09:00";
           timeList.appendChild(row);
           bindRemoveButton(row);
@@ -242,15 +268,7 @@
       }
     }
 
-    // --- Per-source schedule editor (show/hide custom interval field) ---
-    document.querySelectorAll("[data-schedule-mode]").forEach(function (select) {
-      var form = select.closest("[data-schedule-form]");
-      var intervalField = form && form.querySelector("[data-schedule-interval]");
-      if (!intervalField) return;
-      select.addEventListener("change", function () {
-        intervalField.hidden = select.value !== "custom";
-      });
-    });
+    document.querySelectorAll("[data-schedule-global-form], [data-schedule-form]").forEach(bindScheduleForm);
 
     // --- Sync All & Status Pill Polling ---
     var syncPill = document.querySelector("[data-sync-pill]");
@@ -262,8 +280,10 @@
         .then(function (data) {
           if (!syncPill) return;
           if (data.running) {
+            syncPill.hidden = false;
             syncPill.textContent = "Syncing";
             syncPill.classList.add("is-busy");
+            syncPill.classList.remove("is-error");
             if (syncBtn) {
               syncBtn.disabled = true;
               syncBtn.classList.add("is-busy");
@@ -271,7 +291,15 @@
             setTimeout(updateSyncStatus, 2500);
           } else {
             syncPill.classList.remove("is-busy");
-            syncPill.textContent = data.last_error ? "Error" : "Idle";
+            if (data.last_error) {
+              syncPill.hidden = false;
+              syncPill.textContent = "Error";
+              syncPill.classList.add("is-error");
+            } else {
+              syncPill.hidden = true;
+              syncPill.textContent = "Idle";
+              syncPill.classList.remove("is-error");
+            }
             if (syncBtn) {
               syncBtn.disabled = false;
               syncBtn.classList.remove("is-busy");
@@ -286,8 +314,10 @@
         syncBtn.disabled = true;
         syncBtn.classList.add("is-busy");
         if (syncPill) {
+          syncPill.hidden = false;
           syncPill.textContent = "Syncing";
           syncPill.classList.add("is-busy");
+          syncPill.classList.remove("is-error");
         }
         fetch("/api/sync/trigger", { method: "POST" })
           .then(function () {
@@ -324,15 +354,14 @@
           if (data.running) {
             setSourceButtonsBusy(true);
             if (sourceSyncStatus) {
-              sourceSyncStatus.hidden = false;
-              sourceSyncStatus.textContent = (data.progress || "A sync is running") + " -- this can take a few minutes for some sources, please wait.";
+              sourceSyncStatus.textContent = (data.progress || "A sync is running") + " — this can take a few minutes.";
             }
             setTimeout(pollSourceSync, 2000);
           } else {
             sourceSyncPolling = false;
             setSourceButtonsBusy(false);
-            if (sourceSyncStatus && !sourceSyncStatus.hidden) {
-              sourceSyncStatus.textContent = data.last_error ? "Sync failed: " + data.last_error : (data.progress || "Sync complete.");
+            if (sourceSyncStatus) {
+              sourceSyncStatus.textContent = data.last_error ? ("Sync failed: " + data.last_error) : (data.progress || "Sync complete.");
               setTimeout(function () { window.location.reload(); }, 800);
             }
           }
@@ -361,8 +390,7 @@
         var sourceName = btn.getAttribute("data-source-name") || "source";
         setSourceButtonsBusy(true);
         if (sourceSyncStatus) {
-          sourceSyncStatus.hidden = false;
-          sourceSyncStatus.textContent = "Syncing '" + sourceName + "'... this can take a few minutes for some sources, please wait.";
+          sourceSyncStatus.textContent = "Syncing '" + sourceName + "'… this can take a few minutes.";
         }
         fetch("/api/sources/" + sourceId + "/sync", { method: "POST" })
           .then(function (res) { return res.json(); })
@@ -484,6 +512,8 @@
       function finish(value) {
         sheet.hidden = true;
         sheet.classList.remove("is-open");
+        document.documentElement.classList.remove("sheet-open");
+        document.body.classList.remove("sheet-open");
         sheet.removeEventListener("click", onBackdrop);
         if (okBtn) okBtn.removeEventListener("click", onOk);
         if (cancelBtn) cancelBtn.removeEventListener("click", onCancel);
@@ -504,9 +534,75 @@
       document.addEventListener("keydown", onKey);
       sheet.hidden = false;
       sheet.classList.add("is-open");
+      document.documentElement.classList.add("sheet-open");
+      document.body.classList.add("sheet-open");
       if (okBtn) okBtn.focus();
     });
   }
+
+  function mountSheetsToBody() {
+    document.querySelectorAll(".sheet").forEach(function (sheet) {
+      if (sheet.parentElement !== document.body) {
+        document.body.appendChild(sheet);
+      }
+    });
+  }
+  mountSheetsToBody();
+
+  function openSheetEl(sheet) {
+    if (!sheet) return;
+    if (sheet.parentElement !== document.body) {
+      document.body.appendChild(sheet);
+    }
+    sheet.hidden = false;
+    sheet.classList.add("is-open");
+    document.documentElement.classList.add("sheet-open");
+    document.body.classList.add("sheet-open");
+  }
+
+  function closeSheetEl(sheet) {
+    if (!sheet) return;
+    sheet.hidden = true;
+    sheet.classList.remove("is-open");
+    if (!document.querySelector(".sheet.is-open")) {
+      document.documentElement.classList.remove("sheet-open");
+      document.body.classList.remove("sheet-open");
+    }
+  }
+
+  function findSheet(name) {
+    if (name) return document.querySelector('[data-sheet="' + name + '"]');
+    return document.querySelector("[data-sheet]");
+  }
+
+  document.querySelectorAll("[data-open-sheet]").forEach(function (btn) {
+    btn.addEventListener("click", function (event) {
+      var name = btn.getAttribute("data-open-sheet") || "";
+      if (!name) return;
+      event.preventDefault();
+      openSheetEl(findSheet(name));
+    });
+  });
+
+  if (window.location.hash === "#add-custom-source") {
+    openSheetEl(findSheet("add-custom-source"));
+  }
+  document.querySelectorAll("[data-sheet]").forEach(function (sheet) {
+    sheet.querySelectorAll("[data-close-sheet]").forEach(function (closeBtn) {
+      closeBtn.addEventListener("click", function () {
+        closeSheetEl(sheet);
+      });
+    });
+    sheet.addEventListener("click", function (event) {
+      if (event.target === sheet) closeSheetEl(sheet);
+    });
+  });
+
+  document.addEventListener("keydown", function (event) {
+    if (event.key !== "Escape") return;
+    var open = document.querySelector(".sheet.is-open[data-sheet]");
+    if (open) closeSheetEl(open);
+  });
 
   document.querySelectorAll("form[data-confirm]").forEach(function (form) {
     form.addEventListener("submit", function (event) {
@@ -530,15 +626,60 @@
 
   var settingsRoot = document.querySelector("[data-settings-tabs]");
   if (settingsRoot) {
+    var DESKTOP_MQ = window.matchMedia("(min-width: 1024px)");
     var settingsChips = settingsRoot.querySelectorAll("[data-settings-tab]");
     var settingsLede = document.querySelector("[data-settings-lede]");
+    var settingsTitle = document.querySelector("[data-settings-title]");
+    var settingsBack = document.querySelector("[data-settings-hub-back]");
+    var hubList = settingsRoot.querySelector("[data-settings-hub-list]");
+    var sectionEl = settingsRoot.querySelector("[data-settings-section]");
+    var hubLede = settingsRoot.dataset.settingsHubLede || "Everything that shapes your calendar, in one place.";
+    var ledesByTab = {};
+    var labelsByTab = {};
+    try {
+      var ledesNode = settingsRoot.querySelector("[data-settings-ledes-json]");
+      if (ledesNode && ledesNode.textContent) ledesByTab = JSON.parse(ledesNode.textContent);
+    } catch (_err) {}
+    try {
+      var labelsNode = settingsRoot.querySelector("[data-settings-labels-json]");
+      if (labelsNode && labelsNode.textContent) labelsByTab = JSON.parse(labelsNode.textContent);
+    } catch (_err) {}
 
-    function showSettingsTab(tab) {
+    function isDesktopSettings() {
+      return DESKTOP_MQ.matches;
+    }
+
+    function syncDesktopClass() {
+      settingsRoot.classList.toggle("is-desktop-settings", isDesktopSettings());
+    }
+
+    function setViewMode(hub) {
+      var onHub = Boolean(hub) && !isDesktopSettings();
+      settingsRoot.dataset.settingsHub = onHub ? "true" : "false";
+      settingsRoot.classList.toggle("is-hub", onHub);
+      if (hubList) hubList.hidden = !onHub;
+      if (sectionEl) sectionEl.hidden = onHub;
+      if (settingsBack) settingsBack.hidden = onHub || isDesktopSettings();
+      if (settingsTitle) {
+        settingsTitle.textContent = onHub
+          ? "Settings"
+          : labelsByTab[settingsRoot.dataset.settingsActiveTab] || settingsRoot.dataset.settingsActiveTab || "Settings";
+      }
+      if (settingsLede) {
+        settingsLede.textContent = onHub
+          ? hubLede
+          : ledesByTab[settingsRoot.dataset.settingsActiveTab] || "";
+      }
+    }
+
+    function showSettingsTab(tab, opts) {
+      opts = opts || {};
       var next = Array.prototype.some.call(settingsChips, function (chip) {
         return chip.dataset.settingsTab === tab;
       })
         ? tab
-        : "general";
+        : (settingsChips[0] && settingsChips[0].dataset.settingsTab) || "general";
+      settingsRoot.dataset.settingsActiveTab = next;
       settingsChips.forEach(function (chip) {
         var on = chip.dataset.settingsTab === next;
         chip.classList.toggle("is-active", on);
@@ -547,14 +688,19 @@
       settingsRoot.querySelectorAll("[data-settings-panel]").forEach(function (panel) {
         panel.hidden = panel.dataset.settingsPanel !== next;
       });
-      var activeChip = Array.prototype.find.call(settingsChips, function (chip) {
-        return chip.dataset.settingsTab === next;
-      });
-      if (settingsLede && activeChip && activeChip.dataset.settingsLede) {
-        settingsLede.textContent = activeChip.dataset.settingsLede;
+      setViewMode(Boolean(opts.hub));
+      if (!opts.hub && settingsTitle) {
+        settingsTitle.textContent = labelsByTab[next] || next;
+      }
+      if (!opts.hub && settingsLede) {
+        settingsLede.textContent = ledesByTab[next] || "";
       }
       var url = new URL(window.location.href);
-      url.searchParams.set("tab", next);
+      if (opts.hub && !isDesktopSettings()) {
+        url.searchParams.delete("tab");
+      } else {
+        url.searchParams.set("tab", next);
+      }
       window.history.replaceState(null, "", url);
     }
 
@@ -562,8 +708,54 @@
       chip.addEventListener("click", function (event) {
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
-        showSettingsTab(chip.dataset.settingsTab);
+        showSettingsTab(chip.dataset.settingsTab, { hub: false });
       });
     });
+
+    settingsRoot.querySelectorAll("[data-settings-hub-row]").forEach(function (row) {
+      row.addEventListener("click", function (event) {
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        showSettingsTab(row.dataset.settingsHubRow, { hub: false });
+      });
+    });
+
+    if (settingsBack) {
+      settingsBack.addEventListener("click", function (event) {
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        setViewMode(true);
+        var url = new URL(window.location.href);
+        url.searchParams.delete("tab");
+        window.history.replaceState(null, "", url);
+      });
+    }
+
+    function onDesktopChange() {
+      syncDesktopClass();
+      if (isDesktopSettings()) {
+        setViewMode(false);
+        showSettingsTab(settingsRoot.dataset.settingsActiveTab || "general", { hub: false });
+      } else if (settingsRoot.dataset.settingsHub === "true") {
+        setViewMode(true);
+      } else {
+        setViewMode(false);
+      }
+    }
+
+    syncDesktopClass();
+    if (DESKTOP_MQ.addEventListener) {
+      DESKTOP_MQ.addEventListener("change", onDesktopChange);
+    } else if (DESKTOP_MQ.addListener) {
+      DESKTOP_MQ.addListener(onDesktopChange);
+    }
+
+    if (isDesktopSettings()) {
+      setViewMode(false);
+    } else if (settingsRoot.dataset.settingsHub === "true") {
+      setViewMode(true);
+    } else {
+      setViewMode(false);
+    }
   }
 })();

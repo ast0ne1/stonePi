@@ -4,32 +4,33 @@ description: >-
   Scaffold and ship a new StonePi household app (FastAPI sibling of NewsCast/
   Pinboard/Studio/PriceScout). Use when creating a new app under apps/, wiring
   catalog/nginx/systemd/install/run-dev, copying chrome (theme, nav, settings
-  chips, icons, mobile), or fixing post-hoc mismatches with the portal shell.
+  hub/L2, icons, sheets, mobile), or fixing post-hoc mismatches with the portal
+  shell. NewsCast is the full chrome baseline — see chrome.md.
 ---
 
 # New StonePi app
 
 StonePi apps are **household LAN products** on a Pi: shared SSO, Home launcher,
 shared light/dark/palette theme, bottom nav on phones / side rail on desktop.
-Copy chrome from a living sibling — prefer **Pinboard** (small) or **NewsCast**
-(full) — never invent a new shell.
 
-Also read [ux-stonepi](../ux-stonepi/SKILL.md) for portal IA. Detail refs:
-[chrome.md](chrome.md) (UI/theme/mobile/icons) · [platform.md](platform.md)
-(wiring/deploy).
+**Chrome baseline: NewsCast** (`apps/newscast`). Use Pinboard only for a tiny
+shell. Never invent a new topbar, sheet, settings IA, or SVG size system — copy
+NewsCast and strip product pages. Detail: [chrome.md](chrome.md). Portal IA:
+[ux-stonepi](../ux-stonepi/SKILL.md). Deploy: [platform.md](platform.md).
 
 ## Workflow
 
 1. **Name & route** — lowercase `app_id`, URL prefix (`/myapp/`), free port,
    systemd unit `stonepi-{id}`, service user. Record in [platform.md](platform.md).
 2. **Scaffold** — `apps/{id}/` FastAPI + Jinja + static CSS/JS; clone chrome from
-   sibling (`base.html`, `_theme_boot.html`, `_icons.html`, confirm sheet, CSS
-   token block). Strip product pages; keep shell.
+   **NewsCast** (`base.html`, `_theme_boot.html`, `_icons.html`, `_filter_icon.html`,
+   confirm sheet, CSS token + shell block, sheet hoist JS). Strip product pages;
+   keep shell.
 3. **Product IA** — primary destinations in bottom nav (incl. **Home** → portal).
    Settings = product prefs + **About**; no Users/Updates when SSO is on.
 4. **Platform wire** — catalog, nginx, systemd, `install.sh`, `run_dev.py`,
    dashboard icon, allowed ports, data dir (see [platform.md](platform.md)).
-5. **Parity pass** — run the checklist below before calling it done.
+5. **Parity pass** — run the checklist below + [chrome.md](chrome.md) §15.
 6. **Pi update** — use [push-to-pi](../push-to-pi/SKILL.md): package the overlay,
    then give the user `cmd /c "scripts\….cmd -Apply"` (never run scp/ssh yourself).
 
@@ -37,18 +38,23 @@ Also read [ux-stonepi](../ux-stonepi/SKILL.md) for portal IA. Detail refs:
 
 | Topic | Rule |
 |-------|------|
-| **Theme accent** | Primary buttons use `var(--accent)` / `var(--accent-ink)`. **Never** override `:root` accent to an app-only colour (e.g. mint green). Shared palettes: default brick, `ocean`, `forest`, `slate` × light/dark — copy token block from NewsCast/Pinboard. |
-| **Theme chrome** | Topbar: light / dark / auto (`data-theme-set`). Include `_theme_boot.html` so palette/theme cookies match the portal. Fonts: IBM Plex Sans + Source Serif 4. |
-| **Nav** | Always include **Home** → `public_origin` / portal (not app `/`). Phone/tablet &lt;1024: bottom bar, `grid-template-columns: repeat(N, …)` where **N = actual links**. Laptop+ ≥**1024px**: sticky side rail (same as portal — never 800/900). Do not leave Studio’s 4-col comment/grid. |
-| **Mobile shell** | `viewport-fit=cover`; `--safe-bottom` / `env(safe-area-inset-bottom)`; `--tap: 44px` (40px ≤559px); phone: `html,body` overflow locked, `.main` scrolls (`-webkit-overflow-scrolling: touch`); stack filters/forms ≤559px; confirm sheet above nav (`margin-bottom: calc(72px + var(--safe-bottom))`). Canonical breakpoints: **720 / 1024 / 1440** — see ux-stonepi. |
-| **Icons** | Stroke icons via `_icons.html` macro + CSS `fill: none; stroke: currentColor`. **Settings gear** = shared cog path (Pinboard/Studio), not a sunburst. Settings chips: **icon + `<span>Label</span>`** — General = sliders (`general`/`device`), About = info circle. Nav Settings uses same cog. |
-| **Buttons** | Labelled actions use `btn … btn-with-icon` + stroke icon (Save→check, Add→plus, Remove→trash, Refresh→refresh, Search→search, Clear/Cancel→clear). Icon-only controls use `icon-btn` with `aria-label`. No text-only primary/ghost buttons when siblings show icons. |
-| **Settings IA** | Product settings + About chips. When SSO: no password/Users/Updates tabs — link to Dashboard. Save = `btn btn-primary btn-with-icon` + check icon. |
-| **Confirms** | Shared sheet (`data-confirm-sheet` / `data-confirm`), not bare `confirm()` when shell has the sheet. Logout = **POST** + CSRF. |
-| **CSRF** | Forms include `csrf_token`; cookie via `stonepi_auth.csrf` (`CSRF_COOKIE`). |
+| **Baseline** | NewsCast is the source of truth for shell, settings hub/L2, sheets, SVG sizes, topbar actions. Pinboard = minimal only. |
+| **Theme accent** | Primary buttons use `var(--accent)` / `var(--accent-ink)`. **Never** override `:root` accent to an app-only colour. Shared palettes: default brick, `ocean`, `forest`, `slate` × light/dark. |
+| **Theme chrome** | Topbar: light / dark / auto (`data-theme-set`). Include `_theme_boot.html` (shared `stonepi-theme` / `stonepi-palette` cookies). Fonts: IBM Plex Sans + Source Serif 4. |
+| **Topbar actions** | Order: brand → (status) → theme → **global Refresh** (if app has sync) → **POST logout**. Refresh sits **next to** logout (`btn-refresh`); ≤420px icon-only. |
+| **Nav** | Always include **Home** → `portal_home_url` / `stonepi_home_url` (not app `/`). Phone/tablet &lt;1024: bottom bar, `repeat(N, …)` where **N = actual links**. Laptop+ ≥**1024px**: sticky side rail (~200px). Never 800/900. |
+| **Mobile shell** | `viewport-fit=cover`; `--safe-bottom`; `--tap: 44px` (40px ≤559px); phone: `html,body` overflow locked, `.main` scrolls; inputs ≥16px; confirm/filter/help sheets clear nav. Breakpoints: **720 / 1024 / 1440**. |
+| **Sheets** | Hoist `.sheet` to `document.body` (`mountSheetsToBody`); `sheet-open` locks overflow; mobile bottom padding ~76–80px + safe-area; inner body scrolls. Never rely on `position:fixed` inside scrolling `.main`. |
+| **SVG sizes** | ViewBox 24×24; CSS caps — nav/brand **22**, chrome actions **18**, theme **16**, chips **14**, hub glyph **18** in **40** tile. Always set width/height in CSS for the parent. Stroke `fill: none`; restore filled pips with `[fill]:not([fill="none"])` rules. See [chrome.md](chrome.md) §3. |
+| **Icons** | `_icons.html` for actions; `_filter_icon.html` for nav/chips/settings. Settings gear = shared cog. Chips/hub rows: **icon + label** (never text-only). |
+| **Buttons** | Labelled = `btn … btn-with-icon`. Icon-only = `icon-btn` + `aria-label` (use `icon-btn-quiet` for non-destructive). |
+| **Settings IA** | Many tabs → NewsCast **hub → L2 (icons + subtexts) → cards** on phone; chip bar + stacked cards ≥1024. `SETTINGS_PANEL_SUBTEXTS` required (no “Open this section”). Heading icons match L2. View/chrome prefs under General → View options; export layout stays product-specific. SSO: no Users/Updates/password ownership. |
+| **Confirms** | Shared sheet, not bare `confirm()`. Logout = **POST** + CSRF. |
+| **CSRF** | Forms include `csrf_token`; cookie via `stonepi_auth.csrf`. |
 | **Empty states** | Explain what belongs here + one CTA. |
 | **Prefix** | Honor `STONEPI_PREFIX` for redirects and static under nginx path routing. |
-| **Copy source** | Clone CSS/HTML chrome from sibling; delete product-only leftovers (Studio preview panes, wrong nav labels). |
+| **Asset bust** | `?v={{ app_version }}-{{ asset_rev }}`; bump `__asset_rev__` on CSS/JS change. |
+| **Copy source** | Clone CSS/HTML/JS chrome from NewsCast; delete product-only leftovers. |
 
 ## Ship checklist
 
@@ -57,27 +63,31 @@ Copy and tick while building:
 ```
 Shell
 - [ ] base.html: viewport-fit=cover, theme-color, _theme_boot, fonts, theme switch, POST logout
-- [ ] Confirm sheet present; JS wires data-confirm
+- [ ] Topbar order: brand → theme → [Refresh] → logout
+- [ ] Confirm sheet present; JS wires data-confirm + mountSheetsToBody
 - [ ] No app-specific --accent override after palette tokens
 - [ ] btn-primary / links / focus rings use var(--accent)
+- [ ] SVG size matrix applied (see chrome.md)
 
 Nav
 - [ ] Home → portal origin
 - [ ] Column count = link count; labels fit on narrow phones
-- [ ] Desktop rail ≥1024px; phone/tablet bottom bar + safe-area (&lt;1024)
-- [ ] Every nav item has shared-style stroke icon
-- [ ] Labelled buttons use btn-with-icon + matching glyph
+- [ ] Desktop rail ≥1024px; phone/tablet bottom bar + safe-area
+- [ ] Every nav item has stroke icon (22×22)
 
 Settings
-- [ ] Chips with icons (general/device, about, …)
+- [ ] Phone: hub groups + L2 icons/subtexts + back link (if multi-tab)
+- [ ] Desktop: chips with icons; all section cards visible
+- [ ] section-heading icons match L2
 - [ ] About: name, blurb, GitHub, version
 - [ ] SSO: no Users/Updates/password ownership
-- [ ] Save uses check icon
-- [ ] Destructive / secondary actions also iconed (trash, clear, …)
+- [ ] Save uses check icon; destructive actions iconed
+
 Mobile
-- [ ] Offer/list/filter rows wrap ≤559px
-- [ ] overflow-wrap on titles/meta
-- [ ] Sheet clears bottom nav
+- [ ] Sheets clear bottom nav; inner scroll regions
+- [ ] Filter long lists via sheet + chips-action when needed
+- [ ] overflow-wrap on titles/meta; empty states
+- [ ] __asset_rev__ bumped
 
 Platform (see platform.md)
 - [ ] catalog.py entry (path, port, unit, icon, capabilities, launcher)
@@ -94,30 +104,31 @@ Platform (see platform.md)
 
 | Need | Copy from |
 |------|-----------|
-| Minimal chrome | `apps/pinboard` |
-| Full settings / ingest patterns | `apps/newscast` |
+| **Full chrome (default)** | `apps/newscast` |
+| Minimal shell only | `apps/pinboard` |
 | Chat + publish | `apps/studio` |
-| Recent full citizen + Pi push | `apps/pricescout` |
+| Recent citizen + Pi push patterns | `apps/pricescout` |
+| Portal settings / Health | `apps/dashboard` |
 
 ## Lessons from siblings (keep these)
 
-Beyond PriceScout chrome fixes, these keep biting new apps:
-
 | Lesson | From | Rule |
 |--------|------|------|
-| **Host-aware Home** | NewsCast / all | Build Home URL with `portal_home_url(request, …)` so `stonepi.home` stays on that host — never hardcode `.local` only. |
-| **`platform_managed`** | NewsCast, FileServe, EventTrakr | When `STONEPI_SESSION_SECRET` is set, hide Users / Updates / password / TLS ownership tabs; link to Dashboard. Solo mode may keep them. |
-| **Factory admin banner** | NewsCast, Dashboard | If still `admin`/`admin`, surface an in-UI nudge (settings or dashboard), not docs-only. |
-| **Asset cache bust** | NewsCast | Prefer `?v={{ app_version }}-{{ asset_rev }}` (bump `__asset_rev__` on CSS/JS change) over one-off date stamps. |
-| **Settings chips wrap** | EventTrakr | `.settings-chips { flex-wrap: wrap; overflow-x: visible }` so About isn’t lost off-screen on narrow phones. NewsCast uses a **grouped hub** on phone/tablet instead — see [chrome.md](chrome.md) Settings chips. |
-| **About is a chip with icon** | EventTrakr | Never text-only About; same chip pattern as General. |
-| **Capability defaults** | Dashboard Users | New household users get Dashboard only; admins grant app access. Declare real `capabilities` in catalog. |
-| **Display scrape privacy** | Pinboard / platform | Public nginx denies `/api/display`; dashboard scrapes via loopback. Don’t expose scrape JSON on the edge. |
-| **Confirm sheet copy** | NewsCast / FileServe | Destructive confirms name the consequence (“Remove…”, “Stop…”); OK label matches the verb. |
+| **Host-aware Home** | NewsCast / all | `portal_home_url(request, …)` — never hardcode `.local` only. |
+| **`platform_managed`** | NewsCast, FileServe, EventTrakr | Hide Users / Updates / password / TLS ownership when SSO; link to Dashboard. |
+| **Factory admin banner** | NewsCast, Dashboard | Surface in-UI if still `admin`/`admin`. |
+| **Asset cache bust** | NewsCast | `?v={{ app_version }}-{{ asset_rev }}`. |
+| **Settings hub + L2** | NewsCast | Grouped hub; L2 icons + short subtexts; desktop chips. See [chrome.md](chrome.md) §9. |
+| **Sheet hoist / iOS** | NewsCast | Fixed sheets inside `.main` fail — hoist to `body`. |
+| **SVG blow-ups** | NewsCast | Cap sizes in CSS; hub icons 18-in-40; never unstyled SVG. |
+| **About is a chip with icon** | EventTrakr | Never text-only About. |
+| **Capability defaults** | Dashboard Users | New users get Dashboard only; declare real `capabilities`. |
+| **Display scrape privacy** | Pinboard / platform | Public nginx denies `/api/display`. |
+| **Confirm sheet copy** | NewsCast / FileServe | Name the consequence; OK label = verb. |
 | **Sign-out POST** | All | Never `<a href="/logout">`. |
-| **Studio → FileServe** | Studio | Generated sites: `index.html`, relative assets, phone-first — see `studio-fileserve` skill. |
-| **Playwright / scrape apps** | EventTrakr | Browsers install under service user `HOME=/opt/stonepi`, not root’s cache (`install.sh` pattern). |
-| **Vault secrets** | Dashboard / apps | Tokens (OpenAI, Salling, webhooks) live in Vault; UI says “configured” vs “not set”, never echo the secret. |
-| **Empty + first useful action** | All | First screen after open should show data or a single clear CTA (refresh sources, add feed, pin notice). |
+| **Studio → FileServe** | Studio | `studio-fileserve` skill. |
+| **Playwright / scrape apps** | EventTrakr | Browsers under service user `HOME=/opt/stonepi`. |
+| **Vault secrets** | Dashboard / apps | UI says configured vs not set; never echo secrets. |
+| **Empty + first useful action** | All | Data or one clear CTA on first screen. |
 
-When unsure, open the sibling that already solved it and copy the mechanism — don’t re-invent.
+When unsure, open NewsCast and copy the mechanism — don’t re-invent.

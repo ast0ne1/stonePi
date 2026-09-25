@@ -8,6 +8,7 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 import dateparser
 
+from app.services.cost import UNSPECIFIED_COST
 from app.services.scrapers.base import BaseScraper, ScrapedEvent
 from app.services.scrapers.schema_org import SchemaOrgExtractor
 
@@ -72,7 +73,7 @@ class GenericExtractor(BaseScraper):
             # Cost
             container_text = container.get_text(" ", strip=True)
             cost_match = PRICE_RE.search(container_text)
-            cost = cost_match.group(0).strip().capitalize() if cost_match else "Free / Unspecified"
+            cost = cost_match.group(0).strip().capitalize() if cost_match else UNSPECIFIED_COST
 
             # Description
             desc_el = container.find(["p", "div"], class_=re.compile(r"desc|summary|info", re.I))

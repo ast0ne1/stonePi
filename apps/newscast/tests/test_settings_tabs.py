@@ -95,13 +95,22 @@ def test_settings_section_panels_publication_and_device():
     assert topics == ("topics-mix", "topics-opds")
 
     solo_admin = settings_section_panels_for("device", is_admin=True, platform_managed=False)
-    assert [panel_id for panel_id, _label, _cards in solo_admin] == ["access", "network", "interface"]
+    assert [panel_id for panel_id, _label, _cards in solo_admin] == [
+        "access",
+        "network",
+        "interface",
+        "view",
+    ]
 
     platform_admin = settings_section_panels_for("device", is_admin=True, platform_managed=True)
-    assert [panel_id for panel_id, _label, _cards in platform_admin] == ["network", "interface"]
+    assert [panel_id for panel_id, _label, _cards in platform_admin] == [
+        "network",
+        "interface",
+        "view",
+    ]
 
     user_device = settings_section_panels_for("device", is_admin=False, platform_managed=False)
-    assert user_device == ()
+    assert [panel_id for panel_id, _label, _cards in user_device] == ["interface", "view"]
 
     assert settings_section_panels_for("filters") == ()
     assert normalize_settings_panel("publication", None) is None
@@ -109,7 +118,7 @@ def test_settings_section_panels_publication_and_device():
     assert normalize_settings_panel("publication", "stories") == "stories"
     assert normalize_settings_panel("publication", "nope") == "naming"
     assert normalize_settings_panel("filters", "anything") is None
-
+    assert normalize_settings_panel("device", "view", is_admin=False) == "view"
 
 def test_multi_card_tabs_have_panel_maps():
     multi = {

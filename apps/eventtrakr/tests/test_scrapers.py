@@ -287,14 +287,14 @@ def test_kultunaut_extractor():
     assert first.title == "Anarkist Beer Walk x Sensommer i Koebenhavn"
     assert first.location == "Enghave Plads Metro"
     assert first.start_time.month == 9 and first.start_time.day == 18
-    assert first.cost == "Free / Unspecified"
+    assert first.cost == "Unspecified"
     assert first.category == "Gastronomi"
 
     free = events[1]
     assert free.title == "Visens Venner Broenshoej"
     assert free.location == "Kulturhuset Broek"
     assert free.start_time.hour == 19
-    assert free.cost == "Free / Unspecified"
+    assert free.cost == "Unspecified"
 
 
 def test_kultunaut_with_date_window():

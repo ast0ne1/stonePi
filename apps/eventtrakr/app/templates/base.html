@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-stonepi-prefix="{{ stonepi_prefix or '' }}">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, shrink-to-fit=no" />
@@ -12,7 +12,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/static/css/app.css?v={{ app_css_version }}" />
+    <link rel="stylesheet" href="/static/css/app.css?v={{ app_version }}-{{ asset_rev }}" />
   </head>
   <body>
     <div class="app">
@@ -24,7 +24,7 @@
           </a>
         </div>
         <div class="topbar-actions">
-          <p class="status-pill {% if ingest_state.running %}is-busy{% elif ingest_state.last_error %}is-error{% endif %}" data-sync-pill>
+          <p class="status-pill {% if ingest_state.running %}is-busy{% elif ingest_state.last_error %}is-error{% endif %}" data-sync-pill{% if not ingest_state.running and not ingest_state.last_error %} hidden{% endif %}>
             {% if ingest_state.running %}Syncing{% elif ingest_state.last_error %}Error{% else %}Idle{% endif %}
           </p>
           <div class="theme-switch" role="group" aria-label="Colour theme">
@@ -53,7 +53,7 @@
       </header>
 
       <main class="main">
-        {% if using_factory_admin and current_user and current_user.role == 'admin' %}
+        {% if using_factory_admin and current_user and current_user.role == 'admin' and request.blueprint == 'settings' and not platform_managed %}
         <p class="banner banner-muted">Factory login is still <strong>admin / admin</strong>. Change it under <a href="/settings?tab=general">Settings → General</a>.</p>
         {% endif %}
         {% with messages = get_flashed_messages(with_categories=true) %}
@@ -111,6 +111,6 @@
       </div>
     </div>
     <div class="toast" hidden data-toast role="status" aria-live="polite"></div>
-    <script src="/static/js/app.js?v={{ app_js_version }}" defer></script>
+    <script src="/static/js/app.js?v={{ app_version }}-{{ asset_rev }}" defer></script>
   </body>
 </html>

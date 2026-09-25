@@ -2,20 +2,63 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 from sqlalchemy.orm import Session
 
-from app.config import DATA_DIR
+from app.config import DATA_DIR, env
 from app.models import Feed
 from app.services import settings
 
 
+def _sqlite_path_from_url(database_url: str) -> Path | None:
+    raw = (database_url or "").strip()
+    if not raw.startswith("sqlite"):
+        return None
+    # sqlite:////abs/path or sqlite:///./relative or sqlite:////var/...
+    if raw.startswith("sqlite:////"):
+        return Path("/" + raw[len("sqlite:////") :])
+    if raw.startswith("sqlite:///"):
+        rest = raw[len("sqlite:///") :]
+        if rest.startswith("./") or rest.startswith("../") or (rest and rest[0] not in "/\\"):
+            return (Path.cwd() / rest).resolve()
+        return Path(rest)
+    parsed = urlparse(raw)
+    path = unquote(parsed.path or "")
+    if path.startswith("/") and len(path) > 2 and path[2] == ":":
+        # Windows-ish /C:/...
+        path = path[1:]
+    return Path(path) if path else None
+
+
 def _db_file_size() -> int:
+    candidates: list[Path] = []
+    primary = _sqlite_path_from_url(env.database_url)
+    if primary is not None:
+        candidates.append(primary)
+    # Legacy / alternate names under DATA_DIR
+    for name in ("newscast.sqlite", "newscast.db"):
+        candidates.append(DATA_DIR / name)
+
+    seen: set[Path] = set()
     total = 0
-    for name in ("newscast.db", "newscast.db-wal", "newscast.db-shm"):
-        path = DATA_DIR / name
-        if path.is_file():
-            total += path.stat().st_size
+    for path in candidates:
+        try:
+            resolved = path.resolve()
+        except OSError:
+            resolved = path
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if not path.is_file():
+            continue
+        total += path.stat().st_size
+        for suffix in ("-wal", "-shm"):
+            side = Path(str(path) + suffix)
+            if side.is_file():
+                total += side.stat().st_size
+        # Prefer the first existing primary DB (DATABASE_URL wins).
+        break
     return total
 
 

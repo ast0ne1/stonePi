@@ -206,8 +206,10 @@ def _install_platform() -> dict:
 
 
 def version_cards() -> list[dict]:
+    from app import services
     from stonepi_auth import app_by_id
 
+    colors = services.resolved_app_colors()
     cards = []
     for app_id, label in APP_TARGETS:
         catalog = app_by_id(app_id) or {}
@@ -215,7 +217,7 @@ def version_cards() -> list[dict]:
             {
                 "id": app_id,
                 "name": label,
-                "color": catalog.get("color") or APP_COLORS.get(app_id, ""),
+                "color": colors.get(app_id) or catalog.get("color") or APP_COLORS.get(app_id, ""),
                 "version": current_version(app_id),
                 "check": last_check(app_id),
                 "root": str(app_root(app_id)),

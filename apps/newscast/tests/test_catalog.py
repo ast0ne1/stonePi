@@ -47,17 +47,48 @@ def test_apply_catalog_type_switches_url():
 
 def test_catalog_includes_techcrunch_rss():
     item = next(entry for entry in load_catalog() if entry["id"] == "techcrunch")
-    assert item["url"] == "https://techcrunch.com/feed/"
+    assert item["url"] == "https://techcrunch.com/"
+    assert item["rss_url"] == "https://techcrunch.com/feed/"
     assert source_kind(item) == "rss"
     assert item["category"] == "technology"
+    assert catalog_url_for_type(item, "rss") == item["rss_url"]
+    assert catalog_url_for_type(item, "webpage") == item["url"]
+
+
+def test_catalog_websites_are_not_feed_urls():
+    from app.services.catalog import catalog_allows_scrape
+
+    feedish = ("/rss", "rss.", "/feed", "feeds.", ".rss", ".atom", "feedburner", "syndication")
+    for item in load_bundled_catalog():
+        assert item.get("rss_url"), item["id"]
+        home = item["url"].lower()
+        assert not any(token in home for token in feedish), (item["id"], item["url"])
+        if item["id"] == "the-local-dk":
+            assert catalog_allows_scrape(item) is False
+        else:
+            assert catalog_allows_scrape(item) is True
+
+def test_npr_news_not_default_enabled():
+    item = next(entry for entry in load_catalog() if entry["id"] == "npr-news")
+    assert item.get("default_enabled") is False
+
+
+def test_bbc_world_has_homepage_and_rss():
+    item = next(entry for entry in load_catalog() if entry["id"] == "bbc-world")
+    assert item["url"] == "https://www.bbc.com/news/world"
+    assert "rss.xml" in item["rss_url"]
+    assert item.get("allow_scrape") is True
+    assert item.get("default_enabled") is True
 
 
 def test_catalog_ids_and_urls_are_unique():
     items = load_bundled_catalog()
     ids = [item["id"] for item in items]
     urls = [item["url"] for item in items]
+    rss = [item["rss_url"] for item in items if item.get("rss_url")]
     assert len(ids) == len(set(ids))
     assert len(urls) == len(set(urls))
+    assert len(rss) == len(set(rss))
     assert len(items) >= 75
 
 

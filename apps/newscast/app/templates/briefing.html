@@ -68,7 +68,7 @@
         <div class="story-kicker">
           <div class="story-kicker-meta">
             {% if story.favicon %}<img class="source-icon" src="{{ story.favicon }}" alt="" width="28" height="28">{% endif %}
-            <p class="chip chip-source">{{ story.source_name }}{% if story.category %} · <span class="story-section">{{ category_labels.get(story.category, story.category) }}</span>{% endif %}</p>
+            <p class="chip chip-source {% if story.feed_type == 'webpage' %}chip-source-scrape{% else %}chip-source-rss{% endif %}">{{ story.source_name }}{% if story.category %} · <span class="story-section">{{ category_labels.get(story.category, story.category) }}</span>{% endif %}</p>
             <span class="chip chip-quiet story-kind">{{ 'Summarise' if story.is_summary else 'Full article' }}</span>
           </div>
           {% set when = story.published_at or story.created_at %}
@@ -76,12 +76,22 @@
           <time class="chip chip-quiet story-date" datetime="{{ when.isoformat() }}">{{ when.strftime('%d %b') }}</time>
           {% endif %}
         </div>
-        <h2><a href="{{ story.open_url or story.canonical_url }}" target="_blank" rel="noopener">{{ story.title }}</a></h2>
+        <h2>{{ story.title }}</h2>
         <p class="summary story-summary">{{ story.summary }}</p>
+        {% if briefing_article_open_enabled and (story.open_url or story.canonical_url) %}
+        <p class="story-article-link">
+          <a class="text-link" href="{{ story.open_url or story.canonical_url }}" target="_blank" rel="noopener">{{ article_link_label }}</a>
+        </p>
+        {% endif %}
         <div class="story-card-actions">
           <button class="story-expand-btn" type="button" data-story-expand aria-expanded="false" aria-label="Expand story">
             <svg class="story-expand-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
           </button>
+          {% if briefing_article_open_enabled and briefing_article_open_button and (story.open_url or story.canonical_url) %}
+          <a class="icon-btn story-open-btn" href="{{ story.open_url or story.canonical_url }}" target="_blank" rel="noopener" aria-label="Open article" title="Open article">
+            {{ filter_icon("open") }}
+          </a>
+          {% endif %}
           <div class="story-card-favs">
           <form method="post" action="/stories/{{ story.id }}/longread" class="fav-form">
             <input type="hidden" name="day" value="{{ briefing_day }}" />

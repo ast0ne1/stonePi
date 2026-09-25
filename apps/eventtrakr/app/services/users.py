@@ -150,7 +150,13 @@ def ensure_admin_user() -> User:
 
 
 def using_factory_admin() -> bool:
-    """True when the first admin account still accepts the factory password."""
+    """True only for solo EventTrakr when local admin still accepts admin/admin.
+
+    Under StonePi SSO the Auth/Dashboard service owns the factory-password warning —
+    EventTrakr must not keep nagging from a stale local hash.
+    """
+    if env.stonepi_session_secret.strip():
+        return False
     with SessionLocal() as db:
         admin = (
             db.execute(select(User).where(User.role == "admin").order_by(User.id.asc()))

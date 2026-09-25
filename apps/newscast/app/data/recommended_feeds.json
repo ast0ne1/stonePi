@@ -2,157 +2,222 @@
   {
     "id": "bbc-world",
     "name": "BBC World",
-    "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+    "url": "https://www.bbc.com/news/world",
     "category": "news",
-    "default_enabled": true
+    "default_enabled": true,
+    "rss_url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "guardian-world",
     "name": "The Guardian World",
-    "url": "https://www.theguardian.com/world/rss",
+    "url": "https://www.theguardian.com/world",
     "category": "news",
-    "default_enabled": true
+    "default_enabled": true,
+    "rss_url": "https://www.theguardian.com/world/rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "npr-news",
     "name": "NPR News",
-    "url": "https://feeds.npr.org/1001/rss.xml",
+    "url": "https://www.npr.org/sections/news/",
     "category": "news",
-    "default_enabled": true
+    "default_enabled": false,
+    "rss_url": "https://feeds.npr.org/1001/rss.xml",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "bbc-technology",
     "name": "BBC Technology",
-    "url": "https://feeds.bbci.co.uk/news/technology/rss.xml",
+    "url": "https://www.bbc.com/news/technology",
     "category": "technology",
-    "default_enabled": true
+    "default_enabled": true,
+    "rss_url": "https://feeds.bbci.co.uk/news/technology/rss.xml",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "bbc-top",
     "name": "BBC Top Stories",
-    "url": "https://feeds.bbci.co.uk/news/rss.xml",
+    "url": "https://www.bbc.com/news",
     "category": "news",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://feeds.bbci.co.uk/news/rss.xml",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "bbc-uk",
     "name": "BBC UK",
-    "url": "https://feeds.bbci.co.uk/news/uk/rss.xml",
+    "url": "https://www.bbc.com/news/uk",
     "category": "news",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://feeds.bbci.co.uk/news/uk/rss.xml",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "al-jazeera",
     "name": "Al Jazeera",
-    "url": "https://www.aljazeera.com/xml/rss/all.xml",
+    "url": "https://www.aljazeera.com/",
     "category": "news",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.aljazeera.com/xml/rss/all.xml",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "ars-technica",
     "name": "Ars Technica",
-    "url": "https://feeds.arstechnica.com/arstechnica/index",
+    "url": "https://arstechnica.com/",
     "category": "technology",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://feeds.arstechnica.com/arstechnica/index",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "the-verge",
     "name": "The Verge",
-    "url": "https://www.theverge.com/rss/index.xml",
+    "url": "https://www.theverge.com/",
     "category": "technology",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.theverge.com/rss/index.xml",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "wired",
     "name": "Wired",
-    "url": "https://www.wired.com/feed/rss",
+    "url": "https://www.wired.com/",
     "category": "technology",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.wired.com/feed/rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "hacker-news",
     "name": "Hacker News",
-    "url": "https://news.ycombinator.com/rss",
+    "url": "https://news.ycombinator.com/",
     "category": "technology",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://news.ycombinator.com/rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "bbc-science",
     "name": "BBC Science and Environment",
-    "url": "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml",
+    "url": "https://www.bbc.com/news/science_and_environment",
     "category": "science",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "nasa-news",
     "name": "NASA Breaking News",
-    "url": "https://www.nasa.gov/rss/dyn/breaking_news.rss",
+    "url": "https://www.nasa.gov/news/",
     "category": "science",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.nasa.gov/rss/dyn/breaking_news.rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "nature",
     "name": "Nature",
-    "url": "https://www.nature.com/nature.rss",
+    "url": "https://www.nature.com/",
     "category": "science",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.nature.com/nature.rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "scientific-american",
     "name": "Scientific American",
-    "url": "https://www.scientificamerican.com/platform/syndication/rss/",
+    "url": "https://www.scientificamerican.com/",
     "category": "science",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.scientificamerican.com/platform/syndication/rss/",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "bbc-business",
     "name": "BBC Business",
-    "url": "https://feeds.bbci.co.uk/news/business/rss.xml",
+    "url": "https://www.bbc.com/news/business",
     "category": "business",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://feeds.bbci.co.uk/news/business/rss.xml",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "guardian-business",
     "name": "The Guardian Business",
-    "url": "https://www.theguardian.com/uk/business/rss",
+    "url": "https://www.theguardian.com/uk/business",
     "category": "business",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.theguardian.com/uk/business/rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "bbc-sport",
     "name": "BBC Sport",
-    "url": "https://feeds.bbci.co.uk/sport/rss.xml",
+    "url": "https://www.bbc.com/sport",
     "category": "sport",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://feeds.bbci.co.uk/sport/rss.xml",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "guardian-sport",
     "name": "The Guardian Sport",
-    "url": "https://www.theguardian.com/uk/sport/rss",
+    "url": "https://www.theguardian.com/uk/sport",
     "category": "sport",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.theguardian.com/uk/sport/rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "bbc-entertainment",
     "name": "BBC Entertainment and Arts",
-    "url": "https://feeds.bbci.co.uk/news/entertainment_and_arts/rss.xml",
+    "url": "https://www.bbc.com/news/entertainment_and_arts",
     "category": "culture",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://feeds.bbci.co.uk/news/entertainment_and_arts/rss.xml",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "guardian-games",
     "name": "The Guardian Games",
-    "url": "https://www.theguardian.com/games/rss",
+    "url": "https://www.theguardian.com/games",
     "category": "culture",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.theguardian.com/games/rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "techcrunch",
     "name": "TechCrunch",
-    "url": "https://techcrunch.com/feed/",
+    "url": "https://techcrunch.com/",
     "category": "technology",
     "type": "rss",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://techcrunch.com/feed/",
+    "allow_scrape": true
   },
   {
     "id": "hackaday",
@@ -161,7 +226,8 @@
     "rss_url": "https://hackaday.com/blog/feed/",
     "category": "technology",
     "type": "webpage",
-    "default_enabled": true
+    "default_enabled": true,
+    "allow_scrape": true
   },
   {
     "id": "krebs-on-security",
@@ -170,7 +236,8 @@
     "rss_url": "https://krebsonsecurity.com/feed/",
     "category": "security",
     "type": "webpage",
-    "default_enabled": true
+    "default_enabled": true,
+    "allow_scrape": true
   },
   {
     "id": "itnews",
@@ -179,523 +246,740 @@
     "rss_url": "https://www.itnews.com.au/RSS/rss.ashx",
     "category": "australia",
     "type": "webpage",
-    "default_enabled": true
+    "default_enabled": true,
+    "allow_scrape": true
   },
   {
     "id": "guardian-uk",
     "name": "The Guardian UK",
-    "url": "https://www.theguardian.com/uk/rss",
+    "url": "https://www.theguardian.com/uk-news",
     "category": "news",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.theguardian.com/uk/rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "guardian-us",
     "name": "The Guardian US",
-    "url": "https://www.theguardian.com/us-news/rss",
+    "url": "https://www.theguardian.com/us-news",
     "category": "news",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.theguardian.com/us-news/rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "npr-world",
     "name": "NPR World",
-    "url": "https://feeds.npr.org/1004/rss.xml",
+    "url": "https://www.npr.org/sections/world/",
     "category": "news",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://feeds.npr.org/1004/rss.xml",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "politico",
     "name": "Politico",
-    "url": "https://rss.politico.com/politics-news.xml",
+    "url": "https://www.politico.com/",
     "category": "news",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://rss.politico.com/politics-news.xml",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "the-atlantic",
     "name": "The Atlantic",
-    "url": "https://www.theatlantic.com/feed/all/",
+    "url": "https://www.theatlantic.com/",
     "category": "news",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.theatlantic.com/feed/all/",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "propublica",
     "name": "ProPublica",
-    "url": "https://www.propublica.org/feeds/propublica/main",
+    "url": "https://www.propublica.org/",
     "category": "news",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.propublica.org/feeds/propublica/main",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "dw-world",
     "name": "Deutsche Welle",
-    "url": "https://rss.dw.com/rdf/rss-en-all",
+    "url": "https://www.dw.com/",
     "category": "news",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://rss.dw.com/rdf/rss-en-all",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "france24",
     "name": "France 24",
-    "url": "https://www.france24.com/en/rss",
+    "url": "https://www.france24.com/en/",
     "category": "news",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.france24.com/en/rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "sky-news-world",
     "name": "Sky News World",
-    "url": "https://feeds.skynews.com/feeds/rss/world.xml",
+    "url": "https://news.sky.com/world",
     "category": "news",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://feeds.skynews.com/feeds/rss/world.xml",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "independent-world",
     "name": "The Independent World",
-    "url": "https://www.independent.co.uk/news/world/rss",
+    "url": "https://www.independent.co.uk/news/world",
     "category": "news",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.independent.co.uk/news/world/rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "new-yorker-news",
     "name": "The New Yorker News",
-    "url": "https://www.newyorker.com/feed/news",
+    "url": "https://www.newyorker.com/news",
     "category": "news",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.newyorker.com/feed/news",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "guardian-culture",
     "name": "The Guardian Culture",
-    "url": "https://www.theguardian.com/culture/rss",
+    "url": "https://www.theguardian.com/culture",
     "category": "culture",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.theguardian.com/culture/rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "guardian-books",
     "name": "The Guardian Books",
-    "url": "https://www.theguardian.com/books/rss",
+    "url": "https://www.theguardian.com/books",
     "category": "culture",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.theguardian.com/books/rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "guardian-film",
     "name": "The Guardian Film",
-    "url": "https://www.theguardian.com/film/rss",
+    "url": "https://www.theguardian.com/film",
     "category": "culture",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.theguardian.com/film/rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "guardian-music",
     "name": "The Guardian Music",
-    "url": "https://www.theguardian.com/music/rss",
+    "url": "https://www.theguardian.com/music",
     "category": "culture",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.theguardian.com/music/rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "guardian-artanddesign",
     "name": "The Guardian Art and Design",
-    "url": "https://www.theguardian.com/artanddesign/rss",
+    "url": "https://www.theguardian.com/artanddesign",
     "category": "culture",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.theguardian.com/artanddesign/rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "npr-arts",
     "name": "NPR Arts and Life",
-    "url": "https://feeds.npr.org/1008/rss.xml",
+    "url": "https://www.npr.org/sections/arts/",
     "category": "culture",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://feeds.npr.org/1008/rss.xml",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "npr-books",
     "name": "NPR Books",
-    "url": "https://feeds.npr.org/1032/rss.xml",
+    "url": "https://www.npr.org/sections/books/",
     "category": "culture",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://feeds.npr.org/1032/rss.xml",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "hyperallergic",
     "name": "Hyperallergic",
-    "url": "https://hyperallergic.com/feed/",
+    "url": "https://hyperallergic.com/",
     "category": "culture",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://hyperallergic.com/feed/",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "art-newspaper",
     "name": "The Art Newspaper",
-    "url": "https://www.theartnewspaper.com/rss.xml",
+    "url": "https://www.theartnewspaper.com/",
     "category": "culture",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.theartnewspaper.com/rss.xml",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "lithub",
     "name": "Literary Hub",
-    "url": "https://lithub.com/feed/",
+    "url": "https://lithub.com/",
     "category": "culture",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://lithub.com/feed/",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "aeon",
     "name": "Aeon",
-    "url": "https://aeon.co/feed.rss",
+    "url": "https://aeon.co/",
     "category": "culture",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://aeon.co/feed.rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "pitchfork",
     "name": "Pitchfork",
-    "url": "https://pitchfork.com/feed/feed-news/rss",
+    "url": "https://pitchfork.com/",
     "category": "culture",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://pitchfork.com/feed/feed-news/rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "variety",
     "name": "Variety",
-    "url": "https://variety.com/feed/",
+    "url": "https://variety.com/",
     "category": "culture",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://variety.com/feed/",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "vulture",
     "name": "Vulture",
-    "url": "https://feeds.feedburner.com/nymag/vulture",
+    "url": "https://www.vulture.com/",
     "category": "culture",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://feeds.feedburner.com/nymag/vulture",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "colossal",
     "name": "Colossal",
-    "url": "https://www.thisiscolossal.com/feed/",
+    "url": "https://www.thisiscolossal.com/",
     "category": "culture",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.thisiscolossal.com/feed/",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "dezeen",
     "name": "Dezeen",
-    "url": "https://www.dezeen.com/feed/",
+    "url": "https://www.dezeen.com/",
     "category": "culture",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.dezeen.com/feed/",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "smithsonian-magazine",
     "name": "Smithsonian Magazine",
-    "url": "https://www.smithsonianmag.com/rss/articles/",
+    "url": "https://www.smithsonianmag.com/",
     "category": "culture",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.smithsonianmag.com/rss/articles/",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "the-quietus",
     "name": "The Quietus",
-    "url": "https://thequietus.com/feed",
+    "url": "https://thequietus.com/",
     "category": "culture",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://thequietus.com/feed",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "bandcamp-daily",
     "name": "Bandcamp Daily",
-    "url": "https://daily.bandcamp.com/feed",
+    "url": "https://daily.bandcamp.com/",
     "category": "culture",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://daily.bandcamp.com/feed",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "mit-tech-review",
     "name": "MIT Technology Review",
-    "url": "https://www.technologyreview.com/feed/",
+    "url": "https://www.technologyreview.com/",
     "category": "technology",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.technologyreview.com/feed/",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "the-register",
     "name": "The Register",
-    "url": "https://www.theregister.com/headlines.atom",
+    "url": "https://www.theregister.com/",
     "category": "technology",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.theregister.com/headlines.atom",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "ieee-spectrum",
     "name": "IEEE Spectrum",
-    "url": "https://spectrum.ieee.org/feeds/feed.rss",
+    "url": "https://spectrum.ieee.org/",
     "category": "technology",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://spectrum.ieee.org/feeds/feed.rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "404-media",
     "name": "404 Media",
-    "url": "https://www.404media.co/rss/",
+    "url": "https://www.404media.co/",
     "category": "technology",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.404media.co/rss/",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "smashing-magazine",
     "name": "Smashing Magazine",
-    "url": "https://www.smashingmagazine.com/feed/",
+    "url": "https://www.smashingmagazine.com/",
     "category": "technology",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.smashingmagazine.com/feed/",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "schneier",
     "name": "Schneier on Security",
-    "url": "https://www.schneier.com/feed/atom/",
+    "url": "https://www.schneier.com/",
     "category": "security",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.schneier.com/feed/atom/",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "bleeping-computer",
     "name": "Bleeping Computer",
-    "url": "https://www.bleepingcomputer.com/feed/",
+    "url": "https://www.bleepingcomputer.com/",
     "category": "security",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.bleepingcomputer.com/feed/",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "troy-hunt",
     "name": "Troy Hunt",
-    "url": "https://www.troyhunt.com/rss/",
+    "url": "https://www.troyhunt.com/",
     "category": "security",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.troyhunt.com/rss/",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "the-hacker-news",
     "name": "The Hacker News",
-    "url": "https://thehackernews.com/feeds/posts/default?alt=rss",
+    "url": "https://thehackernews.com/",
     "category": "security",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://thehackernews.com/feeds/posts/default?alt=rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "quanta-magazine",
     "name": "Quanta Magazine",
-    "url": "https://www.quantamagazine.org/feed/",
+    "url": "https://www.quantamagazine.org/",
     "category": "science",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.quantamagazine.org/feed/",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "phys-org",
     "name": "Phys.org",
-    "url": "https://phys.org/rss-feed/",
+    "url": "https://phys.org/",
     "category": "science",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://phys.org/rss-feed/",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "science-news",
     "name": "Science News",
-    "url": "https://www.sciencenews.org/feed",
+    "url": "https://www.sciencenews.org/",
     "category": "science",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.sciencenews.org/feed",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "fortune",
     "name": "Fortune",
-    "url": "https://fortune.com/feed/",
+    "url": "https://fortune.com/",
     "category": "business",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://fortune.com/feed/",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "npr-business",
     "name": "NPR Business",
-    "url": "https://feeds.npr.org/1006/rss.xml",
+    "url": "https://www.npr.org/sections/business/",
     "category": "business",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://feeds.npr.org/1006/rss.xml",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "espn",
     "name": "ESPN",
-    "url": "https://www.espn.com/espn/rss/news",
+    "url": "https://www.espn.com/",
     "category": "sport",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.espn.com/espn/rss/news",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "guardian-football",
     "name": "The Guardian Football",
-    "url": "https://www.theguardian.com/football/rss",
+    "url": "https://www.theguardian.com/football",
     "category": "sport",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.theguardian.com/football/rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "sky-sports",
     "name": "Sky Sports",
-    "url": "https://www.skysports.com/rss/12040",
+    "url": "https://www.skysports.com/",
     "category": "sport",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.skysports.com/rss/12040",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "dr-nyheder",
     "name": "DR News",
-    "url": "https://www.dr.dk/nyheder/service/feeds/allenyheder",
+    "url": "https://www.dr.dk/nyheder",
     "category": "nordic",
     "default_enabled": false,
-    "translate": true
+    "translate": true,
+    "rss_url": "https://www.dr.dk/nyheder/service/feeds/allenyheder",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "dr-udland",
     "name": "DR World",
-    "url": "https://www.dr.dk/nyheder/service/feeds/udland",
+    "url": "https://www.dr.dk/nyheder/udland",
     "category": "nordic",
     "default_enabled": false,
-    "translate": true
+    "translate": true,
+    "rss_url": "https://www.dr.dk/nyheder/service/feeds/udland",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "politiken",
     "name": "Politiken",
-    "url": "https://politiken.dk/rss/senestenyt.rss",
+    "url": "https://politiken.dk/",
     "category": "nordic",
     "default_enabled": false,
-    "translate": true
+    "translate": true,
+    "rss_url": "https://politiken.dk/rss/senestenyt.rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "information-dk",
     "name": "Information",
-    "url": "https://www.information.dk/feed",
+    "url": "https://www.information.dk/",
     "category": "nordic",
     "default_enabled": false,
-    "translate": true
+    "translate": true,
+    "rss_url": "https://www.information.dk/feed",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "svt-nyheter",
     "name": "SVT News",
-    "url": "https://www.svt.se/nyheter/rss.xml",
+    "url": "https://www.svt.se/nyheter",
     "category": "nordic",
     "default_enabled": false,
-    "translate": true
+    "translate": true,
+    "rss_url": "https://www.svt.se/nyheter/rss.xml",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "sr-ekot",
     "name": "Sveriges Radio Ekot",
-    "url": "https://api.sr.se/api/rss/program/83",
+    "url": "https://sverigesradio.se/ekot",
     "category": "nordic",
     "default_enabled": false,
-    "translate": true
+    "translate": true,
+    "rss_url": "https://api.sr.se/api/rss/program/83",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "nrk",
     "name": "NRK",
-    "url": "https://www.nrk.no/toppsaker.rss",
+    "url": "https://www.nrk.no/",
     "category": "nordic",
     "default_enabled": false,
-    "translate": true
+    "translate": true,
+    "rss_url": "https://www.nrk.no/toppsaker.rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "aftenposten",
     "name": "Aftenposten",
-    "url": "https://www.aftenposten.no/rss",
+    "url": "https://www.aftenposten.no/",
     "category": "nordic",
     "default_enabled": false,
-    "translate": true
+    "translate": true,
+    "rss_url": "https://www.aftenposten.no/rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "vg",
     "name": "VG",
-    "url": "https://www.vg.no/rss/feed",
+    "url": "https://www.vg.no/",
     "category": "nordic",
     "default_enabled": false,
-    "translate": true
+    "translate": true,
+    "rss_url": "https://www.vg.no/rss/feed",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "yle",
     "name": "Yle",
-    "url": "https://feeds.yle.fi/uutiset/v1/majorHeadlines/YLE_UUTISET.rss",
+    "url": "https://yle.fi/uutiset",
     "category": "nordic",
     "default_enabled": false,
-    "translate": true
+    "translate": true,
+    "rss_url": "https://feeds.yle.fi/uutiset/v1/majorHeadlines/YLE_UUTISET.rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "ruv",
     "name": "RÚV",
-    "url": "https://www.ruv.is/rss/frettir",
+    "url": "https://www.ruv.is/",
     "category": "nordic",
     "default_enabled": false,
-    "translate": true
+    "translate": true,
+    "rss_url": "https://www.ruv.is/rss/frettir",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "dr-copenhagen",
     "name": "DR Copenhagen",
-    "url": "https://www.dr.dk/nyheder/service/feeds/regionale/kbh",
+    "url": "https://www.dr.dk/nyheder/regionale/kbh",
     "category": "nordic",
     "default_enabled": false,
-    "translate": true
+    "translate": true,
+    "rss_url": "https://www.dr.dk/nyheder/service/feeds/regionale/kbh",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "tv2-kosmopol",
     "name": "TV 2 Kosmopol",
-    "url": "https://www.tv2kosmopol.dk/rss",
+    "url": "https://www.tv2kosmopol.dk/",
     "category": "nordic",
     "default_enabled": false,
-    "translate": true
+    "translate": true,
+    "rss_url": "https://www.tv2kosmopol.dk/rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "the-local-dk",
     "name": "The Local Denmark",
-    "url": "https://www.thelocal.dk/feeds/rss.php",
+    "url": "https://www.thelocal.dk/",
     "category": "nordic",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.thelocal.dk/feeds/rss.php",
+    "type": "rss",
+    "allow_scrape": false
   },
   {
     "id": "abc-news-au",
     "name": "ABC News Australia",
-    "url": "https://www.abc.net.au/news/feed/45910/rss.xml",
+    "url": "https://www.abc.net.au/news",
     "category": "australia",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.abc.net.au/news/feed/45910/rss.xml",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "guardian-australia",
     "name": "The Guardian Australia",
-    "url": "https://www.theguardian.com/australia-news/rss",
+    "url": "https://www.theguardian.com/australia-news",
     "category": "australia",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.theguardian.com/australia-news/rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "sbs-news",
     "name": "SBS News",
-    "url": "https://www.sbs.com.au/news/feed",
+    "url": "https://www.sbs.com.au/news",
     "category": "australia",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.sbs.com.au/news/feed",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "smh",
     "name": "The Sydney Morning Herald",
-    "url": "https://www.smh.com.au/rss/feed.xml",
+    "url": "https://www.smh.com.au/",
     "category": "australia",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.smh.com.au/rss/feed.xml",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "the-age",
     "name": "The Age",
-    "url": "https://www.theage.com.au/rss/feed.xml",
+    "url": "https://www.theage.com.au/",
     "category": "australia",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.theage.com.au/rss/feed.xml",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "crikey",
     "name": "Crikey",
-    "url": "https://www.crikey.com.au/feed/",
+    "url": "https://www.crikey.com.au/",
     "category": "australia",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.crikey.com.au/feed/",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "abc-business-au",
     "name": "ABC Business",
-    "url": "https://www.abc.net.au/news/feed/384350/rss.xml",
+    "url": "https://www.abc.net.au/news/business",
     "category": "australia",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.abc.net.au/news/feed/384350/rss.xml",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "afr",
     "name": "Australian Financial Review",
-    "url": "https://www.afr.com/rss/feed.xml",
+    "url": "https://www.afr.com/",
     "category": "australia",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.afr.com/rss/feed.xml",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "guardian-australia-business",
     "name": "The Guardian Australia Business",
-    "url": "https://www.theguardian.com/au/business/rss",
+    "url": "https://www.theguardian.com/au/business",
     "category": "australia",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.theguardian.com/au/business/rss",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "abc-sport-au",
     "name": "ABC Sport",
-    "url": "https://www.abc.net.au/news/feed/2942460/rss.xml",
+    "url": "https://www.abc.net.au/news/sport",
     "category": "australia",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.abc.net.au/news/feed/2942460/rss.xml",
+    "type": "rss",
+    "allow_scrape": true
   },
   {
     "id": "guardian-australia-sport",
     "name": "The Guardian Australia Sport",
-    "url": "https://www.theguardian.com/au/sport/rss",
+    "url": "https://www.theguardian.com/au/sport",
     "category": "australia",
-    "default_enabled": false
+    "default_enabled": false,
+    "rss_url": "https://www.theguardian.com/au/sport/rss",
+    "type": "rss",
+    "allow_scrape": true
   }
 ]

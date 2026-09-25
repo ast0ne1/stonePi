@@ -2,34 +2,35 @@
 {% from "_icons.html" import icon %}
 {% block title %}Now · SportGuide{% endblock %}
 {% block content %}
-<section class="hero">
+<section class="hero now-hero">
   <h1>Now</h1>
-  <p class="lede">Sports on TV and streams{% if city %} near {{ city }}{% endif %} · {{ local_now }} ({{ timezone }}).</p>
 </section>
 
-<div class="btn-row now-actions">
-  {% if can_refresh %}
-  <form method="post" action="/sources/refresh">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    <input type="hidden" name="next" value="now" />
-    <button class="btn btn-ghost btn-with-icon" type="submit"{% if refresh.running %} disabled{% endif %}
-      data-confirm="Refresh schedules from the web now? This can take a minute.">
-      {{ icon("refresh") }} {{ 'Refreshing…' if refresh.running else 'Refresh' }}
-    </button>
-  </form>
-  {% endif %}
-  {% if sport != 'all' or (league and league != 'all') %}
-  <a class="btn btn-ghost btn-with-icon" href="/?sport=all">{{ icon("clear") }} Clear filters</a>
-  {% endif %}
+<div class="page-status">
+  <p class="page-status-text">
+    {% if city %}Near {{ city }}{% else %}Your timezone{% endif %} · {{ local_now }} ({{ timezone }})
+  </p>
+  <button class="page-status-action" type="button" data-open-sheet="now-help" aria-label="About Now" title="About Now">
+    {{ icon("about") }}
+  </button>
 </div>
 
-<div class="sport-tiles" role="list">
-  {% for s in sports %}
-  <a class="sport-tile{% if sport == s.id %} is-active{% endif %}" href="/?sport={{ s.id }}{% if s.id == 'football' and league and league != 'all' %}&league={{ league|urlencode }}{% endif %}" role="listitem">
-    <img src="/static/img/sports/{{ s.image }}" alt="" width="40" height="40" />
-    <span>{{ s.label }}</span>
-  </a>
-  {% endfor %}
+<div class="chips-with-action">
+  <div class="chips now-sport-chips" role="list" aria-label="Sport filter">
+    {% for s in sports %}
+    <a class="chip-btn{% if sport == s.id %} is-active{% endif %}" href="/?sport={{ s.id }}{% if s.id == 'football' and league and league != 'all' %}&league={{ league|urlencode }}{% endif %}" role="listitem">
+      {% if s.id == 'all' %}
+      {{ icon("grid") }}
+      {% else %}
+      <img class="chip-sport-icon" src="/static/img/sports/{{ s.image }}" alt="" width="16" height="16" />
+      {% endif %}
+      <span>{{ s.label }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  <button class="chips-action" type="button" data-open-sheet="filters" aria-label="Choose sport" title="Choose sport">
+    {{ icon("sliders") }}
+  </button>
 </div>
 
 {% if sport == 'football' %}
@@ -46,7 +47,7 @@
 {% if not has_data %}
 <div class="empty card stack">
   <h2>No schedule yet</h2>
-  <p class="hint">Pull today’s listings from AusSportGuide and WheresTheMatch. Refresh runs at most once a day automatically, or whenever you ask.</p>
+  <p class="hint">Pull today’s listings from AusSportGuide and WheresTheMatch. Use the red Refresh button in the header, or refresh a source on Sources.</p>
   <a class="btn btn-primary btn-with-icon" href="/sources">{{ icon("sources") }} Open Sources</a>
 </div>
 {% elif not listings %}
@@ -57,19 +58,26 @@
 </div>
 {% else %}
   {% for g in groups %}
-  <section class="stack feed-section">
-    <h2 class="section-title">{{ g.label }}</h2>
+  <section class="now-section">
+    <h2 class="now-section-label">
+      {% if g.image %}
+      <img class="now-section-icon" src="/static/img/sports/{{ g.image }}" alt="" width="16" height="16" />
+      {% endif %}
+      <span>{{ g.label }}</span>
+    </h2>
     {% if g.subsections %}
       {% for sub in g.subsections %}
-      <h3 class="league-title">{{ sub.label }}</h3>
-      <ul class="listing-list">
+      {% if g.subsections|length > 1 %}
+      <h3 class="now-league-label">{{ sub.label }}</h3>
+      {% endif %}
+      <ul class="now-card listing-list">
         {% for row in sub.rows %}
         {% include "_listing_row.html" %}
         {% endfor %}
       </ul>
       {% endfor %}
     {% else %}
-      <ul class="listing-list">
+      <ul class="now-card listing-list">
         {% for row in g.rows %}
         {% include "_listing_row.html" %}
         {% endfor %}
@@ -78,4 +86,53 @@
   </section>
   {% endfor %}
 {% endif %}
+
+<div class="sheet" hidden data-sheet="filters">
+  <div class="sheet-card card stack">
+    <h2>Sport</h2>
+    <div class="filter-picker" role="listbox" aria-label="Sport">
+      {% for s in sports %}
+      <a class="filter-picker-option{% if sport == s.id %} is-active{% endif %}" href="/?sport={{ s.id }}{% if s.id == 'football' and league and league != 'all' %}&league={{ league|urlencode }}{% endif %}" role="option" aria-selected="{{ 'true' if sport == s.id else 'false' }}">
+        {% if s.id == 'all' %}
+        {{ icon("grid") }}
+        {% else %}
+        <img class="chip-sport-icon" src="/static/img/sports/{{ s.image }}" alt="" width="18" height="18" />
+        {% endif %}
+        <span>{{ s.label }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% if sport == 'football' %}
+    <h2>League</h2>
+    <div class="filter-picker" role="listbox" aria-label="Football league">
+      <a class="filter-picker-option{% if league == 'all' %} is-active{% endif %}" href="/?sport=football&league=all" role="option" aria-selected="{{ 'true' if league == 'all' else 'false' }}">
+        {{ icon("grid") }}
+        <span>All leagues</span>
+      </a>
+      {% for L in leagues %}
+      {% if L != 'all' %}
+      <a class="filter-picker-option{% if league == L %} is-active{% endif %}" href="/?sport=football&league={{ L|urlencode }}" role="option" aria-selected="{{ 'true' if league == L else 'false' }}">
+        <img class="chip-sport-icon" src="/static/img/sports/football.svg" alt="" width="18" height="18" />
+        <span>{{ L }}</span>
+      </a>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+    <div class="btn-row">
+      <button class="btn btn-ghost" type="button" data-close-sheet>Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet" hidden data-sheet="now-help">
+  <div class="sheet-card card stack">
+    <h2>About Now</h2>
+    <p class="hint">Shows matches that started up to 3 hours ago (still on) through the next {{ look_ahead_hours }} hours, in your local timezone{% if city %} ({{ city }}){% endif %}.</p>
+    <p class="hint">Times use {{ timezone }}. Change city and timezone under Settings. Live badges mark fixtures that have already kicked off in this window.</p>
+    <div class="btn-row">
+      <button class="btn btn-primary" type="button" data-close-sheet>Got it</button>
+    </div>
+  </div>
+</div>
 {% endblock %}

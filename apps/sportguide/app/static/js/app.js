@@ -220,6 +220,53 @@
     });
   });
 
+  function findSheet(name) {
+    if (name) return document.querySelector(`[data-sheet="${name}"]`);
+    return document.querySelector("[data-sheet]");
+  }
+
+  function mountSheetsToBody() {
+    document.querySelectorAll(".sheet").forEach((sheet) => {
+      if (sheet.parentElement !== document.body) document.body.appendChild(sheet);
+    });
+  }
+  mountSheetsToBody();
+
+  function openSheetEl(sheet) {
+    if (!sheet) return;
+    if (sheet.parentElement !== document.body) document.body.appendChild(sheet);
+    sheet.hidden = false;
+    sheet.classList.add("is-open");
+    document.documentElement.classList.add("sheet-open");
+    document.body.classList.add("sheet-open");
+  }
+
+  function closeSheetEl(sheet) {
+    if (!sheet) return;
+    sheet.hidden = true;
+    sheet.classList.remove("is-open");
+    if (!document.querySelector(".sheet.is-open")) {
+      document.documentElement.classList.remove("sheet-open");
+      document.body.classList.remove("sheet-open");
+    }
+  }
+
+  document.querySelectorAll("[data-open-sheet]").forEach((btn) => {
+    btn.addEventListener("click", () => openSheetEl(findSheet(btn.getAttribute("data-open-sheet") || "")));
+  });
+  document.querySelectorAll("[data-sheet]").forEach((sheet) => {
+    sheet.querySelectorAll("[data-close-sheet]").forEach((closeBtn) => {
+      closeBtn.addEventListener("click", () => closeSheetEl(sheet));
+    });
+    sheet.addEventListener("click", (event) => {
+      if (event.target === sheet) closeSheetEl(sheet);
+    });
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    document.querySelectorAll(".sheet.is-open[data-sheet]").forEach((sheet) => closeSheetEl(sheet));
+  });
+
   const form = document.querySelector("[data-chat-form]");
   if (!form) return;
   const thread = document.querySelector("[data-chat-thread]");

@@ -1,15 +1,27 @@
-<li class="listing-row">
-  <p class="listing-time">{{ row.local_time }}</p>
-  <div class="listing-body">
-    <p class="listing-title">{% if row.source_url %}<a class="offer-link" href="{{ row.source_url }}" target="_blank" rel="noopener noreferrer">{{ row.title }}</a>{% else %}{{ row.title }}{% endif %}</p>
-    {% if row.channels %}
-    <p class="channel-chips">
-      {% for ch in row.channels %}
-      <span class="channel-chip">{{ ch }}</span>
-      {% endfor %}
-    </p>
-    {% else %}
-    <p class="listing-meta">Check guide</p>
-    {% endif %}
+{% from "_icons.html" import icon %}
+<li class="listing-row{% if row.is_live %} is-live{% endif %}">
+  {% if row.source_url %}
+  <a class="listing-row-inner" href="{{ row.source_url }}" target="_blank" rel="noopener noreferrer">
+  {% else %}
+  <div class="listing-row-inner listing-row-inner--static">
+  {% endif %}
+    <div class="listing-when" aria-label="{{ row.local_time }}">
+      <span class="listing-day">{{ row.day_label }}</span>
+      <span class="listing-clock{% if row.is_live %} is-live{% endif %}">{{ row.time_label }}</span>
+    </div>
+    <div class="listing-body">
+      <p class="listing-title">{{ row.title }}</p>
+      <div class="listing-sub">
+        {% if row.is_live %}
+        <span class="live-badge"><span class="live-dot" aria-hidden="true"></span> LIVE</span>
+        {% endif %}
+        <span class="listing-channel">{{ icon("tv") }} <span>{{ row.channel_label }}</span></span>
+      </div>
+    </div>
+    <span class="listing-chevron" aria-hidden="true">{{ icon("chevron") }}</span>
+  {% if row.source_url %}
+  </a>
+  {% else %}
   </div>
+  {% endif %}
 </li>

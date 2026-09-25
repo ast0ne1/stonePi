@@ -45,7 +45,11 @@
                     <span class="feed-row-health-dot" aria-hidden="true"></span>
                     {{ feed.health_label }}
                   </p>
+                  <p class="feed-row-hint muted">Tap for settings</p>
                 </div>
+                <span class="feed-row-chevron" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+                </span>
               </div>
             </summary>
             <div class="feed-row-panel">
@@ -89,16 +93,21 @@
                   <label>
                     Source type
                     <select name="feed_type">
+                      {% if feed.allow_scrape %}
                       <option value="webpage" {% if (feed.type or 'rss') == 'webpage' %}selected{% endif %}>Scrape</option>
-                      <option value="rss" {% if (feed.type or 'rss') == 'rss' %}selected{% endif %}>RSS</option>
-                      {% if (feed.type or '') == 'auto' %}
+                      {% endif %}
+                      <option value="rss" {% if (feed.type or 'rss') == 'rss' or not feed.allow_scrape %}selected{% endif %}>RSS</option>
+                      {% if (feed.type or '') == 'auto' and feed.allow_scrape %}
                       <option value="auto" selected>Auto</option>
                       {% endif %}
                     </select>
                   </label>
+                  {% if not feed.allow_scrape %}
+                  <p class="hint schedule-span">This catalog source is RSS-only (scrape is not available).</p>
+                  {% endif %}
                   <label class="schedule-span">
                     Homepage / scrape URL
-                    <input type="url" name="homepage_url" value="{{ feed.homepage_url or '' }}" inputmode="url" autocomplete="off" placeholder="https://" />
+                    <input type="url" name="homepage_url" value="{{ feed.homepage_url or '' }}" inputmode="url" autocomplete="off" placeholder="https://" {% if not feed.allow_scrape %}readonly{% endif %} />
                   </label>
                   <label class="schedule-span">
                     RSS feed URL

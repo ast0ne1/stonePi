@@ -1,6 +1,8 @@
 from app.services.article_links import (
     DEFAULT_ARTICLE_LINK_LABEL,
     article_open_url,
+    briefing_article_open_button,
+    briefing_article_open_enabled,
     normalize_article_link_label,
 )
 
@@ -17,3 +19,8 @@ def test_normalize_article_link_label_defaults():
     assert normalize_article_link_label("") == DEFAULT_ARTICLE_LINK_LABEL
     assert normalize_article_link_label("  View story  ") == "View story"
     assert len(normalize_article_link_label("x" * 80)) == 40
+
+
+def test_briefing_open_flags_default_on():
+    assert briefing_article_open_enabled(None, None) is True
+    assert briefing_article_open_button(None, None) is True

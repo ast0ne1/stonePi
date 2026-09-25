@@ -558,6 +558,14 @@ h2 { font-family: var(--serif); font-size: 1.35rem; }
   align-items: center;
   gap: 6px;
   line-height: 1.1;
+  border: 1.5px solid var(--line);
+  box-sizing: border-box;
+}
+.chip-source-rss {
+  border-color: color-mix(in srgb, #2f6fed 55%, var(--line));
+}
+.chip-source-scrape {
+  border-color: color-mix(in srgb, #c45c26 60%, var(--line));
 }
 .story-kicker .chip-source {
   flex: 1 1 auto;
@@ -2162,10 +2170,21 @@ html.sheet-open body {
   gap: 8px;
   margin-top: 2px;
 }
+.story-card-actions .story-open-btn {
+  flex: 0 0 auto;
+  margin-right: auto;
+}
 .story-card-favs {
   display: flex;
   align-items: center;
   margin-left: auto;
+}
+.story-article-link {
+  display: none;
+  margin: 0 0 4px;
+}
+.story-card.is-expanded .story-article-link {
+  display: block;
 }
 .story-expand-btn {
   display: inline-flex;
@@ -2268,9 +2287,37 @@ html.sheet-open body {
 .feed-row-summary::marker { content: ""; }
 .feed-row-summary-inner {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 12px;
   align-items: flex-start;
+}
+.feed-row-hint {
+  margin: 4px 0 0;
+  font-size: 0.78rem;
+}
+.feed-row-chevron {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-top: 6px;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+.feed-row-chevron svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.feed-row-details[open] .feed-row-chevron {
+  transform: rotate(180deg);
+}
+.feed-row-details[open] .feed-row-hint {
+  display: none;
 }
 .feed-row-icon {
   width: 40px;

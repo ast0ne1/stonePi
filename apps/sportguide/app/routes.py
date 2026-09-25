@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from datetime import timezone
 from urllib.parse import quote
 
 from fastapi import APIRouter, Form, Request
@@ -10,7 +11,7 @@ from fastapi.templating import Jinja2Templates
 from app import __asset_rev__, __github__, __github_user__, __version__, db
 from app.config import COMMON_TIMEZONES, FOOTBALL_LEAGUES, ROOT_DIR, SPORTS, env
 from app.services import ingest
-from app.timeutil import format_local, timezone_choices, window_utc
+from app.timeutil import enrich_listing_row, format_local, timezone_choices, window_utc
 
 from stonepi_auth import login_url, logout_url
 from stonepi_auth.config import PlatformSettings
@@ -75,6 +76,12 @@ def _user_key(user) -> str:
     return str(getattr(user, "user_id", None) or getattr(user, "username", None) or "local")
 
 
+def _can_refresh(user) -> bool:
+    if not _session_secret():
+        return True
+    return bool(user and (user.is_admin or user.has_capability("sportguide", "can_refresh")))
+
+
 def _csrf_response(request: Request, name: str, ctx: dict) -> HTMLResponse:
     csrf = csrf_from_request(request.cookies)
     ctx["csrf_token"] = csrf
@@ -87,6 +94,9 @@ def _csrf_response(request: Request, name: str, ctx: dict) -> HTMLResponse:
     ctx.setdefault("app_github_user", __github_user__)
     ctx.setdefault("sso", bool(_session_secret()))
     ctx.setdefault("format_local", format_local)
+    ctx.setdefault("refresh", ingest.refresh_status())
+    if "can_refresh" not in ctx and "user" in ctx:
+        ctx["can_refresh"] = _can_refresh(ctx.get("user"))
     response = templates.TemplateResponse(request, name, ctx)
     set_csrf_cookie(response, csrf, secure=request_is_https(request))
     return response
@@ -110,6 +120,14 @@ def _group_listings(listings: list[dict], *, sport: str, league: str = "all") ->
     """Group for the feed: All → sport then league; football → league; single league → flat."""
     if not listings:
         return []
+    def _meta(sid: str, label: str | None = None) -> dict:
+        sport_meta = next((x for x in SPORTS if x["id"] == sid), None)
+        return {
+            "key": sid,
+            "label": label or (sport_meta["label"] if sport_meta else sid.title()),
+            "image": sport_meta["image"] if sport_meta else None,
+        }
+
     if sport == "all":
         by_sport: OrderedDict[str, list] = OrderedDict()
         order = ("afl", "cricket", "rugby", "football")
@@ -121,19 +139,20 @@ def _group_listings(listings: list[dict], *, sport: str, league: str = "all") ->
         for sid, rows in by_sport.items():
             if not rows:
                 continue
-            label = next((x["label"] for x in SPORTS if x["id"] == sid), sid.title())
+            meta = _meta(sid)
             if sid == "football":
                 subsections = _group_by_league(rows)
-                sections.append({"key": sid, "label": label, "subsections": subsections, "rows": []})
+                sections.append({**meta, "subsections": subsections, "rows": []})
             else:
-                sections.append({"key": sid, "label": label, "subsections": [], "rows": rows})
+                sections.append({**meta, "subsections": [], "rows": rows})
         return sections
     if sport == "football":
+        meta = _meta("football")
         if league and league != "all":
-            return [{"key": "football", "label": league, "subsections": [], "rows": listings}]
-        return [{"key": "football", "label": "Football", "subsections": _group_by_league(listings), "rows": []}]
-    label = next((x["label"] for x in SPORTS if x["id"] == sport), sport.title())
-    return [{"key": sport, "label": label, "subsections": [], "rows": listings}]
+            return [{**meta, "label": league, "subsections": [], "rows": listings}]
+        return [{**meta, "subsections": _group_by_league(listings), "rows": []}]
+    meta = _meta(sport)
+    return [{**meta, "subsections": [], "rows": listings}]
 
 
 def _group_by_league(rows: list[dict]) -> list[dict]:
@@ -198,13 +217,12 @@ def now_page(
         starts_to=end,
         limit=250,
     )
+    now_utc = local_now.astimezone(timezone.utc)
     for row in listings:
         row["local_time"] = format_local(row["starts_at"], tz)
+        enrich_listing_row(row, tz, now=now_utc)
     groups = _group_listings(listings, sport=sport, league=league)
-    can_refresh = bool(
-        not _session_secret()
-        or (user and (user.is_admin or user.has_capability("sportguide", "can_refresh")))
-    )
+    can_refresh = _can_refresh(user)
     return _csrf_response(
         request,
         "now.html",
@@ -235,17 +253,20 @@ def sources_page(request: Request, msg: str | None = None, error: str | None = N
     user, denied = _require_user(request)
     if denied:
         return denied
-    can_refresh = bool(
-        not _session_secret()
-        or (user and (user.is_admin or user.has_capability("sportguide", "can_refresh")))
-    )
+    can_refresh = _can_refresh(user)
+    from app.services import favicon
+
+    sources = db.list_sources()
+    icons = favicon.map_for_sources([s["id"] for s in sources])
+    for s in sources:
+        s["favicon"] = icons.get(s["id"])
     return _csrf_response(
         request,
         "sources.html",
         {
             "user": user,
             "active": "sources",
-            "sources": db.list_sources(),
+            "sources": sources,
             "refresh": ingest.refresh_status(),
             "message": msg,
             "error": error,
@@ -259,7 +280,7 @@ async def sources_refresh(request: Request, csrf_token: str = Form(""), next: st
     user, denied = _require_user(request)
     if denied:
         return denied
-    if _session_secret() and user and not user.is_admin and not user.has_capability("sportguide", "can_refresh"):
+    if not _can_refresh(user):
         return HTMLResponse("Missing capability: can_refresh", status_code=403)
     if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
         dest = "/" if next == "now" else "/sources"
@@ -268,6 +289,21 @@ async def sources_refresh(request: Request, csrf_token: str = Form(""), next: st
     if next == "now":
         return _redirect("/", msg="Refresh started")
     return _redirect("/sources", msg="Refresh started")
+
+
+@router.post("/sources/{source_id}/refresh")
+async def source_refresh_one(request: Request, source_id: str, csrf_token: str = Form("")):
+    user, denied = _require_user(request)
+    if denied:
+        return denied
+    if not _can_refresh(user):
+        return HTMLResponse("Missing capability: can_refresh", status_code=403)
+    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+        return _redirect("/sources", error="Invalid session token")
+    if source_id not in ingest.COLLECTORS:
+        return _redirect("/sources", error="Unknown source")
+    ingest.refresh_one_async(source_id)
+    return _redirect("/sources", msg=f"Refreshing {source_id}…")
 
 
 @router.get("/settings", response_class=HTMLResponse)

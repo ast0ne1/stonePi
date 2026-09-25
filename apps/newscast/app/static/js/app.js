@@ -945,6 +945,8 @@ if (settingsRoot) {
         iconHost.innerHTML = iconSrc.innerHTML;
       }
       row.querySelector(".settings-hub-title").textContent = panel.label;
+      row.querySelector(".settings-hub-sub").textContent =
+        panel.subtext || "Open this section";
       panelListRows.appendChild(row);
     });
   }

@@ -8,6 +8,7 @@ from urllib.parse import urljoin
 import dateparser
 from bs4 import BeautifulSoup
 
+from app.services.cost import UNSPECIFIED_COST
 from app.services.scrapers.base import BaseScraper, ScrapedEvent
 
 logger = logging.getLogger("eventtrakr.scrapers.schema_org")
@@ -47,7 +48,7 @@ def _extract_location(loc_obj: Any) -> str:
 
 def _extract_cost(offers: Any) -> str:
     if not offers:
-        return "Free / Unspecified"
+        return UNSPECIFIED_COST
     if isinstance(offers, dict):
         currency = offers.get("priceCurrency", "")
         price = offers.get("price")
@@ -75,7 +76,7 @@ def _extract_cost(offers: Any) -> str:
                 return str(low).strip()
     elif isinstance(offers, list) and offers:
         return _extract_cost(offers[0])
-    return "Free / Unspecified"
+    return UNSPECIFIED_COST
 
 
 class SchemaOrgExtractor(BaseScraper):

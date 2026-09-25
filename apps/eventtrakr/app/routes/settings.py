@@ -37,6 +37,38 @@ SETTINGS_LEDES = {
     "update": "Check GitHub Releases and install a newer zip.",
     "about": "App name, description, GitHub, and the version running here.",
 }
+SETTINGS_HUB_SUBTEXTS = {
+    "general": "Location and account password.",
+    "privacy": "Public agenda and favourites.",
+    "schedule": "How often sources sync.",
+    "filters": "Words to keep or drop.",
+    "categories": "Labels for events and sources.",
+    "calendar": "Google Calendar push.",
+    "providers": "Scraper API keys.",
+    "network": "Hostname and local HTTPS.",
+    "users": "Local household accounts.",
+    "update": "Check GitHub Releases.",
+    "about": "Version and project links.",
+}
+SETTINGS_HUB_LEDE = "Everything that shapes your calendar, in one place."
+SETTINGS_GROUPS = (
+    ("your_calendar", "Your calendar", ("privacy", "calendar")),
+    ("sources_sync", "Sources & sync", ("schedule", "filters", "categories", "providers")),
+    ("app", "App", ("general", "network", "users", "update", "about")),
+)
+SETTINGS_TAB_ICONS = {
+    "general": "sliders",
+    "privacy": "lock",
+    "schedule": "refresh",
+    "filters": "filter",
+    "categories": "tag",
+    "calendar": "calendar",
+    "providers": "key",
+    "network": "wifi",
+    "users": "users",
+    "update": "refresh",
+    "about": "about",
+}
 PLATFORM_HIDDEN_SETTINGS_TABS = frozenset({"users", "update"})
 PLATFORM_MANAGED_MESSAGE = "Household accounts and updates are managed in StonePi."
 
@@ -54,16 +86,33 @@ def _settings_tabs_for(user) -> list[tuple[str, str]]:
     return [item for item in SETTINGS_TABS if item[0] not in hidden]
 
 
+def _settings_groups_for(user) -> list[tuple[str, str, list[tuple[str, str, str]]]]:
+    allowed = {key: label for key, label in _settings_tabs_for(user)}
+    groups: list[tuple[str, str, list[tuple[str, str, str]]]] = []
+    for group_id, label, tab_keys in SETTINGS_GROUPS:
+        rows = [
+            (key, allowed[key], SETTINGS_HUB_SUBTEXTS.get(key, SETTINGS_LEDES.get(key, "")))
+            for key in tab_keys
+            if key in allowed
+        ]
+        if rows:
+            groups.append((group_id, label, rows))
+    return groups
+
+
 @bp.route("")
 @bp.route("/")
 @auth.login_required
 def view_settings():
     user = auth.get_current_user()
-    active_tab = request.args.get("tab", "general")
+    raw_tab = (request.args.get("tab") or "").strip()
+    settings_hub = raw_tab == "" or raw_tab.lower() == "hub"
     tabs = _settings_tabs_for(user)
     allowed = {key for key, _ in tabs}
-    if active_tab not in allowed:
-        active_tab = "general"
+    if settings_hub:
+        active_tab = next(iter(allowed), "general")
+    else:
+        active_tab = raw_tab if raw_tab in allowed else "general"
     platform_managed = _platform_managed()
 
     with SessionLocal() as db:
@@ -101,8 +150,12 @@ def view_settings():
         "settings.html",
         user=user,
         settings_tabs=tabs,
+        settings_groups=_settings_groups_for(user),
+        settings_hub=settings_hub,
+        settings_hub_lede=SETTINGS_HUB_LEDE,
+        settings_tab_icons=SETTINGS_TAB_ICONS,
         active_tab=active_tab,
-        settings_lede=SETTINGS_LEDES.get(active_tab, ""),
+        settings_lede=SETTINGS_HUB_LEDE if settings_hub else SETTINGS_LEDES.get(active_tab, ""),
         settings_ledes=SETTINGS_LEDES,
         platform_managed=platform_managed,
         db_user=db_user,
@@ -129,16 +182,7 @@ def view_settings():
         app_version=app_version,
         app_github_user=__github_user__,
         app_github=__github__,
-        interval_choices=[
-            (15, "Every 15 minutes"),
-            (30, "Every 30 minutes"),
-            (60, "Every hour"),
-            (120, "Every 2 hours"),
-            (240, "Every 4 hours"),
-            (360, "Every 6 hours"),
-            (720, "Every 12 hours"),
-            (1440, "Every 24 hours"),
-        ],
+        interval_choices=settings.INTERVAL_CHOICES,
         env=env,
     )
 

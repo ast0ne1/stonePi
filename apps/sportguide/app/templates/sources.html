@@ -7,17 +7,12 @@
   <p class="lede">AusSportGuide for AFL, Cricket and Rugby. WheresTheMatch for Football in Europe.</p>
 </section>
 
-<form method="post" action="/sources/refresh" class="btn-row">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-  <button class="btn btn-primary btn-with-icon" type="submit"{% if refresh.running or not can_refresh %} disabled{% endif %}
-    data-confirm="Refresh schedules from the web now? This can take a minute.">
-    {{ icon("refresh") }} {{ 'Refreshing…' if refresh.running else 'Refresh now' }}
-  </button>
-</form>
-<p class="hint">
-  Last refreshed: {{ refresh.last_ok_at or 'never' }}.
-  Automatic refresh: once per day. Otherwise only when you tap Refresh.
-</p>
+<div class="page-status">
+  <p class="page-status-text">
+    Last refreshed: {{ refresh.last_ok_at or 'never' }}.
+    Automatic refresh: once per day. Use the header button for all sources, or refresh one card at a time.
+  </p>
+</div>
 {% if refresh.last_error %}<p class="banner">{{ refresh.last_error }}</p>{% endif %}
 
 <ul class="source-list">
@@ -25,6 +20,9 @@
   <li class="card source-card">
     <div class="source-head">
       <div class="source-identity">
+        {% if s.favicon %}
+        <img class="store-icon" src="{{ s.favicon }}" alt="" width="36" height="36" />
+        {% endif %}
         <div>
           <h2>{{ s.name }}</h2>
           <p class="hint">
@@ -37,6 +35,21 @@
           {% if s.last_error %}<p class="banner">{{ s.last_error }}</p>{% endif %}
         </div>
       </div>
+      {% if can_refresh %}
+      <form method="post" action="/sources/{{ s.id }}/refresh" class="source-refresh">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <button
+          class="icon-btn icon-btn-quiet{% if refresh.running %} is-busy{% endif %}"
+          type="submit"
+          aria-label="Refresh {{ s.name }}"
+          title="Refresh this source"
+          {% if refresh.running %}disabled{% endif %}
+          data-confirm="Refresh {{ s.name }} from the web now? This can take a minute."
+        >
+          {{ icon("refresh") }}
+        </button>
+      </form>
+      {% endif %}
     </div>
   </li>
   {% endfor %}

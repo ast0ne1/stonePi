@@ -8,6 +8,7 @@ import httpx
 from bs4 import BeautifulSoup
 import dateparser
 
+from app.services.cost import UNSPECIFIED_COST, is_unspecified_cost
 from app.services.scrapers.base import BaseScraper, ScrapedEvent
 from app.services.scrapers.schema_org import SchemaOrgExtractor
 
@@ -80,7 +81,7 @@ class EventbriteExtractor(BaseScraper):
             # skeleton in the raw HTML, but check it anyway in case a future
             # markup change ships it server-rendered.
             cost_el = card.select_one('[class*="priceWrapper"] p')
-            cost = cost_el.get_text(strip=True) if cost_el else "Free / Unspecified"
+            cost = cost_el.get_text(strip=True) if cost_el else UNSPECIFIED_COST
 
             events.append(
                 ScrapedEvent(
@@ -113,7 +114,7 @@ class EventbriteExtractor(BaseScraper):
         return deduped
 
     def _fill_missing_prices(self, events: list[ScrapedEvent], base_url: str) -> None:
-        pending = [ev for ev in events if ev.cost == "Free / Unspecified" and ev.url][:MAX_PRICE_LOOKUPS]
+        pending = [ev for ev in events if is_unspecified_cost(ev.cost) and ev.url][:MAX_PRICE_LOOKUPS]
         if not pending:
             return
 
@@ -126,7 +127,7 @@ class EventbriteExtractor(BaseScraper):
                         if resp.status_code != 200:
                             continue
                         detail_events = schema_extractor.extract(resp.text, ev.url)
-                        if detail_events and detail_events[0].cost != "Free / Unspecified":
+                        if detail_events and not is_unspecified_cost(detail_events[0].cost):
                             ev.cost = detail_events[0].cost
                     except Exception as e:
                         logger.debug("Eventbrite price lookup failed for %s: %s", ev.url, e)

@@ -25,6 +25,9 @@ TICK_MINUTES = 5
 
 
 def source_interval_minutes(source: EventSource, global_minutes: int) -> int:
+    custom = settings_service.get_source_schedule(source, global_minutes)
+    if custom and custom.get("mode") == "interval":
+        return max(15, custom["interval_minutes"])
     if source.schedule_mode == "custom" and source.interval_minutes and source.interval_minutes > 0:
         return max(15, source.interval_minutes)
     return max(15, global_minutes)
@@ -49,28 +52,27 @@ def _last_weekly_trigger(days: list[str], times: list[str], now_local: datetime)
     return max(candidates) if candidates else None
 
 
-def _is_due(source: EventSource, global_schedule: dict, now_utc: datetime, now_local: datetime) -> bool:
-    if source.schedule_mode == "custom":
-        interval = source_interval_minutes(source, global_schedule.get("interval_minutes", 60))
-        if not source.last_fetched_at:
-            return True
-        elapsed_minutes = (now_utc - source.last_fetched_at).total_seconds() / 60
-        return elapsed_minutes >= interval
-
-    if global_schedule.get("mode") == "weekly":
-        last_trigger = _last_weekly_trigger(global_schedule["days"], global_schedule["times"], now_local)
+def _is_due_for_config(config: dict, last_fetched_at: datetime | None, now_utc: datetime, now_local: datetime) -> bool:
+    if config.get("mode") == "weekly":
+        last_trigger = _last_weekly_trigger(config["days"], config["times"], now_local)
         if last_trigger is None:
             return False
-        if not source.last_fetched_at:
+        if not last_fetched_at:
             return True
-        return source.last_fetched_at.astimezone(now_local.tzinfo) < last_trigger
+        return last_fetched_at.astimezone(now_local.tzinfo) < last_trigger
 
-    if not source.last_fetched_at:
+    if not last_fetched_at:
         return True
-    interval = max(15, global_schedule.get("interval_minutes", 60))
-    elapsed_minutes = (now_utc - source.last_fetched_at).total_seconds() / 60
+    interval = max(15, config.get("interval_minutes", 60))
+    elapsed_minutes = (now_utc - last_fetched_at).total_seconds() / 60
     return elapsed_minutes >= interval
 
+
+def _is_due(source: EventSource, global_schedule: dict, now_utc: datetime, now_local: datetime) -> bool:
+    custom = settings_service.get_source_schedule(source, global_schedule.get("interval_minutes", 60))
+    if custom is not None:
+        return _is_due_for_config(custom, source.last_fetched_at, now_utc, now_local)
+    return _is_due_for_config(global_schedule, source.last_fetched_at, now_utc, now_local)
 
 def _scheduled_tick() -> None:
     """Runs every TICK_MINUTES. Syncs only sources that are due, based on
