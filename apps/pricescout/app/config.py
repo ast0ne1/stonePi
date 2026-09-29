@@ -9,12 +9,13 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_DATA_DIR = ROOT_DIR / "data"
 
 # eTilbudsavis / Tjek dealer ids (DK groceries)
+# slug = path on https://etilbudsavis.dk/{slug} for the store’s current leaflets
 STORES: tuple[dict[str, str], ...] = (
-    {"id": "netto", "name": "Netto", "dealer_id": "9ba51"},
-    {"id": "lidl", "name": "Lidl", "dealer_id": "71c90"},
-    {"id": "discount365", "name": "365discount", "dealer_id": "DWZE1w"},
-    {"id": "foetex", "name": "føtex", "dealer_id": "bdf5A"},
-    {"id": "kvickly", "name": "Kvickly", "dealer_id": "c1edq"},
+    {"id": "netto", "name": "Netto", "dealer_id": "9ba51", "slug": "netto"},
+    {"id": "lidl", "name": "Lidl", "dealer_id": "71c90", "slug": "lidl"},
+    {"id": "discount365", "name": "365discount", "dealer_id": "DWZE1w", "slug": "365discount"},
+    {"id": "foetex", "name": "føtex", "dealer_id": "bdf5A", "slug": "fotex"},
+    {"id": "kvickly", "name": "Kvickly", "dealer_id": "c1edq", "slug": "kvickly"},
 )
 
 CATEGORIES: tuple[str, ...] = (

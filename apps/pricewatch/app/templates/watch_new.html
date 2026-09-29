@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_filter_icon.html" import filter_icon %}
+{% block title %}Add watch · PriceWatch{% endblock %}
+{% block content %}
+<section class="hero">
+  {% if selected %}<a class="settings-back" href="/watches/new{% if q %}?q={{ q|urlencode }}{% endif %}">&larr; Results</a>{% endif %}
+  <h1>{% if selected %}Set your target{% else %}Add a watch{% endif %}</h1>
+  <div class="page-status">
+    <p class="page-status-text">{% if selected %}Pick the price you’d pay and how often to check.{% else %}Search for a product, then pick the exact model.{% endif %}</p>
+  </div>
+</section>
+
+{% if not selected %}
+<form method="get" action="/watches/new" class="card stack search-card">
+  <input type="hidden" name="source_id" value="{{ source_id }}" />
+  <label>
+    Product
+    <span class="search-field">
+      <input type="search" name="q" value="{{ q }}" placeholder="e.g. Sony WH-1000XM6" autocomplete="off" enterkeyhint="search" {% if not q %}autofocus{% endif %} />
+      <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("search") }} Search</button>
+    </span>
+  </label>
+</form>
+
+{% if hits %}
+<section>
+  <h2 class="section-label">{{ hits|length }} match{{ 'es' if hits|length != 1 }}</h2>
+  <ul class="group-card">
+    {% for h in hits %}
+    <li class="watch-row">
+      <a class="watch-row-link" href="/watches/new?q={{ q|urlencode }}&product_id={{ h.product_id }}&source_id={{ h.source_id }}">
+        {% if h.image_url %}
+        <img class="watch-thumb" src="{{ h.image_url }}" alt="" width="40" height="40" loading="lazy" />
+        {% else %}
+        <span class="watch-thumb watch-thumb-fallback" aria-hidden="true">{{ filter_icon("offers") }}</span>
+        {% endif %}
+        <span class="watch-row-copy">
+          <span class="watch-row-title">{{ h.name }}</span>
+          {% if h.manufacturer or h.variant %}
+          <span class="watch-row-meta">{{ h.manufacturer or '' }}{% if h.manufacturer and h.variant %} · {% endif %}{{ h.variant or '' }}</span>
+          {% endif %}
+        </span>
+        {% if h.lowest_price is not none %}
+        <span class="watch-row-price">
+          <span class="watch-row-meta">from</span>
+          <strong>{{ format_price(h.lowest_price, h.currency) }}</strong>
+        </span>
+        {% endif %}
+        <span class="watch-row-chevron" aria-hidden="true">{{ filter_icon("chevron") }}</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% elif q %}
+<div class="empty card stack">
+  <h2 class="section-heading">{{ filter_icon("search") }} No products found</h2>
+  <p class="hint">Nothing matched “{{ q }}”. Try the model name without colour or storage, e.g. “WH-1000XM6”.</p>
+</div>
+{% endif %}
+{% endif %}
+
+{% if selected %}
+<form method="post" action="/watches/new" class="card stack configure-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+  <input type="hidden" name="source_id" value="{{ selected.source_id or source_id }}" />
+  <input type="hidden" name="product_id" value="{{ selected.product_id }}" />
+  <input type="hidden" name="product_name" value="{{ selected.name }}" />
+  <input type="hidden" name="variant" value="{{ selected.variant or '' }}" />
+  <input type="hidden" name="manufacturer" value="{{ selected.manufacturer or '' }}" />
+  <input type="hidden" name="image_url" value="{{ selected.image_url or '' }}" />
+  <input type="hidden" name="product_url" value="{{ selected.product_url or '' }}" />
+
+  <div class="watch-hero">
+    {% if selected.image_url %}<img class="watch-thumb" src="{{ selected.image_url }}" alt="" width="40" height="40" />{% endif %}
+    <div class="watch-row-copy">
+      <span class="watch-row-title">{{ selected.name }}</span>
+      {% if selected.variant or selected.manufacturer %}
+      <span class="watch-row-meta">{{ selected.manufacturer or '' }}{% if selected.manufacturer and selected.variant %} · {% endif %}{{ selected.variant or '' }}</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <h2 class="section-heading">{{ filter_icon("target") }} Target</h2>
+  <label>
+    Target price (DKK)
+    <input name="target_price" type="number" inputmode="numeric" step="1" min="1" required placeholder="2000" />
+  </label>
+  <label>
+    Condition
+    <select name="condition">
+      {% for c in condition_options %}
+      <option value="{{ c.id }}" {% if c.id == default_condition %}selected{% endif %}>{{ c.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="check">
+    <input type="checkbox" name="in_stock_required" value="1" {% if default_in_stock %}checked{% endif %} />
+    In stock required
+  </label>
+  <label>
+    Check
+    <select name="schedule_minutes">
+      {% for s in schedule_options %}
+      <option value="{{ s.minutes }}" {% if s.minutes == default_schedule %}selected{% endif %}>{{ s.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("check") }} Start watching</button>
+</form>
+{% endif %}
+{% endblock %}

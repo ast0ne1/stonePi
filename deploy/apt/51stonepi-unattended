@@ -1,0 +1,14 @@
+// StonePi unattended-upgrades — security pocket only.
+// Installed to /etc/apt/apt.conf.d/51stonepi-unattended by install.sh.
+// Major OS upgrades and StonePi app zips stay manual / Dashboard Updates.
+
+Unattended-Upgrade::Origins-Pattern {
+        "origin=Debian,codename=${distro_codename}-security";
+        "origin=Debian,codename=${distro_codename},label=Debian-Security";
+        "origin=Raspbian,codename=${distro_codename},label=Raspbian";
+        "origin=Raspberry Pi Foundation,codename=${distro_codename},label=Raspberry Pi Foundation";
+};
+Unattended-Upgrade::AutoFixInterruptedDpkg "true";
+Unattended-Upgrade::MinimalSteps "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "false";
+Unattended-Upgrade::Automatic-Reboot "false";

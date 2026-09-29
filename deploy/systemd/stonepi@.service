@@ -1,14 +1,16 @@
 [Unit]
 Description=StonePi %i
-After=network-online.target
+After=network-online.target stonepi-auth.service
 Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
 EnvironmentFile=/etc/stonepi/stonepi.env
 WorkingDirectory=/opt/stonepi/apps/%i
 ExecStart=/opt/stonepi/apps/%i/.venv/bin/python -m app.serve
-Restart=on-failure
+Restart=always
 RestartSec=5
 NoNewPrivileges=yes
 

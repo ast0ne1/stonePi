@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+
+{% block content %}
+<section class="hero">
+  <h1>Reminders</h1>
+  <p class="lede">Due dates and who is on the hook.</p>
+</section>
+
+<section class="card stack" id="add-reminder">
+  <h2>Add reminder</h2>
+  <form method="post" action="/reminder" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <label>
+      Reminder
+      <input id="reminder-text" name="text" placeholder="Call plumber" required autocomplete="off" {% if focus_new %}autofocus{% endif %} />
+    </label>
+    <label>
+      Due date
+      <input type="date" name="due" />
+    </label>
+    <label>
+      Assignee
+      {% if people %}
+      <select name="assignee_user">
+        <option value="">Anyone (household)</option>
+        {% for person in people %}
+        <option value="{{ person.id }}">{{ person.name }}</option>
+        {% endfor %}
+      </select>
+      {% else %}
+      <input name="assignee" placeholder="Optional" autocomplete="off" />
+      {% endif %}
+    </label>
+    <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("plus") }} Add reminder</button>
+  </form>
+</section>
+
+<section class="card stack" id="reminders">
+  <h2>Upcoming</h2>
+  {% for item in items.reminders %}
+  <div class="list-row">
+    <span class="list-text">
+      <span class="kind-pill kind-reminder">Reminder</span>
+      {{ item.text }}{% if item.due %} · {{ item.due }}{% endif %}{% if item.assignee %} · {{ item.assignee }}{% endif %}
+    </span>
+    {% if user and user.is_admin %}
+    <form
+      method="post"
+      action="/delete/reminder/{{ item.id }}"
+      data-confirm="Remove this reminder?"
+      data-confirm-detail="It will no longer appear on Display."
+      data-confirm-ok="Remove"
+    >
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="next" value="/reminders" />
+      <button class="btn btn-ghost btn-with-icon" type="submit">{{ icon("trash") }} Remove</button>
+    </form>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <h3>No reminders yet</h3>
+    <p class="hint">Track due dates and who is on the hook.</p>
+  </div>
+  {% endfor %}
+</section>
+{% endblock %}

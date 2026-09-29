@@ -5,9 +5,9 @@
 <section class="hero hero-row hero-row-inline">
   <h1>{{ t("Sources") }}</h1>
   {% if can_add_custom_sources %}
-  <button class="btn btn-secondary btn-with-icon" type="button" data-open-sheet="add-source">
+  <button class="btn btn-secondary btn-with-icon" type="button" data-open-sheet="add-source" aria-label="Add a source" title="Add a source">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-    <span>Add feed</span>
+    <span>Add</span>
   </button>
   {% endif %}
 </section>

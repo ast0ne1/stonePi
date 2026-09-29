@@ -1,6 +1,7 @@
 import json
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlparse
 
@@ -28,7 +29,9 @@ from app.auth import (
     session_from_request,
 )
 from app.config import ROOT_DIR, env
+from stonepi_auth.brand import fonts_rev
 from stonepi_auth import is_public_exposure
+from stonepi_auth.alerts import add_shared_templates, bell_context, notifications_card_context
 from stonepi_auth.http import portal_home_url
 from app.db import get_db
 from app.models import Feed, LibraryFile, Story, SyncTask, User, utcnow
@@ -36,16 +39,20 @@ from app.services import article_links, backup, favicon, hostname, i18n, library
 from app.services import users as users_service
 from app.services import user_settings as user_settings_service
 from app.services.briefing import (
+    briefing_day_label,
+    briefing_day_options,
     briefing_path,
     briefing_publish_at,
+    canonical_briefing_day,
     current_saved_stories,
     current_stories,
     format_published,
-    normalize_briefing_day,
     normalize_publish_at,
     paper_status,
     publish_daily_briefing,
+    search_outlets,
     search_stories,
+    story_breakdown,
 )
 from app.services.health import feed_health, feed_health_label
 from app.services.system_stats import status_health
@@ -55,15 +62,18 @@ from app.services import saved as saved_articles
 from app.services.catalog import catalog_with_status, grouped_catalog
 from app.services import catalog as catalog_service
 from app.services.categories import category_labels, list_categories, group_feeds_by_category
-from app.services.ingest import snapshot, start_ingest
+from app.services.ingest import request_stop, snapshot, start_ingest
+from app.services.text_cleanup import TEXT_CLEANUP_CHOICES, normalize_text_cleanup
 from app.services import categories as category_service
 from app.services import packages as package_service
 from stonepi_auth.csrf import csrf_from_request, csrf_ok, set_csrf_cookie
-from stonepi_auth.session import CSRF_COOKIE
+from stonepi_auth.session import COOKIE_NAME, CSRF_COOKIE
 
 public = APIRouter()
 router = APIRouter(dependencies=[Depends(require_admin)])
 templates = Jinja2Templates(directory=str(ROOT_DIR / "app" / "templates"))
+templates.env.globals.update(asset_rev=__asset_rev__, fonts_rev=fonts_rev())
+add_shared_templates(templates.env)
 logger = logging.getLogger("newscast.ui")
 
 SETTINGS_TABS = (
@@ -102,7 +112,6 @@ SETTINGS_SAVE_TABS = {
     "translation",
     "llm",
     "reader",
-    "notifications",
     "update",
 }
 SETTINGS_LEDES = {
@@ -112,8 +121,8 @@ SETTINGS_LEDES = {
     "filters": "Words to keep or drop across every source. A feed can add more on Feeds.",
     "translation": "Choose the language Translate feeds land in, and whether Google or your LLM does the work.",
     "llm": "OpenAI or Ollama for short summaries and optional translation. Refresh still works without a model.",
-    "reader": "Your reader device: Xteink with CrossPoint, or Kobo with KOReader. Host, upload folder, and push when on Wi-Fi are per account.",
-    "notifications": "Phone alerts via ntfy when the paper is published or reaches the reader.",
+    "reader": "Your reader device: Xteink with CrossPoint or CrossInk, or Kobo with KOReader. Host, upload folder, and push when on Wi-Fi are per account.",
+    "notifications": "Your phone alerts when your paper is published or reaches your reader.",
     "categories": "Built-in groups stay. Add a country or topic, then fill it from Catalog.",
     "catalog": "Import a country or industry package, or export one of your categories as JSON to share.",
     "users": "Household accounts. Edit each person’s access, reset passwords, or show a one-time login QR.",
@@ -130,7 +139,7 @@ SETTINGS_HUB_SUBTEXTS = {
     "translation": "Target language for Translate feeds.",
     "llm": "OpenAI or Ollama for summaries.",
     "reader": "Device, catalog login, and sync.",
-    "notifications": "ntfy connection and alerts.",
+    "notifications": "Your phone alerts.",
     "categories": "Topics that shape the paper.",
     "catalog": "Import packages and approvals.",
     "users": "Household accounts and access.",
@@ -173,10 +182,6 @@ SETTINGS_SECTION_PANELS: dict[str, tuple[tuple[str, str, tuple[str, ...]], ...]]
         ("device", "Device", ("reader-device",)),
         ("sync", "Sync", ("reader-sync",)),
     ),
-    "notifications": (
-        ("connection", "Connection", ("connection",)),
-        ("alerts", "Alerts", ("alerts",)),
-    ),
     "users": (
         ("people", "People", ("people",)),
         ("add", "Add", ("add",)),
@@ -203,7 +208,6 @@ SETTINGS_PANEL_ICONS: dict[str, str] = {
     "device": "reader",
     "sync": "update",
     "connection": "network",
-    "alerts": "notifications",
     "people": "users",
     "add": "users",
     "repo": "update",
@@ -225,8 +229,7 @@ SETTINGS_PANEL_SUBTEXTS: dict[str, str] = {
     "approvals": "Pending catalog requests",
     "device": "Reader host and folder",
     "sync": "Push when online",
-    "connection": "ntfy server and topic",
-    "alerts": "Which events to notify",
+    "connection": "Manage your personal alerts",
     "people": "Household accounts",
     "add": "Create a new account",
     "repo": "GitHub release source",
@@ -246,35 +249,26 @@ def normalize_settings_tab(value: str | None) -> str:
 def settings_tabs_for(
     role: str | None,
     *,
-    can_use_ntfy: bool = False,
     platform_managed: bool | None = None,
 ) -> tuple[tuple[str, str], ...]:
-    if role == "admin":
-        tabs = SETTINGS_TABS
-    else:
-        tabs = USER_SETTINGS_TABS
-        if not can_use_ntfy:
-            tabs = tuple((key, label) for key, label in tabs if key != "notifications")
+    tabs = SETTINGS_TABS if role == "admin" else USER_SETTINGS_TABS
     if platform_managed is None:
         platform_managed = platform_managed_settings()
     if platform_managed:
         tabs = tuple((key, label) for key, label in tabs if key not in PLATFORM_HIDDEN_SETTINGS_TABS)
+    else:
+        # Phone alerts only exist under StonePi sign-in (Notify + the Notifications page).
+        tabs = tuple((key, label) for key, label in tabs if key != "notifications")
     return tabs
 
 
 def settings_groups_for(
     role: str | None,
     *,
-    can_use_ntfy: bool = False,
     platform_managed: bool | None = None,
 ) -> tuple[tuple[str, str, tuple[tuple[str, str, str], ...]], ...]:
     """Grouped hub rows: (group_id, label, ((tab_key, tab_label, subtext), ...))."""
-    allowed = {
-        key: label
-        for key, label in settings_tabs_for(
-            role, can_use_ntfy=can_use_ntfy, platform_managed=platform_managed
-        )
-    }
+    allowed = {key: label for key, label in settings_tabs_for(role, platform_managed=platform_managed)}
     groups: list[tuple[str, str, tuple[tuple[str, str, str], ...]]] = []
     for group_id, label, tab_keys in SETTINGS_GROUPS:
         rows = tuple(
@@ -333,27 +327,11 @@ def normalize_settings_tab_for_role(
     value: str | None,
     role: str | None,
     *,
-    can_use_ntfy: bool = False,
     platform_managed: bool | None = None,
 ) -> str:
     key = normalize_settings_tab(value)
-    allowed = {
-        tab
-        for tab, _ in settings_tabs_for(
-            role, can_use_ntfy=can_use_ntfy, platform_managed=platform_managed
-        )
-    }
+    allowed = {tab for tab, _ in settings_tabs_for(role, platform_managed=platform_managed)}
     return key if key in allowed else "device"
-
-
-def _session_can_use_ntfy(db: Session, request: Request) -> bool:
-    session = session_from_request(request)
-    if not session:
-        return False
-    if session.role == "admin":
-        return True
-    user = db.get(User, session.user_id) if session.user_id else None
-    return users_service.user_may_use_ntfy(user)
 
 
 def _session_can_view_status(db: Session, request: Request) -> bool:
@@ -366,15 +344,15 @@ def _session_can_view_status(db: Session, request: Request) -> bool:
     return users_service.user_may_view_status(user)
 
 
-DEVICE_NEXT = {"/device?tab=status", "/device?tab=send", "/status", "/library"}
+DEVICE_NEXT = {"/device?tab=status", "/device?tab=send", "/device?tab=library", "/status", "/library"}
 SOURCES_NEXT = {"/sources?tab=feeds", "/sources?tab=catalog", "/feeds", "/catalog"}
 
 
 def _normalize_device_next(nxt: str) -> str:
     if nxt in {"/status", "/device?tab=status"}:
         return "/device?tab=status"
-    if nxt in {"/library", "/device?tab=send"}:
-        return "/device?tab=send"
+    if nxt in {"/library", "/device?tab=library"}:
+        return "/device?tab=library"
     return nxt
 
 
@@ -403,6 +381,19 @@ def settings_path(tab: str | None = "device", panel: str | None = None) -> str:
 
 def _current_user_id(request: Request) -> int:
     return effective_user_id(session_from_request(request))
+
+
+def _owned(db: Session, model, item_id: int, request: Request):
+    """Row ``item_id`` of ``model`` if it belongs to the signed-in account, else None.
+
+    Another household member's row is treated exactly like a missing one, so
+    per-item actions never confirm, change, or delete someone else's data.
+    Admins included: no page acts on other members' items.
+    """
+    item = db.get(model, item_id)
+    if item is None or int(getattr(item, "user_id", None) or 1) != _current_user_id(request):
+        return None
+    return item
 
 
 def _resolve_page_lang(request: Request, db: Session) -> str:
@@ -442,11 +433,21 @@ def _story_categories(db: Session, user_id: int | None = None) -> dict[str, str]
 
 
 def _base_context(request: Request, db: Session, active: str) -> dict:
+    from app.auth import _platform_user
+    from stonepi_auth.session import factory_admin_warning
+
     ingest = snapshot()
     llm = settings.llm_config(db)
     uid = _current_user_id(request)
     session = session_from_request(request)
     lang = settings.resolve_ui_lang(db, user_id=session.user_id if session else None)
+    managed = platform_managed_settings()
+    platform_user = _platform_user(request) if managed else None
+    if managed:
+        factory = factory_admin_warning(platform_user)
+    else:
+        factory = settings.using_factory_admin(db)
+    home_url = portal_home_url(request, env.stonepi_public_origin)
     return {
         "request": request,
         "active": active,
@@ -454,7 +455,7 @@ def _base_context(request: Request, db: Session, active: str) -> dict:
         "has_openai_key": llm.provider == "openai" and llm.ready,
         "llm_ready": llm.ready,
         "llm_provider": llm.provider,
-        "using_factory_admin": settings.using_factory_admin(db),
+        "using_factory_admin": factory,
         "app_name": "NewsCast",
         "app_version": __version__,
         "asset_rev": __asset_rev__,
@@ -470,8 +471,15 @@ def _base_context(request: Request, db: Session, active: str) -> dict:
         "article_link_label": article_links.article_link_label(db, uid if session else None),
         "paywall_skip_enabled": article_links.paywall_skip_enabled(db),
         "stonepi_prefix": (env.stonepi_prefix or "").rstrip("/"),
-        "stonepi_home_url": portal_home_url(request, env.stonepi_public_origin),
-        "platform_managed": platform_managed_settings(),
+        "stonepi_home_url": home_url,
+        "platform_managed": managed,
+        "platform_user": platform_user,
+        "alerts_bell_state": bell_context(
+            platform_user,
+            session_cookie=request.cookies.get(COOKIE_NAME),
+            home_url=home_url,
+            enabled=managed,
+        ),
     }
 
 
@@ -657,7 +665,7 @@ def logout_submit():
 @router.get("/")
 def briefing_page(request: Request, db: Annotated[Session, Depends(get_db)], day: str = "today"):
     uid = _current_user_id(request)
-    briefing_day = normalize_briefing_day(day)
+    briefing_day = canonical_briefing_day(day)
     stories = [story for story in current_stories(db, day=briefing_day, user_id=uid) if not story.saved]
     categories = _story_categories(db, uid)
     icons = favicon.map_for_feeds(db.query(Feed).filter(Feed.user_id == uid).all())
@@ -686,6 +694,8 @@ def briefing_page(request: Request, db: Annotated[Session, Depends(get_db)], day
             "category_labels": category_labels(db),
             "retention_days": env.story_retention_days,
             "briefing_day": briefing_day,
+            "briefing_day_label": briefing_day_label(briefing_day),
+            "briefing_day_options": briefing_day_options(db, user_id=uid),
             "paper": paper_status(db, user_id=uid),
             "briefing_article_open_enabled": article_links.briefing_article_open_enabled(db, uid),
             "briefing_article_open_button": article_links.briefing_article_open_button(db, uid),
@@ -701,7 +711,7 @@ def toggle_favourite(
     db: Annotated[Session, Depends(get_db)],
     day: Annotated[str, Form()] = "today",
 ):
-    story = db.get(Story, story_id)
+    story = _owned(db, Story, story_id, request)
     nxt = briefing_path(day)
     if story is None:
         if _wants_json(request):
@@ -727,7 +737,7 @@ def save_story_longread(
     db: Annotated[Session, Depends(get_db)],
     day: Annotated[str, Form()] = "today",
 ):
-    story = db.get(Story, story_id)
+    story = _owned(db, Story, story_id, request)
     nxt = briefing_path(day)
     if story is None:
         return _form_error(request, "Story not found.", nxt, 404)
@@ -736,7 +746,9 @@ def save_story_longread(
             return JSONResponse({"ok": True, "saved": True, "message": "Already on Saved."})
         return RedirectResponse("/saved", status_code=303)
     try:
-        saved_articles.save_article(db, story.canonical_url, "7", "", origin=saved_articles.ORIGIN_BRIEFING)
+        saved_articles.save_article(
+            db, story.canonical_url, "7", "", origin=saved_articles.ORIGIN_BRIEFING, user_id=story.user_id
+        )
     except ValueError as exc:
         return _form_error(request, str(exc), nxt)
     if _wants_json(request):
@@ -745,10 +757,15 @@ def save_story_longread(
 
 
 @router.get("/search")
-def search_page(request: Request, db: Annotated[Session, Depends(get_db)], q: str = ""):
+def search_page(request: Request, db: Annotated[Session, Depends(get_db)], q: str = "", source: str = ""):
     uid = _current_user_id(request)
     query = (q or "").strip()
-    stories = search_stories(db, query, user_id=uid) if query else []
+    outlets = search_outlets(db, user_id=uid)
+    outlet = (source or "").strip()
+    if outlet not in {name for name, _count in outlets}:
+        outlet = ""
+    searched = bool(query or outlet)
+    stories = search_stories(db, query, user_id=uid, source=outlet) if searched else []
     categories = _story_categories(db, uid)
     icons = favicon.map_for_feeds(db.query(Feed).filter(Feed.user_id == uid).all())
     icons.update(favicon.map_for_stories(stories))
@@ -774,6 +791,10 @@ def search_page(request: Request, db: Annotated[Session, Depends(get_db)], q: st
         {
             **_base_context(request, db, "search"),
             "query": query,
+            "outlet": outlet,
+            "outlets": outlets,
+            "searched": searched,
+            "retention_days": env.story_retention_days,
             "stories": stories,
         },
         db=db,
@@ -821,7 +842,9 @@ def save_article_form(
     custom_date: Annotated[str, Form()] = "",
 ):
     try:
-        story = saved_articles.save_article(db, url, keep_days, custom_date, origin=saved_articles.ORIGIN_MANUAL)
+        story = saved_articles.save_article(
+            db, url, keep_days, custom_date, origin=saved_articles.ORIGIN_MANUAL, user_id=_current_user_id(request)
+        )
     except ValueError as exc:
         return _form_error(request, str(exc), "/saved")
     if _wants_json(request):
@@ -831,7 +854,7 @@ def save_article_form(
 
 @router.post("/saved/{story_id}/delete")
 def delete_saved_article(story_id: int, request: Request, db: Annotated[Session, Depends(get_db)]):
-    story = db.get(Story, story_id)
+    story = _owned(db, Story, story_id, request)
     if story is None or not story.saved:
         return _form_error(request, "That saved article was not found.", "/saved", 404)
     db.delete(story)
@@ -875,7 +898,8 @@ def _feeds_panel_context(request: Request, db: Session) -> dict:
             feed.schedule_label = "Global schedule"
         type_label = "Scrape" if feed.type == "webpage" else ("RSS" if feed.type == "rss" else "Auto")
         article_label = "Summarise" if feed.summarize is not False else "Full article"
-        feed.meta_line = f"{type_label} · {article_label} · {feed.schedule_label}"
+        cleanup = " · Strict cleanup" if (getattr(feed, "text_cleanup", None) or "standard") == "strict" else ""
+        feed.meta_line = f"{type_label} · {article_label}{cleanup} · {feed.schedule_label}"
     return {
         **_base_context(request, db, "sources"),
         "sources_tab": "feeds",
@@ -887,6 +911,7 @@ def _feeds_panel_context(request: Request, db: Session) -> dict:
         "global_interval": global_interval,
         "global_interval_label": settings.format_interval_short(global_interval),
         "translate_modes": FEED_PROVIDER_CHOICES,
+        "text_cleanup_choices": TEXT_CLEANUP_CHOICES,
         "global_translate_provider": settings.translate_provider(db),
         "can_add_custom_sources": can_add_custom,
         "paywall_skip_enabled": article_links.paywall_skip_enabled(db),
@@ -912,6 +937,7 @@ def _catalog_panel_context(request: Request, db: Session) -> dict:
         .all(),
         "category_labels": category_labels(db),
         "translate_modes": FEED_PROVIDER_CHOICES,
+        "text_cleanup_choices": TEXT_CLEANUP_CHOICES,
         "can_add_custom_sources": can_add_custom,
         "is_admin": is_admin,
         "global_interval_label": settings.format_interval_short(
@@ -924,27 +950,29 @@ def _status_panel_context(request: Request, db: Session) -> dict:
     uid = _current_user_id(request)
     session = session_from_request(request)
     username = (session.username if session else "") or settings.get_value(db, "admin_username") or "admin"
-    story_count = db.query(Story).filter(Story.user_id == uid).count()
-    share_url = hostname.get_share_url(db)
+    breakdown = story_breakdown(db, user_id=uid)
+    story_count = breakdown["total"]
     reader = reader_push.snapshot(db, probe=False, user_id=uid)
     delivery = delivery_status(db, user_id=uid)
     public_base = hostname.get_public_base_url(db)
     opds_path = f"/opds/u/{username}"
+    opds_url = f"{public_base}{opds_path}"
     x3_path = f"/api/x3/u/{username}"
     return {
         **_base_context(request, db, "device"),
         "device_tab": "status",
         "story_count": story_count,
+        "story_breakdown": breakdown,
+        "briefing_min_importance": settings.briefing_min_importance(db),
         "reader": reader,
         "delivery": delivery,
         "public_base_url": public_base,
-        "opds_url": f"{public_base}{opds_path}",
+        "opds_url": opds_url,
         "opds_path": opds_path,
         "x3_news_url": f"{public_base}{x3_path}/news",
         "x3_path": x3_path,
-        "share_url": share_url,
-        "lan_url": hostname.get_lan_url(db),
-        "qr_svg": qrcode.svg_for(share_url),
+        # Shown on demand from the catalog card (Show QR code), not as its own panel.
+        "catalog_qr_svg": qrcode.svg_for(opds_url),
         "request_base_url": str(request.base_url).rstrip("/"),
         "instance_name": settings.get_value(db, "instance_name"),
         "x3_catalog_login": settings.catalog_login_enabled(db),
@@ -953,7 +981,7 @@ def _status_panel_context(request: Request, db: Session) -> dict:
             user_settings_service.get_value(db, uid, "x3_sync_token")
             or settings.get_value(db, "x3_sync_token")
         ),
-        "update_check": update.last_check(db),
+        "update_check": {} if platform_managed_settings() else update.last_check(db),
         "paper": paper_status(db, user_id=uid),
         "reader_device": reader_config.reader_device(db, uid),
         "health": status_health(db),
@@ -963,11 +991,53 @@ def _status_panel_context(request: Request, db: Session) -> dict:
 
 def _send_panel_context(request: Request, db: Session) -> dict:
     uid = _current_user_id(request)
+    reader = reader_push.snapshot(db, probe=False, user_id=uid)
+    today = datetime.now().astimezone().date()
+    from app.services.delivery import briefing_day_for_task, briefing_pushed_today
+
+    paper_waiting = any(
+        briefing_day_for_task(task) == today and not reader_push._is_library_task(task)
+        for task in reader_push.pending_crosspoint(db, user_id=uid)
+    )
     return {
         **_base_context(request, db, "device"),
         "device_tab": "send",
-        "library_files": _library_items(db, uid),
-        "reader": reader_push.snapshot(db, probe=False, user_id=uid),
+        "reader": reader,
+        "paper": paper_status(db, user_id=uid),
+        "paper_waiting": paper_waiting,
+        "paper_pushed": briefing_pushed_today(db, today, user_id=uid),
+    }
+
+
+def _library_panel_context(request: Request, db: Session) -> dict:
+    uid = _current_user_id(request)
+    waiting = {
+        str(Path(task.file_path)) for task in reader_push.pending_crosspoint(db, user_id=uid) if task.file_path
+    }
+    # Latest completed upload per file that NewsCast hasn't since removed from the reader.
+    sent: dict[str, datetime] = {}
+    uploads = (
+        db.query(SyncTask)
+        .filter(SyncTask.user_id == uid)
+        .filter(SyncTask.kind == "crosspoint")
+        .filter(SyncTask.status == "complete")
+        .filter(SyncTask.removed_at.is_(None))
+        .all()
+    )
+    for task in uploads:
+        key = str(Path(task.file_path)) if task.file_path else ""
+        if key and task.completed_at and (key not in sent or task.completed_at > sent[key]):
+            sent[key] = task.completed_at
+    files = _library_items(db, uid)
+    for item in files:
+        path = item.pop("path", "")
+        item["waiting"] = path in waiting
+        when = sent.get(path)
+        item["sent_label"] = when.strftime("%d %b").lstrip("0") if when else ""
+    return {
+        **_base_context(request, db, "device"),
+        "device_tab": "library",
+        "library_files": files,
     }
 
 
@@ -984,12 +1054,14 @@ def device_page(request: Request, db: Annotated[Session, Depends(get_db)], tab: 
     raw = (tab or "").strip().lower()
     if raw == "status" and can_status:
         device_tab = "status"
-    elif raw == "send":
-        device_tab = "send"
+    elif raw in {"send", "library"}:
+        device_tab = raw
     else:
         device_tab = "status" if can_status else "send"
     if device_tab == "status":
         return render(request, "device.html", _status_panel_context(request, db), db=db)
+    if device_tab == "library":
+        return render(request, "device.html", _library_panel_context(request, db), db=db)
     return render(request, "device.html", _send_panel_context(request, db), db=db)
 
 
@@ -1004,6 +1076,8 @@ def activity_status(request: Request, db: Annotated[Session, Depends(get_db)]):
             "ok": True,
             "ingest": {
                 "running": bool(ingest.get("running")),
+                "stoppable": bool(ingest.get("stoppable")),
+                "stopping": bool(ingest.get("stopping")),
                 "progress": ingest.get("progress") or "",
                 "last_message": ingest.get("last_message") or "",
                 "last_error": ingest.get("last_error") or "",
@@ -1014,6 +1088,16 @@ def activity_status(request: Request, db: Annotated[Session, Depends(get_db)]):
                 "active_label": reader.get("active_label") or "",
                 "online": reader.get("online"),
                 "checked": bool(reader.get("checked")),
+                "sending": bool(reader.get("sending")),
+                # Per-item status lines for Reader → Send → Queue (refreshed in place).
+                "queue": [
+                    {"task_id": item["task_id"], "state": item["state"], "status_label": item["status_label"]}
+                    for item in reader.get("queue") or []
+                ],
+                "recent": [
+                    {"task_id": item["task_id"], "state": item["state"], "status_label": item["status_label"]}
+                    for item in reader.get("recent") or []
+                ],
             },
             "recent_sync": recent,
         }
@@ -1039,7 +1123,7 @@ def status_page(request: Request, db: Annotated[Session, Depends(get_db)]):
 
 @router.get("/library")
 def library_page():
-    return RedirectResponse("/device?tab=send", status_code=303)
+    return RedirectResponse("/device?tab=library", status_code=303)
 
 
 
@@ -1053,16 +1137,13 @@ def _settings_page_context(
 ) -> dict:
     session = session_from_request(request)
     role = session.role if session else "user"
-    can_ntfy = _session_can_use_ntfy(db, request)
     platform_managed = platform_managed_settings()
     is_admin = role == "admin"
     settings_hub = bool(hub)
     if settings_hub:
         settings_tab = "device"
     else:
-        settings_tab = normalize_settings_tab_for_role(
-            tab, role, can_use_ntfy=can_ntfy, platform_managed=platform_managed
-        )
+        settings_tab = normalize_settings_tab_for_role(tab, role, platform_managed=platform_managed)
     section_panels = settings_section_panels_for(
         settings_tab, is_admin=is_admin, platform_managed=platform_managed
     )
@@ -1089,26 +1170,24 @@ def _settings_page_context(
             for panel_id, label, cards in panels
         ]
     uid = _current_user_id(request)
-    ntfy.migrate_user_ntfy_from_instance(db, uid)
-    user_server = user_settings_service.get_value(db, uid, "ntfy_server").strip()
-    household_server = settings.get_value(db, "ntfy_server") or "https://ntfy.sh"
+    base = _base_context(request, db, "settings")
     return {
-        **_base_context(request, db, "settings"),
+        **base,
+        "notifications_card_state": notifications_card_context(
+            "newscast",
+            base["platform_user"],
+            home_url=base["stonepi_home_url"].rstrip("/"),
+        ),
         "settings_hub": settings_hub,
         "settings_tab": settings_tab,
         "settings_panel": settings_panel,
         "settings_section_panels": section_panels,
         "settings_panels_by_tab": panels_by_tab,
-        "settings_groups": settings_groups_for(
-            role, can_use_ntfy=can_ntfy, platform_managed=platform_managed
-        ),
+        "settings_groups": settings_groups_for(role, platform_managed=platform_managed),
         "settings_hub_lede": SETTINGS_HUB_LEDE,
         "settings_hub_subtexts": SETTINGS_HUB_SUBTEXTS,
-        "settings_tabs": settings_tabs_for(
-            role, can_use_ntfy=can_ntfy, platform_managed=platform_managed
-        ),
+        "settings_tabs": settings_tabs_for(role, platform_managed=platform_managed),
         "is_admin": is_admin,
-        "can_use_ntfy": can_ntfy,
         "platform_managed": platform_managed,
         "settings_save_tabs": SETTINGS_SAVE_TABS,
         "settings_lede": SETTINGS_HUB_LEDE if settings_hub else SETTINGS_LEDES[settings_tab],
@@ -1127,7 +1206,7 @@ def _settings_page_context(
         "x3_catalog_username": settings.catalog_username(db),
         "public_exposure": is_public_exposure(),
         "x3_device_id": settings.get_value(db, "x3_device_id"),
-        "device_hostname": hostname.normalize_hostname(settings.get_value(db, "device_hostname")),
+        "device_hostname": hostname.device_hostname(),
         "app_port": env.port,
         "refresh_intervals": settings.REFRESH_INTERVALS,
         "global_interval": settings.get_int(db, "ingest_interval_minutes", env.ingest_interval_minutes),
@@ -1146,9 +1225,11 @@ def _settings_page_context(
         "epub_chapters_by_source": settings.epub_chapters_by_source(db),
         "epub_x3_screen": settings.epub_x3_screen(db),
         "epub_toc_outline_numbers": settings.epub_toc_outline_numbers(db),
-        "epub_cover_first": settings.epub_cover_first(db),
-        "github_repo": update.repo_from_db(db),
-        "update_check": update.last_check(db),
+        "epub_contents_detail": settings.epub_contents_detail(db),
+        "epub_contents_details": settings.EPUB_CONTENTS_DETAILS,
+        "epub_contents_limit": settings.epub_contents_limit(db),
+        "github_repo": "" if platform_managed_settings() else update.repo_from_db(db),
+        "update_check": {} if platform_managed_settings() else update.last_check(db),
         "categories": list_categories(db),
         "export_categories": list_categories(db),
         "latest_backup": backup.latest_backup(),
@@ -1184,13 +1265,6 @@ def _settings_page_context(
         "reader_title_preview": paper_naming.paper_display_title(db, date.today()),
         "reader_category_title_preview": paper_naming.paper_category_display_title(db, date.today(), "Tech"),
         "delivery": delivery_status(db, user_id=uid),
-        "ntfy_enabled": user_settings_service.flag_enabled(db, uid, "ntfy_enabled"),
-        "ntfy_server": user_server or household_server,
-        "ntfy_household_server": household_server,
-        "ntfy_topic": user_settings_service.get_with_fallback(db, uid, "ntfy_topic"),
-        "ntfy_token": user_settings_service.secret_hint(db, uid, "ntfy_token"),
-        "ntfy_notify_on_publish": user_settings_service.flag_enabled(db, uid, "ntfy_notify_on_publish"),
-        "ntfy_notify_on_push": user_settings_service.flag_enabled(db, uid, "ntfy_notify_on_push"),
         "https_enabled": settings.https_enabled(db),
         "tls_status": tls.certificate_status(db),
         "tls_download_url": f"{str(request.base_url).rstrip('/')}/settings/tls/root-ca.pem",
@@ -1251,38 +1325,70 @@ def upload_library_file(
         )
     except ValueError as exc:
         return _form_error(request, str(exc), "/library")
+    message = "Added to Library (OPDS). Not sent to the reader."
+    if queue:
+        result = reader_push.flush_pending(db, user_id=_current_user_id(request))
+        if not result.get("online"):
+            message = "Added to Library. It will send when the reader is on Wi-Fi."
+        elif result.get("uploaded"):
+            message = "Added to Library and sent to the reader."
+        else:
+            message = "Added to Library. It is waiting in Send."
     if _wants_json(request):
-        message = (
-            "Added to Library and queued for the reader."
-            if queue
-            else "Added to Library (OPDS). Not queued for the reader."
-        )
         return JSONResponse({"ok": True, "message": message})
-    return RedirectResponse("/device?tab=send", status_code=303)
+    return RedirectResponse("/device?tab=library", status_code=303)
+
+
+def _send_queued_now(db: Session, uid: int, task: SyncTask, what: str) -> str:
+    """After queuing ``task``, try to upload straight away and say what happened to it.
+
+    "Send to reader" means send now: if the reader is asleep the item simply waits in
+    the queue and goes out on the next push. Push now remains for "everything waiting".
+    """
+    result = reader_push.flush_pending(db, user_id=uid)
+    if not result.get("online"):
+        return f"{what} is queued. It will send when the reader is on Wi-Fi."
+    db.refresh(task)
+    if task.status == "complete":
+        if result.get("skipped") and not result.get("uploaded"):
+            return f"{what} is already on the reader."
+        return f"{what} sent to the reader."
+    if task.status == "failed":
+        return f"Couldn’t send {what[0].lower() + what[1:]}: {task.error_message or 'unknown error'}"
+    if task.error_message and (task.attempts or 0) > 0:
+        return f"Couldn’t send {what[0].lower() + what[1:]}: {task.error_message.rstrip('.')}. NewsCast will try again."
+    return f"{what} is queued."
 
 
 @router.post("/library/{file_id}/push")
 def push_library_file(file_id: int, request: Request, db: Annotated[Session, Depends(get_db)]):
-    item = db.get(LibraryFile, file_id)
+    item = _owned(db, LibraryFile, file_id, request)
     if item is None:
         return _form_error(request, "File not found.", "/library", status_code=404)
     try:
-        library.enqueue_library_file(db, item)
+        task = library.enqueue_library_file(db, item)
     except FileNotFoundError as exc:
         return _form_error(request, str(exc), "/library")
+    message = _send_queued_now(db, _current_user_id(request), task, item.title or "File")
     if _wants_json(request):
-        return JSONResponse({"ok": True, "message": "Queued for the reader."})
-    return RedirectResponse("/device?tab=send", status_code=303)
+        return JSONResponse({"ok": True, "message": message})
+    return RedirectResponse("/device?tab=library", status_code=303)
 
 
 @router.post("/reader/poll")
 def poll_reader(request: Request, db: Annotated[Session, Depends(get_db)], next: Annotated[str, Form()] = "/library"):
-    nxt = _reader_redirect_next(db, request, next, default="/library")
+    nxt = _reader_redirect_next(db, request, next)
     uid = _current_user_id(request)
     host = reader_push.reader_host(db, user_id=uid)
     online = reader_push.reader_reachable(host, db=db, user_id=uid)
     reader_push.remember_probe(host, online)
     message = f"{host} is {'online' if online else 'asleep'}."
+    # Push when online is on: a reader that answers gets its queue straight away.
+    if online and reader_config.reader_push_enabled(db, uid) and reader_push.pending_crosspoint(db, user_id=uid):
+        result = reader_push.flush_pending(db, user_id=uid)
+        sent = int(result.get("uploaded") or 0) + int(result.get("skipped") or 0)
+        if sent:
+            message += f" Sent {sent} file{'s' if sent != 1 else ''} from the queue."
     if _wants_json(request):
         return JSONResponse({"ok": True, "message": message, "online": online, "host": host})
     return RedirectResponse(nxt, status_code=303)
@@ -1290,12 +1396,14 @@ def poll_reader(request: Request, db: Annotated[Session, Depends(get_db)], next:
 
 @router.post("/reader/push")
 def push_reader_now(request: Request, db: Annotated[Session, Depends(get_db)], next: Annotated[str, Form()] = "/status"):
-    nxt = _reader_redirect_next(db, request, next, default="/library")
+    nxt = _reader_redirect_next(db, request, next)
     uid = _current_user_id(request)
     # Flush only what is already queued — do not sneak in today's paper or re-queue every library file.
     pending_before = len(reader_push.pending_crosspoint(db, user_id=uid))
     result = reader_push.flush_pending(db, user_id=uid)
-    if result.get("online"):
+    if result.get("busy"):
+        message = "A push to the reader is already running. Anything still waiting goes on the next try."
+    elif result.get("online"):
         message = f"Pushed {result.get('uploaded', 0)} file{'s' if result.get('uploaded') != 1 else ''} to the reader."
         if pending_before == 0 and result.get("uploaded", 0) == 0:
             message = "Nothing waiting to push. Queue a file or publish today's paper first."
@@ -1306,7 +1414,9 @@ def push_reader_now(request: Request, db: Annotated[Session, Depends(get_db)], n
             .order_by(SyncTask.completed_at.desc())
             .first()
         )
-        if result.get("uploaded", 0) == 0 and failed and failed.error_message:
+        if result.get("uploaded", 0) == 0 and result.get("errors"):
+            message = f"Couldn’t send: {result['errors'][0]}"
+        elif result.get("uploaded", 0) == 0 and failed and failed.error_message:
             message = f"Couldn’t send: {failed.error_message}"
     else:
         message = "Reader is asleep. Files are queued until it is on Wi-Fi."
@@ -1321,20 +1431,32 @@ def queue_reader_later(
     db: Annotated[Session, Depends(get_db)],
     next: Annotated[str, Form()] = "/status",
     include_paper: Annotated[str, Form()] = "",
+    include_library: Annotated[str, Form()] = "1",
 ):
-    nxt = _reader_redirect_next(db, request, next, default="/library")
+    nxt = _reader_redirect_next(db, request, next)
     uid = _current_user_id(request)
-    want_paper = str(include_paper or "").strip().lower() in {"1", "on", "true", "yes"}
-    # Send tab: library files only. Status can opt in to today's paper via include_paper.
+    truthy = {"1", "on", "true", "yes"}
+    want_paper = str(include_paper or "").strip().lower() in truthy
+    want_library = str(include_library or "").strip().lower() in truthy
+    # Send → Today's paper posts include_paper=1, include_library=0 (the paper alone).
     tasks = reader_push.enqueue_briefing_and_library(
         db,
         user_id=uid,
         include_briefing=want_paper,
-        include_library=True,
+        include_library=want_library,
     )
-    message = f"Queued {len(tasks)} file{'s' if len(tasks) != 1 else ''} for when the reader is on Wi-Fi."
-    if want_paper and not paper_status(db, user_id=uid)["published"]:
-        message += " Today's paper is not published yet — library files were still queued."
+    published = paper_status(db, user_id=uid)["published"]
+    if want_paper and not want_library:
+        # Send → Today's paper → Send to reader: queue it, then send straight away.
+        message = (
+            _send_queued_now(db, uid, tasks[0], "Today’s paper")
+            if tasks
+            else "Today's paper isn't ready to send yet. Generate it first."
+        )
+    else:
+        message = f"Queued {len(tasks)} file{'s' if len(tasks) != 1 else ''} for when the reader is on Wi-Fi."
+        if want_paper and not published:
+            message += " Today's paper is not published yet — library files were still queued."
     if _wants_json(request):
         return JSONResponse(
             {"ok": True, "message": message, "pending": len(reader_push.pending_crosspoint(db, user_id=uid))}
@@ -1349,7 +1471,7 @@ def cancel_reader_queue(
     db: Annotated[Session, Depends(get_db)],
     next: Annotated[str, Form()] = "/status",
 ):
-    nxt = _reader_redirect_next(db, request, next, default="/library")
+    nxt = _reader_redirect_next(db, request, next)
     if not reader_push.cancel_pending(db, task_id, user_id=_current_user_id(request)):
         return _form_error(request, "That queued file was already gone.", nxt)
     if _wants_json(request):
@@ -1359,7 +1481,7 @@ def cancel_reader_queue(
 
 @router.post("/reader/publish")
 def publish_reader_paper(request: Request, db: Annotated[Session, Depends(get_db)], next: Annotated[str, Form()] = "/status"):
-    nxt = _reader_redirect_next(db, request, next, default="/library")
+    nxt = _reader_redirect_next(db, request, next)
     uid = _current_user_id(request)
     from app.services.briefing import current_stories
 
@@ -1381,12 +1503,13 @@ def publish_reader_paper(request: Request, db: Annotated[Session, Depends(get_db
 
 @router.post("/library/{file_id}/delete")
 def delete_library_file_form(file_id: int, request: Request, db: Annotated[Session, Depends(get_db)]):
-    item = db.get(LibraryFile, file_id)
-    if item:
-        library.delete_library_file(db, item)
+    item = _owned(db, LibraryFile, file_id, request)
+    if item is None:
+        return _form_error(request, "File not found.", "/library", status_code=404)
+    library.delete_library_file(db, item)
     if _wants_json(request):
         return JSONResponse({"ok": True, "message": "Removed from the library."})
-    return RedirectResponse("/device?tab=send", status_code=303)
+    return RedirectResponse("/device?tab=library", status_code=303)
 
 
 @router.get("/api/ollama/models")
@@ -1411,7 +1534,16 @@ def ollama_models(
 
 @router.post("/ingest")
 def ingest_form(request: Request):
-    result = start_ingest(force=True)
+    # manual=True: the only kind of refresh the top-bar Stop button can halt.
+    result = start_ingest(force=True, manual=True)
+    if _wants_json(request):
+        return JSONResponse(result)
+    return RedirectResponse("/", status_code=303)
+
+
+@router.post("/ingest/stop")
+def ingest_stop_form(request: Request):
+    result = request_stop()
     if _wants_json(request):
         return JSONResponse(result)
     return RedirectResponse("/", status_code=303)
@@ -1506,8 +1638,9 @@ def save_feed_schedule(
     feed_type: Annotated[str, Form()] = "",
     homepage_url: Annotated[str, Form()] = "",
     rss_url: Annotated[str, Form()] = "",
+    text_cleanup: Annotated[str | None, Form()] = None,
 ):
-    feed = db.get(Feed, feed_id)
+    feed = _owned(db, Feed, feed_id, request)
     if feed is None:
         if _wants_json(request):
             return JSONResponse({"ok": False, "message": "Feed not found."}, status_code=404)
@@ -1585,6 +1718,8 @@ def save_feed_schedule(
     feed.paywall_skip = bool(paywall_skip) and article_links.paywall_skip_enabled(db)
     feed.keyword_include = keyword_include.strip()
     feed.keyword_exclude = keyword_exclude.strip()
+    if text_cleanup is not None:
+        feed.text_cleanup = normalize_text_cleanup(text_cleanup)
     db.commit()
     if _wants_json(request):
         return JSONResponse({"ok": True, "message": "Source settings saved."})
@@ -1593,7 +1728,7 @@ def save_feed_schedule(
 
 @router.post("/feeds/{feed_id}/mute")
 def mute_feed(feed_id: int, request: Request, db: Annotated[Session, Depends(get_db)]):
-    feed = db.get(Feed, feed_id)
+    feed = _owned(db, Feed, feed_id, request)
     if feed is None:
         return _form_error(request, "Feed not found.", "/feeds", 404)
     feed.muted_until = utcnow() + timedelta(hours=24)
@@ -1605,7 +1740,7 @@ def mute_feed(feed_id: int, request: Request, db: Annotated[Session, Depends(get
 
 @router.post("/feeds/{feed_id}/unmute")
 def unmute_feed(feed_id: int, request: Request, db: Annotated[Session, Depends(get_db)]):
-    feed = db.get(Feed, feed_id)
+    feed = _owned(db, Feed, feed_id, request)
     if feed is None:
         return _form_error(request, "Feed not found.", "/feeds", 404)
     feed.muted_until = None
@@ -1617,7 +1752,7 @@ def unmute_feed(feed_id: int, request: Request, db: Annotated[Session, Depends(g
 
 @router.post("/feeds/{feed_id}/refresh")
 def refresh_one_feed(feed_id: int, request: Request, db: Annotated[Session, Depends(get_db)]):
-    feed = db.get(Feed, feed_id)
+    feed = _owned(db, Feed, feed_id, request)
     if feed is None:
         if _wants_json(request):
             return JSONResponse({"ok": False, "message": "Feed not found."}, status_code=404)
@@ -1630,14 +1765,15 @@ def refresh_one_feed(feed_id: int, request: Request, db: Annotated[Session, Depe
 
 @router.post("/feeds/{feed_id}/toggle")
 def toggle_feed(feed_id: int, request: Request, db: Annotated[Session, Depends(get_db)]):
-    feed = db.get(Feed, feed_id)
-    if feed:
-        feed.enabled = not feed.enabled
-        db.commit()
-        if feed.enabled and not favicon.cached_src(feed.favicon_name):
-            favicon.capture_for_feed_async(feed.id)
+    feed = _owned(db, Feed, feed_id, request)
+    if feed is None:
+        return _form_error(request, "Feed not found.", "/sources?tab=feeds", 404)
+    feed.enabled = not feed.enabled
+    db.commit()
+    if feed.enabled and not favicon.cached_src(feed.favicon_name):
+        favicon.capture_for_feed_async(feed.id)
     if _wants_json(request):
-        return JSONResponse({"ok": True, "enabled": bool(feed and feed.enabled)})
+        return JSONResponse({"ok": True, "enabled": bool(feed.enabled)})
     return RedirectResponse("/sources?tab=feeds", status_code=303)
 
 
@@ -1648,10 +1784,11 @@ def delete_feed_form(
     db: Annotated[Session, Depends(get_db)],
     next: Annotated[str, Form()] = "/sources?tab=feeds",
 ):
-    feed = db.get(Feed, feed_id)
-    if feed:
-        db.delete(feed)
-        db.commit()
+    feed = _owned(db, Feed, feed_id, request)
+    if feed is None:
+        return _form_error(request, "Feed not found.", "/sources?tab=feeds", 404)
+    db.delete(feed)
+    db.commit()
     nxt = next if next in SOURCES_NEXT else "/sources?tab=feeds"
     nxt = _normalize_sources_next(nxt)
     if _wants_json(request):
@@ -1718,7 +1855,6 @@ async def save_settings(
     x3_catalog_login: Annotated[str, Form()] = "",
     x3_catalog_username: Annotated[str, Form()] = "",
     x3_device_id: Annotated[str, Form()] = "",
-    device_hostname: Annotated[str, Form()] = "",
     ingest_interval_minutes: Annotated[str, Form()] = "",
     ingest_active_start: Annotated[str, Form()] = "",
     ingest_active_end: Annotated[str, Form()] = "",
@@ -1731,7 +1867,8 @@ async def save_settings(
     epub_chapters_by_source: Annotated[str, Form()] = "",
     epub_x3_screen: Annotated[str, Form()] = "",
     epub_toc_outline_numbers: Annotated[str, Form()] = "",
-    epub_cover_first: Annotated[str, Form()] = "",
+    epub_contents_detail: Annotated[str, Form()] = "",
+    epub_contents_limit: Annotated[str, Form()] = "",
     github_repo: Annotated[str, Form()] = "",
     keyword_include: Annotated[str, Form()] = "",
     keyword_exclude: Annotated[str, Form()] = "",
@@ -1745,33 +1882,23 @@ async def save_settings(
     reader_ssh_user: Annotated[str, Form()] = "",
     reader_ssh_password: Annotated[str, Form()] = "",
     clear_reader_ssh_password: Annotated[str, Form()] = "",
+    reader_firmware: Annotated[str | None, Form()] = None,
+    reader_keep_days: Annotated[str | None, Form()] = None,
     reader_title_pattern: Annotated[str, Form()] = "",
     reader_category_title_pattern: Annotated[str, Form()] = "",
     reader_date_format: Annotated[str, Form()] = "iso",
     reader_paper_label: Annotated[str, Form()] = "",
-    ntfy_enabled: Annotated[str, Form()] = "",
-    ntfy_server: Annotated[str, Form()] = "",
-    ntfy_topic: Annotated[str, Form()] = "",
-    ntfy_token: Annotated[str, Form()] = "",
-    clear_ntfy_token: Annotated[str, Form()] = "",
-    ntfy_notify_on_publish: Annotated[str, Form()] = "",
-    ntfy_notify_on_push: Annotated[str, Form()] = "",
     settings_tab: Annotated[str, Form()] = "device",
 ):
     session = session_from_request(request)
     role = session.role if session else "user"
     is_admin = role == "admin"
-    can_ntfy = _session_can_use_ntfy(db, request)
     platform_managed = platform_managed_settings()
-    tab = normalize_settings_tab_for_role(
-        settings_tab, role, can_use_ntfy=can_ntfy, platform_managed=platform_managed
-    )
+    tab = normalize_settings_tab_for_role(settings_tab, role, platform_managed=platform_managed)
     if tab in ADMIN_ONLY_SETTINGS_TABS and not is_admin:
         return _settings_error(request, "That settings section is for the household admin.", "device")
     if tab in PLATFORM_HIDDEN_SETTINGS_TABS and platform_managed:
         return _settings_error(request, PLATFORM_MANAGED_MESSAGE, "device")
-    if tab == "notifications" and not can_ntfy:
-        return _settings_error(request, "Phone alerts are not enabled for your account.", "device")
     form = await request.form()
     reauth = False
     current_user, current_pass = settings.get_admin_credentials(db)
@@ -1808,7 +1935,6 @@ async def save_settings(
 
     turning_https_on = False
     turning_https_off = False
-    hostname_cert_renewed = False
     if is_admin and not platform_managed:
         previous_https = settings.https_enabled(db)
         want_https = bool(str(form.get("https_enabled") or "").strip())
@@ -1921,6 +2047,8 @@ async def save_settings(
                 reader_ssh_user_value=reader_ssh_user,
                 reader_ssh_password_value=reader_ssh_password,
                 clear_reader_ssh_password=bool(clear_reader_ssh_password),
+                reader_firmware_value=reader_firmware,
+                reader_keep_days_value=reader_keep_days,
             )
         except ValueError as exc:
             return _settings_error(request, str(exc), tab)
@@ -1938,34 +2066,6 @@ async def save_settings(
         else:
             settings.clear_value(db, "reader_paper_label")
 
-    # Per-user ntfy: only when admin grants can_use_ntfy (admins always allowed).
-    if can_ntfy:
-        ntfy.migrate_user_ntfy_from_instance(db, uid)
-        user_settings_service.set_value(db, uid, "ntfy_enabled", "1" if ntfy_enabled else "0")
-        topic = ntfy_topic.strip()
-        if topic:
-            user_settings_service.set_value(db, uid, "ntfy_topic", topic)
-        else:
-            user_settings_service.clear_value(db, uid, "ntfy_topic")
-        if clear_ntfy_token:
-            user_settings_service.clear_value(db, uid, "ntfy_token")
-        elif ntfy_token.strip():
-            user_settings_service.set_value(db, uid, "ntfy_token", ntfy_token.strip())
-        user_settings_service.set_value(db, uid, "ntfy_notify_on_publish", "1" if ntfy_notify_on_publish else "0")
-        user_settings_service.set_value(db, uid, "ntfy_notify_on_push", "1" if ntfy_notify_on_push else "0")
-        server_raw = ntfy_server.strip()
-        if is_admin:
-            # Admin sets the household default server on instance settings.
-            settings.set_value(db, "ntfy_server", ntfy.normalize_server(server_raw))
-            user_settings_service.clear_value(db, uid, "ntfy_server")
-        else:
-            if server_raw and ntfy.normalize_server(server_raw) != ntfy.normalize_server(
-                settings.get_value(db, "ntfy_server")
-            ):
-                user_settings_service.set_value(db, uid, "ntfy_server", ntfy.normalize_server(server_raw))
-            else:
-                user_settings_service.clear_value(db, uid, "ntfy_server")
-
     if clear_x3_sync_token:
         user_settings_service.clear_value(db, uid, "x3_sync_token")
         if is_admin:
@@ -1976,28 +2076,6 @@ async def save_settings(
             settings.set_value(db, "x3_sync_token", x3_sync_token.strip())
 
     if is_admin:
-        wanted_host = hostname.normalize_hostname(device_hostname)
-        previous_host = hostname.normalize_hostname(settings.get_value(db, "device_hostname"))
-        hostname_changed = wanted_host != previous_host
-        if wanted_host:
-            if not hostname.valid_hostname(wanted_host):
-                return _settings_error(request, "Hostname must be letters, digits, or hyphens.", tab)
-            settings.set_value(db, "device_hostname", wanted_host)
-            hostname.apply_os_hostname(wanted_host)
-        else:
-            settings.clear_value(db, "device_hostname")
-        if want_https:
-            try:
-                tls.ensure_certificate(db)
-            except Exception:
-                logger.exception("TLS certificate refresh after hostname save failed")
-                return _settings_error(
-                    request,
-                    "HTTPS is on but the certificate could not be refreshed for this hostname.",
-                    tab,
-                )
-            if hostname_changed:
-                hostname_cert_renewed = True
         if ingest_interval_minutes.strip():
             try:
                 minutes = int(ingest_interval_minutes)
@@ -2080,11 +2158,14 @@ async def save_settings(
             "epub_toc_outline_numbers",
             "1" if str(epub_toc_outline_numbers or "").strip() else "0",
         )
-        settings.set_value(
-            db,
-            "epub_cover_first",
-            "1" if str(epub_cover_first or "").strip() else "0",
-        )
+        if epub_contents_detail.strip():
+            settings.set_value(
+                db, "epub_contents_detail", settings.normalize_epub_contents_detail(epub_contents_detail)
+            )
+        if epub_contents_limit.strip():
+            settings.set_value(
+                db, "epub_contents_limit", str(settings.normalize_epub_contents_limit(epub_contents_limit))
+            )
     if is_admin and briefing_publish_at.strip():
         settings.set_value(db, "briefing_publish_at", normalize_publish_at(briefing_publish_at))
     if is_admin and not platform_managed_settings():
@@ -2104,11 +2185,6 @@ async def save_settings(
         message = (
             "Certificate ready. Download the root CA below, trust it on each device, "
             "then use Restart to enable HTTPS."
-        )
-    elif is_admin and hostname_cert_renewed and want_https:
-        message = (
-            "Settings saved. The certificate was renewed for this hostname — "
-            "restart NewsCast when you are ready."
         )
 
     payload = {"ok": True, "message": message, "reauth": reauth}
@@ -2272,7 +2348,6 @@ def create_user_form(
     username: Annotated[str, Form()] = "",
     password: Annotated[str, Form()] = "",
     can_add_custom_sources: Annotated[str, Form()] = "",
-    can_use_ntfy: Annotated[str, Form()] = "",
     can_view_status: Annotated[str, Form()] = "",
     copy_admin_reader: Annotated[str, Form()] = "",
 ):
@@ -2288,7 +2363,6 @@ def create_user_form(
             password=password,
             role="user",
             can_add_custom_sources=bool(can_add_custom_sources),
-            can_use_ntfy=bool(can_use_ntfy),
             can_view_status=bool(can_view_status),
         )
     except ValueError as exc:
@@ -2322,7 +2396,6 @@ def update_user_form(
     request: Request,
     db: Annotated[Session, Depends(get_db)],
     can_add_custom_sources: Annotated[str, Form()] = "",
-    can_use_ntfy: Annotated[str, Form()] = "",
     can_view_status: Annotated[str, Form()] = "",
     active: Annotated[str, Form()] = "",
     new_password: Annotated[str, Form()] = "",
@@ -2347,7 +2420,6 @@ def update_user_form(
             db,
             user,
             can_add_custom_sources=bool(can_add_custom_sources) if user.role != "admin" else True,
-            can_use_ntfy=bool(can_use_ntfy) if user.role != "admin" else True,
             can_view_status=bool(can_view_status) if user.role != "admin" else True,
             active=bool(active) if user.role != "admin" else True,
             new_password=password or None,
@@ -2524,6 +2596,7 @@ def _library_items(db: Session, user_id: int | None = None) -> list[dict]:
             "original_name": item.original_name,
             "size": library.pretty_size(item.size),
             "created_at": item.created_at.strftime("%Y-%m-%d %H:%M") if item.created_at else "",
+            "path": str(library.library_path(item)),
         }
         for item in items
     ]

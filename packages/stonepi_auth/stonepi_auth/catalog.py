@@ -17,6 +17,8 @@ APP_CATALOG: list[dict[str, Any]] = [
         "color": "#b08900",
         "capabilities": [],
         "launcher": False,
+        "group": "system",
+        "ships_with": "platform",
         "description": "StonePi home and administration.",
     },
     {
@@ -29,7 +31,42 @@ APP_CATALOG: list[dict[str, Any]] = [
         "color": "#5a4632",
         "capabilities": [],
         "launcher": False,
+        "group": "system",
+        "ships_with": "platform",
         "description": "Shared household sign-in.",
+    },
+    {
+        "id": "notify",
+        "name": "Notify",
+        "path": "/notify/",
+        "port": 8012,
+        "unit": "stonepi-notify",
+        "health": "/healthz",
+        "color": "#4a5568",
+        "capabilities": [],
+        "launcher": False,
+        "group": "system",
+        "ships_with": "platform",
+        "icon": "notify",
+        # Admin-only; people manage their alerts on the Dashboard Notifications page.
+        "grants": False,
+        "description": "Displays, TRMNL, and ntfy destinations for the household.",
+    },
+    {
+        "id": "recover",
+        "name": "Recover",
+        "path": "/recover/",
+        "port": 8099,
+        "unit": "stonepi-recover",
+        "health": "/healthz",
+        "color": "#7f1d1d",
+        "capabilities": [],
+        "launcher": False,
+        "grants": False,
+        "group": "system",
+        "icon": "recover",
+        "ships_with": "platform",
+        "description": "Escape hatch when Dashboard or nginx is unhealthy.",
     },
     {
         "id": "newscast",
@@ -41,10 +78,10 @@ APP_CATALOG: list[dict[str, Any]] = [
         "color": "#8b1e1e",
         "capabilities": [
             {"id": "can_add_custom_sources", "label": "Add custom feeds"},
-            {"id": "can_use_ntfy", "label": "Phone alerts"},
             {"id": "can_view_status", "label": "View status"},
         ],
         "launcher": True,
+        "group": "user",
         "icon": "newscast",
         "description": "Daily briefings from the feeds you choose, ready for your e-reader.",
     },
@@ -58,6 +95,7 @@ APP_CATALOG: list[dict[str, Any]] = [
         "color": "#1d5a8a",
         "capabilities": [],
         "launcher": True,
+        "group": "user",
         "icon": "fileserve",
         "description": "Host and share pages and files on your home network.",
     },
@@ -71,6 +109,7 @@ APP_CATALOG: list[dict[str, Any]] = [
         "color": "#3a5628",
         "capabilities": [],
         "launcher": True,
+        "group": "user",
         "icon": "eventtrakr",
         "description": "Track local events, favourites, and calendar sync in one place.",
     },
@@ -84,6 +123,7 @@ APP_CATALOG: list[dict[str, Any]] = [
         "color": "#6b4c2a",
         "capabilities": [],
         "launcher": True,
+        "group": "user",
         "icon": "pinboard",
         "description": "Household notices and short reminders.",
     },
@@ -100,6 +140,7 @@ APP_CATALOG: list[dict[str, Any]] = [
             {"id": "can_publish", "label": "Publish to FileServe"},
         ],
         "launcher": True,
+        "group": "user",
         "icon": "studio",
         "description": "Chat-build static sites and publish them to FileServe.",
     },
@@ -116,6 +157,7 @@ APP_CATALOG: list[dict[str, Any]] = [
             {"id": "can_use_alerts", "label": "Offer alerts"},
         ],
         "launcher": True,
+        "group": "user",
         "icon": "pricescout",
         "description": "Weekly supermarket offers from eTilbudsavis, compared on your LAN.",
     },
@@ -131,13 +173,47 @@ APP_CATALOG: list[dict[str, Any]] = [
             {"id": "can_refresh", "label": "Refresh schedules"},
         ],
         "launcher": True,
+        "group": "user",
         "icon": "sportguide",
         "description": "What’s on sports TV and streams — AFL, Cricket, Rugby, Football.",
+    },
+    {
+        "id": "pricewatch",
+        "name": "PriceWatch",
+        "path": "/watch/",
+        "port": 8008,
+        "unit": "stonepi-pricewatch",
+        "health": "/healthz",
+        "color": "#b45309",
+        "capabilities": [
+            {"id": "can_manage_watches", "label": "Manage watches"},
+            {"id": "can_manage_sources", "label": "Manage sources"},
+            {"id": "can_use_alerts", "label": "Strike alerts"},
+        ],
+        "launcher": True,
+        "group": "user",
+        "icon": "pricewatch",
+        "description": "Watch specific products and get notified when your target price is met.",
     },
 ]
 
 APP_IDS = tuple(item["id"] for item in APP_CATALOG)
 LAUNCHER_APP_IDS = tuple(item["id"] for item in APP_CATALOG if item.get("launcher"))
+SYSTEM_APP_IDS = tuple(item["id"] for item in APP_CATALOG if item.get("group") == "system")
+# Apps with their own release zip / Dashboard update. System apps carry `ships_with: platform`:
+# they take the platform version and ship inside the platform zip.
+UPDATABLE_APP_IDS = tuple(item["id"] for item in APP_CATALOG if not item.get("ships_with"))
+
+# Pre-rename app ids still found in session cookies, grants and saved prefs.
+LEGACY_APP_IDS: dict[str, str] = {"notifications": "notify", "recovery": "recover"}
+SERVICE_GROUP_LABELS: tuple[tuple[str, str], ...] = (
+    ("system", "SYSTEM"),
+    ("user", "USER"),
+)
+
+
+def canonical_app_id(app_id: str) -> str:
+    return LEGACY_APP_IDS.get(app_id, app_id)
 
 
 def app_by_id(app_id: str) -> dict[str, Any] | None:

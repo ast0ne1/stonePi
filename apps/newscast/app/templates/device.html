@@ -1,19 +1,26 @@
 {% extends "base.html" %}
 {% from "_filter_icon.html" import filter_icon %}
-{% block title %}{% if device_tab == 'send' %}Send{% else %}Status{% endif %} · NewsCast{% endblock %}
+{% block title %}{% if device_tab == 'send' %}{{ t("Send") }}{% elif device_tab == 'library' %}{{ t("Library") }}{% else %}{{ t("Status") }}{% endif %} · NewsCast{% endblock %}
 {% block content %}
 <section class="hero">
-  <h1>{{ t("Device") }}</h1>
-  <p class="lede">{% if device_tab == 'send' %}Send files and manage the push queue. Use the Status tab for delivery, health, and catalog links.{% else %}Delivery, health, and catalog links. Use the Send tab to push files to your reader.{% endif %}</p>
+  <h1>{{ t("Reader") }}</h1>
+  <p class="lede">
+    {% if device_tab == 'send' %}Get things onto your reader: today’s paper and anything waiting in the queue.
+    {% elif device_tab == 'library' %}Your own EPUB and PDF files, offered in the reader’s OPDS Library.
+    {% else %}Is everything working? Delivery, health, and your catalog address.{% endif %}
+  </p>
 </section>
-<div class="page-tabs" role="tablist" aria-label="Device">
+<div class="page-tabs" role="tablist" aria-label="{{ t('Reader') }}">
   {% if can_view_status %}
   <a class="chip-btn{% if device_tab == 'status' %} is-active{% endif %}" href="/device?tab=status" role="tab" aria-selected="{{ 'true' if device_tab == 'status' else 'false' }}">{{ filter_icon("status") }}<span>{{ t("Status") }}</span></a>
   {% endif %}
+  <a class="chip-btn{% if device_tab == 'library' %} is-active{% endif %}" href="/device?tab=library" role="tab" aria-selected="{{ 'true' if device_tab == 'library' else 'false' }}">{{ filter_icon("library") }}<span>{{ t("Library") }}</span></a>
   <a class="chip-btn{% if device_tab == 'send' %} is-active{% endif %}" href="/device?tab=send" role="tab" aria-selected="{{ 'true' if device_tab == 'send' else 'false' }}">{{ filter_icon("send") }}<span>{{ t("Send") }}</span></a>
 </div>
 {% if device_tab == 'send' %}
   {% include "_send_panel.html" %}
+{% elif device_tab == 'library' %}
+  {% include "_library_panel.html" %}
 {% else %}
   {% include "_status_panel.html" %}
 {% endif %}

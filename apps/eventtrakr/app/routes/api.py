@@ -87,6 +87,7 @@ def sync_status():
         "message": ingest.state.last_message,
         "last_new_events": ingest.state.last_new_events,
         "last_error": ingest.state.last_error,
+        "stopping": ingest.state.stopping,
     })
 
 
@@ -96,6 +97,12 @@ def trigger_sync():
     user = auth.get_current_user()
     started = ingest.trigger_sync_background(user_id=user.user_id)
     return jsonify({"started": started, "running": ingest.state.running})
+
+
+@bp.route("/sync/stop", methods=["POST"])
+@auth.login_required
+def stop_sync():
+    return jsonify({"stopping": ingest.request_stop(), "running": ingest.state.running})
 
 
 @bp.route("/sources/<int:source_id>/sync", methods=["POST"])
@@ -130,3 +137,169 @@ def toggle_favourite(event_id: int):
             "calendar_synced": bool(event.calendar_synced),
             "message": cal_msg,
         })
+
+
+@bp.route("/social/accounts")
+@auth.login_required
+def social_accounts_list():
+    from app.models import SocialAccount
+
+    user = auth.get_current_user()
+    with SessionLocal() as db:
+        rows = list(
+            db.execute(
+                select(SocialAccount).where(SocialAccount.user_id == user.user_id).order_by(SocialAccount.username)
+            ).scalars()
+        )
+        return jsonify(
+            {
+                "accounts": [
+                    {
+                        "id": a.id,
+                        "platform": a.platform,
+                        "username": a.username,
+                        "display_name": a.display_name,
+                        "account_type": a.account_type,
+                        "tracking_enabled": a.tracking_enabled,
+                        "last_checked": a.last_checked.isoformat() if a.last_checked else None,
+                        "last_successful_check": a.last_successful_check.isoformat() if a.last_successful_check else None,
+                        "last_error": a.last_error,
+                        "posts_processed": a.posts_processed,
+                        "events_matched": a.events_matched,
+                        "events_discovered": a.events_discovered,
+                    }
+                    for a in rows
+                ]
+            }
+        )
+
+
+@bp.route("/social/accounts/<int:account_id>/check", methods=["POST"])
+@auth.login_required
+def social_account_check(account_id: int):
+    from app.models import SocialAccount
+    from app.services.social import poll as social_poll
+
+    user = auth.get_current_user()
+    with SessionLocal() as db:
+        account = db.get(SocialAccount, account_id)
+        if not account or account.user_id != user.user_id:
+            return jsonify({"error": "Not found"}), 404
+        result = social_poll.poll_account(db, account, force=True)
+        return jsonify(result)
+
+
+@bp.route("/discoveries")
+@auth.login_required
+def discoveries_list():
+    from app.models import EventDiscovery
+
+    user = auth.get_current_user()
+    status = (request.args.get("status") or "open").strip()
+    with SessionLocal() as db:
+        query = select(EventDiscovery).where(EventDiscovery.user_id == user.user_id)
+        if status == "open":
+            query = query.where(EventDiscovery.status.in_(("candidate", "discovered")))
+        elif status != "all":
+            query = query.where(EventDiscovery.status == status)
+        rows = list(db.execute(query.order_by(EventDiscovery.created_at.desc()).limit(100)).scalars())
+        return jsonify(
+            {
+                "discoveries": [
+                    {
+                        "id": d.id,
+                        "title": d.title,
+                        "start_time": d.start_time.isoformat() if d.start_time else None,
+                        "location": d.location,
+                        "confidence": d.confidence,
+                        "status": d.status,
+                        "event_id": d.event_id,
+                    }
+                    for d in rows
+                ]
+            }
+        )
+
+
+@bp.route("/discoveries/<int:discovery_id>/confirm", methods=["POST"])
+@auth.login_required
+def discoveries_confirm(discovery_id: int):
+    from app.services.social import discover as discover_service
+
+    user = auth.get_current_user()
+    with SessionLocal() as db:
+        event = discover_service.confirm_discovery(db, discovery_id, user.user_id)
+        if not event:
+            return jsonify({"error": "Not found"}), 404
+        return jsonify({"ok": True, "event_id": event.id, "title": event.title})
+
+
+@bp.route("/discoveries/<int:discovery_id>/ignore", methods=["POST"])
+@auth.login_required
+def discoveries_ignore(discovery_id: int):
+    from app.services.social import discover as discover_service
+
+    user = auth.get_current_user()
+    with SessionLocal() as db:
+        ok = discover_service.ignore_discovery(db, discovery_id, user.user_id)
+        if not ok:
+            return jsonify({"error": "Not found"}), 404
+        return jsonify({"ok": True})
+
+
+@bp.route("/events/<int:event_id>/social")
+@auth.login_required
+def event_social(event_id: int):
+    from app.models import EventSocialLink, SocialAccount, SocialPost
+
+    user = auth.get_current_user()
+    with SessionLocal() as db:
+        event = db.get(Event, event_id)
+        if not event or event.user_id != user.user_id:
+            return jsonify({"error": "Not found"}), 404
+        links = list(db.execute(select(EventSocialLink).where(EventSocialLink.event_id == event_id)).scalars())
+        out = []
+        for link in links:
+            post = db.get(SocialPost, link.social_post_id)
+            account = db.get(SocialAccount, post.social_account_id) if post else None
+            out.append(
+                {
+                    "link_kind": link.link_kind,
+                    "post_url": post.post_url if post else "",
+                    "published_at": post.published_at.isoformat() if post and post.published_at else None,
+                    "username": account.username if account else "",
+                    "platform": account.platform if account else "instagram",
+                }
+            )
+        return jsonify({"origin": event.origin, "social": out})
+
+
+@bp.route("/events/<int:event_id>/updates")
+@auth.login_required
+def event_updates(event_id: int):
+    from app.models import EventUpdate
+
+    user = auth.get_current_user()
+    with SessionLocal() as db:
+        event = db.get(Event, event_id)
+        if not event or event.user_id != user.user_id:
+            return jsonify({"error": "Not found"}), 404
+        rows = list(
+            db.execute(
+                select(EventUpdate).where(EventUpdate.event_id == event_id).order_by(EventUpdate.created_at.desc())
+            ).scalars()
+        )
+        return jsonify(
+            {
+                "updates": [
+                    {
+                        "id": u.id,
+                        "update_kind": u.update_kind,
+                        "summary": u.summary,
+                        "priority": u.priority,
+                        "created_at": u.created_at.isoformat() if u.created_at else None,
+                    }
+                    for u in rows
+                ]
+            }
+        )

@@ -16,7 +16,7 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 from sqlalchemy.orm import Session
 
 from app.config import TLS_DIR
-from app.services import hostname, settings
+from app.services import hostname
 
 CA_CERT = TLS_DIR / "root-ca.pem"
 CA_KEY = TLS_DIR / "root-ca.key"
@@ -85,10 +85,9 @@ def _load_cert(path: Path) -> x509.Certificate:
 def desired_sans(db: Session | None = None) -> list[str]:
     names: list[str] = ["localhost"]
     ips = {"127.0.0.1"}
-    if db is not None:
-        host = hostname.normalize_hostname(settings.get_value(db, "device_hostname"))
-        if host:
-            names.append(f"{host}.local")
+    host = hostname.device_hostname()
+    if host:
+        names.append(f"{host}.local")
     lan = hostname.get_lan_ip()
     if lan:
         ips.add(lan)

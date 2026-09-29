@@ -1,18 +1,28 @@
-import re
 import socket
 from urllib.parse import urlparse
 
 from app.config import env
 
-HOSTNAME_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
+try:
+    from stonepi_auth import normalize_hostname, platform_hostname, valid_hostname
+except ImportError:  # pragma: no cover - solo / older overlay
+    import re
+
+    HOSTNAME_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
+
+    def normalize_hostname(raw: str) -> str:
+        return (raw or "").strip().lower().removesuffix(".local").rstrip(".")
+
+    def valid_hostname(name: str) -> bool:
+        return bool(name) and HOSTNAME_RE.fullmatch(name) is not None
+
+    def platform_hostname() -> str:
+        return normalize_hostname(getattr(env, "device_hostname", "") or "stonepi") or "stonepi"
 
 
-def normalize_hostname(raw: str) -> str:
-    return raw.strip().lower().removesuffix(".local").rstrip(".")
-
-
-def valid_hostname(name: str) -> bool:
-    return bool(name) and HOSTNAME_RE.fullmatch(name) is not None
+def device_hostname() -> str:
+    """Appliance LAN short name (Dashboard → Settings → Network)."""
+    return platform_hostname()
 
 
 def get_lan_ip() -> str:
@@ -49,13 +59,17 @@ def get_lan_url(scheme: str = "http") -> str:
 
 def get_public_base_url(is_https: bool = False) -> str:
     scheme = "https" if is_https else "http"
-    if env.device_hostname:
-        host = normalize_hostname(env.device_hostname)
-        port_str = f":{env.port}" if (scheme == "http" and env.port != 80) or (scheme == "https" and env.port != 443) else ""
+    host = device_hostname()
+    if host:
+        port_str = (
+            f":{env.port}"
+            if (scheme == "http" and env.port != 80) or (scheme == "https" and env.port != 443)
+            else ""
+        )
         return f"{scheme}://{host}.local{port_str}"
     public = env.public_base_url.rstrip("/")
     if public and not _is_loopback(public):
         if is_https and public.startswith("http://"):
-            return "https://" + public[len("http://"):]
+            return "https://" + public[len("http://") :]
         return public
     return get_lan_url(scheme=scheme)

@@ -18,7 +18,16 @@ JS_KEYS = (
     "Save settings",
     "Idle",
     "Refreshing",
+    "Stopping",
+    "Stop refresh",
     "Error",
+    "Sending",
+    "Sent",
+    "Couldn’t send",
+    "files",
+    "reader",
+    "item queued",
+    "items queued",
 )
 
 _catalog_cache: dict[str, dict[str, str]] = {}

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from stonepi_auth.brand import mount_brand_fonts
 from fastapi.staticfiles import StaticFiles
 
 from app.config import ROOT_DIR, env
@@ -34,6 +36,9 @@ async def lifespan(_app: FastAPI):
 
         def _boot_refresh() -> None:
             try:
+                # Stagger first refresh so boot doesn't pile Chromium/IO on
+                # top of every other app starting at once.
+                time.sleep(600)
                 ingest.refresh_all()
                 db.recategorize_products()
             except Exception:
@@ -53,6 +58,7 @@ if _prefix:
 
 _static = str(ROOT_DIR / "app" / "static")
 app.mount("/static", StaticFiles(directory=_static), name="static")
+mount_brand_fonts(app)  # /assets/fonts when reached directly (run-dev); nginx serves it on the Pi
 if _prefix:
     app.mount(f"{_prefix}/static", StaticFiles(directory=_static), name="static_prefixed")
 

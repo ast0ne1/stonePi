@@ -43,7 +43,7 @@ def _prep(monkeypatch, db: Session) -> None:
     monkeypatch.setattr(settings.env, "x3_catalog_login", "")
     monkeypatch.setattr(settings.env, "x3_catalog_username", "")
     monkeypatch.setattr(settings.env, "instance_name", "")
-    monkeypatch.setattr(settings.env, "device_hostname", "")
+    monkeypatch.setattr(hostname, "device_hostname", lambda: "")
 
 
 def test_briefing_entry_title_uses_instance_and_date():

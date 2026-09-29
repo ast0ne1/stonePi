@@ -1,0 +1,19 @@
+[Unit]
+Description=StonePi appliance stack
+Documentation=file:///opt/stonepi/appliance.md
+After=network-online.target
+Wants=network-online.target
+Wants=stonepi-auth.service
+Wants=stonepi-dashboard.service
+Wants=stonepi-notify.service
+Wants=stonepi-newscast.service
+Wants=stonepi-fileserve.service
+Wants=stonepi-eventtrakr.service
+Wants=stonepi-pinboard.service
+Wants=stonepi-studio.service
+Wants=stonepi-pricescout.service
+Wants=stonepi-sportguide.service
+Wants=stonepi-pricewatch.service
+
+[Install]
+WantedBy=multi-user.target

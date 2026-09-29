@@ -48,6 +48,7 @@ def main() -> None:
         port=env.port,
         ssl_certfile=ssl_certfile,
         ssl_keyfile=ssl_keyfile,
+        timeout_keep_alive=15,
     )
 
 

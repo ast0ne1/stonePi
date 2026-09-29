@@ -1,10 +1,31 @@
 # StonePi
 
-**StonePi** is a household LAN portal on one Raspberry Pi: shared sign-in, phone-first apps, and optional e-ink and AI. Hostname: `stonepi.local` (or your router name, e.g. `stonepi.home`).
+**The bedrock of your digital home.**
 
-It is for the jobs that usually scatter across school portals, cloud drives, and sticky notes — daily reading, hosting pages on your network, local events, family notices, and small sites the household builds itself.
+StonePi is a private hub for your home that turns information into something useful. It can bring you the news you want on your e-reader, show what’s happening locally, tell you what’s on in sport and entertainment, find supermarket deals, watch prices for things you want, and push useful updates to your phone or screens around the house — while keeping your files and other household tools in one place.
 
-**Cockpit** (`:9090`) is for the Linux host. The **Dashboard** is for people, apps, updates, backup, and platform services.
+It runs on one Raspberry Pi on your own network: a portal with one shared sign-in and phone-first apps, set up once and left running. Open it at `stonepi.local` (or your router name, e.g. `stonepi.home`). E-ink readers, a wall display and AI are optional extras you plug in when you want them.
+
+**Set up a Pi: [stonepi-install.vercel.app](https://stonepi-install.vercel.app)** — a guided install from stock Raspberry Pi OS with one command.
+
+| When you want… | StonePi covers it with… |
+|----------------|-------------------------|
+| The news you want, on your e-reader, without opening five news apps | **NewsCast** — feeds you choose, a daily paper for phone or e-reader |
+| To know what’s happening locally this week | **EventTrakr** — agenda, favourites, calendar sync |
+| What’s on in sport and entertainment | **SportGuide** — TV / stream schedules and the teams you follow |
+| This week’s supermarket deals without five retailer apps | **PriceScout** — cross-store compare |
+| To know when something you want hits your price | **PriceWatch** — strike alerts for named products |
+| Useful updates on your phone or screens around the house | **Notify** — ntfy phone alerts and TRMNL / e-ink displays |
+| Your files and household tools in one place | **FileServe** (share files and small sites on the LAN), **Pinboard** (notices and reminders), **Studio** (build a simple site and publish it to FileServe) |
+
+The apps are useful on a phone. **Notify** takes the same jobs further, so you don’t have to open the portal for every check:
+
+- **TRMNL** (or another glance display) — compose a board from household widgets (Pinboard notices, status, and other blocks). The panel shows what matters at a fridge or desk without unlocking a phone.
+- **ntfy** — phone buzz when something finishes or crosses a threshold: paper ready to push, a PriceWatch strike, an event you care about, and similar emits from the apps.
+
+Wire Destinations once; apps keep owning their data and only emit when something useful happened.
+
+StonePi is built to behave like an appliance rather than a hobby stack: install with one command, come back after reboot, watch host and apps under **Health**, back up to a labelled USB stick, and use **Recover** if the portal itself fails. Admins manage people, which apps are on, updates, backup, and platform settings from the **Dashboard**. **Cockpit** (`:9090`) is for the Linux host itself.
 
 ## Screenshots
 
@@ -31,6 +52,7 @@ More images: [docs/screenshots/](docs/screenshots/).
 | **[Pinboard](apps/pinboard/README.md)** | Household notices and short reminders | Shared fridge-door; feeds the wall display | Grant-gated; Display / TRMNL Pinboard block |
 | **[Studio](apps/studio/README.md)** | Chat-build static sites (SPA, Guide, Game) | Family authoring without a laptop toolchain | Vault LLM keys; publishes to FileServe with the same expiry/password options |
 | **[PriceScout](apps/pricescout/README.md)** | Weekly supermarket offers and cross-store compare | Household shopping without five retailer apps | eTilbudsavis JSON; optional Salling madspild |
+| **[PriceWatch](apps/pricewatch/README.md)** | Watch specific products until a target price is met | Strike alerts for named SKUs | PriceRunner Denmark (+ mock for local) |
 | **[SportGuide](apps/sportguide/README.md)** | Sports TV / stream schedules (Now + Sources) | What’s on without juggling guide sites | Playwright scrapes (AusSportGuide + WheresTheMatch) |
 
 ### Portal (not launcher tiles)
@@ -39,6 +61,8 @@ More images: [docs/screenshots/](docs/screenshots/).
 |-----|------|
 | **[Dashboard](apps/dashboard/README.md)** | Home launcher, **Health**, **Services**, Users/grants, Settings |
 | **[Auth](apps/auth/README.md)** | Shared household sign-in — one account, one cookie across apps |
+| **[Notify](apps/notify/README.md)** | Displays, TRMNL, and ntfy destinations (platform service) |
+| **[Recover](apps/recover/README.md)** | **Recovery Console** — escape hatch on `:8099` when Dashboard or nginx is down |
 
 Admin nav split:
 
@@ -53,11 +77,11 @@ Admin nav split:
 Portal     Dashboard + Auth (people, grants, exposure, secrets, Health / Services)
 Consume    NewsCast (briefings / e-readers) · EventTrakr (events / calendars)
 Publish    Studio ──publish──▶ FileServe hosted pages
-Glance     Pinboard + Health alerts / apps ──▶ Display (Status wall · Household · Custom) ──▶ TRMNL
+Glance     Apps emit widgets ──▶ Notify Displays ──▶ TRMNL; events ──▶ ntfy Destinations
 ```
 
 - **Studio → FileServe** — generated zips land under the user’s Hosted Pages.
-- **Dashboard → Settings → Display** — collects Display JSON over loopback, generates Liquid markup, and pushes `merge_variables` to a Private Plugin webhook. You must paste **Copy markup** into TRMNL once (or after design changes); pushes do not replace plugin markup.
+- **Notify → Displays** — one Display per TRMNL screen, laid out in a drag-and-drop builder over a real render of the device. Paste the universal template into each Private Plugin once; layout changes travel with each push. ntfy lives under **Notify → Destinations**. Dashboard Settings → Display redirects here.
 - **NewsCast → readers** — OPDS catalogs and optional X3 Sync for CrossPoint / KOReader.
 - **Vault** — encrypted home for integration keys (LLM, Bright Data, Google, webhook, ntfy, session).
 
@@ -75,7 +99,7 @@ StonePi itself only needs a **Raspberry Pi** on your home network and a phone or
 |-------|------|--------|
 | Daily paper on an e-reader | **[Xteink X3 / X4](https://www.xteink.com/products/xteink-x3)** + **[CrossPoint](https://crosspointreader.com/)** firmware | Prefer buying from [xteink.com](https://www.xteink.com/) (or official channels) so the unit can flash CrossPoint. NewsCast talks OPDS / push over your LAN. Setup: [NewsCast README](apps/newscast/README.md#e-reader). |
 | Same idea on a Kobo | Any Kobo that runs **[KOReader](https://koreader.rocks/)** | Add StonePi’s OPDS catalog in KOReader; push uses KOReader’s SSH when you want Send-tab files on the device. |
-| Fridge / desk glance board | **[TRMNL](https://trmnl.com/)** ([shop](https://shop.trmnl.com/)) | Wire a Private Plugin webhook under **Dashboard → Settings → Display**. Pinboard notices and other blocks appear on the panel. |
+| Fridge / desk glance board | **[TRMNL](https://trmnl.com/)** ([shop](https://shop.trmnl.com/)) | One Private Plugin per screen; wire its webhook on the Display in **Notify → Displays**. Pinboard notices and other widgets appear on the panel. |
 | Comfortable EventTrakr scraping | **Pi 4 or Pi 5** | Some event sites need a real browser (Playwright / Chromium). A Pi 3 will struggle. |
 
 ### Cloud & AI keys (optional)
@@ -87,7 +111,7 @@ StonePi itself only needs a **Raspberry Pi** on your home network and a phone or
 | Studio chat-build sites | **[Anthropic](https://console.anthropic.com/)** and/or **OpenAI** key; optional OpenAI-compatible base URL | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, optional `STUDIO_LLM_BASE_URL`. Without a key, Studio cannot call a model. |
 | Facebook Events in EventTrakr | **[Bright Data](https://brightdata.com/)** API access ([Facebook Events scraper docs](https://docs.brightdata.com/api-reference/scrapers/social-media-apis/facebook-events-discover-by-url)) | `BRIGHTDATA_API_KEY`. Catalog, ICS, and normal web sources still work without it. |
 | Favourites → Google Calendar | Google Cloud OAuth client for your household | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` — EventTrakr → Integrations. |
-| Phone buzz when the paper is ready | **[ntfy](https://ntfy.sh/)** topic (hosted or self-hosted) | NewsCast → Notifications (token in Vault as `NEWSCAST_NTFY_TOKEN` when used). |
+| Phone buzz when the paper is ready | **[ntfy](https://ntfy.sh/)** topic (hosted or self-hosted) | **Notify → Destinations** (token in Vault as `STONEPI_NTFY_TOKEN`; apps emit via the shared outputs service). |
 
 **Studio in one line:** add an Anthropic and/or OpenAI key to Vault, open **Studio**, pick SPA / Guide / Game, chat, then **Publish** to FileServe (same keep-until and password options as Hosted Pages).
 
@@ -99,9 +123,12 @@ Admin **Settings** tabs (not Home tiles):
 
 | Tab | Role |
 |-----|------|
-| **Display** | TRMNL webhook, design presets (Status wall / Household / Custom), landscape preview, scheduled push (`stonepi_display`) |
+| **Network** | Hostname, LAN vs internet-facing, Tailscale (optional ACL) |
 | **Vault** | Encrypted secrets for apps and services (`stonepi_vault`) |
-| **Automations** | Thin when→then (USB→backup, Health/backup→Display push) |
+| **Automations** | Thin when→then (USB→backup, Health/backup→Notify Display / TRMNL push) |
+| **Backup** | USB status, restore drill, failover, snapshot restore |
+
+**Displays / TRMNL / ntfy** live under **[Notify](apps/notify/README.md)** (Destinations + Displays), not Dashboard Settings.
 
 ## Integrations (where to turn them on)
 
@@ -109,13 +136,13 @@ Optional bolt-ons — core apps work without them. Prefer **Settings → Vault**
 
 | Integration | Where in StonePi | What it enables |
 |-------------|------------------|-----------------|
-| **TRMNL** | Dashboard → Settings → Display (webhook may live only in Vault as `DISPLAY_WEBHOOK_URL`) | Private Plugin webhook; pick a **design** (Status wall, Household focus, or Custom); **Copy markup** into TRMNL’s Markup editor (StonePi only pushes `merge_variables`); Save / Push now. Status wall is an ops board (Services + Alerts + Storage). Household is Health alerts / Apps + product cards. Custom is freeform blocks. Preview is landscape 800×480 (OG) / 1040×780 (V2), scaled to fit the Settings column. Outbound POSTs are https-only. On the public edge, nginx denies app `/api/display` routes ([`stonepi-public-deny-display.conf`](deploy/nginx/stonepi-public-deny-display.conf)); the dashboard still scrapes via loopback. |
+| **TRMNL** | Notify → Displays (webhooks in Vault: `DISPLAY_WEBHOOK_URL` for the built-in Dashboard Display, `DISPLAY_WEBHOOK_URL_<ID>` for others) | One Private Plugin per Display; paste the **universal template** into its Full markup once; arrange widgets in the screen builder; Save / Push now (StonePi only pushes `merge_variables`). Outbound POSTs are https-only. On the public edge, nginx denies app `/api/display` routes ([`stonepi-public-deny-display.conf`](deploy/nginx/stonepi-public-deny-display.conf)); collection still runs via loopback. |
 | **AI / LLM** | NewsCast → LLM; Studio via Vault | OpenAI, Anthropic, or Ollama / local base URL. NewsCast writes short briefings (extracted text if no model). Studio generates sites. |
 | **Translation** | NewsCast → Translation | Per-feed or global; Google or LLM; target language for Translate feeds. |
 | **Bright Data** | EventTrakr → Integrations | Facebook Events discover/scrape when keyed; otherwise catalog/ICS/browser paths still work. |
 | **E-readers** | NewsCast → Reader | CrossPoint (X3/X4), KOReader OPDS; Sync-style API. LAN vs internet-facing token rules: [deploy/SECURITY.md](deploy/SECURITY.md). |
 | **Calendars** | EventTrakr | `.ics` download, webcal feed, Google OAuth forward. |
-| **ntfy** | NewsCast → Notifications | Phone alerts when the paper publishes or reaches the reader (capability-gated for non-admins). |
+| **ntfy** | Notify → Destinations + Event prefs | Phone alerts when apps emit (NewsCast publish/push, PriceWatch strikes, Watch, …). Capability-gated for non-admins where applicable. |
 
 ## Security posture
 
@@ -123,18 +150,30 @@ Default install is **trusted home network (LAN)**. Flip to **Internet-facing** u
 
 ## Quick start on a fresh Pi
 
-1. Flash **Raspberry Pi OS** with Imager — enable **SSH**, set user/password (and Wi‑Fi if needed).
-2. Copy this folder onto the SD **boot** partition (Windows sees it after imaging), e.g. `bootfs/stonePi/`.  
-   Helper: `scripts\copy-to-sd.bat E:\` (skips `.venv` / `data` / `.git`).
-3. Boot the Pi and SSH in:
+The guided version, step by step, is at **[stonepi-install.vercel.app](https://stonepi-install.vercel.app)**.
+
+1. Flash **Raspberry Pi OS Lite (64-bit)** with Imager on a Raspberry Pi 4 or 5 — hostname `stonepi`, enable **SSH**, set user/password (and Wi‑Fi if needed).
+2. Boot the Pi and SSH in:
    ```bash
    ssh YOURUSER@stonepi.local
    ```
-4. Install (use `bash` — boot is FAT, so `./` execute bits are unreliable):
+3. Install the latest release:
    ```bash
-   sudo bash /boot/firmware/stonePi/deploy/install.sh --hostname stonepi
+   curl -fsSL https://stonepi-install.vercel.app/install.sh | sudo bash
    ```
-5. Open http://stonepi.local/ and sign in with **admin** / **admin**, then change the password.
+4. Open http://stonepi.local/ and sign in with **admin** / **admin**, then change the password.
+
+Something broken on an existing Pi? **[stonepi-install.vercel.app/recover](https://stonepi-install.vercel.app/recover)**.
+
+### From a local copy of this repo
+
+For development builds or offline installs: copy this folder onto the SD **boot** partition after imaging (e.g. `bootfs/stonePi/`; helper `scripts\copy-to-sd.bat E:\` skips `.venv` / `data` / `.git`), then on the Pi:
+
+```bash
+sudo bash /boot/firmware/stonePi/deploy/install.sh --hostname stonepi
+```
+
+Use `bash` — boot is FAT, so `./` execute bits are unreliable.
 
 Full walkthrough, boot units, backup USB, and troubleshooting: **[deploy/INSTALL.md](deploy/INSTALL.md)**.  
 Interactive checklist (open in a browser): **[deploy/walkthrough.html](deploy/walkthrough.html)**.
@@ -155,7 +194,10 @@ The installer enables systemd services so everything comes back after a reboot. 
 | http://stonepi.local/pinboard/ | Pinboard |
 | http://stonepi.local/studio/ | Studio |
 | http://stonepi.local/prices/ | PriceScout |
+| http://stonepi.local/watch/ | PriceWatch |
 | http://stonepi.local/sports/ | SportGuide |
+| http://stonepi.local/notify/ | Notify |
+| http://stonepi.local/recover/ | Recovery Console (Recover; also direct on `:8099` when nginx or Dashboard is down) |
 | https://stonepi.local:9090 or https://PI_LAN_IP:9090 | Cockpit |
 
 Same paths work via the Pi LAN IP or a router DNS name (e.g. `http://stonepi.home/`). Prefer router DNS when Avahi `.local` is unreliable.
@@ -172,6 +214,7 @@ Creates per-app virtualenvs and starts:
 |-----|-----|
 | http://127.0.0.1:8010/ | Dashboard |
 | http://127.0.0.1:8011/login | Auth |
+| http://127.0.0.1:8012/ | Notify |
 | http://127.0.0.1:8001/ | NewsCast |
 | http://127.0.0.1:8002/ | FileServe |
 | http://127.0.0.1:8003/ | EventTrakr |
@@ -179,6 +222,7 @@ Creates per-app virtualenvs and starts:
 | http://127.0.0.1:8005/ | Studio |
 | http://127.0.0.1:8006/ | PriceScout |
 | http://127.0.0.1:8007/ | SportGuide |
+| http://127.0.0.1:8008/ | PriceWatch |
 
 SSO is shared on `127.0.0.1`. Solo `run-local.bat` still works if `STONEPI_SESSION_SECRET` is unset. On the Pi (with session secret set), **Users**, **Updates**, and **Backup** live under dashboard Settings; in-app Users/Update tabs are for solo runs only.
 
@@ -197,13 +241,13 @@ Label a USB stick **STONEPI-BACKUP** and plug it into the Pi — backup starts a
 
 ## Updates
 
-GitHub Releases should attach **StonePi-labelled** per-app zips (`stonepi-dashboard-0.0.2.zip`, …) plus `stonepi-platform-0.1.1.zip`. These are portal variants — not standalone upstream apps. Build them with:
+GitHub Releases should attach **StonePi-labelled** per-app zips (`stonepi-<app>-<version>.zip`) plus `stonepi-platform-<version>.zip`, which also carries the system apps (Dashboard, Auth, Notify, Recover). These are portal variants — not standalone upstream apps. Current versions are in [CHANGELOG.md](CHANGELOG.md) (`python scripts/build_release_zips.py --versions-table`). Build them with:
 
 ```bash
 python scripts/build_release_zips.py --all
 ```
 
-Admins install from Dashboard → Settings → Updates (or each app’s Settings → Update on a solo run).
+Admins install from Dashboard → Settings → Updates, which lists the platform and every app (or each app’s own Settings → Update when it runs solo, outside StonePi). On the Pi, Dashboard downloads the zip and checks it against the release’s `SHA256SUMS`; the root helper `stonepi-update-helper` installs it, restarts the app, waits for its health check and rolls back if it fails. Platform updates use the installer for now: `curl -fsSL https://stonepi-install.vercel.app/install.sh | sudo bash -s -- --reinstall`.
 
 Platform notes: [CHANGELOG.md](CHANGELOG.md). Release steps: [deploy/RELEASE.md](deploy/RELEASE.md).
 
@@ -212,6 +256,8 @@ Platform notes: [CHANGELOG.md](CHANGELOG.md). Release steps: [deploy/RELEASE.md]
 ```text
 apps/auth            shared login
 apps/dashboard       home launcher + admin (Health / Services)
+apps/notify          Displays, TRMNL, ntfy destinations, alerts (platform service)
+apps/recover         Recovery Console escape hatch (:8099, ships in the platform zip)
 apps/newscast
 apps/fileserve
 apps/eventtrakr
@@ -219,14 +265,20 @@ apps/pinboard
 apps/studio
 apps/pricescout
 apps/sportguide
-packages/stonepi_auth
+apps/pricewatch
+packages/stonepi_auth         shared login, APP_CATALOG, brand fonts + asset_rev
 packages/stonepi_update
 packages/stonepi_display
 packages/stonepi_watch
 packages/stonepi_vault
 packages/stonepi_automations
+packages/stonepi_browser      shared Chromium lock
+packages/stonepi_contracts    event / widget contracts
+packages/stonepi_notify       Notify routing + delivery
+packages/stonepi_brand        shared fonts (/assets/fonts/)
 docs/screenshots     README gallery
 deploy/install.sh    Pi installer
+deploy/stonepi-migrate-renames.sh   Notifications→Notify / Recovery→Recover migration
 deploy/INSTALL.md    fresh OS guide
 deploy/RELEASE.md    release checklist
 deploy/walkthrough.html

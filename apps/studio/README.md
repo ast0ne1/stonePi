@@ -21,12 +21,12 @@ Family authoring without a laptop toolchain — kids and adults describe a SPA, 
 | **Interactive Guide** | Step-by-step how-to or choose-your-path | One step per screen, large Next/Back |
 | **Game** | Real playable game with score / play again | iPhone 13+ (~390×844) through laptop/desktop; on-screen + keyboard |
 
-Guidelines injected every LLM turn: `app/prompts/fileserve_hosting.md` plus `kind_spa.md` / `kind_guide.md` / `kind_game.md`. Sites must work on desktop **and** small handsets (iPhone 13 mini class).
+Guidelines injected every LLM turn: `app/prompts/fileserve_hosting.md` plus `kind_spa.md` / `kind_guide.md` / `kind_game.md`. Sites must work on phones (390×844 primary, 375px minimum) **and** laptops. Studio appends the output format and current files itself.
 
 ## What it does
 
 - **Create** (landing): pick SPA / Guide / Game, name it, Start
-- **Projects**: list and open existing work; chat, build, preview, publish
+- **Projects**: list and open your own work; chat, build, preview, publish. Each project belongs to the account that made it; admins also get **All projects** with a filter by person
 - Workspace files + live iframe preview
 - Emits a JSON **file map** the app applies to disk
 - **Settings → About** and (admins) **Settings → Prompts** to view/edit the LLM markdown guidelines on the Pi

@@ -7,12 +7,15 @@
   <p class="lede">Supermarkets on eTilbudsavis. Enabling a store includes its offers in Offers and Search.</p>
 </section>
 
-<form method="post" action="/sources/refresh" class="btn-row">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-  <button class="btn btn-primary btn-with-icon" type="submit"{% if refresh.running %} disabled{% endif %}>
-    {{ icon("refresh") }} {{ 'Refreshing…' if refresh.running else 'Refresh offers' }}
-  </button>
-</form>
+<div class="page-status">
+  <p class="page-status-text">
+    {% if refresh.running %}
+      Refreshing offers…
+    {% else %}
+      Use the header Refresh button to pull the latest offers from eTilbudsavis.
+    {% endif %}
+  </p>
+</div>
 
 <ul class="source-list">
   {% for s in sources %}

@@ -3,20 +3,53 @@
 {% block title %}Settings · SportGuide{% endblock %}
 {% block content %}
 <section class="hero">
-  <h1>Settings</h1>
+  {% if not settings_hub %}
+  <a class="settings-back" href="{% if settings_level == 'panel' and settings_sections %}/settings?tab={{ settings_tab }}{% else %}/settings{% endif %}">&larr; {% if settings_level == 'panel' and settings_sections %}Notifications{% else %}Settings{% endif %}</a>
+  {% endif %}
+  <h1>{{ settings_title }}</h1>
   <p class="lede">{{ settings_lede }}</p>
 </section>
 
-<div class="settings-tabs">
-  <div class="chips settings-chips" role="tablist" aria-label="Settings sections">
-    <a class="chip-btn{% if settings_tab == 'general' %} is-active{% endif %}" href="/settings?tab=general" role="tab">
-      {{ icon("general") }}<span>General</span>
-    </a>
-    <a class="chip-btn{% if settings_tab == 'about' %} is-active{% endif %}" href="/settings?tab=about" role="tab">
-      {{ icon("about") }}<span>About</span>
-    </a>
+{% if settings_hub %}
+<nav class="settings-hub" aria-label="Settings groups">
+  {% for group_id, group_label, rows in settings_groups %}
+  <div class="settings-hub-group">
+    <h2 class="settings-hub-heading">{{ group_label }}</h2>
+    <div class="settings-hub-card">
+      {% for key, label, subtext, icon_name in rows %}
+      <a class="settings-hub-row" href="/settings?tab={{ key }}">
+        <span class="settings-hub-icon" aria-hidden="true">{{ icon(icon_name) }}</span>
+        <span class="settings-hub-copy">
+          <span class="settings-hub-title">{{ label }}</span>
+          <span class="settings-hub-sub">{{ subtext }}</span>
+        </span>
+        <span class="settings-hub-chevron" aria-hidden="true">&rsaquo;</span>
+      </a>
+      {% endfor %}
+    </div>
   </div>
-
+  {% endfor %}
+</nav>
+{% elif settings_level == 'list' %}
+<nav class="settings-panel-list" aria-label="Settings sections">
+  <div class="settings-hub-group">
+    <h2 class="settings-hub-heading">Sections</h2>
+    <div class="settings-hub-card">
+      {% for panel_id, label, subtext, icon_name in settings_sections %}
+      <a class="settings-hub-row" href="/settings?tab={{ settings_tab }}&amp;panel={{ panel_id }}">
+        <span class="settings-hub-icon" aria-hidden="true">{{ icon(icon_name) }}</span>
+        <span class="settings-hub-copy">
+          <span class="settings-hub-title">{{ label }}</span>
+          <span class="settings-hub-sub">{{ subtext }}</span>
+        </span>
+        <span class="settings-hub-chevron" aria-hidden="true">&rsaquo;</span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+</nav>
+{% else %}
+<div class="settings-tabs">
   {% if settings_tab == 'general' %}
   <div class="stack settings-panel" id="settings-panel-general" role="tabpanel">
   <form method="post" action="/settings/general" class="card stack">
@@ -41,6 +74,77 @@
     <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("check") }} Save</button>
   </form>
   </div>
+
+  {% elif settings_tab == 'watch' %}
+  <div class="stack settings-panel" id="settings-panel-watch" role="tabpanel">
+  <div class="card stack">
+    <h2>Teams to Watch</h2>
+    <p class="hint">Your own list. Your alerts only fire for these teams — never for the whole guide.</p>
+    {% if watched_entries %}
+    <ul class="project-list watch-list">
+      {% for entry in watched_entries %}
+      <li>
+        <span class="watch-team">
+          <span class="watch-team-name">{{ entry.name }}{% if entry.sport_label %} <span class="watch-team-sport">· {{ entry.sport_label }}</span>{% endif %}</span>
+          {% if not entry.in_listings %}<span class="watch-team-hint">No games in the guide right now</span>{% endif %}
+        </span>
+        <form method="post" action="/settings/watch/remove" class="project-actions">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <input type="hidden" name="team" value="{{ entry.id }}" />
+          <button class="icon-btn" type="submit" aria-label="Remove {{ entry.name }}" title="Remove">{{ icon("clear") }}</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="hint empty-state">No teams yet. Add one below.</p>
+    {% endif %}
+  </div>
+
+  <form method="post" action="/settings/watch/add" class="card stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <h2>Add a team</h2>
+    {% if team_groups %}
+    <label>
+      Team
+      <input type="search" name="team" list="watch-team-options" required autocomplete="off" autocapitalize="words" spellcheck="false" placeholder="Start typing — e.g. Arsenal, Collingwood, India" />
+    </label>
+    <datalist id="watch-team-options">
+      {% for group in team_groups %}{% for team in group.teams %}
+      <option value="{{ team.value }}"></option>
+      {% endfor %}{% endfor %}
+    </datalist>
+    <p class="hint">Pick from the suggestions: standard AFL, rugby, cricket and football teams, plus any team in the current listings. Short names like "Man Utd" work too.</p>
+    <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("plus") }} Add</button>
+    {% else %}
+    <p class="hint empty-state">You're watching every team we know about.</p>
+    {% endif %}
+  </form>
+  </div>
+
+  {% elif settings_tab == 'notifications' %}
+  <div class="stack settings-panel" id="settings-panel-notifications" role="tabpanel">
+  {% from "stonepi/alerts.html" import notifications_card %}
+  {% if notifications_card_state %}
+  {{ notifications_card(notifications_card_state) }}
+  {% else %}
+  <div class="card stack">
+    <h2>{{ icon("bell") }} Approaching alerts</h2>
+    <p class="hint">Phone alerts need StonePi sign-in. When SportGuide runs on its own, it doesn't send alerts.</p>
+  </div>
+  {% endif %}
+  <form method="post" action="/settings/notifications" class="card stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <h2>Lead time</h2>
+    <label>
+      Lead time (minutes)
+      <input type="number" name="notify_approaching_minutes" min="5" max="1440" step="5" value="{{ notify_approaching_minutes }}" />
+    </label>
+    <p class="hint">Alert once when one of your teams' matches is this many minutes away (default 30). Checked every 5 minutes. This is your own setting.</p>
+    <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("check") }} Save</button>
+  </form>
+  </div>
+
   {% else %}
   <div class="stack settings-panel" id="settings-panel-about" role="tabpanel">
   <div class="card stack about-card">
@@ -52,4 +156,5 @@
   </div>
   {% endif %}
 </div>
+{% endif %}
 {% endblock %}

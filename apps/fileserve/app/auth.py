@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.config import DATA_DIR, env
 from app.models import User
-from app.services import settings, users as users_svc
+from app.services import hostname, settings, users as users_svc
 
 COOKIE_MAX_AGE = 60 * 60 * 24 * 14
 LOGIN_WINDOW_SECONDS = 15 * 60
@@ -45,7 +45,7 @@ def _platform_settings():
         prefix=env.stonepi_prefix,
         auth_url=browser_auth_url(env.stonepi_auth_url),
         public_origin=env.stonepi_public_origin,
-        hostname=env.device_hostname or "stonepi",
+        hostname=hostname.device_hostname(),
     )
 
 
@@ -153,6 +153,10 @@ def login_redirect() -> Response:
     nxt = request.full_path
     if nxt.endswith("?"):
         nxt = request.path
+    pfx = (env.stonepi_prefix or "").rstrip("/")
+    path_only = nxt.split("?", 1)[0]
+    if pfx and path_only != pfx and not path_only.startswith(f"{pfx}/"):
+        nxt = f"{pfx}{nxt}" if nxt.startswith("/") else f"{pfx}/{nxt}"
     settings = _platform_settings()
     if settings is not None:
         from stonepi_auth import login_url

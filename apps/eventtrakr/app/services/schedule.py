@@ -53,6 +53,9 @@ def _last_weekly_trigger(days: list[str], times: list[str], now_local: datetime)
 
 
 def _is_due_for_config(config: dict, last_fetched_at: datetime | None, now_utc: datetime, now_local: datetime) -> bool:
+    if last_fetched_at is not None and last_fetched_at.tzinfo is None:
+        # Stored as UTC; SQLite hands DateTime(timezone=True) back without tzinfo.
+        last_fetched_at = last_fetched_at.replace(tzinfo=timezone.utc)
     if config.get("mode") == "weekly":
         last_trigger = _last_weekly_trigger(config["days"], config["times"], now_local)
         if last_trigger is None:
@@ -68,6 +71,11 @@ def _is_due_for_config(config: dict, last_fetched_at: datetime | None, now_utc: 
     return elapsed_minutes >= interval
 
 
+def is_due_for_config(config: dict, last_at: datetime | None, now_utc: datetime, now_local: datetime) -> bool:
+    """Public wrapper — used by URL sources and Instagram social accounts."""
+    return _is_due_for_config(config, last_at, now_utc, now_local)
+
+
 def _is_due(source: EventSource, global_schedule: dict, now_utc: datetime, now_local: datetime) -> bool:
     custom = settings_service.get_source_schedule(source, global_schedule.get("interval_minutes", 60))
     if custom is not None:
@@ -75,8 +83,7 @@ def _is_due(source: EventSource, global_schedule: dict, now_utc: datetime, now_l
     return _is_due_for_config(global_schedule, source.last_fetched_at, now_utc, now_local)
 
 def _scheduled_tick() -> None:
-    """Runs every TICK_MINUTES. Syncs only sources that are due, based on
-    their effective schedule (global default, or their own custom interval)."""
+    """Runs every TICK_MINUTES. Syncs due sources, social accounts, and approaching favourites."""
     if ingest.state.running:
         return
 
@@ -84,6 +91,38 @@ def _scheduled_tick() -> None:
     now_local = datetime.now().astimezone()
     try:
         with SessionLocal() as db:
+            from app.services import notify as notify_service
+
+            try:
+                notify_service.check_approaching_favourites(db, now=now_utc)
+            except Exception:
+                logger.exception("Approaching-favourites check failed")
+
+            # Social poll runs even when no URL sources are due; isolate errors
+            # so a Bright Data failure cannot break source sync.
+            try:
+                from app.services.social import poll as social_poll
+                from app.services.social import discover as social_discover
+
+                if not social_poll.is_running():
+                    social_result = social_poll.poll_due_accounts(db)
+                    for account_result in social_result.get("results") or []:
+                        username = account_result.get("username") or ""
+                        account_user_id = account_result.get("user_id")
+                        for item in account_result.get("results") or []:
+                            try:
+                                notify_service.notify_from_process_result(
+                                    db, item, username=username, account_user_id=account_user_id
+                                )
+                            except Exception:
+                                logger.debug("Social notify failed", exc_info=True)
+                    try:
+                        social_discover.expire_old_candidates(db, now=now_utc)
+                    except Exception:
+                        logger.debug("Discovery expiry failed", exc_info=True)
+            except Exception:
+                logger.exception("Social poll tick failed")
+
             global_schedule = settings_service.get_global_schedule(db, env.default_sync_interval_minutes)
             sources = list(db.execute(select(EventSource).where(EventSource.enabled == True)).scalars())
             due_sources = [s for s in sources if _is_due(s, global_schedule, now_utc, now_local)]

@@ -1,21 +1,35 @@
 from __future__ import annotations
 
 import json
+import time
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from starlette.datastructures import FormData
 
 from app.config import ROOT_DIR, env, resolve_cockpit_url
-from app import services
-from stonepi_auth import APP_CATALOG, APP_IDS, login_url, logout_url
+from app import __asset_rev__, jobs, services
+from stonepi_auth.brand import fonts_rev
+from stonepi_auth import APP_CATALOG, APP_IDS, SYSTEM_APP_IDS, login_url, logout_url
 from stonepi_auth.config import PlatformSettings
 from stonepi_auth.csrf import csrf_from_request, csrf_ok, csrf_ok_request, set_csrf_cookie
+from stonepi_auth.alerts import add_shared_templates
 from stonepi_auth.session import CSRF_COOKIE
 
 templates = Jinja2Templates(directory=str(ROOT_DIR / "app" / "templates"))
+templates.env.globals.update(asset_rev=__asset_rev__, fonts_rev=fonts_rev())
+add_shared_templates(templates.env)
+templates.env.globals["notify_url"] = services.notify_page_url
+# Catalog ids (plus the platform) that have their own service icon in _icons.html.
+templates.env.globals["service_icon_ids"] = frozenset({"platform", *APP_IDS})
 router = APIRouter()
+
+_SETTINGS_CACHE_TTL = 30.0
+_backup_tab_cache: dict = {"at": 0.0, "data": None}
+_acl_status_cache: dict = {"at": 0.0, "data": None}
 
 
 def _browser_auth_url() -> str:
@@ -37,6 +51,15 @@ def _browser_auth_url() -> str:
         return raw
 
 
+def _platform_hostname() -> str:
+    try:
+        from stonepi_auth import platform_hostname
+
+        return platform_hostname()
+    except Exception:  # noqa: BLE001
+        return (env.hostname or "stonepi").strip() or "stonepi"
+
+
 def _settings() -> PlatformSettings:
     return PlatformSettings(
         enabled=True,
@@ -45,7 +68,7 @@ def _settings() -> PlatformSettings:
         prefix="",
         auth_url=_browser_auth_url(),
         public_origin=env.public_origin,
-        hostname=env.hostname,
+        hostname=_platform_hostname(),
     )
 
 
@@ -63,11 +86,11 @@ def _user_or_login(request: Request, *, admin: bool = False, require_dashboard: 
         return None, RedirectResponse(login_url(_settings(), _login_next(request)), status_code=303)
     if require_dashboard and not user.can_access("dashboard"):
         return None, templates.TemplateResponse(
-            request, "forbidden.html", {"user": user, "hostname": env.hostname}, status_code=403
+            request, "forbidden.html", {"user": user, "hostname": _platform_hostname()}, status_code=403
         )
     if admin and not user.is_admin:
         return None, templates.TemplateResponse(
-            request, "forbidden.html", {"user": user, "hostname": env.hostname}, status_code=403
+            request, "forbidden.html", {"user": user, "hostname": _platform_hostname()}, status_code=403
         )
     return user, None
 
@@ -80,11 +103,20 @@ def _request_host(request: Request) -> str:
     )
 
 
+def _alerts_bell(request: Request, user) -> dict:
+    """Top-bar bell: shown to people with Phone alerts; dot until they set up."""
+    from stonepi_auth.alerts import bell_context
+    from stonepi_auth.session import COOKIE_NAME
+
+    # Dashboard is the portal home, so the Notifications page is same-origin.
+    return bell_context(user, session_cookie=request.cookies.get(COOKIE_NAME), home_url="")
+
+
 def _ctx(request: Request, user, extra: dict | None = None):
     payload = {
         "request": request,
         "user": user,
-        "hostname": env.hostname,
+        "hostname": _platform_hostname(),
         "cockpit_url": resolve_cockpit_url(_request_host(request)),
         "nav": request.url.path,
         "active": "overview",
@@ -94,6 +126,13 @@ def _ctx(request: Request, user, extra: dict | None = None):
     }
     if extra:
         payload.update(extra)
+    if "alerts_bell_state" not in payload:
+        payload["alerts_bell_state"] = _alerts_bell(request, user)
+    payload["alerts_bell_state"] = {
+        "url": "/notifications",
+        **payload["alerts_bell_state"],
+        "active": payload.get("active") == "notifications",
+    }
     if "using_factory_admin" not in payload:
         payload["using_factory_admin"] = (
             _factory_admin(dict(request.cookies), user) if user else False
@@ -123,7 +162,35 @@ def _wants_json(request: Request) -> bool:
     return "application/json" in accept or request.headers.get("x-requested-with") == "fetch"
 
 
-LOCKED_APP_IDS = frozenset({"dashboard", "auth"})
+async def _form_body(request: Request) -> FormData:
+    """Parse form body for sync handlers (awaited on the loop; handler runs in threadpool)."""
+    return await request.form()
+
+
+def _job_started_response(
+    request: Request,
+    *,
+    job_id: str,
+    redirect_url: str,
+    message: str,
+):
+    if _wants_json(request):
+        return JSONResponse(
+            {
+                "ok": True,
+                "job_id": job_id,
+                "status": "pending",
+                "message": message,
+            }
+        )
+    sep = "&" if "?" in redirect_url else "?"
+    return RedirectResponse(
+        f"{redirect_url}{sep}msg={quote(message, safe='')}&job={job_id}",
+        status_code=303,
+    )
+
+
+LOCKED_APP_IDS = frozenset(SYSTEM_APP_IDS)
 
 
 @router.get("/healthz")
@@ -132,21 +199,69 @@ def healthz():
     return {"ok": True, "service": "dashboard"}
 
 
+@router.get("/system/health")
+def system_health(request: Request):
+    """Admin platform health rollup (JSON). Liveness remains /healthz."""
+    user, redirected = _user_or_login(request, admin=True)
+    if redirected:
+        return redirected
+    from app import collector
+
+    snap = collector.get_snapshot()
+    payload = snap.get("system_health")
+    if not payload:
+        payload = collector.refresh_now().get("system_health") or {
+            "ok": False,
+            "ready": False,
+            "summary": "checking…",
+        }
+    return JSONResponse(payload)
+
+
 def _factory_admin(cookies: dict[str, str], user) -> bool:
     if not user or not user.is_admin:
         return False
+    # Session `fac` / using_factory_admin — avoid /api/me on every render.
+    return bool(getattr(user, "using_factory_admin", False))
+
+
+def _format_backup_stamp(stamp: str) -> str:
+    """ISO-ish stamp → 'DD-MM-YYYY HH:MM:SS'; unparseable stamps pass through trimmed."""
+    if not stamp:
+        return ""
+    raw = stamp[:19].replace("T", " ")
+    date_part, _, time_part = raw.partition(" ")
+    bits = date_part.split("-")
+    if len(bits) == 3 and len(bits[0]) == 4 and all(b.isdigit() for b in bits):
+        date_part = f"{bits[2]}-{bits[1]}-{bits[0]}"
+    return f"{date_part} {time_part}".strip()
+
+
+def _backup_days_ago(stamp: str) -> str:
+    """ISO-ish stamp → 'Today' / 'Yesterday' / 'N days ago' (Pi local calendar days)."""
+    from datetime import datetime
+
+    if not stamp:
+        return ""
     try:
-        me = services.auth_request("GET", "/api/me", cookies)
-    except Exception:
-        return False
-    return bool(me.get("using_factory_admin"))
+        dt = datetime.fromisoformat(stamp.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return ""
+    if dt.tzinfo is not None:
+        dt = dt.astimezone().replace(tzinfo=None)
+    days = (datetime.now().date() - dt.date()).days
+    if days <= 0:
+        return "Today"
+    if days == 1:
+        return "Yesterday"
+    return f"{days} days ago"
 
 
-def _backup_summary(backup: dict) -> dict:
+def _one_backup_summary(backup: dict, *, kind_label: str) -> dict:
     status = str(backup.get("status") or "").strip().lower()
     stamp = str(backup.get("timestamp") or backup.get("finished_at") or backup.get("time") or "").strip()
     reason = str(backup.get("reason") or backup.get("message") or "").strip()
-    stamp_label = stamp[:19].replace("T", " ") if stamp else ""
+    stamp_label = _format_backup_stamp(stamp)
 
     def detail(*parts: str) -> str:
         return " · ".join(part for part in parts if part)
@@ -154,27 +269,56 @@ def _backup_summary(backup: dict) -> dict:
     if status in {"failed", "error"}:
         return {
             "label": "Failed",
-            "detail": detail(stamp_label, reason or "Last backup failed"),
+            "detail": detail(kind_label, stamp_label, reason or "Last backup failed"),
             "ok": False,
         }
     if status == "skipped":
         return {
             "label": "Skipped",
-            "detail": detail(stamp_label, reason or "Last backup was skipped"),
+            "detail": detail(kind_label, stamp_label, reason or "Last backup was skipped"),
             "ok": False,
         }
+    ago = _backup_days_ago(stamp) or stamp_label
     if status in {"ok", "complete", "success"} or (stamp and status not in {"none", "unknown", ""}):
         if stamp_label:
-            return {"label": stamp_label, "detail": "Last recorded backup", "ok": True}
+            return {"label": stamp_label, "ago": ago, "detail": detail(kind_label, "Last recorded backup"), "ok": True}
     if stamp_label and status in {"none", "", "unknown"}:
-        # Stamp without a clear failure — treat as recorded success.
-        return {"label": stamp_label, "detail": "Last recorded backup", "ok": True}
+        return {"label": stamp_label, "ago": ago, "detail": detail(kind_label, "Last recorded backup"), "ok": True}
     if status in {"none", "", "unknown"}:
-        return {"label": "Never", "detail": "No backup recorded yet", "ok": False}
+        return {"label": "Never", "detail": f"{kind_label} · No backup recorded yet", "ok": False}
     return {
         "label": (status or "unknown").capitalize(),
-        "detail": detail(stamp_label, reason or "Backup status"),
+        "detail": detail(kind_label, stamp_label, reason or "Backup status"),
         "ok": False,
+    }
+
+
+def _backup_summary(backup: dict) -> dict:
+    """Overview prefers local when present; falls back to USB / legacy flat stamp."""
+    local = backup.get("local") if isinstance(backup.get("local"), dict) else {}
+    usb = backup.get("usb") if isinstance(backup.get("usb"), dict) else {}
+    local_sum = _one_backup_summary(local or {}, kind_label="Local")
+    usb_sum = _one_backup_summary(usb or {}, kind_label="USB")
+    primary = local_sum
+    if local_sum.get("ok"):
+        primary = local_sum
+    elif usb_sum.get("ok"):
+        primary = usb_sum
+    elif not local_sum.get("ok") and backup.get("status"):
+        primary = _one_backup_summary(backup, kind_label="Backup")
+    return {
+        "label": primary.get("label") or "Never",
+        "detail": " · ".join(
+            p
+            for p in (
+                f"Local: {local_sum.get('ago') or local_sum.get('label')}",
+                f"USB: {usb_sum.get('ago') or usb_sum.get('label')}",
+            )
+            if p
+        ),
+        "ok": bool(local_sum.get("ok") or usb_sum.get("ok")),
+        "local": local_sum,
+        "usb": usb_sum,
     }
 
 
@@ -199,11 +343,10 @@ def home(request: Request):
 
 
 @router.post("/launcher-order")
-async def launcher_order(request: Request):
+def launcher_order(request: Request, form: FormData = Depends(_form_body)):
     user, redirected = _user_or_login(request, require_dashboard=False)
     if redirected:
         return redirected
-    form = await request.form()
     if not _require_csrf(request, form):
         return RedirectResponse("/?err=" + quote("Form expired"), status_code=303)
     raw = str(form.get("order") or "").strip()
@@ -233,10 +376,8 @@ def overview(request: Request):
     user, redirected = _user_or_login(request, admin=True)
     if redirected:
         return redirected
-    from concurrent.futures import ThreadPoolExecutor
-    from app import display
     import stonepi_watch
-    from app import network as network_svc
+    from app import collector
 
     cookies = dict(request.cookies)
     try:
@@ -246,48 +387,53 @@ def overview(request: Request):
     except Exception:
         access_origin = ""
 
-    def load_cards():
-        cards_local = services.application_cards(cookies)
-        for card in cards_local:
-            card["display_url"] = services.app_display_url(card, access_origin=access_origin)
-        return cards_local
+    snap = collector.get_snapshot()
+    if not snap.get("ready"):
+        # First hit before collector primed — do one sync fill (still cheap vs old path).
+        snap = collector.refresh_now()
 
-    def load_users():
-        try:
-            return services.auth_request("GET", "/api/users", cookies).get("users", []), None
-        except Exception as exc:
-            return [], str(exc)
+    cards = list(snap.get("cards") or [])
+    for card in cards:
+        card["display_url"] = services.app_display_url(card, access_origin=access_origin)
 
-    def load_network():
-        try:
-            return network_svc.network_snapshot()
-        except Exception:  # noqa: BLE001
-            return {
-                "internet": {"ok": False, "detail": "unavailable"},
-                "tailscale": network_svc.parse_tailscale_status(
-                    {"Installed": False, "BackendState": "NoState"},
-                    wanted=False,
-                ),
-                "helper_available": False,
-                "appliance": False,
-            }
+    # Overlay disabled apps from Auth when possible (collector has no cookies).
+    disabled: set[str] = set()
+    try:
+        payload = services.auth_request("GET", "/api/apps", cookies)
+        disabled = set(payload.get("disabled") or [])
+        for card in cards:
+            if card["id"] in disabled:
+                card["enabled"] = False
+    except Exception:
+        pass
 
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        cards_f = pool.submit(load_cards)
-        watch_f = pool.submit(display.watch_snapshot, cookies)
-        users_f = pool.submit(load_users)
-        network_f = pool.submit(load_network)
-        cards = cards_f.result()
-        watch = watch_f.result()
-        users, error = users_f.result()
-        network = network_f.result()
+    watch = snap.get("watch") or {}
+    if disabled and isinstance(watch, dict):
+        watch = services.apply_disabled_to_watch(watch, disabled)
+    backup = snap.get("backup") or services.backup_info()
+    network = snap.get("network") or {}
+    listening = snap.get("listening") or {}
+    hardware = snap.get("hardware") or {}
+    ntp = snap.get("ntp") or {}
+    journal_errors = snap.get("journal_errors") or {}
+    destinations = snap.get("destinations") or {}
+    mem_pct = snap.get("mem_pct")
+    temp_c = snap.get("temp_c")
+    uptime = snap.get("uptime")
 
-    backup = services.backup_info()
+    users, error = [], None
+    try:
+        users = services.auth_request("GET", "/api/users", cookies).get("users", [])
+    except Exception as exc:
+        error = str(exc)
+
     users_ok = error is None
     enabled_count = sum(1 for card in cards if card.get("enabled", True) is not False)
     healthy_count = sum(1 for card in cards if (card.get("health") or {}).get("ok"))
     disk_pct = watch.get("disk_pct")
     disk_warn = disk_pct is not None and int(disk_pct) >= stonepi_watch.DISK_ATTENTION_PCT
+    notifications_card = next((c for c in cards if c.get("id") == "notify"), None)
+    checking = not bool(snap.get("ready"))
     return _html(
         request,
         "overview.html",
@@ -295,11 +441,21 @@ def overview(request: Request):
         {
             "active": "overview",
             "cards": cards,
+            "card_groups": services.application_card_groups(cards=cards),
             "backup": backup,
             "backup_summary": _backup_summary(backup),
             "watch": watch,
             "disk_pct": disk_pct,
             "disk_warn": disk_warn,
+            "mem_pct": mem_pct,
+            "temp_c": temp_c,
+            "uptime": uptime,
+            "destinations": destinations,
+            "listening": listening,
+            "hardware": hardware,
+            "ntp": ntp,
+            "journal_errors": journal_errors,
+            "notifications_ok": bool((notifications_card or {}).get("health", {}).get("ok")),
             "healthy_count": healthy_count,
             "user_count": len(users) if users_ok else None,
             "users_unavailable": not users_ok,
@@ -308,6 +464,7 @@ def overview(request: Request):
             "platform_version": services_platform_version(),
             "using_factory_admin": _factory_admin(cookies, user),
             "network": network,
+            "health_checking": checking,
         },
     )
 
@@ -323,13 +480,15 @@ def applications(request: Request):
     user, redirected = _user_or_login(request, admin=True)
     if redirected:
         return redirected
+    cards = services.application_cards(dict(request.cookies))
     return _html(
         request,
         "applications.html",
         user,
         {
             "active": "applications",
-            "cards": services.application_cards(dict(request.cookies)),
+            "cards": cards,
+            "card_groups": services.application_card_groups(cards=cards),
             "locked_apps": LOCKED_APP_IDS,
             "message": request.query_params.get("msg") or None,
         },
@@ -359,11 +518,10 @@ def application_detail(app_id: str, request: Request):
 
 
 @router.post("/applications/{app_id}/{action}")
-async def application_action(app_id: str, action: str, request: Request):
+def application_action(app_id: str, action: str, request: Request, form: FormData = Depends(_form_body)):
     user, redirected = _user_or_login(request, admin=True)
     if redirected:
         return redirected
-    form = await request.form()
     cards = {item["id"]: item for item in services.application_cards(dict(request.cookies))}
     card = cards.get(app_id)
     if card is None or not card.get("unit"):
@@ -398,7 +556,7 @@ def users_page(request: Request):
         return redirected
     error = request.query_params.get("err") or None
     people = []
-    apps = services.catalog_apps(include_auth=False, cookies=dict(request.cookies))
+    apps = services.catalog_apps(include_auth=False, include_non_grantable=False, cookies=dict(request.cookies))
     try:
         people = services.auth_request("GET", "/api/users", dict(request.cookies)).get("users", [])
     except Exception as exc:
@@ -420,13 +578,16 @@ def users_page(request: Request):
 
 @router.post("/users")
 @router.post("/settings/users")
-async def users_create(request: Request):
+def users_create(request: Request, form: FormData = Depends(_form_body)):
     user, redirected = _user_or_login(request, admin=True)
     if redirected:
         return redirected
-    form = await request.form()
-    apps = services.catalog_apps(include_auth=False, cookies=dict(request.cookies))
-    if not _require_csrf(request, form):
+    apps = services.catalog_apps(include_auth=False, include_non_grantable=False, cookies=dict(request.cookies))
+    wants_json = _wants_json(request)
+
+    def _fail(message: str, status_code: int = 400):
+        if wants_json:
+            return JSONResponse({"ok": False, "error": message}, status_code=status_code)
         people = []
         try:
             people = services.auth_request("GET", "/api/users", dict(request.cookies)).get("users", [])
@@ -441,10 +602,13 @@ async def users_create(request: Request):
                 "people": people,
                 "apps": apps,
                 "users_form_base": "/users",
-                "error": "That form expired. Refresh and try again.",
+                "error": message,
             },
-            status_code=400,
+            status_code=status_code,
         )
+
+    if not _require_csrf(request, form):
+        return _fail("That form expired. Refresh and try again.")
     try:
         permissions = services.parse_permissions_form(form, apps)
         app_ids = services.ensure_fileserve_for_studio_publish(
@@ -460,41 +624,30 @@ async def users_create(request: Request):
                 "password": str(form.get("password") or ""),
                 "display_name": str(form.get("display_name") or ""),
                 "is_admin": form.get("is_admin") == "1",
+                "phone_alerts": form.get("phone_alerts") == "1",
                 "apps": app_ids,
                 "permissions": permissions,
             },
         )
     except Exception as exc:
-        people = []
-        try:
-            people = services.auth_request("GET", "/api/users", dict(request.cookies)).get("users", [])
-        except Exception:
-            pass
-        return _html(
-            request,
-            "users.html",
-            user,
-            {
-                "active": "users",
-                "people": people,
-                "apps": apps,
-                "users_form_base": "/users",
-                "error": str(exc),
-            },
-            status_code=400,
-        )
+        return _fail(str(exc))
+    if wants_json:
+        return JSONResponse({"ok": True, "message": "Account created"})
     return RedirectResponse("/users?msg=Saved", status_code=303)
 
 
 @router.post("/users/{user_id}")
 @router.post("/settings/users/{user_id}")
-async def users_update(user_id: str, request: Request):
+def users_update(user_id: str, request: Request, form: FormData = Depends(_form_body)):
     user, redirected = _user_or_login(request, admin=True)
     if redirected:
         return redirected
-    form = await request.form()
-    apps = services.catalog_apps(include_auth=False, cookies=dict(request.cookies))
-    if not _require_csrf(request, form):
+    apps = services.catalog_apps(include_auth=False, include_non_grantable=False, cookies=dict(request.cookies))
+    wants_json = _wants_json(request)
+
+    def _fail(message: str, status_code: int = 400):
+        if wants_json:
+            return JSONResponse({"ok": False, "error": message}, status_code=status_code)
         people = []
         try:
             people = services.auth_request("GET", "/api/users", dict(request.cookies)).get("users", [])
@@ -509,20 +662,25 @@ async def users_update(user_id: str, request: Request):
                 "people": people,
                 "apps": apps,
                 "users_form_base": "/users",
-                "error": "That form expired. Refresh and try again.",
+                "error": message,
             },
-            status_code=400,
+            status_code=status_code,
         )
+
+    if not _require_csrf(request, form):
+        return _fail("That form expired. Refresh and try again.")
     action = str(form.get("action") or "save")
     try:
         if action == "delete":
             services.auth_request("DELETE", f"/api/users/{user_id}", dict(request.cookies))
+            message = "Account deleted"
         else:
             permissions = services.parse_permissions_form(form, apps)
             payload = {
                 "display_name": str(form.get("display_name") or ""),
                 "enabled": form.get("enabled") == "1",
                 "is_admin": form.get("is_admin") == "1",
+                "phone_alerts": form.get("phone_alerts") == "1",
                 "apps": services.ensure_fileserve_for_studio_publish(
                     [str(value) for value in form.getlist("apps")],
                     permissions,
@@ -533,34 +691,28 @@ async def users_update(user_id: str, request: Request):
             if password:
                 payload["password"] = password
             services.auth_request("PATCH", f"/api/users/{user_id}", dict(request.cookies), payload)
+            message = "Password updated" if password else "Saved"
     except Exception as exc:
-        people = []
-        try:
-            people = services.auth_request("GET", "/api/users", dict(request.cookies)).get("users", [])
-        except Exception:
-            pass
-        return _html(
-            request,
-            "users.html",
-            user,
+        return _fail(str(exc))
+    if wants_json:
+        return JSONResponse(
             {
-                "active": "users",
-                "people": people,
-                "apps": apps,
-                "users_form_base": "/users",
-                "error": str(exc),
-            },
-            status_code=400,
+                "ok": True,
+                "message": message,
+                "action": action,
+                "user_id": user_id,
+                "enabled": form.get("enabled") == "1" if action != "delete" else None,
+                "is_admin": form.get("is_admin") == "1" if action != "delete" else None,
+            }
         )
     return RedirectResponse("/users?msg=Saved", status_code=303)
 
 
 @router.post("/settings/password")
-async def settings_password_change(request: Request):
+def settings_password_change(request: Request, form: FormData = Depends(_form_body)):
     user, redirected = _user_or_login(request, require_dashboard=False)
     if redirected:
         return redirected
-    form = await request.form()
     if not _require_csrf(request, form):
         return RedirectResponse("/settings?tab=general&err=Form+expired#account-password", status_code=303)
     current = str(form.get("current_password") or "")
@@ -572,7 +724,7 @@ async def settings_password_change(request: Request):
             status_code=303,
         )
     try:
-        services.auth_request(
+        auth_resp = services.auth_exchange(
             "POST",
             "/api/me/password",
             dict(request.cookies),
@@ -583,15 +735,17 @@ async def settings_password_change(request: Request):
             f"/settings?tab=general&err={quote(str(exc), safe='')}#account-password",
             status_code=303,
         )
-    return RedirectResponse("/settings?tab=general&msg=Password+updated#account-password", status_code=303)
+    redirect = RedirectResponse("/settings?tab=general&msg=Password+updated#account-password", status_code=303)
+    # Forward re-issued session cookie so the factory-password banner clears immediately.
+    services.forward_auth_cookies(redirect, auth_resp)
+    return redirect
 
 
 @router.post("/settings/app-colours")
-async def settings_app_colours_save(request: Request):
+def settings_app_colours_save(request: Request, form: FormData = Depends(_form_body)):
     user, redirected = _user_or_login(request, require_dashboard=False)
     if redirected:
         return redirected
-    form = await request.form()
     if not _require_csrf(request, form):
         return RedirectResponse(
             "/settings?tab=general&panel=app-colours&err=Form+expired",
@@ -615,24 +769,25 @@ async def settings_app_colours_save(request: Request):
 
 
 @router.post("/applications/availability")
-async def applications_availability(request: Request):
+def applications_availability(request: Request, form: FormData = Depends(_form_body)):
     user, redirected = _user_or_login(request, admin=True)
     if redirected:
         return redirected
-    form = await request.form()
     wants_json = _wants_json(request)
     cookies = dict(request.cookies)
 
     def fail(message: str, status_code: int = 400):
         if wants_json:
             return JSONResponse({"ok": False, "error": message}, status_code=status_code)
+        cards = services.application_cards(cookies)
         return _html(
             request,
             "applications.html",
             user,
             {
                 "active": "applications",
-                "cards": services.application_cards(cookies),
+                "cards": cards,
+                "card_groups": services.application_card_groups(cards=cards),
                 "locked_apps": LOCKED_APP_IDS,
                 "error": message,
             },
@@ -647,7 +802,7 @@ async def applications_availability(request: Request):
     if app_id not in APP_IDS:
         return fail("Unknown service.")
     if app_id in LOCKED_APP_IDS:
-        return fail("Dashboard and Auth always stay available.")
+        return fail("SYSTEM services always stay available.")
     names = {item["id"]: str(item.get("name") or item["id"]) for item in APP_CATALOG}
     try:
         payload = services.auth_request("GET", "/api/apps", cookies)
@@ -679,13 +834,12 @@ def updates_page(request: Request):
 
 @router.post("/updates/repo")
 @router.post("/settings/update/repo")
-async def updates_repo(request: Request):
+def updates_repo(request: Request, form: FormData = Depends(_form_body)):
     from app import update_service
 
     user, redirected = _user_or_login(request, admin=True)
     if redirected:
         return redirected
-    form = await request.form()
     if not _require_csrf(request, form):
         return RedirectResponse("/settings?tab=update&err=Form+expired", status_code=303)
     raw = str(form.get("github_repo") or "")
@@ -697,17 +851,15 @@ async def updates_repo(request: Request):
 
 @router.post("/updates/{app_id}/check")
 @router.post("/settings/update/{app_id}/check")
-async def updates_check(app_id: str, request: Request):
+def updates_check(app_id: str, request: Request, form: FormData = Depends(_form_body)):
     from app import update_service
 
     user, redirected = _user_or_login(request, admin=True)
     if redirected:
         return redirected
-    form = await request.form()
     if not _require_csrf(request, form):
         return RedirectResponse("/settings?tab=update&err=Form+expired", status_code=303)
-    known = {item[0] for item in update_service.APP_TARGETS}
-    if app_id not in known:
+    if app_id not in update_service.updatable_ids():
         raise HTTPException(status_code=404, detail="Unknown target")
     result = update_service.check_latest(app_id)
     msg = result.get("message") or "Checked GitHub."
@@ -717,32 +869,36 @@ async def updates_check(app_id: str, request: Request):
 
 @router.post("/updates/{app_id}/install")
 @router.post("/settings/update/{app_id}/install")
-async def updates_install(app_id: str, request: Request):
+def updates_install(app_id: str, request: Request, form: FormData = Depends(_form_body)):
     from app import update_service
 
     user, redirected = _user_or_login(request, admin=True)
     if redirected:
         return redirected
-    form = await request.form()
     if not _require_csrf(request, form):
         return RedirectResponse("/settings?tab=update&err=Form+expired", status_code=303)
-    known = {item[0] for item in update_service.APP_TARGETS}
-    if app_id not in known:
+    if app_id not in update_service.updatable_ids():
         raise HTTPException(status_code=404, detail="Unknown target")
-    try:
+
+    def _run_install() -> str:
         result = update_service.install_latest(app_id)
         msg = result.get("message") or "Installed."
-        key = "msg" if result.get("ok", True) else "err"
-        return RedirectResponse(f"/settings?tab=update&{key}={quote(msg, safe='')}", status_code=303)
-    except Exception as exc:  # noqa: BLE001
-        msg = str(exc) or "Install failed."
-        return RedirectResponse(f"/settings?tab=update&err={quote(msg, safe='')}", status_code=303)
+        if not result.get("ok", True):
+            raise RuntimeError(msg)
+        return msg
+
+    job_id = jobs.start_job(f"update_install:{app_id}", _run_install)
+    return _job_started_response(
+        request,
+        job_id=job_id,
+        redirect_url="/settings?tab=update",
+        message="Update install started — refresh Updates in a minute.",
+    )
 
 
 SETTINGS_TABS = [
     ("general", "General"),
     ("network", "Network"),
-    ("display", "Display"),
     ("vault", "Vault"),
     ("automations", "Automations"),
     ("update", "Updates"),
@@ -751,28 +907,26 @@ SETTINGS_TABS = [
 ]
 SETTINGS_LEDES = {
     "general": "Appearance, app colours, password, and view options. Accounts stay under Users.",
-    "network": "Home network vs internet-facing posture, and Tailscale remote access.",
-    "display": "TRMNL layout and household display push.",
+    "network": "Appliance hostname, home network vs internet-facing posture, and Tailscale remote access.",
     "vault": "Encrypted secrets for apps and platform services.",
     "automations": "When→then jobs: USB backup, Display push on Watch or backup.",
     "update": "GitHub Releases for app packages and the platform pack.",
-    "backup": "Full SD recovery starts from Cockpit so backup can see the USB disk.",
+    "backup": "Local schedule, USB status, restore drill, and snapshot restore.",
     "about": "Name, description, GitHub, and the version running here.",
 }
-SETTINGS_HUB_LEDE = "Household portal settings — appearance, network, display, and system."
+SETTINGS_HUB_LEDE = "Household portal settings — appearance, network, and system."
 SETTINGS_HUB_SUBTEXTS = {
     "general": "Palette, app colours, view density, and your password.",
-    "network": "LAN vs internet-facing, Tailscale.",
-    "display": "TRMNL layout and push.",
+    "network": "Hostname, LAN vs internet-facing, Tailscale.",
     "vault": "Encrypted secrets for apps.",
     "automations": "USB backup and display jobs.",
     "update": "GitHub Releases for packages.",
-    "backup": "Full SD recovery via Cockpit.",
+    "backup": "Local schedule, USB drill, and restore.",
     "about": "Version and project links.",
 }
 SETTINGS_GROUPS = (
     ("you", "You", ("general",)),
-    ("house", "House", ("network", "display", "vault", "automations")),
+    ("house", "House", ("network", "vault", "automations")),
     ("system", "System", ("update", "backup", "about")),
 )
 # Multi-card tabs: (panel_id, label, card_ids)
@@ -784,6 +938,7 @@ SETTINGS_SECTION_PANELS = {
         ("password", "Your password", ("password",)),
     ),
     "network": (
+        ("hostname", "Hostname", ("hostname",)),
         ("exposure", "Network exposure", ("exposure",)),
         ("remote", "Remote access", ("remote",)),
     ),
@@ -794,6 +949,7 @@ SETTINGS_PANEL_ICONS = {
     "app-colours": "appearance",
     "view": "view",
     "password": "auth",
+    "hostname": "network",
     "exposure": "network",
     "remote": "remote",
 }
@@ -802,6 +958,7 @@ SETTINGS_PANEL_SUBTEXTS = {
     "app-colours": "Tile accents on Home, Health, and Services",
     "view": "Home, Health, and Services density",
     "password": "Change your sign-in password",
+    "hostname": "LAN name for NAME.local",
     "exposure": "LAN vs internet-facing",
     "remote": "Tailscale remote access",
 }
@@ -851,10 +1008,14 @@ def normalize_settings_panel(tab: str, value: str | None) -> str | None:
 # Friendly catalog for Settings → Vault (dropdown). Values are env/Vault key names.
 VAULT_KEY_CATALOG = [
     {
-        "group": "Platform",
+        "group": "Platform / Outputs",
         "items": [
-            {"id": "STONEPI_SESSION_SECRET", "label": "Session secret", "blurb": "Shared sign-in cookie secret across apps."},
-            {"id": "DISPLAY_WEBHOOK_URL", "label": "Display webhook", "blurb": "TRMNL Private Plugin webhook URL."},
+            {"id": "STONEPI_SESSION_SECRET", "label": "Session secret", "blurb": "Shared sign-in cookie secret across apps.", "required_hint": True},
+            {"id": "STONEPI_NTFY_TOKEN", "label": "Household ntfy token", "blurb": "Shared ntfy access token — configure topic under Notify → Destinations.", "required_hint": False},
+            {"id": "DISPLAY_WEBHOOK_URL", "label": "TRMNL webhook (Dashboard Display)", "blurb": "Webhook for the built-in Dashboard Display. Other Displays use DISPLAY_WEBHOOK_URL_<ID>; set them on each Display in Notify.", "required_hint": False},
+            {"id": "STONEPI_RECOVER_PASSWORD", "label": "Recover password", "blurb": "Password for /recover/ console (username stonepi). Not your portal login.", "required_hint": False},
+            {"id": "TAILSCALE_API_KEY", "label": "Tailscale API key", "blurb": "Cloud API key to apply ACL from Settings → Network.", "required_hint": False},
+            {"id": "TAILSCALE_TAILNET", "label": "Tailscale tailnet", "blurb": "Tailnet name or id for ACL API (e.g. example.com).", "required_hint": False},
         ],
     },
     {
@@ -870,7 +1031,6 @@ VAULT_KEY_CATALOG = [
         "items": [
             {"id": "X3_SYNC_TOKEN", "label": "Reader sync token", "blurb": "CrossPoint / OPDS catalog token when internet-facing."},
             {"id": "NEWSCAST_READER_SSH_PASSWORD", "label": "Reader SSH password", "blurb": "Optional password for reader device setup."},
-            {"id": "NEWSCAST_NTFY_TOKEN", "label": "ntfy token", "blurb": "Push notifications via ntfy."},
             {"id": "BRIGHTDATA_API_KEY", "label": "Bright Data API key", "blurb": "Optional fetch proxy for stubborn sites."},
         ],
     },
@@ -879,6 +1039,13 @@ VAULT_KEY_CATALOG = [
         "items": [
             {"id": "GOOGLE_CLIENT_ID", "label": "Google client ID", "blurb": "Google Calendar OAuth client id."},
             {"id": "GOOGLE_CLIENT_SECRET", "label": "Google client secret", "blurb": "Google Calendar OAuth client secret."},
+        ],
+    },
+    {
+        "group": "Legacy (prefer Destinations)",
+        "items": [
+            {"id": "NEWSCAST_NTFY_TOKEN", "label": "NewsCast ntfy (legacy)", "blurb": "Unused when Notify Destinations owns ntfy — prefer STONEPI_NTFY_TOKEN."},
+            {"id": "PRICEWATCH_NTFY_TOKEN", "label": "PriceWatch ntfy (legacy)", "blurb": "Unused when Notify Destinations owns ntfy — prefer STONEPI_NTFY_TOKEN."},
         ],
     },
 ]
@@ -895,7 +1062,7 @@ def _vault_label_map() -> dict[str, str]:
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, tab: str | None = None, panel: str | None = None):
     import app as dashboard_app
-    from app import display, update_service
+    from app import update_service
 
     # Appearance is for every signed-in household member (product apps link here).
     # Admin-only tabs still load only for admins below.
@@ -905,8 +1072,8 @@ def settings_page(request: Request, tab: str | None = None, panel: str | None = 
     raw = (tab or "").strip().lower()
     settings_hub = raw == "" or raw == "hub"
     settings_tab = "general" if settings_hub else raw
-    if settings_tab in {"trmnl", "trmnl-integration"}:
-        settings_tab = "display"
+    if settings_tab in {"trmnl", "trmnl-integration", "display"}:
+        return RedirectResponse(services.notify_page_url("displays"), status_code=303)
     if settings_tab in {"updates"}:
         settings_tab = "update"
     if settings_tab in {"backups"}:
@@ -1001,87 +1168,39 @@ def settings_page(request: Request, tab: str | None = None, panel: str | None = 
 
         extra["exposure_mode"] = exposure_mode()
         extra["network"] = network_svc.network_snapshot()
-    elif settings_tab == "display":
-        cfg = display.load_config()
-        device = display.normalize_device(cfg.get("device"))
-        design = display.normalize_design(cfg.get("design"))
-        layout = display.normalize_layout(cfg.get("layout"), device=device, design=design)
-        preview = display.collect_overview(dict(request.cookies))
-        vault_webhook = ""
-        try:
-            from stonepi_vault import get_secret
-
-            vault_webhook = (get_secret("DISPLAY_WEBHOOK_URL", env_name="STONEPI_DISPLAY_WEBHOOK", default="") or "").strip()
-        except Exception:
-            vault_webhook = ""
-        snippets = display.snippets_for(device)
-        design_info = display.design_profile(design)
-        designer = {
-            "layout": layout,
-            "catalog": list(display.BLOCK_CATALOG),
-            "snippets": snippets,
-            "snippets_by_device": {
-                item["id"]: display.snippets_for(item["id"]) for item in display.DEVICE_PROFILES
-            },
-            "defaults_by_device": {
-                item["id"]: display.default_layout(item["id"], design) for item in display.DEVICE_PROFILES
-            },
-            "defaults_by_design": {
-                item["id"]: display.default_layout(device, item["id"]) for item in display.DESIGN_PRESETS
-            },
-            "devices": list(display.DEVICE_PROFILES),
-            "designs": list(display.DESIGN_PRESETS),
-            "device": device,
-            "design": design,
-            "fixed_design": bool(design_info.get("fixed")),
-            "title_bar": display.TITLE_BAR_MARKUP,
-            "preview": preview,
-            "markup": display.build_markup(layout, device=device, design=design),
-            "markup_by_device_design": {
-                device_item["id"]: {
-                    design_item["id"]: display.build_markup(
-                        display.default_layout(device_item["id"], design_item["id"]),
-                        device=device_item["id"],
-                        design=design_item["id"],
-                    )
-                    for design_item in display.DESIGN_PRESETS
-                }
-                for device_item in display.DEVICE_PROFILES
-            },
-        }
-        extra.update(
-            {
-                "display": cfg,
-                "layout": layout,
-                "layout_json": json.dumps(layout, separators=(",", ":")),
-                "preview": preview,
-                "preview_json": json.dumps(preview, indent=2),
-                "generated_markup": display.build_markup(layout, device=device, design=design),
-                "designer": designer,
-                "vault_has_webhook": bool(vault_webhook),
-                "display_devices": list(display.DEVICE_PROFILES),
-                "display_device": device,
-                "display_device_profile": display.device_profile(device),
-                "display_designs": list(display.DESIGN_PRESETS),
-                "display_design": design,
-                "display_design_profile": design_info,
-            }
-        )
+        extra["appliance_hostname"] = _platform_hostname()
+        extra["acl_status"] = _tailscale_acl_status()
     elif settings_tab == "vault":
         from stonepi_vault import get_vault
 
         extra["vault_catalog"] = VAULT_KEY_CATALOG
         labels = _vault_label_map()
         extra["vault_known_ids"] = sorted(labels.keys())
+        stored_ids: set[str] = set()
         try:
             vault = get_vault()
             stored = vault.list_keys()
+            stored_ids = {str(k) for k in stored}
             extra["vault_keys"] = [
                 {"id": key, "label": labels.get(key, key), "known": key in labels} for key in stored
             ]
         except Exception as exc:
             extra["vault_keys"] = []
             extra["error"] = extra.get("error") or f"Vault unavailable: {exc}"
+        matrix: list[dict] = []
+        for group in VAULT_KEY_CATALOG:
+            if str(group.get("group") or "").startswith("Legacy"):
+                continue
+            for item in group["items"]:
+                matrix.append(
+                    {
+                        "id": item["id"],
+                        "label": item["label"],
+                        "group": group["group"],
+                        "configured": item["id"] in stored_ids,
+                    }
+                )
+        extra["vault_matrix"] = matrix
     elif settings_tab == "automations":
         import stonepi_automations as automations
 
@@ -1091,23 +1210,273 @@ def settings_page(request: Request, tab: str | None = None, panel: str | None = 
         extra.update(
             {
                 "github_repo": update_service.github_repo(),
-                "cards": update_service.version_cards(),
+                "update_groups": update_service.version_card_groups(),
             }
         )
     elif settings_tab == "backup":
-        extra["backup"] = services.backup_info()
+        extra.update(_backup_tab_extras())
+    extra["notify_status"] = services.notify_admin_status(dict(request.cookies))
     return _html(request, "settings.html", user, extra)
+
+
+def _backup_tab_extras() -> dict:
+    now = time.monotonic()
+    cached = _backup_tab_cache.get("data")
+    if cached is not None and (now - float(_backup_tab_cache.get("at") or 0)) < _SETTINGS_CACHE_TTL:
+        return dict(cached)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        f_backup = pool.submit(services.backup_info)
+        f_snaps = pool.submit(services.list_usb_backups)
+        f_sched = pool.submit(services.local_backup_schedule)
+        f_drill = pool.submit(services.restore_drill_status)
+        f_fail = pool.submit(services.failover_status)
+        data = {
+            "backup": f_backup.result(),
+            "backup_snapshots": f_snaps.result(),
+            "backup_schedule": f_sched.result(),
+            "drill": f_drill.result(),
+            "failover": f_fail.result(),
+        }
+    _backup_tab_cache["data"] = data
+    _backup_tab_cache["at"] = now
+    return dict(data)
+
+
+def _tailscale_acl_status() -> dict:
+    import subprocess
+    from pathlib import Path
+
+    now = time.monotonic()
+    cached = _acl_status_cache.get("data")
+    if cached is not None and (now - float(_acl_status_cache.get("at") or 0)) < _SETTINGS_CACHE_TTL:
+        return dict(cached)
+
+    helper = Path("/usr/local/sbin/stonepi-tailscale-acl")
+    if not helper.exists():
+        info = {"configured": False}
+        _acl_status_cache["data"] = info
+        _acl_status_cache["at"] = now
+        return dict(info)
+    try:
+        result = subprocess.run(
+            ["sudo", "-n", str(helper), "status"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=15,
+        )
+        info: dict = {"configured": False}
+        for line in (result.stdout or "").splitlines():
+            if line.startswith("configured="):
+                info["configured"] = line.split("=", 1)[1].strip() == "yes"
+            elif line.startswith("tailnet="):
+                info["tailnet"] = line.split("=", 1)[1].strip()
+    except Exception:
+        info = {"configured": False}
+    _acl_status_cache["data"] = info
+    _acl_status_cache["at"] = now
+    return dict(info)
+
+
+@router.get("/api/jobs/{job_id}")
+def api_job_status(job_id: str, request: Request):
+    user, redirected = _user_or_login(request, admin=True)
+    if redirected:
+        return redirected
+    job = jobs.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Unknown job")
+    return JSONResponse(job)
+
+
+@router.get("/api/jobs")
+def api_jobs_list(request: Request, kind: str | None = None):
+    user, redirected = _user_or_login(request, admin=True)
+    if redirected:
+        return redirected
+    if kind:
+        latest = jobs.latest_job(kind)
+        return JSONResponse({"ok": True, "kind": kind, "latest": latest, "jobs": jobs.list_jobs(kind)})
+    return JSONResponse({"ok": True, "jobs": jobs.list_jobs()})
+
+
+@router.get("/settings/backup/job-status")
+def settings_backup_job_status(request: Request, id: str | None = None, kind: str | None = None):
+    """JSON status for a backup restore/drill job (poll from Backup tab)."""
+    user, redirected = _user_or_login(request, admin=True)
+    if redirected:
+        return redirected
+    job = None
+    if id:
+        job = jobs.get_job(id)
+    else:
+        want = (kind or "").strip() or "backup_restore"
+        job = jobs.latest_job(want)
+        if job is None and not kind:
+            job = jobs.latest_job("backup_drill")
+    if job is None:
+        return JSONResponse({"ok": False, "error": "No job found"}, status_code=404)
+    return JSONResponse({"ok": True, **job})
+
+
+@router.post("/settings/backup/drill")
+def settings_backup_drill(request: Request, form: FormData = Depends(_form_body)):
+    user, redirected = _user_or_login(request, admin=True)
+    if redirected:
+        return redirected
+    if not _require_csrf(request, form):
+        return RedirectResponse("/settings?tab=backup&err=Form+expired", status_code=303)
+
+    def _run_drill() -> str:
+        ok, out = services.run_restore_drill()
+        if not ok:
+            raise RuntimeError((out or "Drill failed")[:500])
+        return (out or "Restore drill passed")[:500]
+
+    job_id = jobs.start_job("backup_drill", _run_drill)
+    return _job_started_response(
+        request,
+        job_id=job_id,
+        redirect_url="/settings?tab=backup",
+        message="Restore drill started — refresh Backup in a minute.",
+    )
+
+
+@router.post("/settings/backup/restore")
+def settings_backup_restore(request: Request, form: FormData = Depends(_form_body)):
+    user, redirected = _user_or_login(request, admin=True)
+    if redirected:
+        return redirected
+    if not _require_csrf(request, form):
+        return RedirectResponse("/settings?tab=backup&err=Form+expired", status_code=303)
+    path = str(form.get("path") or "").strip()
+    local_ok = path in {"/var/backups/stonepi/current", "/var/backups/stonepi/current/"}
+    usb_ok = path.startswith("/mnt/stonepi-backup/RaspberryPi-Backup/")
+    if not (local_ok or usb_ok):
+        return RedirectResponse("/settings?tab=backup&err=Invalid+backup+path", status_code=303)
+
+    def _run_restore() -> str:
+        ok, out = services.run_usb_restore(path)
+        if not ok:
+            raise RuntimeError((out or "Restore failed")[:500])
+        return (out or "Restore complete")[:500]
+
+    job_id = jobs.start_job("backup_restore", _run_restore)
+    return _job_started_response(
+        request,
+        job_id=job_id,
+        redirect_url="/settings?tab=backup",
+        message="Restore started — refresh Backup in a minute.",
+    )
+
+
+@router.post("/settings/backup/schedule")
+def settings_backup_schedule(request: Request, form: FormData = Depends(_form_body)):
+    user, redirected = _user_or_login(request, admin=True)
+    if redirected:
+        return redirected
+    if not _require_csrf(request, form):
+        return RedirectResponse("/settings?tab=backup&err=Form+expired", status_code=303)
+    enabled = str(form.get("enabled") or "").strip().lower() in {"1", "on", "true", "yes"}
+    cadence = str(form.get("cadence") or "weekly").strip().lower()
+    time_of_day = str(form.get("time") or "03:30").strip()
+    weekday = str(form.get("weekday") or "Sun").strip()
+    ok, out = services.set_local_backup_schedule(enabled, cadence, time_of_day, weekday)
+    if ok:
+        return RedirectResponse("/settings?tab=backup&msg=Local+backup+schedule+saved", status_code=303)
+    return RedirectResponse(
+        f"/settings?tab=backup&err={quote((out or 'Schedule failed')[:300], safe='')}",
+        status_code=303,
+    )
+
+
+@router.post("/settings/backup/run-local")
+def settings_backup_run_local(request: Request, form: FormData = Depends(_form_body)):
+    user, redirected = _user_or_login(request, admin=True)
+    if redirected:
+        return redirected
+    if not _require_csrf(request, form):
+        return RedirectResponse("/settings?tab=backup&err=Form+expired", status_code=303)
+    ok, out = services.run_local_backup_now()
+    if ok:
+        return RedirectResponse(
+            "/settings?tab=backup&msg=Local+backup+started.+Refresh+in+a+minute.",
+            status_code=303,
+        )
+    return RedirectResponse(
+        f"/settings?tab=backup&err={quote((out or 'Could not start backup')[:300], safe='')}",
+        status_code=303,
+    )
+
+
+@router.post("/settings/network/acl/apply")
+def settings_network_acl_apply(request: Request, form: FormData = Depends(_form_body)):
+    user, redirected = _user_or_login(request, admin=True)
+    if redirected:
+        return redirected
+    if not _require_csrf(request, form):
+        return RedirectResponse("/settings?tab=network&err=Form+expired", status_code=303)
+    import subprocess
+    from pathlib import Path
+
+    helper = Path("/usr/local/sbin/stonepi-tailscale-acl")
+    if not helper.exists():
+        return RedirectResponse("/settings?tab=network&err=ACL+helper+missing", status_code=303)
+    try:
+        result = subprocess.run(
+            ["sudo", "-n", str(helper), "apply"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+        )
+        out = ((result.stdout or "") + (result.stderr or "")).strip()
+        if result.returncode != 0:
+            return RedirectResponse(
+                f"/settings?tab=network&err={quote(out[:300] or 'ACL apply failed', safe='')}",
+                status_code=303,
+            )
+        return RedirectResponse("/settings?tab=network&msg=Tailscale+ACL+applied", status_code=303)
+    except Exception as exc:  # noqa: BLE001
+        return RedirectResponse(
+            f"/settings?tab=network&err={quote(str(exc)[:300], safe='')}",
+            status_code=303,
+        )
+
+
+@router.post("/settings/network/hostname")
+def settings_hostname_save(request: Request, form: FormData = Depends(_form_body)):
+    user, redirected = _user_or_login(request, admin=True)
+    if redirected:
+        return redirected
+    from app import network as network_svc
+
+    if not _require_csrf(request, form):
+        return RedirectResponse("/settings?tab=network&err=Form+expired", status_code=303)
+    wanted = str(form.get("hostname") or "").strip()
+    ok, detail = network_svc.apply_hostname(wanted)
+    if not ok:
+        return RedirectResponse(
+            f"/settings?tab=network&panel=hostname&err={quote(detail, safe='')}",
+            status_code=303,
+        )
+    msg = f"Hostname is {detail}. LAN address is http://{detail}.local — apps pick this up immediately."
+    if not network_svc.hostname_helper_available():
+        msg += " On this machine the OS hostname was not changed (dev / no helper)."
+    return RedirectResponse(
+        f"/settings?tab=network&panel=hostname&msg={quote(msg, safe='')}",
+        status_code=303,
+    )
 
 
 @router.post("/settings/exposure")
 @router.post("/settings/network/exposure")
-async def settings_exposure_save(request: Request):
+def settings_exposure_save(request: Request, form: FormData = Depends(_form_body)):
     from stonepi_auth import set_exposure_mode
 
     user, redirected = _user_or_login(request, admin=True)
     if redirected:
         return redirected
-    form = await request.form()
     if not _require_csrf(request, form):
         return RedirectResponse("/settings?tab=network&err=Form+expired", status_code=303)
     mode = str(form.get("exposure") or "lan").strip().lower()
@@ -1125,23 +1494,23 @@ async def settings_exposure_save(request: Request):
 
 
 @router.get("/api/network/status")
-def api_network_status(request: Request):
+def api_network_status(request: Request, fresh: int = 0):
     user, redirected = _user_or_login(request, admin=True)
     if redirected:
         return redirected
     from app import network as network_svc
 
-    return JSONResponse(network_svc.network_snapshot())
+    # Default uses TTL cache; ?fresh=1 only while polling a pending connect.
+    return JSONResponse(network_svc.network_snapshot(fresh=bool(fresh)))
 
 
 @router.post("/settings/network/tailscale/wanted")
-async def settings_tailscale_wanted(request: Request):
+def settings_tailscale_wanted(request: Request, form: FormData = Depends(_form_body)):
     user, redirected = _user_or_login(request, admin=True)
     if redirected:
         return redirected
     from app import network as network_svc
 
-    form = await request.form()
     if not _require_csrf_any(request, form):
         if _wants_json(request):
             return JSONResponse({"ok": False, "error": "Form expired"}, status_code=403)
@@ -1168,13 +1537,12 @@ async def settings_tailscale_wanted(request: Request):
 
 
 @router.post("/settings/network/tailscale/connect")
-async def settings_tailscale_connect(request: Request):
+def settings_tailscale_connect(request: Request, form: FormData = Depends(_form_body)):
     user, redirected = _user_or_login(request, admin=True)
     if redirected:
         return redirected
     from app import network as network_svc
 
-    form = await request.form()
     if not _require_csrf_any(request, form):
         if _wants_json(request):
             return JSONResponse({"ok": False, "error": "Form expired"}, status_code=403)
@@ -1206,13 +1574,12 @@ async def settings_tailscale_connect(request: Request):
 
 
 @router.post("/settings/network/tailscale/disconnect")
-async def settings_tailscale_disconnect(request: Request):
+def settings_tailscale_disconnect(request: Request, form: FormData = Depends(_form_body)):
     user, redirected = _user_or_login(request, admin=True)
     if redirected:
         return redirected
     from app import network as network_svc
 
-    form = await request.form()
     if not _require_csrf_any(request, form):
         if _wants_json(request):
             return JSONResponse({"ok": False, "error": "Form expired"}, status_code=403)
@@ -1236,74 +1603,20 @@ async def settings_tailscale_disconnect(request: Request):
 
 @router.get("/settings/display", response_class=HTMLResponse)
 def settings_display_redirect():
-    return RedirectResponse("/settings?tab=display", status_code=303)
+    return RedirectResponse(services.notify_page_url("displays"), status_code=303)
 
 
 @router.post("/settings/trmnl")
 @router.post("/settings/display")
-async def settings_display_save(request: Request):
-    from app import display
-
-    user, redirected = _user_or_login(request, admin=True)
-    if redirected:
-        return redirected
-    form = await request.form()
-    if not _require_csrf(request, form):
-        return RedirectResponse("/settings?tab=display&err=Form+expired", status_code=303)
-
-    layout_raw = str(form.get("layout_json") or "").strip()
-    layout = None
-    if layout_raw:
-        try:
-            layout = json.loads(layout_raw)
-        except json.JSONDecodeError:
-            return RedirectResponse("/settings?tab=display&err=Layout+was+invalid", status_code=303)
-
-    updates = {
-        "enabled": form.get("enabled") == "1",
-        "webhook_url": str(form.get("webhook_url") or ""),
-        "interval_minutes": form.get("interval_minutes"),
-        "device": str(form.get("device") or display.DEFAULT_DEVICE),
-        "design": str(form.get("design") or display.DEFAULT_DESIGN),
-    }
-    device = display.normalize_device(updates["device"])
-    design = display.normalize_design(updates["design"])
-    updates["device"] = device
-    updates["design"] = design
-    if layout is not None:
-        updates["layout"] = display.normalize_layout(layout, device=device, design=design)
-    if form.get("reset_layout") == "1" or design in {"household", "status"}:
-        updates["layout"] = display.default_layout(device, design)
-
-    webhook = str(form.get("webhook_url") or "").strip()
-    try:
-        from stonepi_vault import set_secret
-
-        # Blank field means “use Vault” — do not wipe DISPLAY_WEBHOOK_URL.
-        if webhook:
-            set_secret("DISPLAY_WEBHOOK_URL", webhook)
-    except Exception:
-        pass
-
-    action = str(form.get("action") or "save")
-    if action == "push":
-        # Persist form URL only when provided; empty keeps display.json blank so Vault is used.
-        display.save_config(updates)
-        result = display.push_overview(dict(request.cookies))
-        if result.get("ok"):
-            return RedirectResponse("/settings?tab=display&msg=Pushed+to+TRMNL", status_code=303)
-        err = quote(str(result.get("message") or "Push failed"), safe="")
-        return RedirectResponse(f"/settings?tab=display&err={err}", status_code=303)
-    display.save_config(updates)
-    return RedirectResponse("/settings?tab=display&msg=Display+settings+saved", status_code=303)
+def settings_display_save(request: Request):
+    return RedirectResponse(services.notify_page_url("displays"), status_code=303)
 
 
 @router.post("/settings/vault")
-async def settings_vault_save(request: Request):
+def settings_vault_save(request: Request, form: FormData = Depends(_form_body)):
     user, redirected = _user_or_login(request, admin=True)
     if redirected:
         return redirected
-    form = await request.form()
     if not _require_csrf(request, form):
         return RedirectResponse("/settings?tab=vault&err=Form+expired.+Try+again.", status_code=303)
     from stonepi_vault import get_vault
@@ -1339,6 +1652,8 @@ async def settings_vault_save(request: Request):
                 f"/settings?tab=vault&err={quote(f'{label} was not in the vault.', safe='')}",
                 status_code=303,
             )
+        if key == "STONEPI_RECOVER_PASSWORD":
+            services._helper_run(["recover-passwd-clear"], timeout=15)
         return RedirectResponse(
             f"/settings?tab=vault&msg={quote(f'{label} removed from the vault.', safe='')}",
             status_code=303,
@@ -1352,6 +1667,8 @@ async def settings_vault_save(request: Request):
             f"/settings?tab=vault&err={quote(f'Could not save {label}: {exc}', safe='')}",
             status_code=303,
         )
+    if key == "STONEPI_RECOVER_PASSWORD":
+        services._helper_run(["recover-passwd-set", value.strip()], timeout=15)
     return RedirectResponse(
         f"/settings?tab=vault&msg={quote(f'{label} saved to the vault.', safe='')}",
         status_code=303,
@@ -1359,11 +1676,10 @@ async def settings_vault_save(request: Request):
 
 
 @router.post("/settings/automations")
-async def settings_automations_save(request: Request):
+def settings_automations_save(request: Request, form: FormData = Depends(_form_body)):
     user, redirected = _user_or_login(request, admin=True)
     if redirected:
         return redirected
-    form = await request.form()
     if not _require_csrf(request, form):
         return RedirectResponse("/settings?tab=automations&err=Form+expired", status_code=303)
     import stonepi_automations as automations
@@ -1376,9 +1692,8 @@ async def settings_automations_save(request: Request):
 
 
 @router.api_route("/logout", methods=["GET", "POST"])
-async def logout(request: Request):
+def logout(request: Request, form: FormData = Depends(_form_body)):
     if request.method == "POST":
-        form = await request.form()
         if not _require_csrf(request, form):
             return RedirectResponse(logout_url(_settings(), "/"), status_code=303)
     return RedirectResponse(logout_url(_settings(), "/"), status_code=303)

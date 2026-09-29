@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon as svg %}
+{% block title %}Displays · Notify{% endblock %}
+
+{% block content %}
+<section class="hero">
+  {% include "_back_to_settings.html" %}
+  <h1>Displays</h1>
+  <p class="lede">Lay out widgets for each TRMNL screen. Every Display pushes to its own TRMNL plugin.</p>
+</section>
+
+{% if message %}<p class="flash ok" role="status">{{ message }}</p>{% endif %}
+{% if error %}<p class="flash bad" role="alert">{{ error }}</p>{% endif %}
+
+<form method="post" action="/displays/create" class="create-row">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+  <input type="text" name="name" placeholder="New display name" required maxlength="80" aria-label="New display name" />
+  <button type="submit" class="btn btn-primary btn-with-icon">{{ svg('plus') }} Add Display</button>
+</form>
+
+{% if displays %}
+<div class="service-grid">
+  {% for d in displays %}
+  <section class="card stack">
+    <h2><a class="text-link" href="/displays/{{ d.id }}">{{ d.name }}</a></h2>
+    <p class="muted">
+      {% if d.builtin %}Built-in{% else %}Custom{% endif %}
+      · {{ 'TRMNL X' if d.device == 'v2' else 'TRMNL OG' }}
+      · {{ d.widgets|length }} widget{{ '' if d.widgets|length == 1 else 's' }}
+      {% if not d.enabled %}· Disabled{% endif %}
+    </p>
+    <p class="hint">
+      {% if d.trmnl.enabled and d.id in webhook_ids %}Pushes every {{ d.trmnl.interval_minutes }} min
+        {%- if d.trmnl.last_push_at %} · last {{ d.trmnl.last_push_at[:16]|replace('T', ' ') }} UTC{% if not d.trmnl.last_push_ok %} (failed){% endif %}{% else %} · not pushed yet{% endif %}
+      {% elif d.trmnl.enabled %}TRMNL on, but no webhook saved
+      {% else %}TRMNL push off{% endif %}
+    </p>
+    <div class="row-actions">
+      <a class="btn btn-ghost btn-with-icon" href="/displays/{{ d.id }}">{{ svg('open') }} Open</a>
+    </div>
+  </section>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card stack empty-state">
+  <h2>No displays yet</h2>
+  <p class="lede">Create a Display or use the built-in Dashboard overview.</p>
+</div>
+{% endif %}
+{% endblock %}

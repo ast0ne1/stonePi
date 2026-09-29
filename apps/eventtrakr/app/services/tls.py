@@ -12,7 +12,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
-from app.config import TLS_DIR, env
+from app.config import TLS_DIR
 from app.services import hostname
 
 CA_KEY = TLS_DIR / "ca.key"
@@ -65,10 +65,9 @@ def _load_key(path: Path) -> rsa.RSAPrivateKey:
 def desired_sans() -> list[str]:
     names = ["localhost"]
     ips = {"127.0.0.1", "::1"}
-    if env.device_hostname:
-        host = hostname.normalize_hostname(env.device_hostname)
-        if host:
-            names.append(f"{host}.local")
+    host = hostname.device_hostname()
+    if host:
+        names.append(f"{host}.local")
     lan = hostname.get_lan_ip()
     if lan:
         ips.add(lan)

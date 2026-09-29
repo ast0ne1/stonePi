@@ -40,20 +40,20 @@ NewsCast and strip product pages. Detail: [chrome.md](chrome.md). Portal IA:
 |-------|------|
 | **Baseline** | NewsCast is the source of truth for shell, settings hub/L2, sheets, SVG sizes, topbar actions. Pinboard = minimal only. |
 | **Theme accent** | Primary buttons use `var(--accent)` / `var(--accent-ink)`. **Never** override `:root` accent to an app-only colour. Shared palettes: default brick, `ocean`, `forest`, `slate` × light/dark. |
-| **Theme chrome** | Topbar: light / dark / auto (`data-theme-set`). Include `_theme_boot.html` (shared `stonepi-theme` / `stonepi-palette` cookies). Fonts: IBM Plex Sans + Source Serif 4. |
-| **Topbar actions** | Order: brand → (status) → theme → **global Refresh** (if app has sync) → **POST logout**. Refresh sits **next to** logout (`btn-refresh`); ≤420px icon-only. |
+| **Light/dark + palette** | Include `_theme_boot.html` (shared `stonepi-theme` / `stonepi-palette` cookies). Light/dark/auto toggle is **dashboard header only** — product apps apply the shared pref, do not ship `.theme-switch`. Colour palette: Dashboard → Settings → Appearance. Fonts: IBM Plex Sans + Source Serif 4. |
+| **Topbar actions** | Order: brand → (status) → **global Refresh** (if app has sync) → **POST logout**. Refresh sits **next to** logout (`btn-refresh`); ≤420px icon-only. |
 | **Nav** | Always include **Home** → `portal_home_url` / `stonepi_home_url` (not app `/`). Phone/tablet &lt;1024: bottom bar, `repeat(N, …)` where **N = actual links**. Laptop+ ≥**1024px**: sticky side rail (~200px). Never 800/900. |
 | **Mobile shell** | `viewport-fit=cover`; `--safe-bottom`; `--tap: 44px` (40px ≤559px); phone: `html,body` overflow locked, `.main` scrolls; inputs ≥16px; confirm/filter/help sheets clear nav. Breakpoints: **720 / 1024 / 1440**. |
 | **Sheets** | Hoist `.sheet` to `document.body` (`mountSheetsToBody`); `sheet-open` locks overflow; mobile bottom padding ~76–80px + safe-area; inner body scrolls. Never rely on `position:fixed` inside scrolling `.main`. |
 | **SVG sizes** | ViewBox 24×24; CSS caps — nav/brand **22**, chrome actions **18**, theme **16**, chips **14**, hub glyph **18** in **40** tile. Always set width/height in CSS for the parent. Stroke `fill: none`; restore filled pips with `[fill]:not([fill="none"])` rules. See [chrome.md](chrome.md) §3. |
 | **Icons** | `_icons.html` for actions; `_filter_icon.html` for nav/chips/settings. Settings gear = shared cog. Chips/hub rows: **icon + label** (never text-only). |
 | **Buttons** | Labelled = `btn … btn-with-icon`. Icon-only = `icon-btn` + `aria-label` (use `icon-btn-quiet` for non-destructive). |
-| **Settings IA** | Many tabs → NewsCast **hub → L2 (icons + subtexts) → cards** on phone; chip bar + stacked cards ≥1024. `SETTINGS_PANEL_SUBTEXTS` required (no “Open this section”). Heading icons match L2. View/chrome prefs under General → View options; export layout stays product-specific. SSO: no Users/Updates/password ownership. |
+| **Settings IA** | Every viewport: NewsCast **hub → L2 (icons + subtexts) → one stacked panel**. Laptop+ keeps that drill-down (one-column hub; readable panel column) — no chip bar. `SETTINGS_PANEL_SUBTEXTS` required (no “Open this section”). Heading icons match L2. A single-card tab skips L2. View/chrome prefs under General → View options; export layout stays product-specific. SSO: no Users/Updates/password ownership. |
 | **Confirms** | Shared sheet, not bare `confirm()`. Logout = **POST** + CSRF. |
 | **CSRF** | Forms include `csrf_token`; cookie via `stonepi_auth.csrf`. |
 | **Empty states** | Explain what belongs here + one CTA. |
 | **Prefix** | Honor `STONEPI_PREFIX` for redirects and static under nginx path routing. |
-| **Asset bust** | `?v={{ app_version }}-{{ asset_rev }}`; bump `__asset_rev__` on CSS/JS change. |
+| **Asset bust** | `?v={{ app_version }}-{{ asset_rev }}` + `fonts.css?v={{ fonts_rev }}`; `__asset_rev__` is computed from `static/` — never hand-bump. |
 | **Copy source** | Clone CSS/HTML/JS chrome from NewsCast; delete product-only leftovers. |
 
 ## Ship checklist
@@ -62,8 +62,8 @@ Copy and tick while building:
 
 ```
 Shell
-- [ ] base.html: viewport-fit=cover, theme-color, _theme_boot, fonts, theme switch, POST logout
-- [ ] Topbar order: brand → theme → [Refresh] → logout
+- [ ] base.html: viewport-fit=cover, theme-color, _theme_boot, fonts, POST logout (no light/dark switch)
+- [ ] Topbar order: brand → [Refresh] → bell (shared `alerts_bell`) → logout
 - [ ] Confirm sheet present; JS wires data-confirm + mountSheetsToBody
 - [ ] No app-specific --accent override after palette tokens
 - [ ] btn-primary / links / focus rings use var(--accent)
@@ -87,7 +87,14 @@ Mobile
 - [ ] Sheets clear bottom nav; inner scroll regions
 - [ ] Filter long lists via sheet + chips-action when needed
 - [ ] overflow-wrap on titles/meta; empty states
-- [ ] __asset_rev__ bumped
+- [ ] App in `APP_CATALOG`; `__asset_rev__` computed (no literal `?v=`)
+
+Notifications (see platform.md → Notifications)
+- [ ] Events registered in stonepi_contracts catalog with an audience
+- [ ] Every emit sets audience; personal events set user = Auth id (auth_user_id), never local ids
+- [ ] add_shared_templates; bell via alerts_bell_state on every page (hidden standalone)
+- [ ] Settings → Notifications: shared card via notifications_card_state (+ timing settings only)
+- [ ] tests/test_personal_alerts.py
 
 Platform (see platform.md)
 - [ ] catalog.py entry (path, port, unit, icon, capabilities, launcher)

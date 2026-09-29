@@ -33,7 +33,7 @@ def refresh_status() -> dict[str, Any]:
 def maybe_daily_refresh(*, tz_name: str | None = None, async_: bool = False) -> dict[str, Any] | None:
     """Run a full refresh at most once per local day after the configured hour."""
     last = db.get_meta("last_refresh_at")
-    tz = tz_name or db.get_pref("local", "timezone", "Australia/Melbourne")
+    tz = tz_name or db.household_timezone()
     if not needs_daily_refresh(last, tz):
         return None
     if async_:
@@ -74,6 +74,12 @@ def refresh_all() -> dict[str, Any]:
         _state["last_ok_at"] = now
         if not results["ok"]:
             _state["last_error"] = "One or more sources failed"
+        try:
+            from app.services import notify as notify_service
+
+            notify_service.check_approaching_watched()
+        except Exception:
+            logger.exception("post-refresh approaching check failed")
         return results
     except Exception as exc:
         logger.exception("refresh failed")

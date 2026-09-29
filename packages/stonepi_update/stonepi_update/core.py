@@ -4,11 +4,16 @@ Expects release assets named ``stonepi-{app_id}-{version}.zip``
 (e.g. ``stonepi-newscast-0.0.2.zip``). Legacy ``{app_id}-{version}.zip``
 is still accepted for one release cycle. Each zip is rooted like an app
 overlay (``app/``, ``requirements.txt``, …). Platform packs use
-``stonepi-platform-{version}.zip``.
+``stonepi-platform-{version}.zip``. Releases also carry ``SHA256SUMS``
+(``sha256sum`` format); downloads are checked against it.
+
+On the Pi the app code is root-owned, so an ``Updater`` with ``privileged_helper``
+hands the install to ``stonepi-update-helper`` via sudo instead of writing files.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -47,6 +52,27 @@ LEGACY_UNITS = {
     "fileserve": "fileserve",
     "eventtrakr": "eventtrakr",
 }
+
+CHECKSUMS_ASSET = "SHA256SUMS"
+HELPER_TIMEOUT = 1200  # pip on a Pi can be slow; the helper also waits for the health check
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def parse_checksums(text: str) -> dict[str, str]:
+    """``sha256sum`` output → {file name: hex digest}. Accepts ``*name`` (binary mode) too."""
+    sums: dict[str, str] = {}
+    for line in (text or "").splitlines():
+        match = re.match(r"^([0-9a-fA-F]{64})\s+\*?(.+?)\s*$", line.strip())
+        if match:
+            sums[Path(match.group(2)).name] = match.group(1).lower()
+    return sums
 
 
 def normalize_repo(value: str) -> str:
@@ -242,6 +268,8 @@ class Updater:
         get_last_check: Callable[[], dict] | None = None,
         save_last_check: Callable[[dict], dict] | None = None,
         require_app_layout: bool = True,
+        privileged_helper: Path | None = None,
+        require_checksums: bool = False,
     ) -> None:
         self.app_id = app_id
         self.root_dir = Path(root_dir)
@@ -251,6 +279,9 @@ class Updater:
         self.backup_fn = backup_fn
         self.extra_pip = list(extra_pip or [])
         self.require_app_layout = require_app_layout
+        # Set on the Pi: installs go through `sudo <helper> apply …`, which also restarts the app.
+        self.privileged_helper = Path(privileged_helper) if privileged_helper else None
+        self.require_checksums = require_checksums or self.privileged_helper is not None
         self._get_repo = get_repo or (lambda: "")
         self._get_last = get_last_check or (lambda: {})
         self._save_last = save_last_check or (lambda payload: payload)
@@ -346,9 +377,18 @@ class Updater:
         if not payload["newer"]:
             payload["message"] = f"{self.app_id} is up to date ({self.current_version})."
             return self._save(payload)
+        sums_url = next(
+            (
+                str(item.get("browser_download_url") or "")
+                for item in body.get("assets") or []
+                if str(item.get("name") or "") == CHECKSUMS_ASSET
+            ),
+            "",
+        )
         if download and zip_url:
             try:
                 zip_path = self._download_zip(zip_url, version)
+                payload["sha256"] = self._verify_checksum(zip_path, payload["asset_name"], sums_url)
                 if self.require_app_layout:
                     validate_zip(zip_path, expected_version=version, current_version=self.current_version)
                 payload["zip_path"] = str(zip_path)
@@ -376,6 +416,26 @@ class Updater:
             response.raise_for_status()
             dest.write_bytes(response.content)
         return dest
+
+    def _verify_checksum(self, zip_path: Path, asset_name: str, sums_url: str) -> str:
+        """Return the zip's sha256, checked against the release's SHA256SUMS when it has one."""
+        actual = sha256_file(zip_path)
+        if not sums_url:
+            if self.require_checksums:
+                zip_path.unlink(missing_ok=True)
+                raise ValueError(f"This release has no {CHECKSUMS_ASSET} file, so the download can't be checked.")
+            return actual
+        with httpx.Client(timeout=TIMEOUT, follow_redirects=True, headers=self.headers) as client:
+            response = client.get(sums_url)
+            response.raise_for_status()
+        expected = parse_checksums(response.text).get(asset_name)
+        if not expected:
+            zip_path.unlink(missing_ok=True)
+            raise ValueError(f"{asset_name} is not listed in the release's {CHECKSUMS_ASSET}.")
+        if expected != actual:
+            zip_path.unlink(missing_ok=True)
+            raise ValueError(f"{asset_name} does not match its published checksum; the download was discarded.")
+        return actual
 
     def snapshot_current_code(self) -> Path:
         previous = self.updates_dir / "previous"
@@ -451,12 +511,14 @@ class Updater:
             else:
                 self._replace_file(source, target)
 
-    def apply_zip(self, zip_path: Path, expected_version: str = "") -> dict:
+    def apply_zip(self, zip_path: Path, expected_version: str = "", sha256: str = "") -> dict:
         info = validate_zip(
             zip_path,
             expected_version=expected_version,
             current_version=self.current_version,
         )
+        if self.privileged_helper is not None:
+            return self._apply_via_helper(zip_path, sha256 or sha256_file(zip_path))
         extract_to = self.updates_dir / "extracted"
         if extract_to.exists():
             shutil.rmtree(extract_to)
@@ -474,9 +536,40 @@ class Updater:
                 logger.warning("pre-update backup failed: %s", exc)
         self._copy_code_tree(root, self.root_dir)
         self._install_requirements()
-        return {"ok": True, "version": info["version"], "message": f"Installed {info['version']}. Restarting…"}
+        return {
+            "ok": True,
+            "version": info["version"],
+            "restart": True,
+            "message": f"Installed {info['version']}. Restarting…",
+        }
+
+    def _run_helper(self, *args: str) -> dict:
+        cmd = ["sudo", "-n", str(self.privileged_helper), *args]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=HELPER_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "message": "The update helper took too long; check Settings → Updates again shortly."}
+        lines = [line for line in (result.stdout or "").splitlines() if line.strip()]
+        try:
+            payload = json.loads(lines[-1]) if lines else {}
+        except json.JSONDecodeError:
+            payload = {}
+        if not isinstance(payload, dict) or "ok" not in payload:
+            detail = (result.stderr or result.stdout or "").strip().splitlines()[-1:] or ["no output"]
+            return {"ok": False, "message": f"The update helper failed: {detail[0]}"}
+        return payload
+
+    def _apply_via_helper(self, zip_path: Path, sha256: str) -> dict:
+        payload = self._run_helper("apply", self.app_id, str(zip_path), sha256)
+        # The helper restarted the service itself (and rolled back if it failed).
+        return {**payload, "restart": False}
 
     def rollback_code(self) -> None:
+        if self.privileged_helper is not None:
+            payload = self._run_helper("rollback", self.app_id)
+            if not payload.get("ok"):
+                raise ValueError(payload.get("message") or "Roll back failed.")
+            return
         previous = self.updates_dir / "previous"
         if not previous.exists() or not (
             (previous / "app" / "main.py").exists() or (previous / "app" / "serve.py").exists()
@@ -485,8 +578,16 @@ class Updater:
         self._copy_code_tree(previous, self.root_dir)
         self._install_requirements()
 
+    def _app_python(self) -> Path:
+        """The updated app's own venv, not the process running the updater (e.g. Dashboard)."""
+        for rel in ((".venv", "bin", "python"), (".venv", "Scripts", "python.exe")):
+            candidate = self.root_dir.joinpath(*rel)
+            if candidate.exists():
+                return candidate
+        return Path(sys.executable)
+
     def _install_requirements(self) -> None:
-        python = Path(sys.executable)
+        python = self._app_python()
         requirements = self.root_dir / "requirements.txt"
         if requirements.exists():
             subprocess.run(
@@ -502,18 +603,23 @@ class Updater:
             )
 
     def install_latest(self) -> dict:
+        def downloaded(payload: dict) -> Path | None:
+            # Path("") is "." (which exists), so an empty zip_path must not count as downloaded.
+            raw = str(payload.get("zip_path") or "")
+            return Path(raw) if raw and Path(raw).is_file() else None
+
         check = self.last_check()
-        zip_path = Path(check.get("zip_path") or "")
+        zip_path = downloaded(check)
         version = str(check.get("version") or check.get("tag") or "")
-        if not zip_path.exists():
+        if zip_path is None:
             check = self.check_latest(download=True)
-            zip_path = Path(check.get("zip_path") or "")
+            zip_path = downloaded(check)
             version = str(check.get("version") or check.get("tag") or "")
         if not check.get("newer"):
             raise ValueError(check.get("message") or "No newer release to install.")
-        if not zip_path.exists():
+        if zip_path is None:
             raise ValueError(check.get("message") or "Download the update before installing.")
-        return self.apply_zip(zip_path, version)
+        return self.apply_zip(zip_path, version, str(check.get("sha256") or ""))
 
     def schedule_restart(self) -> None:
         Thread(target=self._restart_soon, daemon=True, name=f"{self.app_id}-restart").start()

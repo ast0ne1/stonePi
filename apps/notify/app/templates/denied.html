@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Notify{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <h1>Notify</h1>
+  <p class="lede">Notify is where admins set up Displays and phone alerts for the household.</p>
+</section>
+{% if stonepi_home_url %}
+<p><a class="btn btn-primary" href="{{ stonepi_home_url }}/notifications">Manage my alerts</a></p>
+{% endif %}
+{% endblock %}

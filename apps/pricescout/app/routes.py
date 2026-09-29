@@ -7,18 +7,22 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app import __github__, __github_user__, __version__, db
+from app import __asset_rev__, __github__, __github_user__, __version__, db
 from app.config import CATEGORIES, CURRENCIES, ROOT_DIR, env
 from app.money import format_price
 from app.services import favicon, ingest
 
+from stonepi_auth.brand import fonts_rev
 from stonepi_auth import login_url, logout_url
+from stonepi_auth.alerts import add_shared_templates, bell_context, notifications_card_context
 from stonepi_auth.config import PlatformSettings
 from stonepi_auth.csrf import CSRF_COOKIE, csrf_from_request, csrf_ok, set_csrf_cookie
 from stonepi_auth.http import portal_home_url, request_is_https
 from stonepi_auth.session import COOKIE_NAME, decode_session
 
 templates = Jinja2Templates(directory=str(ROOT_DIR / "app" / "templates"))
+templates.env.globals.update(asset_rev=__asset_rev__, fonts_rev=fonts_rev())
+add_shared_templates(templates.env)
 router = APIRouter()
 
 
@@ -95,6 +99,7 @@ def _csrf_response(request: Request, name: str, ctx: dict) -> HTMLResponse:
     csrf = csrf_from_request(request.cookies)
     ctx["csrf_token"] = csrf
     ctx.setdefault("public_origin", portal_home_url(request, env.public_origin).rstrip("/"))
+    ctx.setdefault("stonepi_home_url", portal_home_url(request, env.public_origin).rstrip("/"))
     ctx.setdefault("app_prefix", _prefix())
     ctx.setdefault("app_name", "PriceScout")
     ctx.setdefault("app_version", __version__)
@@ -102,6 +107,22 @@ def _csrf_response(request: Request, name: str, ctx: dict) -> HTMLResponse:
     ctx.setdefault("app_github_user", __github_user__)
     ctx.setdefault("sso", bool(_session_secret()))
     ctx.setdefault("format_price", format_price)
+    ctx.setdefault("refresh", ingest.refresh_status())
+    user = ctx.get("user")
+    from stonepi_auth.session import factory_admin_warning
+
+    ctx.setdefault("using_factory_admin", factory_admin_warning(user))
+    if "can_refresh" not in ctx:
+        ctx["can_refresh"] = True if not _session_secret() else user is not None
+    ctx.setdefault(
+        "alerts_bell_state",
+        bell_context(
+            user,
+            session_cookie=request.cookies.get(COOKIE_NAME),
+            home_url=ctx["stonepi_home_url"],
+            enabled=bool(_session_secret()),
+        ),
+    )
     response = templates.TemplateResponse(request, name, ctx)
     set_csrf_cookie(response, csrf, secure=request_is_https(request))
     return response
@@ -249,7 +270,7 @@ def list_page(request: Request, msg: str | None = None, error: str | None = None
 
 
 @router.post("/list/add")
-async def list_add(request: Request, label: str = Form(""), csrf_token: str = Form("")):
+def list_add(request: Request, label: str = Form(""), csrf_token: str = Form("")):
     user, denied = _require_user(request)
     if denied:
         return denied
@@ -260,7 +281,7 @@ async def list_add(request: Request, label: str = Form(""), csrf_token: str = Fo
 
 
 @router.post("/list/toggle")
-async def list_toggle(
+def list_toggle(
     request: Request,
     item_id: int = Form(...),
     checked: str = Form("0"),
@@ -276,7 +297,7 @@ async def list_toggle(
 
 
 @router.post("/list/delete")
-async def list_delete(request: Request, item_id: int = Form(...), csrf_token: str = Form("")):
+def list_delete(request: Request, item_id: int = Form(...), csrf_token: str = Form("")):
     user, denied = _require_user(request)
     if denied:
         return denied
@@ -287,7 +308,7 @@ async def list_delete(request: Request, item_id: int = Form(...), csrf_token: st
 
 
 @router.post("/list/to-pinboard")
-async def list_to_pinboard(
+def list_to_pinboard(
     request: Request,
     due: str = Form(""),
     csrf_token: str = Form(""),
@@ -352,13 +373,12 @@ def sources_page(request: Request, msg: str | None = None, error: str | None = N
             "salling_configured": bool(_salling_token()),
             "message": msg,
             "error": error,
-            "refresh": ingest.refresh_status(),
         },
     )
 
 
 @router.post("/sources/toggle")
-async def sources_toggle(
+def sources_toggle(
     request: Request,
     source_id: str = Form(...),
     enabled: str = Form("0"),
@@ -374,12 +394,23 @@ async def sources_toggle(
 
 
 @router.post("/sources/refresh")
-async def sources_refresh(request: Request, csrf_token: str = Form("")):
+def sources_refresh(
+    request: Request,
+    csrf_token: str = Form(""),
+    next: str = Form("offers"),
+):
     user, denied = _require_user(request)
     if denied:
         return denied
+    dest = {
+        "offers": "/",
+        "search": "/search",
+        "list": "/list",
+        "sources": "/sources",
+        "settings": "/settings",
+    }.get((next or "offers").strip().lower(), "/")
     if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
-        return _redirect("/sources", error="Invalid session token")
+        return _redirect(dest, error="Invalid session token")
     # Temporarily inject vault token into env for this process
     token = _salling_token()
     if token:
@@ -391,16 +422,52 @@ async def sources_refresh(request: Request, csrf_token: str = Form("")):
         ingest.refresh_all(zip_code=zip_code)
 
     threading.Thread(target=_run, daemon=True).start()
-    return _redirect("/sources", msg="Refresh started")
+    return _redirect(dest, msg="Refresh started")
+
+
+_PS_SECTIONS = {
+    "general": (
+        ("preferences", "Preferences", "Currency and postcode.", "general"),
+        ("history", "Search history", "Clear recent searches.", "trash"),
+    ),
+}
+
+
+def _pricescout_settings_view(tab: str | None, panel: str | None) -> tuple[bool, str, str, str]:
+    """Return hub flag, tab, level (hub|list|panel), and panel id."""
+    raw = (tab or "").strip().lower()
+    if not raw:
+        return True, "general", "hub", ""
+    key = raw if raw in {"general", "notifications", "about"} else "general"
+    sections = _PS_SECTIONS.get(key, ())
+    ids = {item[0] for item in sections}
+    chosen = (panel or "").strip().lower()
+    if sections and chosen not in ids:
+        return False, key, "list", ""
+    return False, key, "panel", chosen if chosen in ids else ""
 
 
 @router.get("/settings", response_class=HTMLResponse)
-def settings_page(request: Request, tab: str = "general", msg: str | None = None):
+def settings_page(request: Request, tab: str | None = None, panel: str | None = None, msg: str | None = None):
     user, denied = _require_user(request)
     if denied:
         return denied
     uk = _user_key(user)
-    tab = tab if tab in {"general", "about"} else "general"
+    settings_hub, tab, settings_level, settings_panel = _pricescout_settings_view(tab, panel)
+    home = portal_home_url(request, env.public_origin).rstrip("/")
+    ledes = {
+        "general": "Household shopping preferences for PriceScout.",
+        "notifications": "Alerts when a store releases a new leaflet.",
+        "about": "App name, description, GitHub, and the version running here.",
+    }
+    panel_labels = {item[0]: item[1] for item in _PS_SECTIONS.get(tab, ())}
+    if settings_hub:
+        title, lede = "Settings", "Shopping preferences and leaflet alerts."
+    elif settings_level == "list":
+        title, lede = {"general": "General", "notifications": "Notifications", "about": "About"}[tab], "Choose a section."
+    else:
+        title = panel_labels.get(settings_panel) or {"general": "General", "notifications": "Notifications", "about": "About"}[tab]
+        lede = ledes.get(tab, ledes["general"])
     return _csrf_response(
         request,
         "settings.html",
@@ -408,19 +475,39 @@ def settings_page(request: Request, tab: str = "general", msg: str | None = None
             "user": user,
             "active": "settings",
             "settings_tab": tab,
+            "settings_hub": settings_hub,
+            "settings_level": settings_level,
+            "settings_panel": settings_panel,
+            "settings_title": title,
+            "settings_sections": _PS_SECTIONS.get(tab, ()),
+            "settings_groups": (
+                ("shopping", "Shopping", (
+                    ("general", "General", "Currency, postcode, and search history.", "general"),
+                    ("notifications", "Notifications", "Alerts when a leaflet is released.", "notifications"),
+                )),
+                ("app", "App", (
+                    ("about", "About", "Version and project links.", "about"),
+                )),
+            ),
             "is_admin": bool(user and user.is_admin) or not _session_secret(),
             "zip": db.get_pref(uk, "zip", ""),
             "currency": _currency(user),
             "currencies": CURRENCIES,
             "message": msg,
             "salling_configured": bool(_salling_token()),
-            "settings_lede": "Household shopping preferences for PriceScout.",
+            "settings_lede": lede,
+            "notifications_card_state": notifications_card_context(
+                "pricescout",
+                user if _session_secret() else None,
+                home_url=home,
+            ),
+            "stonepi_home_url": home,
         },
     )
 
 
 @router.post("/settings/general")
-async def settings_general(
+def settings_general(
     request: Request,
     zip: str = Form(""),
     currency: str = Form("DKK"),
@@ -437,22 +524,22 @@ async def settings_general(
     if code not in {c["id"] for c in CURRENCIES}:
         code = "DKK"
     db.set_pref(uk, "currency", code)
-    return _redirect("/settings?tab=general", msg="Saved")
+    return _redirect("/settings?tab=general&panel=preferences", msg="Saved")
 
 
 @router.post("/settings/clear-history")
-async def settings_clear_history(request: Request, csrf_token: str = Form("")):
+def settings_clear_history(request: Request, csrf_token: str = Form("")):
     user, denied = _require_user(request)
     if denied:
         return denied
     if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
         return _redirect("/settings?tab=general", error="Invalid session token")
     db.clear_search_history(_user_key(user))
-    return _redirect("/settings?tab=general", msg="Search history cleared")
+    return _redirect("/settings?tab=general&panel=history", msg="Search history cleared")
 
 
 @router.post("/logout")
-async def logout(request: Request, csrf_token: str = Form("")):
+def logout(request: Request, csrf_token: str = Form("")):
     if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
         return _redirect("/", error="Invalid session token")
     return RedirectResponse(logout_url(_settings()), status_code=303)

@@ -226,17 +226,20 @@ def _dismiss_cookies(page) -> None:
 
 def fetch_listings() -> list[ListingRow]:
     """Playwright scrape of ausportguide.com — AFL, Cricket, Rugby only."""
-    with _browser() as p:
-        browser = p.chromium.launch(headless=True)
-        try:
-            page = browser.new_page(user_agent=USER_AGENT)
-            page.goto(BASE_URL, wait_until="domcontentloaded", timeout=90000)
-            page.wait_for_timeout(1500)
-            _dismiss_cookies(page)
-            page.wait_for_timeout(1000)
-            payload = page.evaluate(_PAGE_EVAL) or {}
-        finally:
-            browser.close()
+    from stonepi_browser import chromium_lock
+
+    with chromium_lock():
+        with _browser() as p:
+            browser = p.chromium.launch(headless=True)
+            try:
+                page = browser.new_page(user_agent=USER_AGENT)
+                page.goto(BASE_URL, wait_until="domcontentloaded", timeout=90000)
+                page.wait_for_timeout(1500)
+                _dismiss_cookies(page)
+                page.wait_for_timeout(1000)
+                payload = page.evaluate(_PAGE_EVAL) or {}
+            finally:
+                browser.close()
 
     body = str(payload.get("body") or "")
     icons = list(payload.get("icons") or [])

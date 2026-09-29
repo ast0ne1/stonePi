@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app import passwords
 from app.config import env
 from app.models import AppGrant, AuthSession, PlatformSetting, User, utcnow
-from stonepi_auth import APP_IDS, APP_CATALOG, capabilities_for
+from stonepi_auth import APP_IDS, APP_CATALOG, LEGACY_APP_IDS, SYSTEM_APP_IDS, capabilities_for
 
 USERNAME_RE = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
 COOKIE_MAX_AGE = 60 * 60 * 24 * 14
@@ -75,6 +75,35 @@ def ensure_schema(db: Session) -> None:
         db.commit()
     except Exception:
         db.rollback()
+    # Platform Phone alerts permission. First run copies NewsCast's old
+    # ``can_use_ntfy`` capability so nobody loses phone alerts.
+    try:
+        user_cols = {row[1] for row in db.execute(text("PRAGMA table_info(users)")).all()}
+        if user_cols and "phone_alerts" not in user_cols:
+            db.execute(text("ALTER TABLE users ADD COLUMN phone_alerts BOOLEAN DEFAULT 0"))
+            rows = db.execute(
+                text("SELECT user_id, capabilities FROM app_grants WHERE app_id = 'newscast'")
+            ).all()
+            for user_id, caps in rows:
+                if _parse_caps(caps).get("can_use_ntfy"):
+                    db.execute(text("UPDATE users SET phone_alerts = 1 WHERE id = :id"), {"id": user_id})
+            db.commit()
+    except Exception:
+        db.rollback()
+    # Renamed apps: move grants to the new id (drop the old row if both exist).
+    try:
+        for old_id, new_id in LEGACY_APP_IDS.items():
+            db.execute(
+                text(
+                    "DELETE FROM app_grants WHERE app_id = :old AND user_id IN "
+                    "(SELECT user_id FROM app_grants WHERE app_id = :new)"
+                ),
+                {"old": old_id, "new": new_id},
+            )
+            db.execute(text("UPDATE app_grants SET app_id = :new WHERE app_id = :old"), {"old": old_id, "new": new_id})
+        db.commit()
+    except Exception:
+        db.rollback()
 
 
 def get_setting(db: Session, key: str, default: str = "") -> str:
@@ -103,7 +132,7 @@ def disabled_apps(db: Session) -> list[str]:
 
 
 def set_disabled_apps(db: Session, app_ids: Iterable[str]) -> list[str]:
-    locked = {"dashboard", "auth"}
+    locked = set(SYSTEM_APP_IDS)
     wanted = sorted({item for item in app_ids if item in APP_IDS and item not in locked})
     set_setting(db, DISABLED_APPS_KEY, json.dumps(wanted))
     return wanted
@@ -273,6 +302,7 @@ def create_user(
     enabled: bool = True,
     apps: Iterable[str] | None = None,
     permissions: dict[str, dict[str, bool]] | None = None,
+    phone_alerts: bool = False,
 ) -> User:
     name = validate_username(username)
     if get_by_username(db, name) is not None:
@@ -286,6 +316,7 @@ def create_user(
         password_hash=passwords.hash_password(password),
         enabled=enabled,
         is_admin=is_admin,
+        phone_alerts=bool(phone_alerts),
     )
     db.add(user)
     db.flush()
@@ -305,6 +336,7 @@ def update_user(
     apps: Iterable[str] | None = None,
     permissions: dict[str, dict[str, bool]] | None = None,
     password: str | None = None,
+    phone_alerts: bool | None = None,
 ) -> User:
     if display_name is not None:
         user.display_name = display_name.strip() or user.username
@@ -320,6 +352,8 @@ def update_user(
             revoke_sessions(db, user.id)
     if is_admin is not None:
         user.is_admin = bool(is_admin)
+    if phone_alerts is not None:
+        user.phone_alerts = bool(phone_alerts)
     if password:
         if len(password) < 8:
             raise ValueError("Password must be at least 8 characters.")
@@ -447,6 +481,7 @@ def user_payload(user: User, db: Session | None = None) -> dict:
         "display_name": user.display_name or user.username,
         "enabled": user.enabled,
         "is_admin": user.is_admin,
+        "phone_alerts": phone_alerts_allowed(user),
         "apps": granted_apps(user, enabled_only=enabled),
         "permissions": granted_permissions(user, enabled_only=enabled),
         "created_at": user.created_at.isoformat() if user.created_at else None,
@@ -455,6 +490,29 @@ def user_payload(user: User, db: Session | None = None) -> dict:
     if db is not None:
         payload["launcher_order"] = launcher_order(db, user)
     return payload
+
+
+def phone_alerts_allowed(user: User) -> bool:
+    """May this person use personal phone alerts (Notify)? Admins always may."""
+    return bool(user.is_admin or user.phone_alerts)
+
+
+def internal_people(db: Session) -> list[dict]:
+    """Minimal roster for platform services: enabled users only, no names."""
+    return [
+        {"id": user.id, "is_admin": bool(user.is_admin), "phone_alerts": phone_alerts_allowed(user)}
+        for user in list_users(db)
+        if user.enabled
+    ]
+
+
+def internal_people_names(db: Session) -> list[dict]:
+    """Enabled users' display names for pickers (e.g. Pinboard assignees)."""
+    return [
+        {"id": user.id, "name": user.display_name or user.username}
+        for user in list_users(db)
+        if user.enabled
+    ]
 
 
 def catalog_payload(db: Session) -> list[dict]:

@@ -154,7 +154,7 @@ def list_pages(db: Session, *, viewer: User, owner_id: int | None = None) -> lis
             query = query.filter(Page.user_id == owner_id)
     else:
         query = query.filter(Page.user_id == viewer.id)
-    return query.order_by(Page.created_at.desc()).all()
+    return [page for page in query.order_by(Page.created_at.desc()).all() if not is_expired(page)]
 
 
 def list_public_pages(db: Session, *, viewer: User | None = None) -> list[Page]:
@@ -542,7 +542,30 @@ def create_page(
         if folder.exists():
             _rmtree(folder)
         raise
+    emit_publication_created(page)
     return page
+
+
+def emit_publication_created(page: Page) -> bool:
+    """Tell the household a new publication is live (no owner: household event)."""
+    try:
+        from stonepi_contracts import EventEnvelope, emit_event
+
+        return emit_event(
+            EventEnvelope(
+                id="fileserve.publication_created",
+                source="fileserve",
+                audience="household",
+                title=f"FileServe: {page.title}",
+                summary=f"New publication “{page.title}” is available.",
+                severity="success",
+                dedupe_key=f"fileserve:page:{page.id}",
+                url=f"/files/{page.slug}" if page.slug else "/files/",
+                data={"page_id": page.id, "slug": page.slug, "title": page.title},
+            )
+        )
+    except Exception:
+        return False
 
 
 def update_page(

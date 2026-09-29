@@ -56,7 +56,9 @@
 
 {% if deep_search_sources_checked is not none %}
 <p class="form-hint search-deep-hint">
-  {% if deep_search_sources_checked %}
+  {% if deep_search_pending %}
+  That date is beyond the usual 7-day Agenda window — searching matching sources live now. Refresh this page in a minute to see new results; star any you want to keep.
+  {% elif deep_search_sources_checked %}
   That date is beyond the usual 7-day Agenda window, so we checked {{ deep_search_sources_checked }} matching source{{ 's' if deep_search_sources_checked != 1 }} live for it. Star any result to keep it — it'll stick around until the event's date passes.
   {% else %}
   That date is beyond the usual 7-day Agenda window, and no configured source matches this category to check live.

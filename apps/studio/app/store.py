@@ -19,7 +19,7 @@ DEFAULT_INDEX = """<!doctype html>
 </head>
 <body>
   <main>
-    <h1>Hello from StonePi Studio</h1>
+    <h1>Nothing built yet</h1>
     <p>Ask the assistant to build your site.</p>
   </main>
   <script src="app.js"></script>
@@ -31,9 +31,9 @@ DEFAULT_JS = "console.log('StonePi Studio preview');\n"
 
 _KIND_TITLES = {"spa": "My app", "guide": "My guide", "game": "My game"}
 _KIND_INTROS = {
-    "spa": "Ask Studio what this app should do.",
-    "guide": "Ask Studio to write the first steps.",
-    "game": "Describe the genre and how it should play — Studio will build a real game with keyboard and on-screen controls.",
+    "spa": "Describe the app in the chat, then press Build — it will appear here.",
+    "guide": "Describe the guide in the chat, then press Build — it will appear here.",
+    "game": "Describe the game in the chat, then press Build — it will appear here.",
 }
 
 DEFAULT_GAME_INDEX = """<!doctype html>
@@ -48,7 +48,7 @@ DEFAULT_GAME_INDEX = """<!doctype html>
   <div class="shell">
     <header class="hud">
       <h1>My game</h1>
-      <p class="hint">Describe the game, then press Build.</p>
+      <p class="hint">Describe the game in the chat, then press Build — it will appear here.</p>
       <p class="score" hidden>Score <span data-score>0</span></p>
     </header>
     <canvas id="game" width="360" height="480" aria-label="Game playfield"></canvas>
@@ -129,7 +129,7 @@ if (ctx) {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = "#5ee0a0";
   ctx.font = "16px system-ui";
-  ctx.fillText("Waiting for Build…", 24, 40);
+  ctx.fillText("Your game will appear here after Build.", 24, 40);
 }
 console.log("StonePi Studio game shell — press Build after you describe the game.");
 """
@@ -193,15 +193,57 @@ def get_project(project_id: str) -> dict | None:
     return None
 
 
-def create_project(name: str, *, kind: str = "spa") -> dict:
-    clean = (name or "").strip() or "Untitled"
+_PLACEHOLDER_NAMES = {"game": "My new game", "guide": "My new story", "spa": "My new app"}
+
+
+def owner_id(project: dict) -> str:
+    """Auth user id that owns the project; "" for projects made before ownership existed."""
+    return str(project.get("owner_id") or "")
+
+
+def claim_unowned(owner: str, owner_name: str) -> int:
+    """Give every ownerless (pre-ownership) project to ``owner``. Returns how many moved."""
+    if not owner:
+        return 0
+    data = _load()
+    moved = 0
+    for item in data["projects"]:
+        if not owner_id(item):
+            item["owner_id"] = owner
+            item["owner_name"] = owner_name
+            moved += 1
+    if moved:
+        _save(data)
+    return moved
+
+
+def refresh_owner_name(owner: str, owner_name: str) -> None:
+    """Keep the stored label in step when someone changes their display name."""
+    if not owner or not owner_name:
+        return
+    data = _load()
+    changed = False
+    for item in data["projects"]:
+        if owner_id(item) == owner and item.get("owner_name") != owner_name:
+            item["owner_name"] = owner_name
+            changed = True
+    if changed:
+        _save(data)
+
+
+def create_project(name: str, *, kind: str = "spa", owner: str = "", owner_name: str = "") -> dict:
     kind_id = (kind or "spa").strip().lower()
     if kind_id not in BUILD_KIND_IDS:
         kind_id = "spa"
+    clean = (name or "").strip()
     project = {
         "id": uuid.uuid4().hex[:12],
-        "name": clean,
+        "name": clean or _PLACEHOLDER_NAMES.get(kind_id, "My new project"),
+        # No name yet: the AI proposes a title on the first build and we adopt it.
+        "auto_name": not clean,
         "kind": kind_id,
+        "owner_id": owner,
+        "owner_name": owner_name,
         "created_at": _now(),
         "updated_at": _now(),
         "fileserve_page_id": None,
@@ -214,15 +256,60 @@ def create_project(name: str, *, kind: str = "spa") -> dict:
     return project
 
 
-def append_message(project_id: str, role: str, content: str) -> dict | None:
+def append_message(project_id: str, role: str, content: str, *, note: str = "") -> dict | None:
     data = _load()
     for item in data["projects"]:
         if item.get("id") != project_id:
             continue
-        item.setdefault("messages", []).append({"role": role, "content": content, "at": _now()})
+        entry = {"role": role, "content": content, "at": _now()}
+        if note:
+            entry["note"] = note
+        item.setdefault("messages", []).append(entry)
         item["updated_at"] = _now()
         _save(data)
         return item
+    return None
+
+
+NAME_MAX = 80
+
+
+def clean_name(name: str) -> str:
+    """Collapse whitespace and cap to NAME_MAX, the same limit the share sheet uses."""
+    return " ".join((name or "").split())[:NAME_MAX]
+
+
+def rename_project(project_id: str, name: str) -> str | None:
+    """Set a name the user chose. Clears auto_name so the next build won't overwrite it."""
+    clean = clean_name(name)
+    if not clean:
+        return None
+    data = _load()
+    for item in data["projects"]:
+        if item.get("id") != project_id:
+            continue
+        item["name"] = clean
+        item["auto_name"] = False
+        item["updated_at"] = _now()
+        _save(data)
+        return clean
+    return None
+
+
+def adopt_name(project_id: str, name: str) -> str | None:
+    """Rename a still-unnamed project to the title the build chose. Returns the new name."""
+    clean = clean_name(name)
+    if not clean:
+        return None
+    data = _load()
+    for item in data["projects"]:
+        if item.get("id") != project_id or not item.get("auto_name"):
+            continue
+        item["name"] = clean
+        item["auto_name"] = False
+        item["updated_at"] = _now()
+        _save(data)
+        return clean
     return None
 
 
@@ -237,11 +324,18 @@ def mark_built(project_id: str) -> None:
             return
 
 
-def set_fileserve_page_id(project_id: str, page_id: int | None) -> None:
+def set_fileserve_page_id(
+    project_id: str, page_id: int | None, *, public_path: str | None = None, description: str | None = None
+) -> None:
     data = _load()
     for item in data["projects"]:
         if item.get("id") == project_id:
             item["fileserve_page_id"] = page_id
+            if public_path:
+                item["public_path"] = public_path
+            if description is not None:
+                item["share_description"] = description
+            item["published_at"] = _now()
             item["updated_at"] = _now()
             _save(data)
             return

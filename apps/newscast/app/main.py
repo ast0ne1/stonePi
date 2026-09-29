@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI
+from stonepi_auth.brand import mount_brand_fonts
 from fastapi.staticfiles import StaticFiles
 
 from app.db import SessionLocal, init_db
@@ -14,7 +15,7 @@ from app.services.favicon import capture_missing_feeds, seed_bundled_favicons
 from app.services import briefing, reader_push
 from app.services.ingest import run_ingest
 
-SCHEDULER_TICK_MINUTES = 1
+SCHEDULER_TICK_MINUTES = 5
 
 logging.basicConfig(level=logging.INFO)
 scheduler = BackgroundScheduler()
@@ -25,7 +26,18 @@ def _scheduled_ingest() -> None:
     try:
         run_ingest(db, force=False)
         briefing.maybe_publish_daily_briefing(db)
-        reader_push.flush_all_enabled(db)
+    finally:
+        db.close()
+
+
+def _scheduled_reader_push() -> None:
+    # Its own job so the queue goes out while the reader is awake, not only after a
+    # (sometimes minutes-long) refresh finishes; the paper published above is picked up here.
+    db = SessionLocal()
+    try:
+        reader_push.auto_push(db)
+    except Exception:  # noqa: BLE001
+        logging.getLogger("newscast").exception("background reader push failed")
     finally:
         db.close()
 
@@ -45,6 +57,13 @@ async def lifespan(_app: FastAPI):
     try:
         seed_builtin_categories(db)
         seed_recommended_feeds(db)
+        # One-off: strip page furniture ("Advertisement", "Loading", …) from stored stories.
+        try:
+            from app.services.text_cleanup import run_tidy_once
+
+            run_tidy_once(db)
+        except Exception:  # noqa: BLE001
+            logging.getLogger("newscast").exception("stored-story tidy-up failed")
     finally:
         db.close()
     capture_missing_feeds()
@@ -54,6 +73,15 @@ async def lifespan(_app: FastAPI):
         minutes=SCHEDULER_TICK_MINUTES,
         id="ingest",
         replace_existing=True,
+    )
+    scheduler.add_job(
+        _scheduled_reader_push,
+        "interval",
+        seconds=reader_push.AUTO_PUSH_SECONDS,
+        id="reader_push",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
     )
     scheduler.start()
     yield
@@ -67,6 +95,7 @@ if env.stonepi_prefix:
 
     app.add_middleware(PrefixMiddleware, prefix=env.stonepi_prefix)
 app.mount("/static", StaticFiles(directory=str(ROOT_DIR / "app" / "static")), name="static")
+mount_brand_fonts(app)  # /assets/fonts when reached directly (run-dev); nginx serves it on the Pi
 app.mount("/favicons", StaticFiles(directory=str(FAVICON_DIR)), name="favicons")
 app.include_router(ui.public)
 app.include_router(ui.router)

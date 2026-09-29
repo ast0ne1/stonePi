@@ -19,7 +19,12 @@ READER_COPY_KEYS = (
     "reader_ssh_port",
     "reader_ssh_user",
     "reader_ssh_password",
+    "reader_firmware",
+    "reader_keep_days",
 )
+FIRMWARE_DETECTED_KEY = "reader_firmware_detected"
+FIRMWARE_VERSION_KEY = "reader_firmware_version"
+FIRMWARE_LABELS = {"crosspoint": "CrossPoint", "crossink": "CrossInk"}
 
 
 def username_slug(username: str) -> str:
@@ -115,6 +120,54 @@ def reader_push_enabled(db: Session, user_id: int) -> bool:
     return user_settings.flag_enabled(db, int(user_id), "reader_push_when_online")
 
 
+def reader_firmware(db: Session, user_id: int) -> str:
+    """Manual firmware choice: auto, crosspoint, or crossink."""
+    return settings.normalize_reader_firmware(_raw(db, user_id, "reader_firmware"))
+
+
+def detected_reader_firmware(db: Session, user_id: int) -> tuple[str, str]:
+    """(family, version) last seen on this account's reader, or ("", "")."""
+    family = user_settings.get_value(db, int(user_id), FIRMWARE_DETECTED_KEY).strip()
+    version = user_settings.get_value(db, int(user_id), FIRMWARE_VERSION_KEY).strip()
+    return (family if family in FIRMWARE_LABELS else "", version)
+
+
+def remember_detected_firmware(db: Session, user_id: int, family: str, version: str = "") -> None:
+    if family not in FIRMWARE_LABELS:
+        return
+    if detected_reader_firmware(db, user_id) == (family, version):
+        return
+    user_settings.set_value(db, int(user_id), FIRMWARE_DETECTED_KEY, family)
+    user_settings.set_value(db, int(user_id), FIRMWARE_VERSION_KEY, version[:40])
+
+
+def effective_reader_firmware(db: Session, user_id: int) -> str:
+    """Firmware the paper is styled for; the manual choice wins over detection.
+
+    Kobo returns "" — the extras are Xteink-only. Unknown auto falls back to the
+    CrossPoint baseline, which renders correctly on both firmwares.
+    """
+    if reader_is_kobo(db, user_id):
+        return ""
+    chosen = reader_firmware(db, user_id)
+    if chosen != "auto":
+        return chosen
+    detected, _version = detected_reader_firmware(db, user_id)
+    return detected or "crosspoint"
+
+
+def detected_firmware_label(db: Session, user_id: int) -> str:
+    family, version = detected_reader_firmware(db, user_id)
+    if not family:
+        return ""
+    return f"{FIRMWARE_LABELS[family]} {version}".strip()
+
+
+def reader_keep_days(db: Session, user_id: int) -> int:
+    """Days of NewsCast papers kept on the reader (0 = off)."""
+    return settings.normalize_reader_keep_days(_raw(db, user_id, "reader_keep_days"))
+
+
 def reader_ssh_port(db: Session, user_id: int) -> int:
     raw = _raw(db, user_id, "reader_ssh_port").strip()
     if not raw:
@@ -169,11 +222,22 @@ def save_reader_settings(
     reader_ssh_user_value: str = "",
     reader_ssh_password_value: str = "",
     clear_reader_ssh_password: bool = False,
+    reader_firmware_value: str | None = None,
+    reader_keep_days_value: str | None = None,
 ) -> None:
     uid = int(user.id)
     device = settings.normalize_reader_device(reader_device_value)
     user_settings.set_value(db, uid, "reader_device", device)
     _mirror_admin_instance(db, user, "reader_device", device)
+
+    if reader_firmware_value is not None:
+        firmware = settings.normalize_reader_firmware(reader_firmware_value)
+        user_settings.set_value(db, uid, "reader_firmware", firmware)
+        _mirror_admin_instance(db, user, "reader_firmware", firmware)
+    if reader_keep_days_value is not None:
+        keep = str(settings.normalize_reader_keep_days(reader_keep_days_value))
+        user_settings.set_value(db, uid, "reader_keep_days", keep)
+        _mirror_admin_instance(db, user, "reader_keep_days", keep)
 
     host = reader_host_value.strip().removeprefix("http://").removeprefix("https://").split("/")[0]
     if host:
@@ -262,4 +326,9 @@ def settings_context(db: Session, user: User) -> dict:
         "reader_ssh_user": reader_ssh_user(db, uid),
         "reader_ssh_password": user_settings.secret_hint(db, uid, "reader_ssh_password"),
         "reader_setup_nudge": needs_setup_nudge(db, uid),
+        "reader_firmware": reader_firmware(db, uid),
+        "reader_firmwares": settings.READER_FIRMWARES,
+        "reader_firmware_detected": detected_firmware_label(db, uid),
+        "reader_keep_days": reader_keep_days(db, uid),
+        "reader_keep_days_choices": settings.READER_KEEP_DAYS_CHOICES,
     }

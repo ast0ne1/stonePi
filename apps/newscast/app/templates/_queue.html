@@ -6,6 +6,7 @@
     <div class="feed-copy">
       <h2>{{ item.label }}</h2>
       <p class="meta">{{ item.name }} · {{ item.size_label }}{% if item.created_label %} · {{ item.created_label }}{% endif %}</p>
+      {% if item.status_label %}<p class="meta queue-status is-{{ item.state }}" data-queue-status="{{ item.task_id }}">{{ item.status_label }}</p>{% endif %}
     </div>
     <form method="post" action="/reader/queue/{{ item.task_id }}/cancel" class="queue-cancel">
       <input type="hidden" name="next" value="{{ queue_next|default('/status') }}" />

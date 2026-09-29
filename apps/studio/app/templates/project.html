@@ -3,129 +3,263 @@
 {% block title %}{{ project.name }} · Studio{% endblock %}
 {% block main_class %} main-wide{% endblock %}
 {% block content %}
-{% set publish_open = message == 'Published' or project.fileserve_page_id %}
 <div class="split{% if has_built %} is-built{% endif %}" data-studio-split {% if has_built %}data-built="1"{% endif %}>
   <section class="pane chat-pane card">
     <div class="pane-head">
-      <a class="back-link" href="/projects">← Projects</a>
-      <h1>{{ project.name }}</h1>
-      <p class="chip">{{ kind_label }}</p>
-      <p class="hint workflow-hint" data-workflow-hint>
-        {% if has_built %}
-        Preview is live on the right. Clarify further, then rebuild when you want changes — publish only when you’re happy.
-        {% elif has_described %}
-        Add clarification if needed, then Build to generate the preview.
-        {% else %}
-        Describe what you want. Next you can clarify or Build — preview updates as soon as files are written.
-        {% endif %}
-      </p>
+      <a class="back-link" href="/projects{% if not is_mine %}?view=all{% endif %}">← {{ "Projects" if is_mine else "All projects" }}</a>
+      <div class="pane-title-row">
+        <h1 data-project-name>{{ project.name }}</h1>
+        <button type="button" class="icon-btn icon-btn-sm" data-rename-open data-rename-action="/p/{{ project.id }}/rename" data-rename-name="{{ project.name }}" aria-label="Rename project" title="Rename">{{ icon("edit") }}</button>
+        <p class="chip">{{ kind_label }}</p>
+        {% if not is_mine %}<p class="chip">{{ project.owner_name or "Someone" }}'s</p>{% endif %}
+      </div>
+      <ol class="steps" data-steps aria-label="Progress">
+        <li class="{% if has_described %}is-done{% else %}is-current{% endif %}" data-step="describe">Describe</li>
+        <li class="{% if has_built %}is-done{% elif has_described %}is-current{% endif %}" data-step="build">Build</li>
+        <li class="{% if has_built %}is-current{% endif %}" data-step="check">Check preview</li>
+        <li class="{% if published_url and not changed_since_publish %}is-done{% endif %}" data-step="publish">Share</li>
+      </ol>
     </div>
-    <div class="thread" data-chat-thread>
+    <div class="thread" data-chat-thread aria-live="polite">
+      <div class="msg msg-assistant msg-intro">
+        <div class="msg-body" data-md>{{ kind_info.intro.replace("{name}", (" " ~ greeting_name) if greeting_name else "") }}</div>
+      </div>
       {% for m in project.messages %}
-      <div class="msg msg-{{ m.role }}"><strong>{{ m.role }}:</strong> {{ m.content }}</div>
-      {% else %}
-      <p class="hint">Start with a short description of the site or game.</p>
+      <div class="msg msg-{{ m.role }}{% if m.note == 'error' %} msg-error{% endif %}">
+        <div class="msg-body" data-md>{{ m.content }}</div>
+        {% if m.note and m.note != 'error' %}<p class="msg-note">{{ m.note }}</p>{% endif %}
+      </div>
       {% endfor %}
+      {% if not project.messages and can_llm %}
+      <div class="suggestions" data-suggestions>
+        <p class="hint suggestions-label">Need a spark? Try one of these, or change it however you like:</p>
+        {% for idea in ideas %}
+        <button type="button" class="suggestion" data-suggestion>{{ idea }}</button>
+        {% endfor %}
+        <button type="button" class="suggestion suggestion-surprise" data-suggestion data-suggestion-text="Surprise me! Invent something fun and original, and tell me your idea before you build it.">✨ Surprise me</button>
+      </div>
+      {% endif %}
     </div>
     {% if can_llm %}
-    <form class="chat-form stack" data-chat-form data-project-id="{{ project.id }}" data-has-described="{{ '1' if has_described else '' }}" data-has-built="{{ '1' if has_built else '' }}">
+    {% set show_bar = (not has_built and has_described) or (has_built and pending_changes > 0) %}
+    <div class="build-bar{% if has_built %} is-rebuild{% endif %}" data-build-bar data-noun="{{ kind_noun }}" data-pending="{{ pending_changes }}" {% if not show_bar %}hidden{% endif %}>
+      <span class="build-bar-emoji" aria-hidden="true" data-build-bar-emoji>{% if has_built %}🔁{% else %}✨{% endif %}</span>
+      <div class="build-bar-text">
+        <strong data-build-bar-title>{% if has_built %}Ready to try your changes?{% else %}Happy with the plan?{% endif %}</strong>
+        <span class="hint" data-build-bar-sub>{% if has_built %}You've asked for {{ pending_changes }} change{{ '' if pending_changes == 1 else 's' }} since the last build.{% else %}When you've finished describing, build it and try it out.{% endif %}</span>
+      </div>
+      <button class="btn btn-primary btn-with-icon btn-build" type="submit" form="chat-form" data-intent="build" data-build-btn title="Ctrl+Enter">{{ icon("game" if project.kind == "game" else "spa") }} <span data-build-label>{% if has_built %}Rebuild with changes{% else %}Build my {{ kind_noun }}{% endif %}</span></button>
+    </div>
+    <form class="composer" id="chat-form" data-chat-form data-project-id="{{ project.id }}" data-has-described="{{ '1' if has_described else '' }}" data-has-built="{{ '1' if has_built else '' }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       <input type="hidden" name="intent" value="clarify" data-intent-field />
-      <label>
-        Message
-        <textarea name="message" rows="3" placeholder="{% if has_built %}Clarify changes for the next build…{% elif has_described %}Add detail, or leave blank and press Build…{% else %}Describe what to build…{% endif %}" {% if not has_described %}required{% endif %} data-chat-input></textarea>
-      </label>
-      <div class="btn-row workflow-actions" data-workflow-actions {% if not has_described %}hidden{% endif %}>
-        <button class="btn btn-ghost" type="submit" data-intent="clarify">Clarify</button>
-        <button class="btn btn-primary btn-with-icon" type="submit" data-intent="build">{{ icon("send") }} <span data-build-label>{% if has_built %}Rebuild{% else %}Build{% endif %}</span></button>
-      </div>
-      <div class="btn-row" data-describe-actions {% if has_described %}hidden{% endif %}>
-        <button class="btn btn-primary btn-with-icon" type="submit" data-intent="clarify">{{ icon("send") }} Describe</button>
+      <label class="sr-only" for="chat-input">Message</label>
+      <textarea id="chat-input" name="message" rows="1" placeholder="{% if has_built %}Ask for a change, e.g. “make the enemies slower”…{% else %}Describe what to build…{% endif %}" data-chat-input></textarea>
+      <div class="composer-bar">
+        <p class="hint composer-hint">Enter to send · Shift+Enter for a new line</p>
+        <div class="composer-actions">
+          <button class="btn btn-ghost" type="button" data-stop hidden>Stop</button>
+          <button class="btn btn-primary btn-icon" type="submit" data-intent="clarify" data-send-btn aria-label="Send message" title="Send (Enter)">{{ icon("send") }}</button>
+        </div>
       </div>
     </form>
     {% else %}
     <p class="hint">Your account cannot use the LLM. Ask an admin to enable “Use LLM” for Studio.</p>
     {% endif %}
-    <details class="files">
-      <summary>Files ({{ files|length }})</summary>
+    {# Step 4: sharing is the finale, so it reads as a celebration rather than a settings form. #}
+    <section class="share-step{% if published_url and not changed_since_publish %} is-live{% endif %}{% if has_built and pending_changes %} is-waiting{% endif %}" data-publish-area data-share-step {% if not has_built %}hidden{% endif %}>
+      <p class="share-wait-note" data-share-wait>🔁 Rebuild first so the shared version has your latest changes.</p>
+      {% if can_publish %}
+        {% if published_url and not changed_since_publish %}
+        <span class="share-emoji" aria-hidden="true">🎉</span>
+        <div class="share-text">
+          <strong>It's live! Everyone at home can play it.</strong>
+          <a class="text-link share-link" href="{{ published_url }}" target="_blank" rel="noopener">{{ published_url }}</a>
+        </div>
+        <div class="share-actions">
+          <a class="btn btn-primary btn-with-icon" href="{{ published_url }}" target="_blank" rel="noopener">▶ Play it</a>
+          <button type="button" class="btn btn-ghost btn-sm" data-share-open>Share settings</button>
+        </div>
+        {% elif published_url %}
+        <span class="share-emoji" aria-hidden="true">✨</span>
+        <div class="share-text">
+          <strong>You've changed it since you shared it.</strong>
+          <span class="hint">Share the update so everyone gets the new version.</span>
+        </div>
+        <div class="share-actions">
+          <button type="button" class="btn btn-primary btn-with-icon btn-share" data-share-open>🌟 Share the update</button>
+        </div>
+        {% else %}
+        <span class="share-step-num" aria-hidden="true">4</span>
+        <div class="share-text">
+          <strong>Share it with the family</strong>
+          <span class="hint">Played it and love it? Put it on FileServe so everyone at home can play.</span>
+        </div>
+        <div class="share-actions">
+          <button type="button" class="btn btn-primary btn-with-icon btn-share" data-share-open>🌟 Share my {{ kind_noun }}</button>
+        </div>
+        {% endif %}
+      {% else %}
+        <span class="share-emoji" aria-hidden="true">🌟</span>
+        <div class="share-text">
+          <strong>Love it? Ask a grown-up to share it.</strong>
+          <span class="hint">They can put it on FileServe so everyone at home can play.</span>
+        </div>
+      {% endif %}
+    </section>
+
+    {% if can_publish %}
+    <dialog class="share-sheet" data-share-sheet aria-labelledby="share-title">
+      <form method="post" action="/p/{{ project.id }}/publish" class="stack" data-page-setup data-publish-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <div class="share-sheet-head">
+          <span class="share-sheet-emoji" aria-hidden="true">🌟</span>
+          <div>
+            <h2 id="share-title">{% if published_url %}Share the update{% else %}Share your {{ kind_noun }}{% endif %}</h2>
+            <p class="hint">It'll appear on FileServe for everyone at home.</p>
+          </div>
+        </div>
+        <label>
+          What should it be called?
+          <input type="text" name="title" value="{{ project.name }}" required maxlength="80" autocomplete="off" data-label-field />
+        </label>
+        <label>
+          <span>Tell people about it <span class="optional">(optional)</span></span>
+          <textarea name="description" rows="2" maxlength="280" autocomplete="off" placeholder="{% if project.kind == 'game' %}A snake that eats stars! Use the arrow keys to steer.{% elif project.kind == 'guide' %}A spooky adventure where you choose what happens.{% else %}Tick off your chores and collect stars.{% endif %}">{{ project.share_description or '' }}</textarea>
+        </label>
+        <details class="grown-up">
+          <summary>🔧 Grown-up options <span class="hint">web address, how long it stays, password</span></summary>
+          <div class="stack grown-up-body">
+            <label>
+              Web address
+              <span class="path-field">
+                <span class="path-prefix" aria-hidden="true">/</span>
+                <input type="text" name="slug" value="" autocomplete="off" spellcheck="false" placeholder="{{ project.name|lower|replace(' ', '-') }}" data-slug-field />
+              </span>
+            </label>
+            <p class="hint">Made from the name if left blank. Must be unique among your FileServe pages.</p>
+            <label>
+              Keep it for
+              <select name="expiry" data-expiry-mode>
+                <option value="none" selected>Until someone removes it</option>
+                <option value="week">1 week</option>
+                <option value="month">1 month</option>
+                <option value="3months">3 months</option>
+                <option value="6months">6 months</option>
+                <option value="custom">Until a date…</option>
+              </select>
+            </label>
+            <label data-expiry-custom hidden>
+              Remove after
+              <input type="date" name="expiry_date" data-expiry-date />
+            </label>
+            <label class="check-row">
+              <input type="checkbox" name="protect" value="1" data-protect-toggle />
+              <span>
+                <strong>Require a password</strong>
+                <span class="hint">Visitors need a username and password to open it.</span>
+              </span>
+            </label>
+            <div class="stack" data-protect-fields hidden>
+              <label>
+                Page username
+                <input type="text" name="page_username" value="" autocomplete="off" />
+              </label>
+              <label>
+                Page password
+                <input type="password" name="page_password" autocomplete="new-password" />
+              </label>
+            </div>
+          </div>
+        </details>
+        <div class="share-sheet-actions">
+          <button class="btn btn-ghost" type="button" data-share-cancel>Not yet</button>
+          <button class="btn btn-primary btn-with-icon btn-share" type="submit" data-share-submit>🌟 {% if published_url %}Share the update{% else %}Share it!{% endif %}</button>
+        </div>
+      </form>
+    </dialog>
+    {% endif %}
+
+    {% set rename_action = "/p/" ~ project.id ~ "/rename" %}
+    {% set rename_value = project.name %}
+    {% include "_rename_sheet.html" %}
+
+    {% if just_published and published_url %}
+    <dialog class="share-sheet share-party" data-share-party aria-labelledby="party-title">
+      <div class="confetti" aria-hidden="true">{% for i in range(24) %}<i style="--i:{{ i }}"></i>{% endfor %}</div>
+      <div class="party-body">
+        <span class="party-emoji" aria-hidden="true">🎉</span>
+        <h2 id="party-title">{{ project.name }} is live!</h2>
+        <p class="lede">Everyone at home can play it now. Amazing work{% if greeting_name %}, {{ greeting_name }}{% endif %}!</p>
+        <div class="share-sheet-actions party-actions">
+          <button class="btn btn-ghost" type="button" data-party-close>Keep building</button>
+          <a class="btn btn-primary btn-with-icon" href="{{ published_url }}" target="_blank" rel="noopener">▶ Play it</a>
+        </div>
+      </div>
+    </dialog>
+    {% endif %}
+
+    <details class="files behind-scenes">
+      <summary>Behind the scenes · {{ files|length }} file{{ '' if files|length == 1 else 's' }}</summary>
       <ul data-file-list>
         {% for f in files %}<li>{{ f }}</li>{% endfor %}
       </ul>
     </details>
-    {% if can_publish %}
-    <details class="publish-panel" {% if publish_open %}open{% endif %}>
-      <summary>
-        <span class="publish-summary-title">{{ icon("publish") }} Publish to FileServe</span>
-        <span class="hint">{% if project.fileserve_page_id %}Published — expand to update{% else %}When the preview looks right{% endif %}</span>
-      </summary>
-      <form method="post" action="/p/{{ project.id }}/publish" class="publish stack" data-page-setup>
-        <p class="hint">Same keep-until and password options as Hosted Pages. Needs FileServe access on your account.</p>
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-        <label>
-          Label
-          <input type="text" name="title" value="{{ project.name }}" required autocomplete="off" placeholder="Emergency Planner" data-label-field />
-        </label>
-        <p class="hint">Shown on the Hosted Pages card.</p>
-        <label>
-          Short description
-          <textarea name="description" rows="2" maxlength="280" autocomplete="off" placeholder="Optional note shown on the card and public listing"></textarea>
-        </label>
-        <p class="hint">Optional. Up to 280 characters.</p>
-        <label>
-          Path
-          <span class="path-field">
-            <span class="path-prefix" aria-hidden="true">/</span>
-            <input type="text" name="slug" value="" autocomplete="off" spellcheck="false" placeholder="emergency-planner" data-slug-field />
-          </span>
-        </label>
-        <p class="hint">Defaults from the label. Must be unique among your FileServe pages.</p>
-        <label>
-          Keep until
-          <select name="expiry" data-expiry-mode>
-            <option value="none" selected>Removed manually</option>
-            <option value="week">1 week</option>
-            <option value="month">1 month</option>
-            <option value="3months">3 months</option>
-            <option value="6months">6 months</option>
-            <option value="custom">Custom date</option>
-          </select>
-        </label>
-        <label data-expiry-custom hidden>
-          Remove after
-          <input type="date" name="expiry_date" data-expiry-date />
-        </label>
-        <p class="hint">By default the page stays until you delete it. Custom dates expire at the end of that day UTC.</p>
-        <label class="check-row">
-          <input type="checkbox" name="protect" value="1" data-protect-toggle />
-          <span>
-            <strong>Require a password</strong>
-            <span class="hint">Off by default. Turn on to ask visitors for a username and password before the page opens.</span>
-          </span>
-        </label>
-        <div class="stack" data-protect-fields hidden>
-          <label>
-            Page username
-            <input type="text" name="page_username" value="" autocomplete="off" />
-          </label>
-          <label>
-            Page password
-            <input type="password" name="page_password" autocomplete="new-password" />
-          </label>
-        </div>
-        <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("publish") }} Publish zip</button>
-        {% if project.fileserve_page_id %}<p class="hint">Updates your existing FileServe page (#{{ project.fileserve_page_id }}).</p>{% endif %}
-      </form>
-    </details>
-    {% else %}
-    <p class="hint">Publishing is off for your account. Ask an admin to enable Studio <strong>Publish to FileServe</strong> (and FileServe) under Users.</p>
-    {% endif %}
   </section>
   <section class="pane preview-pane card" data-preview-pane>
     <div class="preview-head">
-      <h2>Preview</h2>
-      <p class="hint" data-preview-status>{% if has_built %}Live from your last build{% else %}Shows after Build{% endif %}</p>
+      <div class="preview-title">
+        <h2>Preview</h2>
+        <p class="status-pill" data-preview-status data-state="{{ 'live' if has_built else 'idle' }}">{% if has_built %}Live from your last build{% else %}Shows after Build{% endif %}</p>
+      </div>
+      <div class="preview-tools" role="group" aria-label="Preview size">
+        <button type="button" class="seg is-active" data-preview-size="fit">Fit</button>
+        <button type="button" class="seg" data-preview-size="phone">Phone</button>
+        <button type="button" class="seg" data-preview-size="laptop">Laptop</button>
+        <button type="button" class="icon-btn" data-preview-reload aria-label="Reload preview" title="Reload preview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
+        <a class="icon-btn" href="{{ preview_url }}" data-preview-open {% if not has_built %}hidden{% endif %} target="_blank" rel="noopener" aria-label="Open preview in a new tab" title="Open in new tab"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
+      </div>
     </div>
-    <iframe class="preview" src="{{ preview_url }}" title="Preview" data-preview></iframe>
+    <div class="preview-issues" data-preview-issues hidden>
+      <div class="preview-issues-head">
+        <strong data-issues-title>Preview problems</strong>
+        {% if can_llm %}<button type="button" class="btn btn-primary btn-sm" data-fix-issues>Ask Studio to fix</button>{% endif %}
+      </div>
+      <ul data-issues-list></ul>
+    </div>
+    <div class="preview-stage" data-preview-stage data-size="fit">
+      <iframe class="preview" {% if has_built %}src="{{ preview_url }}"{% endif %} data-href="{{ preview_url }}" title="Preview" data-preview allow="autoplay; fullscreen; gamepad" {% if not has_built %}hidden{% endif %}></iframe>
+      {# Pixel the robot: stands in before the first build and keeps kids company while one runs. #}
+      <div class="buddy-stage" data-buddy data-kind="{{ project.kind or 'spa' }}" data-name="{{ greeting_name }}" data-state="{{ 'off' if has_built else 'idle' }}" {% if has_built %}hidden{% endif %}>
+        <div class="buddy-bubble" data-buddy-say aria-live="polite">Hi{{ (" " ~ greeting_name) if greeting_name else "" }}! I'm Pixel. Tell me your idea in the chat and I'll build it right here!</div>
+        <svg class="buddy" viewBox="0 0 160 190" role="img" aria-label="Pixel the robot">
+          <g class="buddy-body">
+            <line x1="80" y1="26" x2="80" y2="46" class="buddy-line" />
+            <circle cx="80" cy="20" r="8" class="buddy-bulb" />
+            <rect x="28" y="44" width="104" height="80" rx="26" class="buddy-head" />
+            <rect x="40" y="58" width="80" height="50" rx="18" class="buddy-face" />
+            <g class="buddy-eyes">
+              <ellipse cx="62" cy="80" rx="8" ry="9" class="buddy-eye" />
+              <ellipse cx="98" cy="80" rx="8" ry="9" class="buddy-eye" />
+              <circle cx="65" cy="77" r="2.6" class="buddy-glint" />
+              <circle cx="101" cy="77" r="2.6" class="buddy-glint" />
+            </g>
+            <path d="M68 96 Q80 105 92 96" class="buddy-mouth" />
+            <circle cx="48" cy="96" r="5" class="buddy-cheek" />
+            <circle cx="112" cy="96" r="5" class="buddy-cheek" />
+            <rect x="18" y="72" width="12" height="26" rx="6" class="buddy-ear" />
+            <rect x="130" y="72" width="12" height="26" rx="6" class="buddy-ear" />
+            <rect x="50" y="128" width="60" height="40" rx="14" class="buddy-head" />
+            <circle cx="80" cy="148" r="7" class="buddy-heart" />
+            <rect x="30" y="132" width="16" height="30" rx="8" class="buddy-head buddy-arm buddy-arm-l" />
+            <rect x="114" y="132" width="16" height="30" rx="8" class="buddy-head buddy-arm buddy-arm-r" />
+          </g>
+          <ellipse cx="80" cy="182" rx="36" ry="5" class="buddy-shadow" />
+        </svg>
+        <div class="buddy-progress" data-buddy-progress hidden><i></i></div>
+      </div>
+    </div>
+    <p class="hint preview-foot" data-preview-foot {% if not has_built %}hidden{% endif %}>After a build the preview has the keyboard, so you can play straight away. Click the chat box to type again.</p>
   </section>
 </div>
 {% endblock %}

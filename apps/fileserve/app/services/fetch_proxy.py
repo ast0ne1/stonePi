@@ -9,10 +9,12 @@ from urllib.parse import urlparse
 import httpx
 from stonepi_auth import is_public_exposure
 
+from app import __version__
+
 TIMEOUT = httpx.Timeout(45.0, connect=10.0)
 MAX_BYTES = 15 * 1024 * 1024
 HEADERS = {
-    "User-Agent": "FileServe-URLPack/0.0.0.5 (+local household tool)",
+    "User-Agent": f"FileServe-URLPack/{__version__} (+local household tool)",
     "Accept": "*/*",
 }
 

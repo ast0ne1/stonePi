@@ -167,7 +167,7 @@ def paper_display_title(db: Session, day: date) -> str:
         reader_title_pattern(db),
         day=day,
         date_style=reader_date_format(db),
-        hostname_value=hostname.normalize_hostname(settings.get_value(db, "device_hostname")),
+        hostname_value=hostname.device_hostname(),
         instance=reader_instance_name(db),
         label=reader_paper_label(db),
     )
@@ -178,7 +178,7 @@ def paper_category_display_title(db: Session, day: date, category_label: str) ->
         reader_category_title_pattern(db),
         day=day,
         date_style=reader_date_format(db),
-        hostname_value=hostname.normalize_hostname(settings.get_value(db, "device_hostname")),
+        hostname_value=hostname.device_hostname(),
         instance=reader_instance_name(db),
         label=reader_paper_label(db),
         category=(category_label or "").strip(),

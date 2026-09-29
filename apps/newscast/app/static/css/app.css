@@ -8,6 +8,7 @@
   --accent: #8b1e1e;
   --accent-ink: #fff8f2;
   --ok: #2c5d3c;
+  --warn: #8a5a0b;
   --error: #8b1e1e;
   --wash: #ebe4d7;
   --shadow: 0 1px 0 var(--line);
@@ -33,6 +34,7 @@
   --accent: #e06a5a;
   --accent-ink: #1a100e;
   --ok: #8fca9a;
+  --warn: #e3b061;
   --error: #f0a197;
   --wash: #0c0b09;
   --shadow: 0 1px 0 var(--line);
@@ -51,6 +53,7 @@
   --accent: #1d5a8a;
   --accent-ink: #f3f8fc;
   --ok: #2c5d3c;
+  --warn: #8a5a0b;
   --error: #8b1e1e;
   --wash: #dce6ef;
   --theme-meta: #e7eef5;
@@ -65,6 +68,7 @@
   --accent: #6eadd8;
   --accent-ink: #0c141c;
   --ok: #8fca9a;
+  --warn: #e3b061;
   --error: #f0a197;
   --wash: #081018;
   --theme-meta: #0c141c;
@@ -79,6 +83,7 @@
   --accent: #3a5628;
   --accent-ink: #f4f8ee;
   --ok: #2c5d3c;
+  --warn: #8a5a0b;
   --error: #8b1e1e;
   --wash: #e2e6d6;
   --theme-meta: #eef1e6;
@@ -93,6 +98,7 @@
   --accent: #8fbc6e;
   --accent-ink: #12180e;
   --ok: #8fca9a;
+  --warn: #e3b061;
   --error: #f0a197;
   --wash: #0b0e09;
   --theme-meta: #10140d;
@@ -107,6 +113,7 @@
   --accent: #3d4048;
   --accent-ink: #f7f7f8;
   --ok: #2c5d3c;
+  --warn: #8a5a0b;
   --error: #8b1e1e;
   --wash: #e4e5e7;
   --theme-meta: #ececee;
@@ -121,6 +128,7 @@
   --accent: #c4c7cc;
   --accent-ink: #121314;
   --ok: #8fca9a;
+  --warn: #e3b061;
   --error: #f0a197;
   --wash: #0c0d0e;
   --theme-meta: #121314;
@@ -237,7 +245,9 @@ input, select {
   background: color-mix(in srgb, var(--paper) 92%, transparent);
   backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--line);
-  min-height: var(--topbar-height);
+  /* Fixed floor — never the JS-measured --topbar-height, or the bar latches at
+     any transient tall height (it can grow but never shrink back). */
+  min-height: 65px;
 }
 
 .brand {
@@ -310,6 +320,8 @@ input, select {
 .status-pill.is-error { color: var(--error); background: color-mix(in srgb, var(--error) 12%, var(--card)); }
 .activity-banner {
   display: none;
+  /* .app is a fixed-height flex column; without this the banner shrinks and clips on long pages. */
+  flex: 0 0 auto;
   margin: 0;
   padding: 8px 16px;
   border-bottom: 1px solid var(--line);
@@ -324,6 +336,28 @@ input, select {
 }
 .activity-banner:not([hidden]) { display: block; }
 .activity-banner.is-busy { color: var(--accent); }
+a.activity-banner { text-decoration: none; }
+a.activity-banner:not([hidden]) { display: flex; align-items: center; gap: 8px; }
+.activity-banner-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.activity-banner-icon {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.activity-banner-chevron { margin-left: auto; opacity: 0.7; }
+.activity-banner.is-queued {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 12%, var(--paper));
+}
+.activity-banner.is-sending {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 12%, var(--paper));
+}
 .activity-banner.is-error {
   color: var(--error);
   background: color-mix(in srgb, var(--error) 10%, var(--paper));
@@ -708,11 +742,13 @@ h2 { font-family: var(--serif); font-size: 1.35rem; }
 }
 .stack > .btn { justify-self: start; }
 .btn-primary { background: var(--accent); color: var(--accent-ink); }
+/* Icon-only at every size; the label lives in aria-label / title. */
 .btn-refresh {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  min-width: var(--tap);
+  padding: 0 12px;
 }
 .btn-refresh svg,
 .sign-out svg {
@@ -724,6 +760,9 @@ h2 { font-family: var(--serif); font-size: 1.35rem; }
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+.refresh-stop-form[hidden] { display: none; }
+.btn-stop svg rect { fill: currentColor; }
+.btn-stop:disabled { opacity: 0.55; cursor: progress; }
 .btn-refresh.is-busy svg {
   animation: spin 1s linear infinite;
 }
@@ -857,6 +896,19 @@ select:focus-visible {
   justify-self: end;
   min-width: 0;
 }
+.queue-status { margin-top: 4px; }
+.queue-status.is-sending,
+.queue-status.is-sent { color: var(--ok); }
+.queue-status.is-retry,
+.queue-status.is-failed { color: var(--error); }
+.queue-recent {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.queue-recent .queue-status { margin: 0; }
 .library-row {
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
@@ -886,6 +938,13 @@ select:focus-visible {
 }
 .library-push {
   justify-self: end;
+}
+.library-on-reader { color: var(--ok); }
+/* "Waiting to send": links to Send, where the queue lives; a status, not a button. */
+.library-waiting {
+  justify-self: end;
+  text-decoration: none;
+  white-space: nowrap;
 }
 .feed-card {
   display: grid;
@@ -1064,7 +1123,7 @@ select:focus-visible {
     align-items: end;
   }
   .schedule-form {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: end;
   }
   .schedule-form .btn {
@@ -1288,7 +1347,110 @@ select:focus-visible {
 }
 .stat-value { margin: 8px 0 0; font-family: var(--serif); font-size: 1.7rem; }
 .stat-value-sm { font-size: 1.05rem; line-height: 1.3; }
+/* Stories stored: where the total sits (rows add up to the headline number). */
+.stat-breakdown {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.stat-breakdown li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.stat-breakdown li span:last-child {
+  flex: 0 0 auto;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
 .delivery-trust { margin: 0; }
+
+/* Reader → Status overview: Stories stored, Delivery, Health side by side on wide
+   screens; label / value rows keep each card compact. */
+.status-overview {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  align-items: stretch;
+  min-width: 0;
+}
+.status-overview > .card { margin: 0; min-width: 0; }
+.status-card {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 16px 18px;
+}
+.status-summary {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 1.05rem;
+  line-height: 1.3;
+}
+.status-rows {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 6px;
+  font-size: 0.84rem;
+}
+.status-rows > li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+.status-row-label { flex: 0 0 auto; color: var(--muted); }
+.status-row-value {
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.status-row-value.is-error { color: var(--error); }
+.status-rows > .status-row-full { display: block; }
+.status-rows .health-failing { margin: 0; }
+
+/* Reader → Status → Your catalog URL: address + QR on one line, compact downloads,
+   longer setup notes tucked into "More setup help". */
+.catalog-card { display: grid; gap: 8px; padding: 16px 18px; }
+.catalog-url-row {
+  display: flex;
+  align-items: center;
+  gap: 10px 14px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.catalog-url-row .catalog-url-link {
+  flex: 1 1 16rem;
+  min-width: 0;
+  font-family: var(--serif);
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.catalog-card .hint { margin: 0; }
+.catalog-downloads {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  margin: 0;
+  font-size: 0.86rem;
+}
+.catalog-help summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+.catalog-help-body { display: grid; gap: 6px; padding-top: 8px; }
 
 .health-list {
   list-style: none;
@@ -1318,6 +1480,16 @@ select:focus-visible {
 }
 .panel-head { display: grid; gap: 6px; }
 .panel-form { display: grid; gap: 14px; }
+/* Search: keyword + outlet side by side from tablet width, actions at the end. */
+.search-fields { display: grid; gap: 12px; }
+.search-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.search-summary { margin: 0 0 10px; }
+@media (min-width: 720px) {
+  .search-fields {
+    grid-template-columns: minmax(0, 3fr) minmax(12rem, 2fr) auto;
+    align-items: end;
+  }
+}
 .file-field input[type="file"] {
   width: 100%;
 }
@@ -1460,10 +1632,10 @@ select:focus-visible {
 .settings-tabs.is-panel-list .settings-section { display: none !important; }
 .settings-tabs:not(.is-hub) .settings-hub { display: none !important; }
 .settings-tabs:not(.is-panel-list) .settings-panel-list { display: none !important; }
-/* Phone/tablet: top-level chips stay desktop-only; panel cards filter by sub-chip. */
+/* Hub → L2 list → one stacked panel on every viewport. Chips stay in the DOM for deep links. */
 .settings-top-chips { display: none; }
 .settings-section-chips { display: none; }
-.settings-tabs:not(.is-desktop-settings) [data-settings-panel-card].is-panel-hidden {
+.settings-tabs [data-settings-panel-card].is-panel-hidden {
   display: none !important;
 }
 .page-tabs {
@@ -1533,6 +1705,14 @@ select:focus-visible {
   height: 100%;
   min-width: 0;
 }
+/* Reader → Send: side-by-side cards read heading → text → buttons. Content packs at
+   the top and the button rows sit on the bottom edge, so both cards line up. */
+.send-cards > .card {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+.send-cards > .card > .btn-row { margin-top: auto; }
 @media (min-width: 720px) {
   .device-pair {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1561,31 +1741,17 @@ select:focus-visible {
 }
 .settings-chips { margin-bottom: 8px; }
 
+/* Laptop+: hub stays one column (uneven groups look broken in two). */
 @media (min-width: 1024px) {
-  .settings-tabs.is-hub .settings-section,
-  .settings-tabs.is-panel-list .settings-section,
-  .settings-tabs .settings-section {
-    display: grid !important;
+  .settings-hub {
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
   }
-  .settings-tabs .settings-hub,
-  .settings-hub,
   .settings-panel-list {
-    display: none !important;
+    max-width: 44rem;
   }
-  .settings-back {
-    display: none !important;
-  }
-  .settings-top-chips {
-    display: flex;
-  }
-  .settings-section-chips {
-    display: none !important;
-  }
-  .settings-page-status .page-status-action {
-    display: none;
-  }
-  .settings-tabs [data-settings-panel-card].is-panel-hidden {
-    display: revert !important;
+  .settings-section {
+    max-width: 48rem;
   }
 }
 .user-cards {
@@ -1757,6 +1923,9 @@ input[type="search"]::-webkit-search-results-button {
   max-width: 100%;
 }
 .qr-card { justify-items: start; min-width: 0; width: 100%; }
+.catalog-qr-sheet { justify-items: center; text-align: center; }
+.catalog-qr-sheet .qr-frame { width: min(240px, 70vw); margin: 0 auto; box-sizing: border-box; }
+.catalog-qr-sheet .btn-row { justify-content: center; width: 100%; }
 .qr-frame {
   width: min(200px, 64vw);
   padding: 12px;
@@ -1967,6 +2136,51 @@ html.sheet-open body {
   stroke-linejoin: round;
 }
 .page-status-action:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
+/* Briefing "Updated HH:MM": secondary information, so smaller and lighter. */
+.page-status-quiet { align-items: center; margin-bottom: 10px; }
+.page-status-quiet .page-status-dot { width: 6px; height: 6px; margin-top: 0; opacity: 0.7; }
+.page-status-quiet .page-status-text {
+  font-size: 0.76rem;
+  color: color-mix(in srgb, var(--muted) 80%, var(--paper));
+}
+.page-status-quiet .page-status-action { margin-top: 0; }
+
+/* Briefing day filter: Today / Yesterday / All (+ a picked date) and the calendar picker. */
+.day-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  min-width: 0;
+}
+.day-filter > .seg-control {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+.day-filter > .seg-control .seg-btn {
+  min-width: 0;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+@media (max-width: 359px) {
+  /* Four segments (Today / Yesterday / All / picked date) on the smallest phones. */
+  .day-filter { gap: 6px; }
+  .day-filter > .seg-control { gap: 2px; padding: 3px; }
+  .day-filter > .seg-control .seg-btn { padding: 0 4px; font-size: 0.8rem; }
+}
+.day-filter-action.is-active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+.day-option { text-decoration: none; }
+.day-option-name { flex: 1 1 auto; }
+.day-option-note { font-size: 0.8rem; font-weight: 500; color: var(--muted); }
+.day-option-date { font-weight: 500; color: var(--muted); }
+.day-option.is-empty .day-option-name { color: var(--muted); }
+.filter-picker-option.is-active .day-option-date,
+.filter-picker-option.is-active .day-option-note { color: inherit; opacity: 0.8; }
 
 .seg-control {
   display: flex;
@@ -2010,9 +2224,13 @@ html.sheet-open body {
   stroke-linejoin: round;
 }
 .seg-control .seg-btn.is-active svg { color: inherit; }
+/* Sources: tabs (Feeds / Catalog) and the category chips are separate blocks in .main,
+   so cancel .main's 16px row gap and match Briefing's day-buttons → chips spacing. */
+.main > .page-tabs + [data-filter-root] { margin-top: -16px; }
 
 @media (min-width: 1024px) {
   [data-briefing-list] > .seg-control,
+  .day-filter > .seg-control,
   .page-tabs.seg-control {
     width: fit-content;
     max-width: 100%;
@@ -2020,7 +2238,11 @@ html.sheet-open body {
     padding: 3px;
     gap: 2px;
   }
+  .day-filter > .seg-control { flex: 0 1 auto; margin-bottom: 0; }
+  .day-filter { margin-bottom: 10px; }
+  .day-filter .chips-action { width: 32px; height: 32px; }
   [data-briefing-list] > .seg-control .seg-btn,
+  .day-filter > .seg-control .seg-btn,
   .page-tabs.seg-control .seg-btn {
     flex: 0 0 auto;
     min-height: 30px;
@@ -2066,6 +2288,12 @@ html.sheet-open body {
   /* Keep the horizontal scrollbar below the chip pills / action button. */
   padding: 0 0 10px;
   background: transparent;
+}
+@media (min-width: 1024px) {
+  /* Wide screens: the filter button follows the last chip instead of the far edge.
+     (Must come after the rule above.) flex-shrink stays on, so a long chip row still
+     scrolls with the button reachable. */
+  .chips-with-action .chips { flex: 0 1 auto; }
 }
 .chips-action {
   flex: 0 0 auto;
@@ -2368,16 +2596,51 @@ html.sheet-open body {
 .feed-row-health-error { color: var(--error); }
 .feed-row-health-error .feed-row-health-dot { background: var(--error); }
 .feed-row-health-empty { color: var(--muted); }
+/* Compact bare icon: its grid column stays reserved under the button while the card
+   is open, so keep it narrow. 32px still clears the 24px minimum touch target. */
 .feed-row-refresh {
-  margin: 8px 4px 0 0;
+  margin: 14px 0 0 0;
+}
+.feed-row-refresh .icon-btn {
+  width: 32px;
+  min-height: 32px;
+  border-radius: 8px;
 }
 .feed-row-details[open] > .feed-row-summary {
   border-bottom: 1px solid var(--line);
 }
 .feed-row-panel {
-  padding: 12px 8px 14px 0;
+  padding: 12px 0 14px 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
+  min-width: 0;
+  /* Long URLs in the status line / "active:" hint must wrap inside the card. */
+  overflow-wrap: anywhere;
+  /* Lay the form out by the card's width, not the viewport's: on laptop/desktop the
+     Sources page shows 2–3 cards side by side, so a wide screen still has narrow cards. */
+  container-type: inline-size;
+}
+.feed-row-panel .schedule-form > * { min-width: 0; }
+.feed-row-panel .schedule-form input:not([type="checkbox"]),
+.feed-row-panel .schedule-form select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.feed-row-panel .schedule-form {
+  grid-template-columns: minmax(0, 1fr);
+}
+.feed-row-panel .schedule-form .btn { grid-column: auto; justify-self: start; }
+@container (min-width: 440px) {
+  .feed-row-panel .schedule-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .feed-row-panel .schedule-form .schedule-span,
+  .feed-row-panel .schedule-form .btn {
+    grid-column: 1 / -1;
+  }
+  .feed-row-panel .schedule-form .btn { justify-self: end; }
 }
 .feed-row-panel .feed-actions {
   flex-wrap: wrap;
@@ -2509,6 +2772,7 @@ html.sheet-open body {
   .library-push .btn {
     width: 100%;
   }
+  .library-waiting { justify-self: start; }
   .library-row form:has(.icon-btn) {
     justify-self: end;
   }
@@ -2525,8 +2789,6 @@ html.sheet-open body {
     padding-right: 12px;
     font-size: 0.8rem;
   }
-  .btn-refresh span { display: none; }
-  .btn-refresh { min-width: var(--tap); padding: 0 12px; }
   .catalog-grid { gap: 8px; }
   .catalog-card {
     padding: 12px;
@@ -2562,6 +2824,7 @@ html.sheet-open body {
     height: auto;
     overflow-x: hidden;
     overflow-y: auto;
+    scrollbar-gutter: stable;
   }
   body {
     height: auto;
@@ -2779,7 +3042,7 @@ html:has(.login-body),
   .settings-panel:not([hidden]),
   .settings-panels {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
     gap: 16px;
     align-items: start;
   }
@@ -2812,12 +3075,11 @@ html:has(.login-body),
   .feed-list:not(.queue-list):not(.file-list) {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+  .settings-section {
+    max-width: 56rem;
+  }
   .settings-panel:not([hidden]),
   .settings-panels {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-  .settings-panel.settings-panel-stack:not([hidden]),
-  .settings-panels.settings-panel-stack {
     grid-template-columns: 1fr;
   }
   .settings-panel:not([hidden]) > .settings-panel-span-2,
@@ -2839,4 +3101,33 @@ html:has(.login-body),
   .feed-groups {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+}
+
+/* ── Household chrome parity with Dashboard ─────────────────────────────────────────
+   Mirrors apps/dashboard/app/static/css/app.css so switching apps doesn't jump: top-bar
+   buttons 40px with 18px icons (no fixed 65px bar), menu 220px wide on laptop+, menu text
+   0.92rem and 20px icons. On phones labels stay 0.7rem (Dashboard: 0.72rem) because
+   NewsCast's bottom menu has 7 items to Dashboard's 5 and "Settings" would truncate.
+   Keep in step with Dashboard until the frame moves to a shared StonePi stylesheet.
+   Placed last so it wins over earlier rules. */
+.topbar { min-height: 0; }
+.topbar .icon-btn,
+.topbar .btn-refresh {
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+}
+.topbar .icon-btn svg,
+.topbar .btn-refresh svg { width: 18px; height: 18px; }
+.nav svg { width: 20px; height: 20px; }
+.nav a { gap: 2px; min-height: 44px; }
+@media (min-width: 1024px) {
+  .app { grid-template-columns: 220px 1fr; }
+  .nav a { padding: 10px 12px; font-size: 0.92rem; gap: 10px; }
+}
+@media (max-width: 374px) {
+  /* Narrow phones (360px Android, 320px): 7 bottom-menu labels need a touch less room. */
+  .nav a { font-size: 0.64rem; padding-left: 0; padding-right: 0; }
 }

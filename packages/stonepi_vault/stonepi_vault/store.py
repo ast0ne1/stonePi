@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
 
 _DEFAULT_DIR = Path(os.environ.get("STONEPI_VAULT_DIR", "") or "/var/lib/stonepi/vault")
+_CACHE_TTL_SECONDS = 30.0
 
 
 class Vault:
@@ -17,6 +19,8 @@ class Vault:
         self.root.mkdir(parents=True, exist_ok=True)
         self._key_path = self.root / "vault.key"
         self._store_path = self.root / "secrets.enc"
+        self._cache: dict[str, str] | None = None
+        self._cache_at: float = 0.0
 
     def _secure_file(self, path: Path) -> None:
         """Group-readable (640) so stonepi-vault members can read; owner writes."""
@@ -41,7 +45,20 @@ class Vault:
             self._secure_file(self._key_path)
         return Fernet(key)
 
+    def _invalidate_cache(self) -> None:
+        self._cache = None
+        self._cache_at = 0.0
+
     def _load(self) -> dict[str, str]:
+        now = time.monotonic()
+        if self._cache is not None and (now - self._cache_at) < _CACHE_TTL_SECONDS:
+            return dict(self._cache)
+        data = self._load_disk()
+        self._cache = dict(data)
+        self._cache_at = now
+        return dict(data)
+
+    def _load_disk(self) -> dict[str, str]:
         if not self._store_path.exists():
             return {}
         try:
@@ -58,6 +75,7 @@ class Vault:
         # Keep the key at the same mode in case an older install left it 600.
         if self._key_path.exists():
             self._secure_file(self._key_path)
+        self._invalidate_cache()
 
     def list_keys(self) -> list[str]:
         return sorted(self._load().keys())

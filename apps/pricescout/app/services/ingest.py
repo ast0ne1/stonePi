@@ -39,8 +39,18 @@ def refresh_all(*, zip_code: str = "", force_mock: bool | None = None) -> dict[s
                 continue
             try:
                 rows = collector.fetch_offers()
-                count = db.replace_source_offers(collector.id, [r.as_dict() for r in rows])
+                payload = [r.as_dict() for r in rows]
+                count = db.replace_source_offers(collector.id, payload)
                 results["sources"][collector.id] = {"ok": True, "count": count}
+                try:
+                    from app.services import notify as notify_service
+
+                    store_name = str(src.get("name") or collector.id)
+                    notify_service.note_source_catalogs(
+                        collector.id, payload, store_name=store_name
+                    )
+                except Exception:
+                    logger.exception("publication notify failed for %s", collector.id)
             except Exception as exc:
                 logger.exception("collector %s failed", collector.id)
                 db.update_source_status(collector.id, ok=False, error=str(exc))

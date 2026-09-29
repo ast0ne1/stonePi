@@ -51,8 +51,14 @@ scripts/push-*-fixes.*
 scripts/apply-*-on-pi.sh
 scripts/*-ux-overlay*
 scripts/cleanup-pi-tmp.*
+scripts/*-bootstrap-on-pi.sh
 
 # Local scratch archives
 *.tar
 *.tar.gz
 
+# Install website (deployed separately to stonepi-install.vercel.app)
+install-stonepi/
+
+# Claude Code local state (preview launch config, worktrees)
+.claude/

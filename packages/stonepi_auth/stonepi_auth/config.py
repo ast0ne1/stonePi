@@ -30,10 +30,12 @@ class PlatformSettings:
 
 
 def load_settings(*, app_id: str = "") -> PlatformSettings:
+    from .hostname import platform_hostname
+
     secret = _env("STONEPI_SESSION_SECRET").strip()
     auth_url = _env("STONEPI_AUTH_URL", "").strip().rstrip("/")
     prefix = _env("STONEPI_PREFIX", "").strip()
-    hostname = _env("STONEPI_HOSTNAME", "stonepi").strip() or "stonepi"
+    hostname = platform_hostname()
     origin = _env("STONEPI_PUBLIC_ORIGIN", "").strip().rstrip("/")
     enabled = bool(secret) or _env("STONEPI_AUTH", "").strip() in {"1", "true", "yes"}
     return PlatformSettings(

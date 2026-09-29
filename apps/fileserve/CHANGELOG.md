@@ -1,6 +1,29 @@
 # Changelog
 
-Current version is **0.0.0.9**.
+Current version is **0.0.0.15**.
+
+## Unreleased
+
+## 0.0.6 — 2026-09-29
+
+_Three-part versions from here, on the shared user-app version (0.0.6). 0.0.0.10–0.0.0.15 were never released and are folded in; 0.0.0.9 and earlier stay as history._
+
+### Changed
+- Under StonePi the in-app updater is fully hidden (Updates panels, Roll back last app, update check); updates are managed from StonePi → Settings → Updates. Running on its own is unchanged.
+- URL pack User-Agent carries the real FileServe version.
+- Cache-busting is automatic: `?v=` tokens are a hash of `app/static/` (and the shared fonts), so CSS/JS changes no longer need a hand-bumped `__asset_rev__`.
+- Login `next` includes the app path prefix under SSO; skip DB session for `/static` and `/favicon*`; move `purge_expired` to a background timer
+- Hosted Pages **Add page** button goes to the dedicated Add page (sheet approach dropped)
+- Hosted page cards use Share sheet + More menu (QR no longer inline on every card)
+- Appliance hostname is no longer editable in FileServe Settings; it is set under **Dashboard → Settings → Network**. Share URLs and TLS SANs use the platform hostname.
+
+### Fixed
+- Expired hosted pages 404 and drop off the admin list as soon as they expire, not only after the next purge tick
+- `/favicon.ico` serves the app icon instead of 500ing (it was reaching the hosted-page route without a DB session)
+- Under Pi mount `/files`, JS no longer posts edit saves, add-from-URL fetch, add-tab history, or session-expiry login to unprefixed `/admin` / `/login` (uses `data-stonepi-prefix` + `withPrefix`, matching NewsCast)
+
+### Added
+- Settings → Notifications points at StonePi Destinations / Event prefs (new-publication alerts already emit via `fileserve.publication_created`)
 
 ## 0.0.0.9 — 2026-09-22
 

@@ -45,11 +45,11 @@ def test_render_paper_name_drops_empty_parts():
     )
 
 
-def test_safe_filename_and_db_helpers():
+def test_safe_filename_and_db_helpers(monkeypatch):
     day = date(2026, 9, 14)
     db = _session()
+    monkeypatch.setattr("app.services.hostname.device_hostname", lambda: "newscast")
     settings.set_value(db, "instance_name", "Work")
-    settings.set_value(db, "device_hostname", "newscast")
     settings.set_value(db, "reader_date_format", "dmy")
     settings.set_value(db, "reader_title_pattern", "NewsCast - {hostname} {instance} {date}")
     assert paper_naming.paper_display_title(db, day) == "NewsCast - newscast Work 14-09-2026"
@@ -57,11 +57,11 @@ def test_safe_filename_and_db_helpers():
     assert paper_naming.safe_filename('NewsCast - Work: "draft"', suffix="epub") == "NewsCast - Work - draft.epub"
 
 
-def test_instance_and_label_tokens_are_separate():
+def test_instance_and_label_tokens_are_separate(monkeypatch):
     day = date(2026, 9, 14)
     db = _session()
+    monkeypatch.setattr("app.services.hostname.device_hostname", lambda: "newscast")
     settings.set_value(db, "instance_name", "Work")
-    settings.set_value(db, "device_hostname", "newscast")
     settings.set_value(db, "reader_date_format", "iso")
     settings.set_value(db, "reader_title_pattern", "NewsCast - {instance} {label} {date}")
     assert paper_naming.reader_instance_name(db) == "Work"
@@ -72,11 +72,11 @@ def test_instance_and_label_tokens_are_separate():
     assert paper_naming.paper_display_title(db, day) == "NewsCast - Work Morning paper 2026-09-14"
 
 
-def test_category_paper_title_uses_separate_pattern():
+def test_category_paper_title_uses_separate_pattern(monkeypatch):
     day = date(2026, 9, 14)
     db = _session()
+    monkeypatch.setattr("app.services.hostname.device_hostname", lambda: "newscast")
     settings.set_value(db, "instance_name", "Work")
-    settings.set_value(db, "device_hostname", "newscast")
     settings.set_value(db, "reader_date_format", "iso")
     settings.set_value(db, "reader_title_pattern", "NewsCast - {hostname} {instance} {date}")
     settings.set_value(db, "reader_category_title_pattern", "{product} {category} — {date}")

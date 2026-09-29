@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+
+{% block title %}Discoveries · EventTrakr{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <div class="hero-row hero-row-inline">
+    <h1>Discoveries</h1>
+    <a href="/sources/social" class="btn btn-outline btn-with-icon">{{ icon('sources') }} <span>Accounts</span></a>
+  </div>
+  <div class="page-status">
+    <p class="page-status-text">Events spotted from Instagram that need a decision — or were added automatically.</p>
+  </div>
+</section>
+
+<div class="chips" role="tablist" aria-label="Discovery filters" style="margin-bottom: 16px;">
+  <a class="chip-btn{% if status_filter == 'open' %} is-active{% endif %}" href="/discoveries?status=open">Open</a>
+  <a class="chip-btn{% if status_filter == 'candidate' %} is-active{% endif %}" href="/discoveries?status=candidate">Candidates</a>
+  <a class="chip-btn{% if status_filter == 'discovered' %} is-active{% endif %}" href="/discoveries?status=discovered">Auto-added</a>
+  <a class="chip-btn{% if status_filter == 'confirmed' %} is-active{% endif %}" href="/discoveries?status=confirmed">Confirmed</a>
+  <a class="chip-btn{% if status_filter == 'ignored' %} is-active{% endif %}" href="/discoveries?status=ignored">Ignored</a>
+  <a class="chip-btn{% if status_filter == 'all' %} is-active{% endif %}" href="/discoveries?status=all">All</a>
+</div>
+
+{% if items %}
+<ul class="group-card discovery-list">
+  {% for item in items %}
+  {% set d = item.discovery %}
+  {% set account = item.account %}
+  {% set post = item.post %}
+  <li class="discovery-row">
+    <div class="discovery-main">
+      <h2 class="discovery-title">{{ d.title or 'Untitled' }}</h2>
+      <p class="discovery-meta">
+        {% if d.start_time %}{{ d.start_time|format_datetime }}{% else %}Date unknown{% endif %}
+        {% if d.location %} · {{ d.location }}{% endif %}
+        {% if d.event_type %} · {{ d.event_type }}{% endif %}
+      </p>
+      <p class="discovery-source">
+        Source: Instagram{% if account %} · @{{ account.username }}{% endif %}
+        · {{ d.confidence }} confidence
+        {% if item.auto_added %}<span class="badge text-ok" style="border-color: var(--ok); margin-left: 6px;">{{ icon('check') }} Automatically added</span>{% endif %}
+      </p>
+      {% if item.reasons %}
+      <ul class="discovery-reasons">
+        {% for reason in item.reasons %}
+        <li>{{ reason }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if d.extracted_text %}
+      <p class="discovery-excerpt">{{ d.extracted_text[:280] }}{% if d.extracted_text|length > 280 %}…{% endif %}</p>
+      {% endif %}
+      {% if post and post.post_url %}
+      <p><a href="{{ post.post_url }}" target="_blank" rel="noopener">{{ icon('external-link') }} View original post</a></p>
+      {% endif %}
+    </div>
+    {% if d.status in ('candidate', 'discovered') %}
+    <div class="row-actions discovery-actions">
+      {% if not d.event_id or d.status == 'candidate' %}
+      <form method="post" action="/discoveries/{{ d.id }}/confirm">
+        <button type="submit" class="btn btn-primary btn-sm btn-with-icon">{{ icon('plus') }} Add Event</button>
+      </form>
+      {% endif %}
+      <form method="post" action="/discoveries/{{ d.id }}/ignore">
+        <button type="submit" class="btn btn-ghost btn-sm">Ignore</button>
+      </form>
+    </div>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<div class="empty-state">
+  <p>No discoveries here yet.</p>
+  <p class="form-hint">Track Instagram accounts under Sources → Instagram, turn on tracking in Settings → Discovery, then check back after the next poll.</p>
+  <a class="btn btn-primary btn-with-icon" href="/sources/social">{{ icon('plus') }} Track an account</a>
+</div>
+{% endif %}
+{% endblock %}

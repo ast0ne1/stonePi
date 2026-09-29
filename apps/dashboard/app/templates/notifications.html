@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% from "_icons.html" import svg %}
+{% block title %}Notifications · StonePi{% endblock %}
+{% block content %}
+<section class="hero">
+  <h1>Notifications</h1>
+  <p class="lede">Personal alerts on your phone, just for you, through the free ntfy app.</p>
+</section>
+
+{% if alerts_unreachable %}
+<div class="card stack alerts-card">
+  <h2 class="section-heading">{{ svg('bell') }} Personal alerts</h2>
+  <p class="muted">Notifications can't be loaded right now. Try again in a moment.</p>
+</div>
+
+{% elif not alerts.allowed %}
+<div class="card stack alerts-card">
+  <h2 class="section-heading">{{ svg('bell') }} Personal alerts</h2>
+  <p class="muted">Phone alerts aren't turned on for your account. Ask an admin to allow <strong>Phone alerts</strong> for you on the Users page.</p>
+</div>
+
+{% elif not alerts.available %}
+<div class="card stack alerts-card">
+  <h2 class="section-heading">{{ svg('bell') }} Personal alerts</h2>
+  <p class="muted">Phone alerts aren't turned on for the household yet.</p>
+  {% if user and user.is_admin %}
+  <div class="row-actions">
+    <a class="btn btn-primary btn-with-icon" href="{{ notify_destinations_url }}">{{ svg('manage') }} Set up in Notify</a>
+  </div>
+  {% else %}
+  <p class="hint">An admin sets this up once for everyone. Check back later.</p>
+  {% endif %}
+</div>
+
+{% elif not alerts_enabled %}
+<div class="card stack alerts-card">
+  <h2 class="section-heading">{{ svg('bell') }} Turn on personal alerts</h2>
+  <p class="muted">StonePi makes a private topic for you and shows a code to scan with your phone. You choose which alerts you get.</p>
+  <ol class="alerts-steps">
+    <li>Install the <strong>ntfy</strong> app on your phone (Android or iPhone).</li>
+    <li>Turn on personal alerts below, then scan the code.</li>
+    <li>Send a test and pick your alerts.</li>
+  </ol>
+  <form method="post" action="/notifications" class="row-actions">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <button class="btn btn-primary btn-with-icon" type="submit" name="action" value="on">{{ svg('bell') }} Turn on personal alerts</button>
+  </form>
+  {% if subscription.topic %}
+  <p class="hint">Your phone keeps its old subscription, so alerts resume where they left off.</p>
+  {% endif %}
+</div>
+
+{% else %}
+<div class="alerts-grid">
+  <div class="card stack alerts-card">
+    <h2 class="section-heading">{{ svg('bell') }} Your phone</h2>
+    <p class="muted">Scan with your phone camera or the ntfy app to subscribe.</p>
+    {% if qr_svg %}
+    <div class="alerts-qr" aria-hidden="true">{{ qr_svg|safe }}</div>
+    {% endif %}
+    <div class="row-actions">
+      <a class="btn btn-ghost btn-with-icon" href="{{ subscribe.app_url }}">{{ svg('open') }} Open in ntfy app</a>
+    </div>
+    <p class="hint alerts-link">Or add this link in ntfy:<br /><code>{{ subscribe.web_url }}</code></p>
+    <p class="hint">Keep this private: anyone with the link can read your alerts.</p>
+    <form method="post" action="/notifications" class="row-actions">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <button class="btn btn-primary btn-with-icon" type="submit" name="action" value="test">{{ svg('check') }} Send test</button>
+    </form>
+  </div>
+
+  <div class="stack">
+    <form method="post" action="/notifications" class="card stack alerts-card">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="offered" value="{{ offered_ids|join(',') }}" />
+      <h2 class="section-heading">{{ svg('list') }} Choose alerts</h2>
+      {% if alerts.groups %}
+      <p class="muted">Pick what you want to hear about. Alerts marked "Just for you" are only about your own things.</p>
+      <div class="alerts-groups">
+        {% for group in alerts.groups %}
+        <section class="alerts-group" aria-labelledby="alerts-group-{{ group.id }}">
+          <h3 class="alerts-group-label" id="alerts-group-{{ group.id }}">{{ group.label }}</h3>
+          <div class="alerts-list" role="group" aria-label="{{ group.label }} alerts">
+            {% for ev in group.events %}
+            <label class="alerts-choice">
+              <input type="checkbox" name="event_{{ ev.id }}" value="1" {% if ev.ticked %}checked{% endif %} />
+              <span>
+                <strong>{{ ev.label }}</strong>
+                <span class="alerts-tag">{{ ev.audience_label }}</span>
+                {% if ev.blurb %}<span class="hint">{{ ev.blurb }}</span>{% endif %}
+              </span>
+            </label>
+            {% endfor %}
+          </div>
+        </section>
+        {% endfor %}
+      </div>
+      <div class="row-actions">
+        <button class="btn btn-primary btn-with-icon" type="submit" name="action" value="save_events">{{ svg('check') }} Save choices</button>
+      </div>
+      {% else %}
+      <p class="muted">No alerts are approved yet. An admin chooses which events can send alerts.</p>
+      {% if user and user.is_admin %}
+      <div class="row-actions">
+        <a class="btn btn-ghost btn-with-icon" href="{{ notify_approvals_url }}">{{ svg('manage') }} Approve events in Notify</a>
+      </div>
+      {% endif %}
+      {% endif %}
+    </form>
+
+    <form method="post" action="/notifications" class="card stack alerts-card">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <h2 class="section-heading">{{ svg('eye-off') }} Quiet hours</h2>
+      <p class="muted">During quiet hours alerts still arrive, but silently: no sound or vibration.</p>
+      <label class="avail-toggle">
+        <input type="checkbox" name="quiet_enabled" value="1" {% if subscription.quiet_hours and subscription.quiet_hours.enabled %}checked{% endif %} />
+        <span class="avail-switch" aria-hidden="true"></span>
+        <span>Quiet hours</span>
+      </label>
+      <div class="alerts-times">
+        <label>From <input type="time" name="quiet_start" value="{{ (subscription.quiet_hours or {}).start or '22:00' }}" required /></label>
+        <label>Until <input type="time" name="quiet_end" value="{{ (subscription.quiet_hours or {}).end or '07:00' }}" required /></label>
+      </div>
+      <p class="hint">Uses the StonePi clock (now {{ pi_clock }}).{% if user and user.is_admin %} Admin alerts marked urgent still ring.{% endif %}</p>
+      <div class="row-actions">
+        <button class="btn btn-primary btn-with-icon" type="submit" name="action" value="save_quiet">{{ svg('check') }} Save quiet hours</button>
+      </div>
+    </form>
+
+    <div class="card stack alerts-card">
+      <h2 class="section-heading">{{ svg('manage') }} Manage</h2>
+      <div class="row-actions">
+        <form method="post" action="/notifications" data-confirm="Make a new topic?" data-confirm-detail="Your phone stops getting alerts until you scan the new code. Use this if your link was shared by mistake." data-confirm-ok="New topic">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <input type="hidden" name="action" value="rotate" />
+          <button class="btn btn-ghost btn-with-icon" type="submit">{{ svg('refresh') }} New topic</button>
+        </form>
+        <form method="post" action="/notifications" data-confirm="Turn off personal alerts?" data-confirm-detail="You stop getting alerts. Your choices are kept for when you turn them back on." data-confirm-ok="Turn off">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <input type="hidden" name="action" value="off" />
+          <button class="btn btn-ghost btn-with-icon" type="submit">{{ svg('close') }} Turn off</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

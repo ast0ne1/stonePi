@@ -279,14 +279,20 @@ input, select { font-size: 16px; }
 }
 .main > :first-child { margin-top: 20px; }
 
-.hero { margin-bottom: 4px; }
-#board,
-#notices,
-#reminders,
 #add-notice,
 #add-reminder {
   scroll-margin-top: calc(var(--topbar-height) + 12px);
 }
+.hero { margin-bottom: 4px; }
+.page-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 16px;
+}
+.page-hero-copy { min-width: 0; flex: 1 1 12rem; }
+.page-hero .btn { flex: 0 0 auto; }
 h1, h2, h3 { margin: 0 0 0.35em; }
 h1 { font-family: var(--serif); font-size: 2rem; font-weight: 600; }
 h2 { font-family: var(--serif); font-size: 1.35rem; }
@@ -308,6 +314,78 @@ h2 { font-family: var(--serif); font-size: 1.35rem; }
 .about-card h2 { margin: 0; padding: 0; }
 .about-card .lede, .about-card .hint { margin: 0; padding: 0; }
 .settings-tabs { display: grid; gap: 0; }
+/* Settings hub -> one panel (same drill-in as the other StonePi apps). */
+.settings-back {
+  display: inline-block;
+  margin: 0 0 6px;
+  color: var(--accent);
+  font-size: 0.92rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.settings-back:hover,
+.settings-back:focus-visible { text-decoration: underline; }
+.settings-hub,
+.settings-panel-list {
+  display: grid;
+  gap: 18px;
+  margin: 4px 0 8px;
+}
+.settings-hub-heading {
+  margin: 0 0 8px;
+  padding: 0 2px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.settings-hub-card {
+  display: grid;
+  padding: 0;
+  overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+a.settings-hub-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-height: var(--tap, 44px);
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  color: inherit;
+  text-decoration: none;
+}
+a.settings-hub-row:last-child { border-bottom: 0; }
+a.settings-hub-row:hover,
+a.settings-hub-row:focus-visible {
+  background: color-mix(in srgb, var(--ink) 4%, var(--card));
+}
+.settings-hub-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ink) 5%, var(--paper));
+  color: var(--ink);
+}
+.settings-hub-icon svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.settings-hub-copy { display: grid; gap: 2px; min-width: 0; }
+.settings-hub-title { font-weight: 650; line-height: 1.25; }
+.settings-hub-sub { color: var(--muted); font-size: 0.8rem; line-height: 1.35; }
+.settings-hub-chevron { color: var(--muted); font-size: 1.35rem; line-height: 1; }
 .chips.settings-chips {
   display: flex;
   flex-wrap: nowrap;
@@ -372,7 +450,8 @@ label {
   font-size: 0.92rem;
   font-weight: 500;
 }
-input {
+input,
+select {
   min-height: var(--tap);
   padding: 0 12px;
   border-radius: 12px;
@@ -427,9 +506,157 @@ input {
   border-top: 1px solid var(--line);
 }
 .list-row:first-of-type { border-top: 0; padding-top: 0; }
-.list-text { min-width: 0; overflow-wrap: anywhere; }
+.list-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
 .empty-state { text-align: center; padding: 22px 12px; }
 .empty-state h3 { font-family: var(--serif); margin: 0 0 6px; }
+
+.kind-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid var(--line);
+  background: var(--wash);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.kind-pill.kind-notice {
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
+  color: var(--accent);
+}
+.kind-pill.kind-reminder {
+  background: color-mix(in srgb, var(--ok) 14%, var(--card));
+  border-color: color-mix(in srgb, var(--ok) 30%, var(--line));
+  color: var(--ok);
+}
+
+.pin-grid {
+  display: grid;
+  gap: 12px;
+}
+.pin-card {
+  padding: 0;
+  overflow: hidden;
+}
+.pin-card-summary {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px 12px;
+  align-items: start;
+  padding: 14px 16px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+.pin-card-main {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  justify-items: start;
+}
+.pin-kind-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: var(--wash);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  margin-top: 2px;
+}
+.pin-card[data-kind="notice"] .pin-kind-icon {
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+  color: var(--accent);
+}
+.pin-card[data-kind="reminder"] .pin-kind-icon {
+  background: color-mix(in srgb, var(--ok) 14%, var(--card));
+  color: var(--ok);
+}
+.pin-kind-icon svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.pin-card-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.pin-card.is-expanded .pin-card-title {
+  -webkit-line-clamp: unset;
+  display: block;
+  overflow: visible;
+}
+.pin-meta-chip {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.pin-expand-affordance {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+  margin-top: 2px;
+}
+.pin-expand-affordance svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.pin-card.is-expanded .pin-expand-affordance {
+  transform: rotate(180deg);
+  color: var(--ink);
+}
+.pin-card-body {
+  display: grid;
+  gap: 10px;
+  padding: 0 16px 16px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  margin: 0 16px 0;
+}
+.pin-card-body[hidden] { display: none !important; }
+.pin-detail { margin: 0; overflow-wrap: anywhere; }
+.meta-label {
+  display: inline-block;
+  min-width: 4.5rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+.sheet-choice { width: 100%; justify-content: flex-start; }
 
 .sheet {
   position: fixed;
@@ -438,16 +665,23 @@ input {
   place-items: end center;
   background: color-mix(in srgb, var(--ink) 35%, transparent);
   padding: 16px;
+  padding-bottom: calc(16px + var(--safe-bottom));
   z-index: 40;
 }
 .sheet.is-open { display: grid; }
 .sheet-card { width: min(420px, 100%); margin-bottom: 12px; }
+html.sheet-open,
+html.sheet-open body {
+  overflow: hidden;
+}
 
 .btn:focus-visible,
 .icon-btn:focus-visible,
 .theme-switch button:focus-visible,
 .nav a:focus-visible,
-input:focus-visible {
+.pin-card-summary:focus-visible,
+input:focus-visible,
+select:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -462,6 +696,9 @@ input:focus-visible {
 }
 
 @media (min-width: 720px) {
+  .pin-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   #notices:has(.list-row),
   #reminders:has(.list-row) {
     display: grid;
@@ -484,6 +721,9 @@ input:focus-visible {
 }
 
 @media (min-width: 1440px) {
+  .pin-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
   #notices:has(.list-row),
   #reminders:has(.list-row) {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -540,18 +780,25 @@ input:focus-visible {
   .main {
     grid-column: 2;
     grid-row: 2;
-    width: auto; max-width: none;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    justify-self: stretch;
     overflow: visible;
+    padding: 0 28px 40px;
   }
   .sheet { place-items: center; }
 }
 
 /* Laptop+: fill column beside side rail; multi-column settings cards */
 @media (min-width: 1024px) {
+  .settings-section {
+    max-width: 48rem;
+  }
   .settings-panel:not([hidden]),
   .settings-panels {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
     gap: 16px;
     align-items: start;
   }
@@ -573,9 +820,10 @@ input:focus-visible {
   }
 }
 @media (min-width: 1440px) {
+  .settings-section { max-width: 56rem; }
   .settings-panel:not([hidden]),
   .settings-panels {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: 1fr;
   }
   .settings-panel:not([hidden]) > .settings-panel-span-2,
   .settings-panels > .settings-panel-span-2 {

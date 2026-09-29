@@ -281,26 +281,29 @@ def _from_timezone_football(page) -> list[ListingRow]:
 
 def fetch_listings() -> list[ListingRow]:
     """Football listings: WheresTheMatch first, timezone.football fallback."""
-    with _browser() as p:
-        browser = p.chromium.launch(headless=True)
-        try:
-            page = browser.new_page(user_agent=USER_AGENT)
-            rows: list[ListingRow] = []
+    from stonepi_browser import chromium_lock
+
+    with chromium_lock():
+        with _browser() as p:
+            browser = p.chromium.launch(headless=True)
             try:
-                rows = _from_wtm(page)
-            except Exception:
-                logger.exception("wheresthematch primary scrape failed")
-            if len(rows) < 3:
-                logger.warning("wheresthematch sparse (%s); trying timezone.football", len(rows))
+                page = browser.new_page(user_agent=USER_AGENT)
+                rows: list[ListingRow] = []
                 try:
-                    fb = _from_timezone_football(page)
-                    if fb:
-                        rows = fb
+                    rows = _from_wtm(page)
                 except Exception:
-                    logger.exception("timezone.football fallback failed")
-                    if not rows:
-                        raise
-        finally:
-            browser.close()
+                    logger.exception("wheresthematch primary scrape failed")
+                if len(rows) < 3:
+                    logger.warning("wheresthematch sparse (%s); trying timezone.football", len(rows))
+                    try:
+                        fb = _from_timezone_football(page)
+                        if fb:
+                            rows = fb
+                    except Exception:
+                        logger.exception("timezone.football fallback failed")
+                        if not rows:
+                            raise
+            finally:
+                browser.close()
     logger.info("football collector fetched %s rows", len(rows))
     return rows

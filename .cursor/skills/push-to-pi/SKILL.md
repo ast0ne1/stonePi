@@ -34,11 +34,22 @@ Prefer the `.cmd` form. Do not only offer the `.ps1` unless they ask.
 | Script | Scope |
 |--------|--------|
 | `scripts/push-briefing-settings-fixes.cmd` | NewsCast + Dashboard + PriceScout app trees |
+| `scripts/push-settings-stack-fixes.cmd` | Settings hub / stacked panels (NewsCast, Dashboard, FileServe, EventTrakr, Pinboard, Studio, PriceScout, SportGuide, PriceWatch, Notify) |
 | `scripts/push-newscast-fixes.cmd` | NewsCast only |
 | `scripts/push-pricescout-fixes.cmd` | PriceScout (+ some platform wiring) |
 | `scripts/push-ux-fixes.cmd` | Multi-app flat file list (older UX overlay) |
 | `scripts/push-display-fixes.cmd` | Display-related |
 | `scripts/push-sportguide-fixes.cmd` | SportGuide |
+| `scripts/push-brand-chrome-fixes.cmd` | EventTrakr + PriceScout + SportGuide |
+| `scripts/push-fileserve-fixes.cmd` | FileServe only |
+| `scripts/push-pinboard-fixes.cmd` | Pinboard only |
+| `scripts/push-studio-fixes.cmd` | Studio only |
+| `scripts/push-notify-fixes.cmd` | Full Notify platform (apps + packages + pip) |
+| `scripts/push-renames-fixes.cmd` | One-off Notifications → Notify / Recovery → Recover rename: all touched apps + packages + deploy, runs `deploy/stonepi-migrate-renames.sh` (idempotent) |
+| `scripts/push-notify-ui-fixes.cmd` | Notify UI only (templates/static/routes + Dashboard Settings link; restart, no pip) |
+| `scripts/push-health-layout-fixes.cmd` | Full Dashboard + Recover `app/` trees (Health tab layout, Recovery Console wording; restart both, no pip) |
+| `scripts/push-services-groups-fixes.cmd` | Dashboard Services System/Apps groups + Recover catalog (Dashboard + Auth + stonepi_auth) |
+| `scripts/push-purge-favicon-fixes.cmd` | Three files only: FileServe `main.py` + `services/pages.py` (favicon 500, expired pages), EventTrakr `services/ingest.py` (purge FK). Hash-checks Pi copies against the pre-fix versions and aborts if they differ (`-Force` overrides); restarts FileServe + EventTrakr |
 
 Prefer a **tree-based** combined script when several apps changed in one session
 (pattern: `push-briefing-settings-fixes`).
@@ -49,8 +60,8 @@ Prefer a **tree-based** combined script when several apps changed in one session
 2. **Prepare** — confirm/update the matching `push-*.ps1` + `.cmd` +
    `apply-*-on-pi.sh` + bootstrap so staged trees include current work
    (exclude `.venv`, `data`, `__pycache__`, `.env`). Do not run them.
-3. **Bump** NewsCast `__asset_rev__` / Dashboard `?v=` if CSS/JS changed and
-   was not already bumped.
+3. **No cache-bust bump needed** — `?v=` tokens are hashed from each app's
+   `static/` at startup, so the restart after the overlay busts caches.
 4. **Reply with the run prompt** (plus a one-line hard-refresh hint), e.g.:
 
 ```bat

@@ -133,17 +133,27 @@ def get_or_create_from_platform(db: Session, platform) -> User:
     is_admin = bool(getattr(platform, "is_admin", False))
     perms = (getattr(platform, "permissions", None) or {}).get("newscast") or {}
 
-    def apply_platform_flags(user: User) -> None:
+    def apply_platform_flags(user: User) -> bool:
+        changed = False
         if is_admin or user.role == "admin":
-            user.can_add_custom_sources = True
-            user.can_use_ntfy = True
-            user.can_view_status = True
-            user.role = "admin"
+            desired = {
+                "can_add_custom_sources": True,
+                "can_use_ntfy": True,
+                "can_view_status": True,
+                "role": "admin",
+            }
         else:
-            user.role = "user"
-            user.can_add_custom_sources = bool(perms.get("can_add_custom_sources"))
-            user.can_use_ntfy = bool(perms.get("can_use_ntfy"))
-            user.can_view_status = bool(perms.get("can_view_status"))
+            desired = {
+                "role": "user",
+                "can_add_custom_sources": bool(perms.get("can_add_custom_sources")),
+                "can_use_ntfy": bool(perms.get("can_use_ntfy")),
+                "can_view_status": bool(perms.get("can_view_status")),
+            }
+        for attr, value in desired.items():
+            if getattr(user, attr) != value:
+                setattr(user, attr, value)
+                changed = True
+        return changed
 
     def store_display_name(user: User) -> None:
         if not display_name:
@@ -167,9 +177,10 @@ def get_or_create_from_platform(db: Session, platform) -> User:
                 settings_service.set_value(db, "reader_upload_path", folder)
 
     if existing is not None:
-        apply_platform_flags(existing)
+        flags_changed = apply_platform_flags(existing)
         store_display_name(existing)
-        db.commit()
+        if flags_changed or existing in db.dirty:
+            db.commit()
         return existing
     by_name = db.query(User).filter(User.username == username).one_or_none()
     if by_name is not None:
@@ -194,7 +205,8 @@ def get_or_create_from_platform(db: Session, platform) -> User:
     db.commit()
     db.refresh(user)
     store_display_name(user)
-    db.commit()
+    if user in db.dirty:
+        db.commit()
     return user
 
 
@@ -424,6 +436,8 @@ def _rebuild_feeds_table(conn) -> None:
                 catalog_id VARCHAR(64),
                 name VARCHAR(200) NOT NULL,
                 url VARCHAR(1000) NOT NULL,
+                homepage_url VARCHAR(1000),
+                rss_url VARCHAR(1000),
                 enabled BOOLEAN,
                 type VARCHAR(20),
                 category VARCHAR(40),
@@ -433,6 +447,7 @@ def _rebuild_feeds_table(conn) -> None:
                 translate BOOLEAN,
                 translate_provider VARCHAR(20),
                 paywall_skip BOOLEAN,
+                text_cleanup VARCHAR(20),
                 created_at DATETIME,
                 last_fetched_at DATETIME,
                 last_error TEXT,
@@ -458,6 +473,8 @@ def _rebuild_feeds_table(conn) -> None:
         "catalog_id" if "catalog_id" in cols else "NULL",
         "name",
         "url",
+        "homepage_url" if "homepage_url" in cols else "NULL",
+        "rss_url" if "rss_url" in cols else "NULL",
         "enabled" if "enabled" in cols else "1",
         "type" if "type" in cols else "'rss'",
         "category" if "category" in cols else "'news'",
@@ -467,6 +484,7 @@ def _rebuild_feeds_table(conn) -> None:
         "translate" if "translate" in cols else "0",
         "translate_provider" if "translate_provider" in cols else "'global'",
         "paywall_skip" if "paywall_skip" in cols else "0",
+        "text_cleanup" if "text_cleanup" in cols else "'standard'",
         "created_at" if "created_at" in cols else "CURRENT_TIMESTAMP",
         "last_fetched_at" if "last_fetched_at" in cols else "NULL",
         "last_error" if "last_error" in cols else "NULL",

@@ -1,0 +1,13 @@
+[Unit]
+Description=StonePi local (on-disk) backup
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/stonepi-backup --local
+User=root
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+StandardOutput=journal
+StandardError=journal

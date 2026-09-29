@@ -1,5 +1,108 @@
 ﻿# Changelog
 
+## Unreleased
+
+## 0.0.6 — 2026-09-29
+
+_Moves from 0.0.4 to the shared user-app version, 0.0.6 (numbers in between were skipped)._
+
+- Under StonePi the in-app updater is fully hidden (Updates panels, Roll back last app, the Status "Update available" line, update check); updates are managed from StonePi → Settings → Updates. Running on its own is unchanged.
+- Cache-busting is automatic: `?v=` tokens are a hash of `app/static/` (and the shared fonts), so CSS/JS changes no longer need a hand-bumped `__asset_rev__`.
+- systemd unit: Nice/CPU/IO weight + MemoryMax=400M (Pi resource contention).
+- Login `next` includes the app path prefix under SSO (SportGuide pattern).
+- Performance: activity poll every 4s only while ingest/push is active (60s when idle; pauses when the tab is hidden); SSO session resolved once per request; settings writes skip unchanged values; scheduler tick 5 minutes.
+- Under SSO, Settings shows the Auth factory-password banner (links to StonePi → Settings → General) from the shared session flag.
+- Publish/push alerts emit through Notify; Settings → Notifications points at Destinations / Event prefs (no local ntfy form).
+- Appliance hostname is no longer editable in NewsCast Settings; it is set under **Dashboard → Settings → Network**. Share/status/TLS SANs and `{hostname}` paper titles read the platform hostname.
+- **Frame matches Dashboard,** so switching apps no longer jumps:
+  - The top bar is 61px, with 40px buttons and 18px icons.
+  - On laptop, the side menu is 220px wide, with 0.92rem labels and 20px icons.
+  - On phones, the bottom-menu labels shrink slightly below 375px, so all seven fit.
+  - The theme switch and your name stay Dashboard-only.
+- **Sources → Text cleanup** (per source, opt-in; default **Standard**):
+  - **Strict** uses the extractor's precision mode and removes whole lines of page furniture: "Advertisement", "Loading", "Latest in Videos", and empty "Updated ,first published" stamps.
+  - If Strict finds no article text on a page, it uses Standard for that page. The source's status line says so ("strict: 1 page used standard").
+  - Strict sources show **Strict cleanup** on their card. It applies to stories fetched from then on.
+- Saved articles always use Strict cleanup, with the same fallback.
+- One-off tidy-up on first start after this update: stored stories are cleared of those page-furniture lines, and a repeated headline at the top of the text is removed.
+- **Reader → Send: one job per button.**
+  - **Send to reader** on today's paper or a Library file now queues it *and* tries to upload straight away. The message says whether it was sent, is already on the reader, couldn't be sent (with the reason), or is waiting for the reader to wake.
+  - "Also send to reader" when adding a file does the same.
+  - Once the paper is on the reader, its button becomes a quieter **Send again**.
+  - The Reader and Today's paper cards line up on laptop/desktop: headings at the top, text, then buttons along the bottom edge.
+  - Library files show their state: **Send to reader**, **Waiting to send**, or "On reader · sent 29 Sep" with **Send again**. A line under Your files explains what sending does.
+  - **Push now** is for sending everything waiting in the queue.
+  - **Automatic sending:** queued papers and files now go out on their own within about a minute of the reader waking up — no need for Check reader or Push now. A dedicated 60-second check (it used to ride on the 5-minute feed refresh, so it usually missed the reader's short awake window) backs off while the reader stays asleep, never runs two pushes at once, and needs **Push when the reader is on Wi-Fi** turned on.
+  - **Queue status:** each item shows its state — "Waiting for reader · last tried 14:05 (asleep) · next try 14:06", "Sending…", "Failed: … · will retry 14:07", and a **Recently** list with "Sent 14:07". The Reader card shows when it was last checked, and rows update in place while a push runs.
+  - Failed uploads are retried (up to 5 attempts) instead of dropping out of the queue; a reader falling asleep mid-push doesn't use up an attempt. **Check reader** sends the queue when it finds the reader online.
+- Reader → Status → **Your catalog URL** is condensed:
+  - The address and QR code button share one line, followed by a one-line how-to.
+  - Downloads are one compact row: epub, txt, yesterday's epub, json.
+  - Longer setup notes sit under **More setup help**. Nothing was removed.
+- Sources: the gap between Feeds/Catalog and the category chips now matches Briefing. The **+ Add feed** button now reads **+ Add**.
+- **Search: pick an outlet.**
+  - An Outlet dropdown lists the sources you have stories from, with counts. Choosing one searches straight away.
+  - The Keyword box is optional; outlet and keyword narrow together.
+  - A results line says what was searched ("8 stories from Hackaday matching …"), and Clear resets the search.
+  - Auto-search falls back to a plain submit on older iOS Safari.
+- Reader → Status is more compact:
+  - Stories stored, Delivery and Health sit side by side on wide screens, and wrap to two columns, then one.
+  - Their details are compact label/value rows.
+  - The separate Last push card is gone, since Delivery already shows the last push.
+- Briefing and Sources, laptop/desktop: the category filter button sits right after the last chip instead of at the far edge of the row. Phones are unchanged.
+- **Security: per-item actions check ownership.**
+  - Covered actions:
+    - Stories: favourite, save as long-read, delete saved.
+    - Sources: enable/disable, save settings, mute, unmute, refresh, remove.
+    - Library files: send, delete.
+    - API: single-source refresh and debug.
+  - Each one now acts only on the signed-in account's own item. Another member's item is treated like a missing one (404), so ids aren't confirmed.
+  - `/api/stories` now returns only your own briefing.
+  - A guard test fails if a new id-based route skips the check.
+- **Fixed:** "Save as long-read" and the Saved tab's "Save article" now use your own account.
+  - New saves used to land under the first account.
+  - An existing story was matched across all accounts, so it could update someone else's copy, or error when two accounts had the same story.
+- **Reader (was Device):** the bottom-nav section is now **Reader**, with three tabs, each with one job:
+  - **Status** is read-only: stories stored, delivery, health, and catalog URL / QR / downloads. Its queue line links to Send. The Push panel and Generate moved to Send.
+  - **Library** (new; `/library` opens it): Add a file (with "Also send to reader") and Your files. Each file has **Send to reader** or shows "Waiting to send", plus Delete.
+  - **Send**:
+    - **Reader**: online or asleep, Check reader, Push now.
+    - **Today's paper**: Generate, and Send to reader, which queues the paper alone.
+    - **Queue**: always shown, with an empty state.
+  - "Queue library" (queue every file) and "Queue for later" (paper plus every file) are gone; the per-file and per-paper Send buttons replace them.
+- Device → Status: removed the **Open on this network** panel (with its iPhone home-screen steps). **Your catalog URL** has a **Show QR code** button that opens a QR of the catalog address.
+- **Device → Status → Stories stored** now shows where the total sits: on Briefing (incl. starred), saved long-reads, below the importance filter, filtered out by keywords, and older than 7 days awaiting cleanup. The rows add up to the total; empty rows are hidden.
+- **Briefing day picker:**
+  - A calendar button beside Today / Yesterday / All opens a list of every day in the 7-day story window. Empty days are marked "No stories".
+  - A picked day shows as a fourth highlighted segment (e.g. "25 Sep") and survives starring or saving a story.
+  - Fixed: older days now get their own stories, not just whatever happened to be among the newest ~80.
+- Briefing's "Updated HH:MM" line is smaller and lighter.
+- **Stop refresh:**
+  - A Stop button appears next to Refresh only while a refresh you started from that button is running. Scheduled and single-source refreshes can't be stopped.
+  - It halts at the next safe point (between sources, articles, summaries or translations), after any download or summary already in progress.
+  - Stories already fully processed are kept. If none were, nothing is saved and sources aren't marked as fetched.
+- Top bar **Refresh** button is icon-only at every screen size. The label moves to its tooltip and screen-reader name ("Refresh sources", translated).
+- Sources: an open source card's settings form no longer spills past the card's right edge.
+  - It happened on laptops, where Sources shows 2–3 cards side by side (visible around 1024–1440px wide).
+  - The form now uses two columns only when the card itself is wide enough, and fields and long URLs shrink or wrap inside it.
+  - The per-source refresh button is a compact 32px icon aligned with the expand chevron, so the open card's settings get about 24px more width.
+- **X3 paper layout (CrossPoint + CrossInk):**
+  - Opens on the front cover, then the briefing and Contents. The outline page is out of the reading order but still drives the reader's chapter menu. The **Open on cover** setting is gone.
+  - Chapter menu stops at source level and carries the numbers in its titles (`1. World News`, `1.1 BBC World`).
+  - Section pages list their sources and story count instead of "Turn the page for stories".
+  - Each story shows its place in the source (`3 of 8`), with a rule between stories.
+  - Fixed the blank source title page on CrossInk. CrossInk ranks descendant CSS rules below plain classes, so the per-story page break won and pushed the first story off the source heading.
+  - The first page (front image, briefing and Contents) is titled **Front page** in the reader's footer and chapter menu instead of "Unnamed". The firmware only takes page titles from the chapter menu, so it gets one unnumbered entry at the top; the numbered categories and sources are unchanged.
+- **Shared Xteink stylesheet:** only `tag`, `.class` and `tag.class` selectors, one element per class. Page breaks come from new chapter files only, never CSS. Properties neither firmware applies (font size, colour, borders, line height) are dropped, and the global `img { display: none }` rule is gone.
+- **Settings → Reader → Reader firmware** (Auto-detect / CrossPoint / CrossInk): the choice only adds optional CrossInk extras (inverted section-title band, small-caps source names). Auto-detect checks for CrossInk's web assets on each push and shows "Detected: …"; the manual choice wins.
+- **Settings → Publication → Contents page:** titles and summaries, titles only, titles only on busy days (more than N stories), or **categories and sources only** — just the numbered sections and their sources (`1. World News`, `1.1 BBC World`), no story titles or summaries.
+- **Settings → Reader → Keep papers on reader** (off / 2 / 3 / 7 / 14 days): each push deletes older papers NewsCast sent to your folder. Send files and other books are never touched; today's and yesterday's papers always stay.
+- **Re-sending a paper:** an unchanged paper is skipped. A changed one deletes NewsCast's older copy first (the firmware refuses to overwrite, and deleting also clears its saved layout). A same-name file NewsCast didn't send now gets a clear message instead of "check the upload folder exists".
+- **Section icons:**
+  - Built-in categories now use Material Symbols (Fill, weight 600): newspaper, memory, shield_lock, science, business_center, trophy, theater_comedy, menu_book. They are stored as 150px pure black-and-white PNGs in `app/assets/category_icons/` with the Apache 2.0 licence.
+  - Nordic and Australia get a drawn Nordic cross flag and Southern Cross; they used to share a fallback glyph.
+  - Custom categories use the newspaper.
+
 ## 0.0.4 — 2026-09-24
 
 ### Added
@@ -10,9 +113,16 @@
 - Briefing, Sources, Feeds, and catalog panels: denser mobile chrome, filter/help sheets that scroll correctly, icon-only expand controls
 - Catalog seed only creates default feeds; existing stubs are not treated as “added” until enabled
 - Cover image and category helpers tightened for briefing packages
+- Settings → Notifications: **Connection** links to StonePi Notifications (ntfy server/topic are household-wide); **Alerts** lets each person choose paper published / reached reader (default on)
+- Reader activity banner: amber **“x items queued”** while files wait for the reader, green **“Sending…”** only when it is online; tap opens Device → Send (what’s waiting to reach the reader)
 
 ### Fixed
 - Mobile sheets (category filter, help/info) no longer trapped under nav or unscrollable inside `main`
+- Activity banner no longer clipped on long mobile pages (Briefing, Device, Sources)
+- Banner strings (Sending, queued) now translated in the browser
+- Settings no longer error after the ntfy move to StonePi Notifications
+- Briefing status line shows only “Updated HH:MM”; refresh progress stays in the top activity bar and results in the toast (no duplicate messages)
+- “Updated HH:MM” shows the household clock (Pi timezone, Europe/Copenhagen) instead of UTC, which read two hours behind in summer
 
 ## 0.0.3 — 2026-09-22
 

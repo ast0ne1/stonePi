@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from stonepi_auth.brand import mount_brand_fonts
 from fastapi.staticfiles import StaticFiles
 
 from app.config import ROOT_DIR, env
@@ -26,4 +27,5 @@ if env.stonepi_prefix:
 
     app.add_middleware(PrefixMiddleware, prefix=env.stonepi_prefix)
 app.mount("/static", StaticFiles(directory=str(ROOT_DIR / "app" / "static")), name="static")
+mount_brand_fonts(app)  # /assets/fonts when reached directly (run-dev); nginx serves it on the Pi
 app.include_router(router)

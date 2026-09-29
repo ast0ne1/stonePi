@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 
+from stonepi_browser import chromium_lock
+
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 EventTrakr/1.0"
@@ -13,15 +15,19 @@ def browser_session():
     """Launch one headless Chromium instance to render several pages against
     (e.g. one sync pass over multiple sources), instead of paying browser
     startup cost per page. Pass the yielded browser into fetch_rendered_html.
+
+    Holds the appliance-wide chromium_lock so EventTrakr and SportGuide never
+    run two Chromiums at once on the Pi.
     """
     from playwright.sync_api import sync_playwright
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        try:
-            yield browser
-        finally:
-            browser.close()
+    with chromium_lock():
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            try:
+                yield browser
+            finally:
+                browser.close()
 
 
 def fetch_rendered_html(url: str, wait_selector: str | None = None, timeout_ms: int = 25000, browser=None) -> str:

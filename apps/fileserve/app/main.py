@@ -4,6 +4,7 @@ import logging
 from datetime import timedelta
 from functools import wraps
 from io import BytesIO
+from pathlib import Path
 
 import httpx
 from flask import (
@@ -21,7 +22,7 @@ from flask import (
     url_for,
 )
 
-from app import __github__, __github_user__, __version__
+from app import __asset_rev__, __github__, __github_user__, __version__
 from app.auth import (
     attach_session,
     clear_login_failures,
@@ -38,6 +39,8 @@ from app.auth import (
     session_secret,
     wants_json,
 )
+from stonepi_auth.alerts import add_shared_templates, bell_context, notifications_card_context
+from stonepi_auth.brand import add_brand_fonts_route, fonts_rev
 from stonepi_auth.csrf import csrf_from_request, csrf_ok_request, set_csrf_cookie
 from stonepi_auth.http import portal_home_url
 from app.config import BACKUPS_DIR, DATA_DIR, HOSTED_DIR, UPDATES_DIR, env
@@ -50,6 +53,7 @@ logging.basicConfig(level=logging.INFO)
 
 SETTINGS_TABS = (
     ("device", "General"),
+    ("notifications", "Notifications"),
     ("users", "Users"),
     ("backup", "Backup/Restore"),
     ("update", "Update"),
@@ -64,16 +68,50 @@ USER_SETTINGS_TABS = tuple(
 SETTINGS_LEDES = {
     "device": "Your login password, hostname, HTTPS, and instance name. Colour palette is under StonePi → Settings → General.",
     "device_user": "Your login password. Colour palette is under StonePi → Settings → General.",
+    "notifications": "New-publication alerts via StonePi Notify.",
     "users": "Household accounts. Create users, reset passwords, or remove access.",
     "backup": "Download or restore a zip of your pages and settings. Roll back the last app install here.",
     "update": "Check GitHub Releases and install a newer zip.",
     "about": "App name, description, GitHub, and the version running here.",
 }
 SETTINGS_SAVE_TABS = {"device", "update"}
+SETTINGS_HUB_LEDE = "Hosting, access, and this copy of FileServe."
+SETTINGS_HUB_SUBTEXTS = {
+    "device": "Name, password, and LAN HTTPS.",
+    "notifications": "Alerts when a page is published.",
+    "users": "Household accounts.",
+    "backup": "Download or restore pages.",
+    "update": "Check GitHub Releases.",
+    "about": "Version and project links.",
+}
+SETTINGS_GROUPS = (
+    ("hosting", "Hosting", ("device", "notifications")),
+    ("household", "Household", ("users", "backup")),
+    ("app", "App", ("update", "about")),
+)
+# Tabs with more than one card get a second-level list.
+SETTINGS_SECTION_PANELS = {
+    "device": ("access", "network"),
+    "users": ("people", "add"),
+}
 
 
 def platform_managed_settings() -> bool:
     return bool(env.stonepi_session_secret.strip())
+
+
+def settings_groups_for(*, admin: bool, platform_managed: bool | None = None) -> tuple:
+    allowed = dict(settings_tabs_for(admin=admin, platform_managed=platform_managed))
+    groups = []
+    for group_id, label, keys in SETTINGS_GROUPS:
+        rows = tuple(
+            (key, allowed[key], SETTINGS_HUB_SUBTEXTS.get(key, ""))
+            for key in keys
+            if key in allowed
+        )
+        if rows:
+            groups.append((group_id, label, rows))
+    return tuple(groups)
 
 
 def settings_tabs_for(*, admin: bool, platform_managed: bool | None = None) -> tuple[tuple[str, str], ...]:
@@ -108,6 +146,9 @@ def create_app(config: dict | None = None) -> Flask:
     init_db(extra.get("DATABASE_URL"))
 
     app = Flask(__name__)
+    add_shared_templates(app.jinja_env)
+    app.jinja_env.globals.update(asset_rev=__asset_rev__, fonts_rev=fonts_rev())
+    add_brand_fonts_route(app)  # /assets/fonts when reached directly (run-dev); nginx serves it on the Pi
     app.config["SECRET_KEY"] = extra.get("SECRET_KEY") or session_secret()
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=14)
     app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024
@@ -115,12 +156,48 @@ def create_app(config: dict | None = None) -> Flask:
         app.config["TESTING"] = True
         app.config["WTF_CSRF_ENABLED"] = False
 
+    def _purge_expired_once() -> None:
+        if database.SessionLocal is None:
+            return
+        db = database.SessionLocal()
+        try:
+            pages_svc.purge_expired(db)
+        except Exception:
+            logging.exception("purge_expired failed")
+        finally:
+            db.close()
+
+    def _schedule_purge() -> None:
+        if app.config.get("TESTING"):
+            return
+        import threading
+
+        def _loop() -> None:
+            while True:
+                try:
+                    _purge_expired_once()
+                except Exception:
+                    logging.exception("purge_expired timer failed")
+                threading.Event().wait(300)
+
+        threading.Thread(target=_loop, name="fileserve-purge", daemon=True).start()
+
+    _schedule_purge()
+
     @app.before_request
     def _open_db():
+        path = request.path or ""
+        pfx = (env.stonepi_prefix or "").rstrip("/")
+        if (
+            path.startswith("/static")
+            or path.startswith("/favicon")
+            or (pfx and (path.startswith(f"{pfx}/static") or path.startswith(f"{pfx}/favicon")))
+        ):
+            g.csrf_token = csrf_from_request(request.cookies)
+            return
         if database.SessionLocal is None:
             init_db()
         g.db = database.SessionLocal()
-        pages_svc.purge_expired(g.db)
         g.csrf_token = csrf_from_request(request.cookies)
 
     @app.teardown_request
@@ -131,6 +208,9 @@ def create_app(config: dict | None = None) -> Flask:
 
     @app.context_processor
     def _inject():
+        from app.auth import _platform_user
+        from stonepi_auth.session import COOKIE_NAME, factory_admin_warning
+
         db = getattr(g, "db", None)
         page_count = 0
         factory = False
@@ -138,11 +218,16 @@ def create_app(config: dict | None = None) -> Flask:
         admin = is_admin()
         pending_tls = False
         platform_managed = platform_managed_settings()
+        platform_user = _platform_user() if platform_managed else None
+        if platform_managed:
+            factory = factory_admin_warning(platform_user)
+        home_url = portal_home_url(request, env.stonepi_public_origin)
         if db is not None:
             viewer = current_user(db)
             if viewer is not None:
                 page_count = len(pages_svc.list_pages(db, viewer=viewer))
-            factory = settings.using_factory_admin(db)
+            if not platform_managed:
+                factory = settings.using_factory_admin(db)
             home = hostname.homescreen_name(db)
             pending_tls = settings.https_enabled(db) and not request_is_https()
         return {
@@ -164,7 +249,14 @@ def create_app(config: dict | None = None) -> Flask:
             },
             "settings_save_tabs": SETTINGS_SAVE_TABS if admin else {"device"},
             "csrf_token": getattr(g, "csrf_token", csrf_from_request(request.cookies)),
-            "stonepi_home_url": portal_home_url(request, env.stonepi_public_origin),
+            "stonepi_home_url": home_url,
+            "alerts_bell_state": bell_context(
+                platform_user,
+                session_cookie=request.cookies.get(COOKIE_NAME),
+                home_url=home_url,
+                enabled=platform_managed,
+            ),
+            "stonepi_prefix": (env.stonepi_prefix or "").rstrip("/"),
         }
 
     def login_required(view):
@@ -273,7 +365,8 @@ def create_app(config: dict | None = None) -> Flask:
         return page, viewer
 
     def _authorize_public_page(page):
-        if page is None:
+        # Expired pages 404 straight away; the purge timer deletes them later.
+        if page is None or pages_svc.is_expired(page):
             abort(404)
         if not page.enabled and not is_signed_in():
             abort(404)
@@ -420,9 +513,7 @@ def create_app(config: dict | None = None) -> Flask:
             return jsonify({"ok": True, "message": "Signed out.", "reauth": True})
         return redirect(target)
 
-    @app.get("/admin")
-    @login_required
-    def pages_list():
+    def _render_pages(**extra):
         viewer = _require_viewer()
         share_url = hostname.get_share_url(g.db)
         owner_id = _owner_filter_id(request.args.get("user")) if is_admin() else None
@@ -438,18 +529,22 @@ def create_app(config: dict | None = None) -> Flask:
                     "qr_png": qrcode.png_data_uri(url),
                 }
             )
-        reveal = session.pop("page_reveal", None)
-        filter_users = users_svc.list_users(g.db) if is_admin() else []
-        return render_template(
-            "pages.html",
-            pages=items,
-            active="pages",
-            share_url=share_url,
-            reveal=reveal,
-            filter_users=filter_users,
-            filter_user_id=owner_id,
-            current_user_is_admin=is_admin(),
-        )
+        payload = {
+            "pages": items,
+            "active": "pages",
+            "share_url": share_url,
+            "reveal": session.pop("page_reveal", None),
+            "filter_users": users_svc.list_users(g.db) if is_admin() else [],
+            "filter_user_id": owner_id,
+            "current_user_is_admin": is_admin(),
+        }
+        payload.update(extra)
+        return render_template("pages.html", **payload)
+
+    @app.get("/admin")
+    @login_required
+    def pages_list():
+        return _render_pages()
 
     @app.get("/browse")
     def browse_pages():
@@ -742,26 +837,36 @@ def create_app(config: dict | None = None) -> Flask:
     @app.get("/admin/settings")
     @login_required
     def settings_page():
+        from app.auth import _platform_user
+
         viewer = _require_viewer()
         admin = is_admin()
         platform_managed = platform_managed_settings()
-        tab = normalize_settings_tab(request.args.get("tab"), admin=admin, platform_managed=platform_managed)
+        raw_tab = request.args.get("tab")
+        settings_hub = raw_tab is None or not str(raw_tab).strip()
+        tab = normalize_settings_tab(raw_tab, admin=admin, platform_managed=platform_managed)
         latest = backup.latest_backup() if admin else None
         https_on = settings.https_enabled(g.db)
         device_lede = SETTINGS_LEDES["device"] if admin else SETTINGS_LEDES["device_user"]
+        tab_labels = dict(settings_tabs_for(admin=admin, platform_managed=platform_managed))
         return render_template(
             "settings.html",
             active="settings",
+            settings_hub=settings_hub,
+            settings_panel=(request.args.get("panel") or "").strip().lower(),
+            settings_groups=settings_groups_for(admin=admin, platform_managed=platform_managed),
+            settings_hub_lede=SETTINGS_HUB_LEDE,
+            settings_labels=tab_labels,
             settings_tab=tab,
             settings_tabs=settings_tabs_for(admin=admin, platform_managed=platform_managed),
-            settings_lede=device_lede if tab == "device" else SETTINGS_LEDES[tab],
+            settings_lede=SETTINGS_HUB_LEDE if settings_hub else (device_lede if tab == "device" else SETTINGS_LEDES[tab]),
             is_admin=admin,
             platform_managed=platform_managed,
             admin_username=viewer.username,
             instance_name=settings.get_value(g.db, "instance_name") if admin else "",
-            device_hostname=settings.get_value(g.db, "device_hostname") if admin else "",
-            github_repo=update.repo_from_db(g.db) if admin else "",
-            update_check=update.last_check(g.db) if admin else None,
+            device_hostname=hostname.device_hostname() if admin else "",
+            github_repo=update.repo_from_db(g.db) if admin and not platform_managed else "",
+            update_check=update.last_check(g.db) if admin and not platform_managed else None,
             latest_backup=latest,
             share_url=hostname.get_share_url(g.db),
             https_enabled=https_on,
@@ -770,6 +875,11 @@ def create_app(config: dict | None = None) -> Flask:
             https_share_url=hostname.get_share_url(g.db) if https_on else "",
             tls_pending_restart=https_on and not request_is_https(),
             household_users=users_svc.list_users(g.db) if admin and not platform_managed else [],
+            notifications_card_state=notifications_card_context(
+                "fileserve",
+                _platform_user() if platform_managed else None,
+                home_url=portal_home_url(request, env.stonepi_public_origin).rstrip("/"),
+            ),
         )
 
     @app.post("/admin/settings")
@@ -838,23 +948,6 @@ def create_app(config: dict | None = None) -> Flask:
                 settings.set_value(g.db, "instance_name", instance_name[:80])
             else:
                 settings.clear_value(g.db, "instance_name")
-
-            wanted_host = hostname.normalize_hostname(request.form.get("device_hostname") or "")
-            previous_host = hostname.normalize_hostname(settings.get_value(g.db, "device_hostname"))
-            if wanted_host:
-                if not hostname.valid_hostname(wanted_host):
-                    return fail("Hostname must be letters, digits, or hyphens.")
-                settings.set_value(g.db, "device_hostname", wanted_host)
-                hostname.apply_os_hostname(wanted_host)
-            else:
-                settings.clear_value(g.db, "device_hostname")
-
-            if want_https and wanted_host != previous_host:
-                try:
-                    tls.ensure_certificate(g.db)
-                except Exception:
-                    logging.getLogger("fileserve").exception("TLS certificate refresh after hostname save failed")
-                    return fail("HTTPS is on but the certificate could not be refreshed for this hostname.")
 
             if not platform_managed:
                 github_repo = request.form.get("github_repo") or ""
@@ -1105,6 +1198,15 @@ def create_app(config: dict | None = None) -> Flask:
     def user_public_asset(username: str, slug: str, asset: str):
         page = pages_svc.get_user_page(g.db, username, slug)
         return _serve_hosted_page(page, asset=asset)
+
+    @app.get("/favicon.ico")
+    def favicon():
+        # Reserved slug; must not fall through to public_page (no g.db for /favicon*).
+        return send_file(
+            Path(app.static_folder) / "icons" / "apple-touch-icon.svg",
+            mimetype="image/svg+xml",
+            max_age=86400,
+        )
 
     @app.get("/<slug>")
     def public_page(slug: str):

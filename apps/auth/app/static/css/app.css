@@ -133,6 +133,7 @@ a { color: var(--accent); }
 .status-card h1 { margin: 0; font-size: clamp(1.55rem, 4vw, 1.85rem); }
 .status-card .lede { margin: 0; }
 .status-card .hint { margin: 0 0 4px; font-size: 0.86rem; line-height: 1.4; }
+.status-card .status-version { margin: 4px 0 0; font-size: 0.78rem; }
 .hub-actions {
   display: grid;
   gap: 14px;

@@ -1,135 +1,314 @@
-{# Admin household accounts — used by Users page. #}
-{% from "_icons.html" import svg %}
+{# Admin household accounts — master/detail on laptop+, list→detail on phone/tablet. #}
+{% from "_icons.html" import svg, service_icon %}
 
-<section class="people-list" id="household-users">
-  <div class="people-list-head">
-    <div>
-      <h2>Accounts</h2>
-      <p class="muted">{{ people|length }} {{ 'user' if people|length == 1 else 'users' }} · open a row to edit</p>
+{% macro app_access_rows(person=none, create=false) -%}
+  {% set grant_apps = (person.apps if person else []) %}
+  {% set is_admin = person.is_admin if person else false %}
+  {% set perms = (person.permissions if person else {}) or {} %}
+  {% for app in apps %}
+  {% set locked = app.id == 'dashboard' %}
+  {% set granted = locked or is_admin or (not create and app.id in grant_apps) %}
+  {% set person_perms = perms.get(app.id, {}) %}
+  <div class="ua-app{% if not app.enabled %} is-disabled{% endif %}{% if locked %} is-locked{% endif %}" data-ua-app="{{ app.id }}">
+    <div class="ua-app-main">
+      {{ service_icon(app.id, app.color or '') }}
+      <div class="ua-app-copy">
+        <strong>{{ app.name }}</strong>
+        {% if locked %}
+        <span class="muted">Always on</span>
+        {% elif app.id == 'studio' %}
+        <span class="muted">Publish to FileServe also turns on FileServe</span>
+        {% elif not app.enabled %}
+        <span class="muted">App is off for the household</span>
+        {% endif %}
+      </div>
+      {% if locked %}
+      <span class="ua-locked" title="Always on">
+        {{ svg('lock') }}
+        <span>On</span>
+        <input type="hidden" name="apps" value="dashboard" />
+      </span>
+      {% else %}
+      {# Keep inputs enabled when admin so they still submit; lock via CSS. #}
+      <label class="avail-toggle ua-toggle{% if is_admin or not app.enabled %} is-locked{% endif %}">
+        <input
+          type="checkbox"
+          name="apps"
+          value="{{ app.id }}"
+          {% if granted %}checked{% endif %}
+          {% if not app.enabled %}disabled{% endif %}
+          {% if is_admin %}data-admin-locked{% endif %}
+          {% if app.id == 'fileserve' %}data-app-fileserve{% endif %}
+        />
+        <span class="avail-switch" aria-hidden="true"></span>
+        <span class="visually-hidden">{{ app.name }} access</span>
+      </label>
+      {% endif %}
     </div>
-    {% if people %}
-    <button class="icon-btn" type="button" data-open-add-user aria-label="Add account" title="Add account">{{ svg('plus') }}</button>
+    {% if app.capabilities and app.enabled %}
+    <div class="ua-caps{% if not granted %} is-hidden{% endif %}" data-ua-caps>
+      {% for cap in app.capabilities %}
+      <label class="ua-cap{% if is_admin %} is-locked{% endif %}">
+        <input
+          type="checkbox"
+          name="perm_{{ app.id }}_{{ cap.id }}"
+          value="1"
+          {% if person_perms.get(cap.id) or is_admin %}checked{% endif %}
+          {% if app.id == 'studio' and cap.id == 'can_publish' %}data-studio-can-publish{% endif %}
+        />
+        <span>{{ cap.label }}</span>
+      </label>
+      {% endfor %}
+    </div>
     {% endif %}
   </div>
+  {% endfor %}
+{%- endmacro %}
 
+{% macro phone_alerts_row(person=none) -%}
+  {% set is_admin = person.is_admin if person else false %}
+  {% set on = is_admin or (person.phone_alerts if person else false) %}
+  <div class="ua-app" data-ua-phone-alerts>
+    <div class="ua-app-main">
+      <span class="service-icon" aria-hidden="true">{{ svg('bell') }}</span>
+      <div class="ua-app-copy">
+        <strong>Phone alerts</strong>
+        <span class="muted">Can set up personal alerts from the bell. Admins always can.</span>
+      </div>
+      <label class="avail-toggle ua-toggle{% if is_admin %} is-locked{% endif %}">
+        <input type="checkbox" name="phone_alerts" value="1" {% if on %}checked{% endif %} data-admin-on />
+        <span class="avail-switch" aria-hidden="true"></span>
+        <span class="visually-hidden">Phone alerts</span>
+      </label>
+    </div>
+  </div>
+{%- endmacro %}
+
+{% macro role_seg(name='is_admin', admin=false, id_prefix='role') -%}
+<div class="seg" role="radiogroup" aria-label="Role">
+  <label class="seg-opt">
+    <input type="radio" name="{{ name }}" value="0" {% if not admin %}checked{% endif %} data-role-seg="user" />
+    <span>User</span>
+  </label>
+  <label class="seg-opt">
+    <input type="radio" name="{{ name }}" value="1" {% if admin %}checked{% endif %} data-role-seg="admin" />
+    <span>Admin</span>
+  </label>
+</div>
+{%- endmacro %}
+
+<section class="users-shell" id="household-users" data-users-shell data-view="list" data-form-base="{{ users_form_base|default('/users') }}">
   {% if not people %}
-  <section class="card">
+  <section class="card users-empty">
     <h2>No accounts yet</h2>
-    <p class="muted">Add the first household account, set a password, and choose which apps they can open. Dashboard is granted by default.</p>
+    <p class="muted">Add the first household account, set a password, and choose which apps they can open. Dashboard is always available.</p>
     <div class="row-actions">
       <button class="btn btn-primary btn-with-icon" type="button" data-open-add-user>{{ svg('plus') }} Add account</button>
     </div>
   </section>
-  {% endif %}
+  {% else %}
 
-  {% for person in people %}
-  <details class="card person-card">
-    <summary class="person-card-summary">
-      <div class="person-card-head">
-        <span class="person-avatar" aria-hidden="true">{{ (person.display_name or person.username)[:1]|upper }}</span>
-        <span class="person-card-body">
-          <strong class="person-name">{{ person.display_name or person.username }}</strong>
-          <span class="muted person-handle">@{{ person.username }}</span>
-        </span>
-        <span class="icon-btn service-expand-btn person-expand" aria-hidden="true">{{ svg('chevron-down') }}</span>
+  <div class="users-list-pane" data-users-list>
+    <div class="users-table card" role="table" aria-label="Household accounts">
+      <div class="users-table-head" role="row">
+        <span role="columnheader">Name</span>
+        <span role="columnheader" class="users-col-role">Role</span>
+        <span role="columnheader" class="users-col-apps">Apps</span>
       </div>
-      <div class="person-card-foot">
-        <span class="person-chips">
-          {% if person.is_admin %}<span class="chip">Admin</span>{% else %}<span class="chip chip-quiet">User</span>{% endif %}
-          {% if person.enabled %}<span class="chip chip-quiet">Active</span>{% else %}<span class="chip chip-bad">Disabled</span>{% endif %}
-          <span class="chip chip-quiet">{{ person.apps|length }} app{% if person.apps|length != 1 %}s{% endif %}</span>
+      {% for person in people %}
+      {% set app_count = person.apps|length if not person.is_admin else apps|length %}
+      <button
+        type="button"
+        class="users-row{% if loop.first %} is-selected{% endif %}"
+        role="row"
+        data-user-select="{{ person.id }}"
+        aria-pressed="{{ 'true' if loop.first else 'false' }}"
+      >
+        <span class="users-row-name">
+          <span class="person-avatar" aria-hidden="true">{{ (person.display_name or person.username)[:1]|upper }}</span>
+          <span class="users-row-copy">
+            <span class="users-row-title">
+              <strong>{{ person.display_name or person.username }}</strong>
+              <span class="muted">@{{ person.username }}</span>
+              {% if person.is_admin %}<span class="chip chip-role users-row-badge">Admin</span>{% endif %}
+            </span>
+            <span class="muted users-row-sub">
+              {% if person.is_admin %}All apps{% else %}{{ app_count }} {{ 'app' if app_count == 1 else 'apps' }}{% endif %}
+            </span>
+          </span>
         </span>
-      </div>
-    </summary>
+        <span class="users-col-role">
+          {% if person.is_admin %}
+          <span class="chip chip-role">Admin</span>
+          {% else %}
+          <span class="chip chip-quiet">User</span>
+          {% endif %}
+        </span>
+        <span class="users-col-apps muted">
+          {% if person.is_admin %}All apps{% else %}{{ app_count }} {{ 'app' if app_count == 1 else 'apps' }}{% endif %}
+        </span>
+        <span class="users-row-chevron" aria-hidden="true">{{ svg('chevron-right') }}</span>
+      </button>
+      {% endfor %}
+    </div>
+  </div>
 
-    <form method="post" action="{{ users_form_base|default('/users') }}/{{ person.id }}" class="people-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-      <div class="people-form-grid">
-        <label>Display name <input name="display_name" value="{{ person.display_name }}" /></label>
-        <label>New password <input type="password" name="password" minlength="8" placeholder="Leave blank to keep current" autocomplete="new-password" /></label>
-        <div class="people-flags">
-          <span class="people-flags-label">Status</span>
-          <label class="inline"><input type="checkbox" name="enabled" value="1" {% if person.enabled %}checked{% endif %} /> Enabled</label>
-          <label class="inline"><input type="checkbox" name="is_admin" value="1" {% if person.is_admin %}checked{% endif %} /> Administrator</label>
-        </div>
-      </div>
-      <div class="people-access">
-        <h3>App access</h3>
-        <p class="muted people-access-hint">Turn on an app to show it on Home and allow sign-in. Permissions appear under each app that has them. Studio <strong>Publish to FileServe</strong> also needs the FileServe app (checked automatically).</p>
-        <div class="access-grid" data-access-grid>
-          {% for app in apps %}
-          {% set person_perms = (person.permissions or {}).get(app.id, {}) %}
-          <div class="access-app{% if not app.enabled %} is-disabled{% endif %}">
-            <label class="access-toggle">
-              <input type="checkbox" name="apps" value="{{ app.id }}" {% if app.id in person.apps or person.is_admin %}checked{% endif %} {% if not app.enabled %}disabled{% endif %} {% if app.id == 'fileserve' %}data-app-fileserve{% endif %} />
-              <span>{{ app.name }}</span>
-              {% if not app.enabled %}<span class="chip chip-quiet">Off</span>{% endif %}
-            </label>
-            {% if app.capabilities and app.enabled %}
-            <div class="access-caps">
-              {% for cap in app.capabilities %}
-              <label class="inline"><input type="checkbox" name="perm_{{ app.id }}_{{ cap.id }}" value="1" {% if person_perms.get(cap.id) or person.is_admin %}checked{% endif %} {% if app.id == 'studio' and cap.id == 'can_publish' %}data-studio-can-publish{% endif %} /> {{ cap.label }}</label>
-              {% endfor %}
-            </div>
+  <div class="users-detail-pane" data-users-detail-pane>
+    {% for person in people %}
+    {% set granted_count = apps|length if person.is_admin else (person.apps|length + (0 if 'dashboard' in person.apps else 1)) %}
+    <article
+      class="users-detail card{% if loop.first %} is-active{% endif %}"
+      data-user-detail="{{ person.id }}"
+      {% if not loop.first %}hidden{% endif %}
+    >
+      <button type="button" class="users-back" data-users-back>
+        {{ svg('chevron-left') }} Users
+      </button>
+
+      <header class="users-detail-head">
+        <span class="person-avatar person-avatar-lg" aria-hidden="true">{{ (person.display_name or person.username)[:1]|upper }}</span>
+        <div class="users-detail-id">
+          <h2>{{ person.display_name or person.username }}</h2>
+          <p class="users-detail-meta">
+            <span class="muted">@{{ person.username }}</span>
+            {% if person.enabled %}
+            <span class="users-status"><span class="dot ok" aria-hidden="true"></span> Active</span>
+            {% else %}
+            <span class="users-status is-off"><span class="dot bad" aria-hidden="true"></span> Disabled</span>
             {% endif %}
-          </div>
-          {% endfor %}
+          </p>
         </div>
-      </div>
-      <div class="row-actions">
-        <button class="btn btn-primary btn-with-icon" type="submit" name="action" value="save">{{ svg('check') }} Save changes</button>
-      </div>
-    </form>
-    <form method="post" action="{{ users_form_base|default('/users') }}/{{ person.id }}" class="row-actions" data-confirm="Delete {{ person.username }}?" data-confirm-detail="This cannot be undone." data-confirm-ok="Delete">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-      <input type="hidden" name="action" value="delete" />
-      <button class="btn btn-ghost btn-with-icon" type="submit">{{ svg('trash') }} Delete</button>
-    </form>
-  </details>
-  {% endfor %}
+        <div class="users-detail-actions">
+          <button class="btn btn-ghost btn-with-icon" type="button" data-reset-password="{{ person.id }}">
+            {{ svg('key') }} Reset password
+          </button>
+          <div class="users-more" data-users-more>
+            <button class="icon-btn" type="button" data-users-more-toggle aria-expanded="false" aria-haspopup="true" aria-label="More actions">
+              {{ svg('more') }}
+            </button>
+            <div class="users-more-menu" hidden role="menu">
+              <button type="button" role="menuitem" data-toggle-enabled="{{ person.id }}" data-enabled="{{ '1' if person.enabled else '0' }}">
+                {% if person.enabled %}Disable account{% else %}Enable account{% endif %}
+              </button>
+              <button type="button" role="menuitem" class="is-danger" data-delete-user="{{ person.id }}" data-username="{{ person.username }}">
+                Delete account
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <form
+        method="post"
+        action="{{ users_form_base|default('/users') }}/{{ person.id }}"
+        class="users-detail-form"
+        data-user-form="{{ person.id }}"
+        data-autosave
+      >
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <input type="hidden" name="action" value="save" />
+        <input type="hidden" name="display_name" value="{{ person.display_name }}" />
+        <input type="hidden" name="enabled" value="{{ '1' if person.enabled else '0' }}" data-enabled-field />
+
+        <section class="users-section">
+          <h3 class="section-label">Role</h3>
+          {{ role_seg(admin=person.is_admin) }}
+          <p class="muted users-hint">Admins can manage users, services and settings.</p>
+        </section>
+
+        <section class="users-section">
+          <h3 class="section-label">Notifications</h3>
+          <div class="ua-list">
+            {{ phone_alerts_row(person=person) }}
+          </div>
+        </section>
+
+        <section class="users-section">
+          <div class="users-section-head">
+            <h3 class="section-label">App access · <span data-grant-count>{{ granted_count }}</span> of {{ apps|length }}</h3>
+            <span class="muted users-autosave-hint" data-save-hint>Saves automatically</span>
+          </div>
+          <div class="ua-grid" data-access-grid>
+            {{ app_access_rows(person=person) }}
+          </div>
+        </section>
+      </form>
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
 </section>
 
-<details class="card people-create" id="add-user">
-  <summary class="people-create-summary">
-    <span class="people-create-title">{{ svg('plus') }} Add account</span>
-    <span class="muted people-create-hint">Username, password, apps — Dashboard on by default</span>
-  </summary>
-  <form method="post" action="{{ users_form_base|default('/users') }}" class="people-form">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    <div class="people-form-grid">
-      <label>Username <input name="username" required autocapitalize="none" spellcheck="false" placeholder="jane" /></label>
-      <label>Display name <input name="display_name" placeholder="Jane" /></label>
-      <label>Password <input type="password" name="password" required minlength="8" placeholder="At least 8 characters" autocomplete="new-password" /></label>
-      <div class="people-flags">
-        <span class="people-flags-label">Role</span>
-        <label class="inline"><input type="checkbox" name="is_admin" value="1" /> Administrator</label>
-      </div>
-    </div>
-    <div class="people-access">
-      <h3>App access</h3>
-      <p class="muted people-access-hint">Only Dashboard starts on. Grant other apps after you’ve set the password. Studio <strong>Publish to FileServe</strong> also needs FileServe (checked automatically).</p>
-      <div class="access-grid" data-access-grid>
-        {% for app in apps %}
-        <div class="access-app{% if not app.enabled %} is-disabled{% endif %}">
-          <label class="access-toggle">
-            <input type="checkbox" name="apps" value="{{ app.id }}" {% if app.id == 'dashboard' and app.enabled %}checked{% endif %} {% if not app.enabled %}disabled{% endif %} {% if app.id == 'fileserve' %}data-app-fileserve{% endif %} />
-            <span>{{ app.name }}</span>
-            {% if not app.enabled %}<span class="chip chip-quiet">Off</span>{% endif %}
-          </label>
-          {% if app.capabilities and app.enabled %}
-          <div class="access-caps">
-            {% for cap in app.capabilities %}
-            <label class="inline"><input type="checkbox" name="perm_{{ app.id }}_{{ cap.id }}" value="1" {% if app.id == 'studio' and cap.id == 'can_publish' %}data-studio-can-publish{% endif %} /> {{ cap.label }}</label>
-            {% endfor %}
-          </div>
-          {% endif %}
+{# Add account drawer #}
+<div class="sheet sheet-drawer" hidden data-sheet="add-user" data-add-user-sheet>
+  <div class="sheet-card card users-drawer">
+    <header class="users-drawer-head">
+      <h2>Add account</h2>
+      <button class="icon-btn" type="button" data-close-add-user aria-label="Close">{{ svg('close') }}</button>
+    </header>
+    <form method="post" action="{{ users_form_base|default('/users') }}" class="people-form users-create-form" data-create-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <div class="users-drawer-body">
+        <label>Display name <input name="display_name" placeholder="Jane" autocomplete="nickname" /></label>
+        <label>
+          Username
+          <input name="username" required autocapitalize="none" spellcheck="false" placeholder="jane" autocomplete="username" />
+          <span class="field-hint">Used to sign in. Lowercase, no spaces.</span>
+        </label>
+        <label class="users-password-field">
+          Password
+          <span class="users-password-wrap">
+            <input type="password" name="password" required minlength="8" placeholder="At least 8 characters" autocomplete="new-password" data-password-input />
+            <button class="icon-btn users-eye" type="button" data-toggle-password aria-label="Show password">{{ svg('eye') }}</button>
+          </span>
+        </label>
+        <div class="users-section">
+          <h3 class="section-label">Role</h3>
+          {{ role_seg(admin=false) }}
         </div>
-        {% endfor %}
+        <div class="users-section">
+          <h3 class="section-label">Notifications</h3>
+          <div class="ua-list">
+            {{ phone_alerts_row() }}
+          </div>
+        </div>
+        <div class="users-section">
+          <h3 class="section-label">App access</h3>
+          <div class="ua-list" data-access-grid>
+            {{ app_access_rows(create=true) }}
+          </div>
+        </div>
       </div>
-    </div>
-    <div class="row-actions">
-      <button class="btn btn-primary btn-with-icon" type="submit">{{ svg('plus') }} Create</button>
-      <button class="btn btn-ghost" type="button" data-close-add-user>Cancel</button>
-    </div>
-  </form>
-</details>
+      <div class="users-drawer-foot">
+        <button class="btn btn-ghost" type="button" data-close-add-user>Cancel</button>
+        <button class="btn btn-primary" type="submit">Create account</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# Reset password sheet #}
+<div class="sheet" hidden data-sheet="reset-password" data-reset-password-sheet>
+  <div class="sheet-card card">
+    <header class="users-drawer-head">
+      <h2>Reset password</h2>
+      <button class="icon-btn" type="button" data-close-reset-password aria-label="Close">{{ svg('close') }}</button>
+    </header>
+    <form method="post" class="stack" data-reset-password-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="action" value="save" />
+      <p class="muted" data-reset-password-for></p>
+      <label class="users-password-field">
+        New password
+        <span class="users-password-wrap">
+          <input type="password" name="password" required minlength="8" placeholder="At least 8 characters" autocomplete="new-password" data-password-input />
+          <button class="icon-btn users-eye" type="button" data-toggle-password aria-label="Show password">{{ svg('eye') }}</button>
+        </span>
+      </label>
+      <div class="row-actions">
+        <button class="btn btn-primary" type="submit">Save password</button>
+        <button class="btn btn-ghost" type="button" data-close-reset-password>Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>

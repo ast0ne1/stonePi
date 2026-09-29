@@ -1,25 +1,27 @@
-## Build type: Single Page App
+## Build type: Handy App (single page)
 
-Make one self-contained tool or mini-app that lives on a single screen.
+One screen that does one job well: a checklist, converter, quiz, timer, scoreboard, planner or similar.
 
 ### Goals
-- One clear job (counter, checklist, converter, quiz, sticky notes, etc.).
-- Friendly colours — kid- and family-friendly.
-- Works offline in the browser once loaded (no backend).
+- A clear purpose the visitor understands in five seconds: a short title, one helper sentence, then the tool.
+- The primary action is obvious and reachable without scrolling on a 390px phone.
+- State survives a refresh (`localStorage`). Offer a clear "Reset" when there is data to lose, and confirm it with in-page UI.
+- Friendly, high-contrast colours. Include empty states ("No items yet — add one above") rather than blank areas.
 
-### Phone first (iPhone 13 mini class)
-- Design the whole UI for ~375px width; enlarge gracefully on desktop.
-- Keep the primary action visible without scrolling when possible.
-- Sticky footer bars must respect `safe-area-inset-bottom`.
-- Prefer full-width buttons stacked; avoid multi-column toolbars on small screens.
-- If you show a list, each row should be easy to tap (min ~44px tall).
+### Layout
+- Laptop first: a centred column (about 40–48rem), or two columns when it genuinely helps (e.g. form + results).
+- Keyboard: Enter submits forms, Tab order follows the screen, focus is visible, and add shortcuts where natural (e.g. N for a new item).
+- Phone compatible: one column, full-width buttons, list rows at least 44px tall. Sticky bottom bars respect `safe-area-inset-bottom`.
+- Visible labels on every input. Icon-only buttons need an `aria-label` and should be rare.
+- Make it delightful as well as useful: a little celebration when a list is completed or a goal is reached.
 
-### Structure
-- Prefer `index.html` + `style.css` + `app.js`.
-- Put the main UI in a `<main>` landmark with a short title and helper sentence.
-- Use buttons and inputs with visible labels; avoid tiny icon-only controls without text.
+### Files
+`index.html` (main UI in `<main>`), `style.css`, `app.js`. No frameworks, bundlers or npm.
+
+### Clarify vs build
+- **Clarify:** ask what the tool must do, what it should remember, and any must-have fields. Offer defaults.
+- **Build:** ship a working tool with realistic sample content or a helpful empty state, not lorem ipsum.
 
 ### Avoid
-- Multi-page navigators, frameworks, bundlers, or npm.
-- Dark patterns, ads, tracking, or asking for personal data.
-- Side-by-side panels that crush text on a mini phone.
+- Multi-page navigation, logins, ads, tracking, or asking for personal data.
+- Side-by-side panels that squash text on a phone.

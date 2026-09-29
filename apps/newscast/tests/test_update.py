@@ -1,7 +1,7 @@
 import zipfile
 from pathlib import Path
 
-from app.services.update import (
+from stonepi_update import (
     extract_packaged_version,
     is_newer,
     normalize_repo,
@@ -58,7 +58,7 @@ def _write_release_zip(path: Path, version: str, nested: bool = True) -> Path:
 
 def test_validate_zip_accepts_newer_nested_release(tmp_path):
     zip_path = _write_release_zip(tmp_path / "rel.zip", "9.9.9.9")
-    info = validate_zip(zip_path, "9.9.9.9")
+    info = validate_zip(zip_path, expected_version="9.9.9.9", current_version="0.0.0.1")
     assert info["ok"] is True
     assert info["version"] == "9.9.9.9"
 
@@ -66,7 +66,7 @@ def test_validate_zip_accepts_newer_nested_release(tmp_path):
 def test_validate_zip_rejects_same_or_older(tmp_path):
     zip_path = _write_release_zip(tmp_path / "old.zip", "0.0.0.1", nested=False)
     try:
-        validate_zip(zip_path, "0.0.0.1")
+        validate_zip(zip_path, current_version="0.0.0.1")
         raise AssertionError("expected older zip to fail")
     except ValueError as exc:
         assert "not newer" in str(exc)
@@ -75,7 +75,7 @@ def test_validate_zip_rejects_same_or_older(tmp_path):
 def test_validate_zip_rejects_version_mismatch(tmp_path):
     zip_path = _write_release_zip(tmp_path / "mix.zip", "2.0.0")
     try:
-        validate_zip(zip_path, "3.0.0")
+        validate_zip(zip_path, expected_version="3.0.0")
         raise AssertionError("expected mismatch to fail")
     except ValueError as exc:
         assert "does not match" in str(exc)
@@ -100,7 +100,7 @@ def test_apply_zip_overlays_without_deleting_running_tree(tmp_path, monkeypatch)
     monkeypatch.setattr(update_mod, "ROOT_DIR", root)
     monkeypatch.setattr(update_mod, "UPDATES_DIR", tmp_path / "updates")
     monkeypatch.setattr(update_mod.backup, "write_backup", lambda: tmp_path / "backup.zip")
-    monkeypatch.setattr(update_mod, "_install_requirements", lambda: None)
+    monkeypatch.setattr(update_mod.Updater, "_install_requirements", lambda self: None)
 
     info = update_mod.apply_zip(zip_path, "9.9.9.9")
     assert info["ok"] is True

@@ -1,0 +1,68 @@
+{#- Shared personal-alerts chrome for every StonePi app.
+
+  Register with ``stonepi_auth.alerts.add_shared_templates(jinja_env)``, then:
+    {% from "stonepi/alerts.html" import alerts_bell, notifications_card %}
+    {{ alerts_bell(alerts_bell_state) }}          top bar, just before Sign out
+    {{ notifications_card(notifications_card_state) }}   Settings -> Notifications
+
+  State dicts come from ``stonepi_auth.alerts.bell_context`` and
+  ``notifications_card_context``. Styling relies only on classes and CSS
+  variables every app already has (icon-btn, card, btn*, --accent, --muted...).
+-#}
+
+{% macro bell_svg() -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>
+{%- endmacro %}
+
+{% macro alerts_bell(bell) -%}
+{%- if bell and bell.show -%}
+<a class="icon-btn alerts-bell{% if bell.dot %} has-dot{% endif %}{% if bell.active %} is-active{% endif %}"
+   href="{{ bell.url }}"
+   aria-label="Notifications{% if bell.dot %} (not set up yet){% endif %}"
+   title="Notifications"
+   style="position: relative;"{% if bell.active %} aria-current="page"{% endif %}>
+  {{ bell_svg() }}
+  {%- if bell.dot %}<span class="alerts-bell-dot" aria-hidden="true" style="position: absolute; top: 7px; right: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--card);"></span>{% endif %}
+</a>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro notifications_card(card) -%}
+{%- if card -%}
+<style>
+  .sp-alerts-card { display: grid; gap: 12px; }
+  .sp-alerts-card h2 { display: flex; align-items: center; gap: 8px; margin: 0; }
+  .sp-alerts-card h2 svg { width: 1.125rem; height: 1.125rem; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; color: var(--accent); }
+  .sp-alerts-card p { margin: 0; color: var(--muted); }
+  .sp-alerts-card ul { margin: 0; padding-left: 1.2rem; color: var(--muted); display: grid; gap: 2px; }
+  .sp-alerts-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .sp-alerts-admin { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .sp-alerts-label { margin: 0; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+</style>
+<section class="card sp-alerts-card" aria-labelledby="sp-alerts-title">
+  <h2 id="sp-alerts-title">{{ bell_svg() }} Phone alerts</h2>
+  <p>{{ card.blurb }}</p>
+  {%- if card.events %}
+  <ul>
+    {%- for label in card.events %}<li>{{ label }}</li>{% endfor %}
+  </ul>
+  {%- endif %}
+  {%- if card.manage_url %}
+  <div class="sp-alerts-actions">
+    <a class="btn btn-primary btn-with-icon" href="{{ card.manage_url }}">{{ bell_svg() }} Manage personal alerts</a>
+  </div>
+  <p>Choose which alerts reach your phone, and set quiet hours, on your Notifications page.</p>
+  {%- endif %}
+  {%- if card.is_admin %}
+  <div class="sp-alerts-admin">
+    <p class="sp-alerts-label">Admin</p>
+    <div class="sp-alerts-actions">
+      <a class="btn btn-ghost" href="{{ card.destinations_url }}">Set up phone alerts</a>
+      <a class="btn btn-ghost" href="{{ card.approvals_url }}">Choose alerts</a>
+    </div>
+    <p>Turning phone alerts on for the household, and which alerts are allowed, live in Notify.</p>
+  </div>
+  {%- endif %}
+</section>
+{%- endif -%}
+{%- endmacro %}

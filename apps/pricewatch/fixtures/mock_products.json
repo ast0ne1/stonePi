@@ -1,0 +1,73 @@
+{
+  "products": [
+    {
+      "product_id": "1000000001",
+      "name": "Sony WH-1000XM6",
+      "manufacturer": "Sony",
+      "variant": "Black",
+      "image_url": "https://via.placeholder.com/120x120.png?text=XM6",
+      "product_url": "https://www.pricerunner.dk/pl/0-1000000001",
+      "lowest_price": 1899,
+      "currency": "DKK",
+      "offers": [
+        {
+          "offer_id": "a1",
+          "retailer": "Example Electronics",
+          "product_price": 1899,
+          "delivery_cost": 0,
+          "availability": "in_stock",
+          "condition": "new",
+          "product_url": "https://example.com/xm6"
+        },
+        {
+          "offer_id": "a2",
+          "retailer": "Nordic Audio",
+          "product_price": 1949,
+          "delivery_cost": 49,
+          "availability": "in_stock",
+          "condition": "new",
+          "product_url": "https://example.com/xm6-b"
+        },
+        {
+          "offer_id": "a3",
+          "retailer": "Used Gear DK",
+          "product_price": 1499,
+          "delivery_cost": 39,
+          "availability": "in_stock",
+          "condition": "used",
+          "product_url": "https://example.com/xm6-used"
+        }
+      ]
+    },
+    {
+      "product_id": "1000000002",
+      "name": "Apple AirPods Pro 2",
+      "manufacturer": "Apple",
+      "variant": "USB-C",
+      "image_url": "https://via.placeholder.com/120x120.png?text=APP2",
+      "product_url": "https://www.pricerunner.dk/pl/0-1000000002",
+      "lowest_price": 1699,
+      "currency": "DKK",
+      "offers": [
+        {
+          "offer_id": "b1",
+          "retailer": "TechBay",
+          "product_price": 1699,
+          "delivery_cost": 0,
+          "availability": "in_stock",
+          "condition": "new",
+          "product_url": "https://example.com/airpods"
+        },
+        {
+          "offer_id": "b2",
+          "retailer": "PhoneHouse",
+          "product_price": 1795,
+          "delivery_cost": 29,
+          "availability": "in_stock",
+          "condition": "new",
+          "product_url": "https://example.com/airpods-b"
+        }
+      ]
+    }
+  ]
+}

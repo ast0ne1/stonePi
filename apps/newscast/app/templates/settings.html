@@ -122,16 +122,17 @@
     {% if is_admin %}
     <div class="card stack" data-settings-panel-card="network">
       <h2 class="section-heading">{{ filter_icon("network") }} Network</h2>
-      <label>
-        Hostname
-        <input type="text" name="device_hostname" value="{{ device_hostname }}" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="newscast" />
-      </label>
       <p class="hint">
-        {% if device_hostname %}
-          LAN address is <strong>{{ 'https' if https_enabled else 'http' }}://{{ device_hostname }}.local:{{ app_port }}</strong>.
+        Appliance hostname is set in
+        {% if stonepi_home_url %}
+        <a href="{{ stonepi_home_url }}/settings?tab=network&amp;panel=hostname">Dashboard → Settings → Network</a>.
         {% else %}
-          Optional. On a Pi this is also the device name, so you can open <strong>{{ 'https' if https_enabled else 'http' }}://name.local:{{ app_port }}</strong> instead of the IP.
+        Dashboard → Settings → Network.
         {% endif %}
+        {% if device_hostname %}
+          LAN address for this app is <strong>{{ 'https' if https_enabled else 'http' }}://{{ device_hostname }}.local:{{ app_port }}</strong>.
+        {% endif %}
+        After a rename, save Settings here (or restart) if local HTTPS needs a renewed certificate.
       </p>
       <label>
         Instance name
@@ -171,7 +172,7 @@
       <p class="hint">{{ tls_status.message if tls_status else 'Turn HTTPS off and on again if the certificate is missing.' }}</p>
       {% endif %}
       {% else %}
-      <p class="hint">HTTPS for StonePi is handled by the portal (Settings → General exposure / nginx TLS), not this app.</p>
+      <p class="hint">HTTPS for StonePi is handled by the portal (Dashboard → Settings → Network / nginx TLS), not this app.</p>
       {% endif %}
     </div>
     {% endif %}
@@ -216,7 +217,7 @@
   </div>
 
   <div class="stack settings-panel settings-panel-stack" id="settings-panel-publication" role="tabpanel" data-settings-panel="publication" aria-labelledby="settings-tab-publication"{% if settings_tab != 'publication' %} hidden{% endif %}>
-    <div class="card stack" data-paper-naming data-settings-panel-card="naming">
+    <div class="card stack" data-paper-naming data-paper-hostname="{{ device_hostname }}" data-settings-panel-card="naming">
       <h2 class="section-heading">{{ filter_icon("publication") }} Paper naming</h2>
       <label>
         Paper label
@@ -305,12 +306,20 @@
         <input type="checkbox" name="epub_toc_outline_numbers" value="1" {% if epub_toc_outline_numbers %}checked{% endif %} />
         <span>Numbered Contents (1 / 1.1)</span>
       </label>
-      <p class="hint">Categories as 1, 2… and sources underneath as 1.1, 1.2… on the cover Contents page.</p>
-      <label class="check">
-        <input type="checkbox" name="epub_cover_first" value="1" {% if epub_cover_first %}checked{% endif %} />
-        <span>Open on cover / Contents first</span>
+      <p class="hint">Categories as 1, 2… and sources underneath as 1.1, 1.2… on the cover Contents page and in the reader’s chapter menu.</p>
+      <label>
+        Contents page
+        <select name="epub_contents_detail">
+          {% for value, label in epub_contents_details %}
+          <option value="{{ value }}" {% if epub_contents_detail == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
       </label>
-      <p class="hint">When off (default), the reader opens on the outline. When on, the newspaper front page comes first; the outline stays available from the device TOC.</p>
+      <label>
+        Busy day means more than
+        <input type="number" name="epub_contents_limit" value="{{ epub_contents_limit }}" min="5" max="200" step="1" inputmode="numeric" />
+      </label>
+      <p class="hint">The paper opens on the front page, then the briefing and Contents. “Titles only on busy days” drops the summaries once the paper has more stories than this, so Contents stays short. “Categories and sources only” lists just the numbered sections and their sources.</p>
     </div>
 
     <div class="card stack" data-settings-panel-card="topics-mix">
@@ -506,7 +515,22 @@
           {% endfor %}
         </select>
       </label>
-      <p class="hint" data-reader-hint="xteink" {% if reader_device != 'xteink' %}hidden{% endif %}>Xteink needs <strong>CrossPoint</strong>. Add this copy’s OPDS catalog there. Push uses HTTP File Transfer.</p>
+      <p class="hint" data-reader-hint="xteink" {% if reader_device != 'xteink' %}hidden{% endif %}>Xteink needs <strong>CrossPoint</strong> or <strong>CrossInk</strong>. Add this copy’s OPDS catalog there. Push uses HTTP File Transfer.</p>
+      <div class="provider-panel" data-reader-panel="xteink" {% if reader_device != 'xteink' %}hidden{% endif %}>
+        <label>
+          Reader firmware
+          <select name="reader_firmware">
+            {% for value, label in reader_firmwares | default([]) %}
+            <option value="{{ value }}" {% if (reader_firmware | default('auto')) == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <p class="hint">
+          The paper uses one layout that reads the same on both. CrossInk adds optional extras (a black band behind section titles, small-caps source names); a wrong choice only looks plainer.
+          {% if reader_firmware_detected %}Detected: <strong>{{ reader_firmware_detected }}</strong>.{% else %}Detected when NewsCast next reaches the reader.{% endif %}
+          Regenerate today’s paper after changing it.
+        </p>
+      </div>
       <p class="hint" data-reader-hint="kobo" {% if reader_device != 'kobo' %}hidden{% endif %}>Kobo needs <strong>KOReader</strong>. Add the same OPDS catalog in KOReader (File browser → magnifying glass → OPDS catalog). Push uses SSH/SFTP over Wi-Fi instead of CrossPoint’s HTTP upload.</p>
       <label class="check">
         <input type="checkbox" name="x3_catalog_login" value="1" {% if x3_catalog_login %}checked{% endif %} />
@@ -581,64 +605,39 @@
       </label>
       <p class="hint" data-reader-hint="xteink" {% if reader_device != 'xteink' %}hidden{% endif %}>NewsCast checks <strong>your</strong> CrossPoint host every minute. If File Transfer is on, queued briefing and Send files upload to your folder. If the reader is asleep, they wait.</p>
       <p class="hint" data-reader-hint="kobo" {% if reader_device != 'kobo' %}hidden{% endif %}>NewsCast checks <strong>your</strong> Kobo SSH port every minute. If KOReader’s SSH server is running, queued files copy over SFTP. If SSH is off or the Kobo is asleep, they wait.</p>
+      <div class="provider-panel" data-reader-panel="xteink" {% if reader_device != 'xteink' %}hidden{% endif %}>
+        <label>
+          Keep papers on reader
+          <select name="reader_keep_days">
+            {% for value, label in reader_keep_days_choices | default([]) %}
+            <option value="{{ value }}" {% if (reader_keep_days | default(0)) == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <p class="hint">On each push, NewsCast deletes older papers it sent to your folder. Send files and anything else on the reader are never touched, and today’s and yesterday’s papers always stay. Re-sending an unchanged paper is skipped; a changed one replaces the copy on the reader.</p>
+      </div>
       <p class="hint">{{ delivery.hint }}</p>
     </div>
     <button class="btn btn-primary btn-with-icon settings-save" type="submit">{{ icon("check") }} {{ t("Save settings") }}</button>
   </div>
 
-  {% if can_use_ntfy %}
+  {% if platform_managed %}
   <div class="stack settings-panel settings-panel-stack" id="settings-panel-notifications" role="tabpanel" data-settings-panel="notifications" aria-labelledby="settings-tab-notifications"{% if settings_tab != 'notifications' %} hidden{% endif %}>
-    <div class="card stack" data-settings-panel-card="connection">
-      <h2 class="section-heading">{{ icon("wifi") }} Connection</h2>
-      <label class="check">
-        <input type="checkbox" name="ntfy_enabled" value="1" {% if ntfy_enabled %}checked{% endif %} />
-        Send phone alerts via ntfy
-      </label>
-      <p class="hint">Configure below, then turn this on. Nothing is sent while alerts are off. Install the ntfy app and subscribe to the same topic. Each household member has their own topic; blank server uses the household default ({{ ntfy_household_server }}).</p>
-      <label>
-        Server
-        <input type="text" name="ntfy_server" value="{{ ntfy_server }}" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="{{ ntfy_household_server }}" />
-      </label>
-      {% if session_role == 'admin' %}
-      <p class="hint">As admin, the server you save becomes the household default. Leave topic/token as your own alerts.</p>
+    {% from "stonepi/alerts.html" import notifications_card %}
+    <div class="stack" data-settings-panel-card="connection">
+      {% if notifications_card_state %}
+      {{ notifications_card(notifications_card_state) }}
       {% else %}
-      <p class="hint">Leave server blank (or matching the household default) to use {{ ntfy_household_server }}.</p>
+      <div class="card stack">
+        <h2 class="section-heading">{{ filter_icon("notifications") }} Phone alerts</h2>
+        <p class="lede">Phone alerts need StonePi sign-in. When NewsCast runs on its own, it doesn't send alerts.</p>
+      </div>
       {% endif %}
-      <label>
-        Topic
-        <input type="text" name="ntfy_topic" value="{{ ntfy_topic }}" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="your-hard-to-guess-topic" />
-      </label>
-      <p class="hint">On public ntfy.sh, treat the topic name like a password.</p>
-      <label>
-        Access token
-        <input type="password" name="ntfy_token" autocomplete="off" placeholder="{{ ntfy_token.hint or 'Optional bearer token' }}" />
-      </label>
-      <p class="hint">
-        {% if ntfy_token.set %}Token saved from {{ ntfy_token.source }} ({{ ntfy_token.hint }}). Leave blank to keep it.{% else %}Optional. Needed for private ntfy servers or protected topics.{% endif %}
-      </p>
-      <label class="check">
-        <input type="checkbox" name="clear_ntfy_token" value="1" />
-        Clear saved access token
-      </label>
     </div>
-    <div class="card stack" data-settings-panel-card="alerts">
-      <h2 class="section-heading">{{ filter_icon("notifications") }} When to notify</h2>
-      <p class="hint">These only apply when phone alerts are enabled above.</p>
-      <label class="check">
-        <input type="checkbox" name="ntfy_notify_on_publish" value="1" {% if ntfy_notify_on_publish %}checked{% endif %} />
-        When today’s paper is published
-      </label>
-      <label class="check">
-        <input type="checkbox" name="ntfy_notify_on_push" value="1" {% if ntfy_notify_on_push %}checked{% endif %} />
-        When today’s paper reaches the reader
-      </label>
-      <p class="hint">OPDS-only downloads are not tracked. Use the publish alert if you never push.</p>
-    </div>
-    <button class="btn btn-primary btn-with-icon settings-save" type="submit">{{ icon("check") }} {{ t("Save settings") }}</button>
   </div>
   {% endif %}
 
-  {% if is_admin %}
+  {% if is_admin and not platform_managed %}
   <div class="stack settings-panel" id="settings-panel-update-form" role="tabpanel" data-settings-panel="update" aria-labelledby="settings-tab-update"{% if settings_tab != 'update' %} hidden{% endif %}>
     <div class="card stack" data-settings-panel-card="repo">
       <h2 class="section-heading">{{ filter_icon("update") }} Updates</h2>
@@ -722,9 +721,6 @@
             {% if user.role != 'admin' and user.can_add_custom_sources %}
             <span class="chip chip-quiet">Custom feeds</span>
             {% endif %}
-            {% if user.role == 'admin' or user.can_use_ntfy %}
-            <span class="chip chip-quiet">Phone alerts</span>
-            {% endif %}
             {% if user.role == 'admin' or user.can_view_status %}
             <span class="chip chip-quiet">Status</span>
             {% endif %}
@@ -736,7 +732,7 @@
       </div>
 
       {% if user.role == 'admin' %}
-      <p class="hint">Admin accounts always have custom feeds, phone alerts, and Status. Change the admin password under <a href="{{ stonepi_home_url }}/settings?tab=general#account-password">StonePi → Settings → General</a> when SSO is on.</p>
+      <p class="hint">Admin accounts always have custom feeds and Status. Change the admin password under <a href="{{ stonepi_home_url }}/settings?tab=general#account-password">StonePi → Settings → General</a> when SSO is on.</p>
       {% else %}
       <form method="post" action="/settings/users/{{ user.id }}" class="stack user-edit-form" autocomplete="off">
         <fieldset class="user-fieldset">
@@ -746,13 +742,6 @@
             <span>
               Custom feed URLs
               <span class="user-perm-hint">Let them paste RSS/Atom URLs on Feeds and Catalog. Off by default.</span>
-            </span>
-          </label>
-          <label class="check">
-            <input type="checkbox" name="can_use_ntfy" value="1" {% if user.can_use_ntfy %}checked{% endif %} />
-            <span>
-              Phone alerts (ntfy)
-              <span class="user-perm-hint">Shows a Notifications tab so they can set their own topic. Off by default.</span>
             </span>
           </label>
           <label class="check">
@@ -846,13 +835,6 @@
           </span>
         </label>
         <label class="check">
-          <input type="checkbox" name="can_use_ntfy" value="1" />
-          <span>
-            Phone alerts (ntfy)
-            <span class="user-perm-hint">Optional. They configure their own topic after you enable this.</span>
-          </span>
-        </label>
-        <label class="check">
           <input type="checkbox" name="can_view_status" value="1" />
           <span>
             Status page
@@ -887,12 +869,15 @@
       </label>
       <button class="btn btn-secondary btn-with-icon" type="submit">{{ icon("upload") }} Restore backup</button>
     </form>
+    {% if not platform_managed %}
     <form method="post" action="/settings/updates/rollback" data-confirm="Roll back to the previous app?" data-confirm-detail="This puts the last-good app files back and restarts. Your data stay as they are." data-confirm-ok="Roll back">
       <button class="btn btn-secondary btn-with-icon" type="submit">{{ icon("restart") }} Roll back last app</button>
     </form>
+    {% endif %}
   </div>
 </div>
 
+{% if not platform_managed %}
 <div class="stack settings-panel" id="settings-panel-update" role="tabpanel" data-settings-panel="update" aria-labelledby="settings-tab-update"{% if settings_tab != 'update' %} hidden{% endif %}>
   <div class="card stack" data-settings-panel-card="install">
     <h2 class="section-heading">{{ filter_icon("update") }} Check and install</h2>
@@ -906,6 +891,7 @@
     {% endif %}
   </div>
 </div>
+{% endif %}
 {% endif %}
 
 <div class="stack settings-panel" id="settings-panel-categories" role="tabpanel" data-settings-panel="categories" aria-labelledby="settings-tab-categories"{% if settings_tab != 'categories' %} hidden{% endif %}>

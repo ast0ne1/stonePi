@@ -6,12 +6,21 @@
   <div class="hero-row">
     <div class="hero-copy">
       <h1>Health</h1>
-      <p class="lede">Host status, disk, backup, and whether each app is responding.</p>
+      <p class="lede">Host status, disk, backup, listening ports, and whether each app is responding.</p>
       <p class="muted hero-meta">{{ hostname }}.local · StonePi {{ platform_version }}</p>
     </div>
     <a class="btn btn-ghost btn-with-icon" href="{{ cockpit_url }}">{{ svg('cockpit') }} Cockpit</a>
   </div>
 </section>
+
+{% if health_checking %}
+<aside class="overview-alert is-attention" role="status">
+  <div>
+    <p class="overview-alert-level">checking…</p>
+    <p class="overview-alert-title">Gathering host and app health</p>
+  </div>
+</aside>
+{% endif %}
 
 {% set watch_level = (watch.level or 'healthy')|lower %}
 {% if watch_level != 'healthy' %}
@@ -19,6 +28,7 @@
   <div>
     <p class="overview-alert-level">{{ watch_level }}</p>
     <p class="overview-alert-title">{{ watch.summary }}</p>
+    {% if watch.summary_detail %}<p class="overview-alert-detail">{{ watch.summary_detail }}</p>{% endif %}
   </div>
   {% if watch.checked_at %}
   <p class="overview-alert-checked">Checked {{ watch.checked_at[:19]|replace('T', ' ') }} UTC</p>
@@ -60,7 +70,93 @@
       <p class="muted">{{ backup_summary.detail }}</p>
     </section>
   </div>
+  <div class="health-stats-row">
+    <section class="card stat">
+      <p class="stat-label muted"><span class="stat-icon" aria-hidden="true">{{ svg('platform') }}</span> Memory</p>
+      {% if mem_pct is not none %}
+      <strong>{{ mem_pct }}%</strong>
+      {% else %}
+      <strong>—</strong>
+      {% endif %}
+      <p class="muted">RAM in use</p>
+    </section>
+    <section class="card stat">
+      <p class="stat-label muted"><span class="stat-icon" aria-hidden="true">{{ svg('platform') }}</span> Temperature</p>
+      {% if temp_c is not none %}
+      <strong>{{ temp_c }}°C</strong>
+      {% else %}
+      <strong>—</strong>
+      {% endif %}
+      <p class="muted">CPU / SoC</p>
+    </section>
+  </div>
+  <div class="health-stats-row">
+    <section class="card stat">
+      <p class="stat-label muted"><span class="stat-icon" aria-hidden="true">{{ svg('platform') }}</span> Uptime</p>
+      <strong>{{ uptime or '—' }}</strong>
+      <p class="muted">Since last boot</p>
+    </section>
+    <section class="card stat{% if not notifications_ok %} is-warn{% endif %}">
+      <p class="stat-label muted"><span class="stat-icon" aria-hidden="true">{{ svg('platform') }}</span> Notify</p>
+      <strong>{% if notifications_ok %}OK{% else %}Down{% endif %}</strong>
+      <p class="muted">
+        ntfy {% if destinations.ntfy.configured %}on{% else %}off{% endif %}
+        · TRMNL {% if destinations.trmnl.configured %}on ({{ destinations.trmnl.displays }} display{{ '' if destinations.trmnl.displays == 1 else 's' }}){% else %}off{% endif %}
+      </p>
+    </section>
+  </div>
 </div>
+
+{% if hardware is defined or ntp is defined %}
+<section class="card remote-access-card">
+  <p class="stat-label muted remote-access-title">
+    <span class="stat-icon" aria-hidden="true">{{ svg('platform') }}</span>
+    Hardware &amp; time
+  </p>
+  <div class="remote-access-cols">
+    {% if hardware %}
+    <div class="remote-access-col">
+      <span class="meta-label">Power</span>
+      <span class="pill compact">
+        {% if hardware.undervoltage %}
+        <span class="dot bad"></span>Undervoltage
+        {% elif hardware.throttling %}
+        <span class="dot warn"></span>Throttled
+        {% else %}
+        <span class="dot ok"></span>OK
+        {% endif %}
+      </span>
+    </div>
+    <div class="remote-access-col">
+      <span class="meta-label">CPU freq</span>
+      <span class="pill compact">{% if hardware.cpu_freq_mhz %}{{ hardware.cpu_freq_mhz }} MHz{% else %}—{% endif %}</span>
+    </div>
+    <div class="remote-access-col">
+      <span class="meta-label">Boots</span>
+      <span class="pill compact">{% if hardware.boot_count is not none %}{{ hardware.boot_count }}{% else %}—{% endif %}</span>
+    </div>
+    {% endif %}
+    {% if ntp %}
+    <div class="remote-access-col">
+      <span class="meta-label">NTP</span>
+      <span class="pill compact">
+        {% if ntp.synchronized is none %}
+        <span class="dot warn"></span>—
+        {% elif ntp.synchronized %}
+        <span class="dot ok"></span>Synced
+        {% else %}
+        <span class="dot bad"></span>Not synced
+        {% endif %}
+      </span>
+    </div>
+    <div class="remote-access-col">
+      <span class="meta-label">Timezone</span>
+      <span class="pill compact"><code>{{ ntp.timezone or '—' }}</code></span>
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
 
 <section class="card remote-access-card" data-remote-access-card>
   {% set net = network or {} %}
@@ -103,8 +199,9 @@
       <span class="meta-label">MagicDNS</span>
       <span class="pill compact">
         <span class="dot {% if ts.magicdns or ts.magicdns_name %}ok{% else %}bad{% endif %}"></span>
-        {% if ts.access_url %}
-        <a class="remote-access-magicdns" href="{{ ts.access_url }}">{{ ts.magicdns_name or ts.access_url }}</a>
+        {# The MagicDNS name only; the tailnet IP lives on Settings -> Network. #}
+        {% if ts.magicdns_name and ts.serve_http and ts.access_url %}
+        <a class="remote-access-magicdns" href="{{ ts.access_url }}">{{ ts.magicdns_name }}</a>
         {% elif ts.magicdns_name %}
         <code>{{ ts.magicdns_name }}</code>
         {% elif ts.magicdns %}
@@ -115,45 +212,83 @@
       </span>
     </div>
   </div>
+  {% if listening is defined and listening.appliance %}
+  <div class="network-listening">
+    <span class="meta-label">Listening ports</span>
+    {% if listening.unexpected %}
+    <p class="muted" style="color: var(--error);">Unexpected non-loopback listeners:
+      {% for row in listening.unexpected %}{{ row.proto }}/{{ row.port }}{% if not loop.last %}, {% endif %}{% endfor %}
+    </p>
+    {% else %}
+    <p class="muted">No unexpected non-loopback listeners (apps stay on 127.0.0.1).</p>
+    {% endif %}
+    <p class="muted">
+      {% for row in listening.listeners[:12] %}
+      <code>{{ row.proto }}/{{ row.port }}</code>{% if not loop.last %} · {% endif %}
+      {% else %}
+      —
+      {% endfor %}
+    </p>
+  </div>
+  {% endif %}
 </section>
 
-<div class="section-head">
-  <h2>Apps</h2>
-  {% if cards %}
-  <p class="muted">{{ healthy_count }} of {{ cards|length }} responding</p>
-  {% endif %}
-</div>
+{% if journal_errors is defined and journal_errors.appliance and journal_errors.entries %}
+<section class="card remote-access-card">
+  <p class="stat-label muted remote-access-title">
+    <span class="stat-icon" aria-hidden="true">{{ svg('platform') }}</span>
+    Recent errors
+  </p>
+  <pre class="muted" style="max-height:10rem;overflow:auto;font-size:0.8rem;white-space:pre-wrap;">{% for line in journal_errors.entries[-8:] %}{{ line }}
+{% endfor %}</pre>
+</section>
+{% endif %}
+
 {% if cards %}
-<div class="service-grid health-app-grid">
-  {% for card in cards %}
-  <section class="card service-card service-card-health is-managed{% if card.enabled is defined and not card.enabled %} is-disabled{% endif %}{% if not card.health.ok %} is-unhealthy{% endif %}" data-expand-card>
-    <div class="service-card-actions">
-      <button type="button" class="icon-btn service-expand-btn" data-card-expand aria-expanded="false" aria-label="Show details for {{ card.name }}" title="Details">{{ svg('chevron-down') }}</button>
-      <a class="icon-btn" href="{{ card.url }}" aria-label="Open {{ card.name }}" title="Open">{{ svg('open') }}</a>
-    </div>
-    <div class="service-card-head">
-      {{ service_icon(card.id, card.color or '') }}
-      <div class="service-card-body">
-        <h3><a class="service-card-title-link" href="{{ card.url }}">{{ card.name }}</a></h3>
-        <div class="service-meta" data-health-meta>
-          <div class="service-meta-row" data-health-version>
-            <span class="meta-label">Version</span>
-            <span class="meta-value">{{ card.version or '—' }}</span>
-          </div>
-          <div class="service-meta-row" data-health-url>
-            <span class="meta-label">URL</span>
-            <span class="meta-value">{% set raw_host = (request.headers.get('x-forwarded-host') or request.headers.get('host') or (hostname ~ '.local')).split(',')[0].strip() %}{% set url_scheme = (request.headers.get('x-forwarded-proto') or request.url.scheme)|string %}{% set url_scheme = url_scheme.split(',')[0].strip() %}{% if ':' in raw_host %}{{ url_scheme }}://{{ raw_host.split(':')[0] }}:{{ card.port }}/{% elif card.id == 'dashboard' %}{{ url_scheme }}://{{ raw_host }}/{% else %}{{ url_scheme }}://{{ raw_host }}{{ card.path }}{% endif %}</span>
+<div class="section-head">
+  <p class="muted">{{ healthy_count }} of {{ cards|length }} responding</p>
+</div>
+{% endif %}
+{% if card_groups %}
+<div class="services-groups">
+  {% for group_label, group_cards in card_groups %}
+  <section class="services-group">
+    <h2 class="section-label">{{ group_label }}</h2>
+    <div class="service-grid health-app-grid">
+      {% for card in group_cards %}
+      {% set card_disabled = card.enabled is defined and not card.enabled %}
+      <section class="card service-card service-card-health is-managed{% if card_disabled %} is-disabled{% elif not card.health.ok %} is-unhealthy{% endif %}" data-expand-card>
+        <div class="service-card-actions">
+          <button type="button" class="icon-btn service-expand-btn" data-card-expand aria-expanded="false" aria-label="Show details for {{ card.name }}" title="Details">{{ svg('chevron-down') }}</button>
+          <a class="icon-btn" href="{{ card.url }}" aria-label="Open {{ card.name }}" title="Open">{{ svg('open') }}</a>
+        </div>
+        <div class="service-card-head">
+          {{ service_icon(card.id, card.color or '') }}
+          <div class="service-card-body">
+            <h3><a class="service-card-title-link" href="{{ card.url }}">{{ card.name }}</a></h3>
+            <div class="service-meta" data-health-meta>
+              <div class="service-meta-row" data-health-version>
+                <span class="meta-label">Version</span>
+                <span class="meta-value">{{ card.version or '—' }}</span>
+              </div>
+              <div class="service-meta-row" data-health-url>
+                <span class="meta-label">URL</span>
+                <span class="meta-value">{% set raw_host = (request.headers.get('x-forwarded-host') or request.headers.get('host') or (hostname ~ '.local')).split(',')[0].strip() %}{% set url_scheme = (request.headers.get('x-forwarded-proto') or request.url.scheme)|string %}{% set url_scheme = url_scheme.split(',')[0].strip() %}{% if ':' in raw_host %}{{ url_scheme }}://{{ raw_host.split(':')[0] }}:{{ card.port }}/{% elif card.id == 'dashboard' %}{{ url_scheme }}://{{ raw_host }}/{% else %}{{ url_scheme }}://{{ raw_host }}{{ card.path }}{% endif %}</span>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-    </div>
-    <div class="service-card-foot health-status-foot">
-      <p class="health-status{% if card.health.ok %} is-ok{% else %} is-bad{% endif %}">
-        <span class="dot {% if card.health.ok %}ok{% else %}bad{% endif %}"></span>
-        {% if card.health.ok %}Healthy{% else %}Down{% endif %}
-        <span class="health-status-sep">·</span>
-        <span class="health-status-unit">{% if card.unit_status == 'local' %}local process{% else %}{{ card.unit_status }}{% endif %}</span>
-      </p>
+        <div class="service-card-foot health-status-foot">
+          {# Disabled = household access lock in Auth; the unit may still be running, so show its state after. #}
+          <p class="health-status{% if card_disabled %} is-off{% elif card.health.ok %} is-ok{% else %} is-bad{% endif %}">
+            <span class="dot{% if card_disabled %} off{% elif card.health.ok %} ok{% else %} bad{% endif %}"></span>
+            {% if card_disabled %}Disabled{% elif card.health.ok %}Healthy{% else %}Down{% endif %}
+            <span class="health-status-sep">·</span>
+            <span class="health-status-unit">{% if card.unit_status == 'local' %}local process{% else %}{{ card.unit_status }}{% endif %}</span>
+          </p>
+        </div>
+      </section>
+      {% endfor %}
     </div>
   </section>
   {% endfor %}

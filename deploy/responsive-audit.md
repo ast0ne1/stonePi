@@ -5,6 +5,8 @@ See [ux-stonepi](../.cursor/skills/ux-stonepi/SKILL.md#viewport-tiers-responsive
 
 **Platform cut:** [0.1.6](../CHANGELOG.md) (2026-09-22) ships this contract across portal + apps.
 
+Versions below are the app version each wave **shipped in** (history, not current versions — see [CHANGELOG.md](../CHANGELOG.md) or `python scripts/build_release_zips.py --versions-table`). Notify, Recover and PriceWatch have no audit row yet.
+
 Reference viewports: **375×812**, **800×1280**, **1280×800**, **1280×720**, **1536×864**, **1920×1200** (14"), **1920×1080**.
 
 ## Wave 0 — Spec
@@ -50,7 +52,7 @@ Reference viewports: **375×812**, **800×1280**, **1280×800**, **1280×720**, 
 
 ## Wave 2 — NewsCast + EventTrakr + FileServe
 
-| App | Version | Paths | Status |
+| App | Shipped in | Paths | Status |
 |-----|---------|-------|--------|
 | NewsCast | **0.0.3** | Briefing, Sources, Device/Status, Settings, Send, **Saved**, **Search** | Full-width main ≥1024; Settings 2–3 col; story/feed grids 2–3 col; OPDS wrap |
 | EventTrakr | **0.0.3** | Calendar, detail, Settings | Full-width main ≥1024; Settings 2–3 col; events denser ≥1440 |
@@ -65,7 +67,7 @@ Reference viewports: **375×812**, **800×1280**, **1280×800**, **1280×720**, 
 
 ## Wave 3 — SportGuide + PriceScout + Studio + Pinboard
 
-| App | Version | Paths | Status |
+| App | Shipped in | Paths | Status |
 |-----|---------|-------|--------|
 | SportGuide | **0.0.2** | Now, Sources, Settings | Full-width main ≥1024 |
 | PriceScout | **0.0.2** | Offers, detail, Settings | Full-width main ≥1024; Settings 2-col |

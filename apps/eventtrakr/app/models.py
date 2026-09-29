@@ -120,6 +120,7 @@ class Event(Base):
     is_cancelled: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     calendar_synced: Mapped[bool] = mapped_column(Boolean, default=False)
     google_event_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    origin: Mapped[str] = mapped_column(String(40), default="api")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -149,4 +150,115 @@ class CalendarConnection(Base):
     refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     token_expiry: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     auto_forward_favourites: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SocialAccount(Base):
+    __tablename__ = "social_accounts"
+    __table_args__ = (
+        UniqueConstraint("user_id", "platform", "username", name="uq_social_user_platform_username"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    platform: Mapped[str] = mapped_column(String(30), default="instagram")
+    username: Mapped[str] = mapped_column(String(120), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(200), default="")
+    profile_url: Mapped[str] = mapped_column(String(500), default="")
+    account_type: Mapped[str] = mapped_column(String(40), default="other")
+    tracking_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    schedule_mode: Mapped[str] = mapped_column(String(20), default="global")
+    interval_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    schedule_config: Mapped[str] = mapped_column(Text, default="")
+    last_checked: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_successful_check: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    posts_processed: Mapped[int] = mapped_column(Integer, default=0)
+    events_matched: Mapped[int] = mapped_column(Integer, default=0)
+    events_discovered: Mapped[int] = mapped_column(Integer, default=0)
+    posts_ignored: Mapped[int] = mapped_column(Integer, default=0)
+    ocr_failures: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SocialPost(Base):
+    __tablename__ = "social_posts"
+    __table_args__ = (
+        UniqueConstraint("social_account_id", "external_post_id", name="uq_social_post_external"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    social_account_id: Mapped[int] = mapped_column(Integer, ForeignKey("social_accounts.id"), nullable=False, index=True)
+    external_post_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    post_url: Mapped[str] = mapped_column(String(1000), default="")
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    caption: Mapped[str] = mapped_column(Text, default="")
+    media_type: Mapped[str] = mapped_column(String(40), default="")
+    hashtags: Mapped[str] = mapped_column(Text, default="")
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    processing_status: Mapped[str] = mapped_column(String(40), default="pending")
+    caption_text: Mapped[str] = mapped_column(Text, default="")
+    ocr_text: Mapped[str] = mapped_column(Text, default="")
+    combined_text: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SocialPostMedia(Base):
+    __tablename__ = "social_post_media"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    social_post_id: Mapped[int] = mapped_column(Integer, ForeignKey("social_posts.id"), nullable=False, index=True)
+    media_url: Mapped[str] = mapped_column(String(2000), default="")
+    media_type: Mapped[str] = mapped_column(String(40), default="image")
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    local_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    ocr_text: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class EventSocialLink(Base):
+    __tablename__ = "event_social_links"
+    __table_args__ = (
+        UniqueConstraint("event_id", "social_post_id", name="uq_event_social_post"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[int] = mapped_column(Integer, ForeignKey("events.id"), nullable=False, index=True)
+    social_post_id: Mapped[int] = mapped_column(Integer, ForeignKey("social_posts.id"), nullable=False, index=True)
+    link_kind: Mapped[str] = mapped_column(String(40), default="enrichment")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class EventDiscovery(Base):
+    __tablename__ = "event_discoveries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    social_post_id: Mapped[int] = mapped_column(Integer, ForeignKey("social_posts.id"), nullable=False, index=True)
+    social_account_id: Mapped[int] = mapped_column(Integer, ForeignKey("social_accounts.id"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(500), default="")
+    start_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    end_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    location: Mapped[str] = mapped_column(String(300), default="")
+    event_type: Mapped[str] = mapped_column(String(100), default="")
+    cost: Mapped[str] = mapped_column(String(100), default="")
+    extracted_text: Mapped[str] = mapped_column(Text, default="")
+    confidence: Mapped[str] = mapped_column(String(20), default="medium")
+    status: Mapped[str] = mapped_column(String(20), default="candidate", index=True)
+    reasons_json: Mapped[str] = mapped_column(Text, default="[]")
+    event_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("events.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class EventUpdate(Base):
+    __tablename__ = "event_updates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[int] = mapped_column(Integer, ForeignKey("events.id"), nullable=False, index=True)
+    social_post_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("social_posts.id"), nullable=True)
+    update_kind: Mapped[str] = mapped_column(String(40), default="info")
+    summary: Mapped[str] = mapped_column(Text, default="")
+    priority: Mapped[str] = mapped_column(String(20), default="normal")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

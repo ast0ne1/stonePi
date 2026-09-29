@@ -26,6 +26,20 @@
 <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M6 16H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
 {%- elif name == 'close' -%}
 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+{%- elif name == 'key' -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="3.5"/><path d="M10.5 13.5 20 4v3h-3v3h-3"/></svg>
+{%- elif name == 'lock' -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="10" width="12" height="10" rx="2"/><path d="M9 10V8a3 3 0 0 1 6 0v2"/></svg>
+{%- elif name == 'eye' -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 6 12 6s9.5 6 9.5 6-3.5 6-9.5 6S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.5"/></svg>
+{%- elif name == 'eye-off' -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 10.6A2.5 2.5 0 0 0 13.4 13.4"/><path d="M7.1 7.3C4.6 8.8 2.5 12 2.5 12S6 18 12 18c1.7 0 3.2-.5 4.5-1.2"/><path d="M14.1 6.4C13.4 6.1 12.7 6 12 6c-6 0-9.5 6-9.5 6a16 16 0 0 0 3.2 3.4"/><path d="M16.8 14.3A9 9 0 0 0 21.5 12S18 6 12 6"/></svg>
+{%- elif name == 'more' -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg>
+{%- elif name == 'chevron-left' -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg>
+{%- elif name == 'chevron-right' -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 6 6 6-6 6"/></svg>
 {%- elif name == 'cockpit' -%}
 <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="12" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M8 11h2M14 11h2"/></svg>
 {%- elif name == 'network' -%}
@@ -36,6 +50,8 @@
 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><circle cx="17" cy="9" r="2.5"/><path d="M14.5 19a4.5 4.5 0 0 1 6 0"/></svg>
 {%- elif name == 'auth' -%}
 <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="10" width="12" height="10" rx="2"/><path d="M9 10V8a3 3 0 0 1 6 0v2"/><circle cx="12" cy="15" r="1.2" fill="currentColor" stroke="none"/></svg>
+{%- elif name in ('notify', 'notifications') -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a5 5 0 0 1 5 5v2.2l1.4 2.8H5.6L7 11.2V9a5 5 0 0 1 5-5z"/><path d="M10 18a2 2 0 0 0 4 0"/></svg>
 {%- elif name == 'newscast' -%}
 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5z"/><path d="M8 9h8M8 12h8M8 15h5"/></svg>
 {%- elif name == 'fileserve' -%}
@@ -50,6 +66,10 @@
 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v3H4zM6 10h12v9H6z"/><path d="M9 13h6M9 16h4"/></svg>
 {%- elif name == 'sportguide' -%}
 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 2"/></svg>
+{%- elif name == 'pricewatch' -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/><path d="M16.5 5.5 18 4M7.5 5.5 6 4"/></svg>
+{%- elif name in ('recover', 'recovery') -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 20 19H4z"/><path d="M12 10v4"/><circle cx="12" cy="16.5" r="1" fill="currentColor" stroke="none"/></svg>
 {%- elif name == 'platform' -%}
 <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M12 7.5v9"/><path d="M8 10.5h3M8 13.5h3"/><path d="M13 10.5h3M13 13.5h3"/></svg>
 {%- elif name == 'disk' -%}
@@ -62,6 +82,8 @@
 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6v7H4zM14 4h6v16h-6zM4 4h6v7H4z"/></svg>
 {%- elif name == 'remote' -%}
 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c2.4 2.8 3.7 5.4 3.7 8s-1.3 5.2-3.7 8M12 4C9.6 6.8 8.3 9.4 8.3 12s1.3 5.2 3.7 8"/></svg>
+{%- elif name == 'bell' -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>
 {%- elif name == 'display' -%}
 <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="13" rx="2"/><path d="M8 21h8M12 18v3"/></svg>
 {%- elif name == 'vault' -%}
@@ -87,7 +109,7 @@
 
 {% macro service_icon(app_id, color='') -%}
 <span class="service-icon" {% if color %}style="--tile-accent: {{ color }}"{% endif %} aria-hidden="true">
-  {{ svg(app_id if app_id in ['dashboard','auth','newscast','fileserve','eventtrakr','platform','pinboard','studio','pricescout','sportguide'] else 'platform') }}
+  {{ svg(app_id if app_id in service_icon_ids else 'platform') }}
 </span>
 {%- endmacro %}
 
@@ -111,6 +133,8 @@
   <path d="M12 5v10"/><path d="M8 11l4 4 4-4"/><path d="M5 19h14"/>
   {%- elif name == "about" -%}
   <circle cx="12" cy="12" r="8"/><path d="M12 11.2V17"/><circle cx="12" cy="8" r="1.1" fill="currentColor" stroke="none"/>
+  {%- elif name == "notifications" -%}
+  <path d="M12 4a5 5 0 0 1 5 5v2.2l1.4 2.8H5.6L7 11.2V9a5 5 0 0 1 5-5z"/><path d="M10 18a2 2 0 0 0 4 0"/>
   {%- else -%}
   <circle cx="12" cy="12" r="7"/>
   {%- endif -%}

@@ -1,9 +1,13 @@
 [project]
 name = "stonepi-display"
-version = "0.1.1"
-description = "StonePi Display service: TRMNL webhook, layout, merge_variables push"
+version = "0.3.0"
+description = "StonePi Display service: multi-Display compositions, TRMNL webhook, capabilities"
 requires-python = ">=3.11"
 dependencies = ["httpx>=0.27"]
+
+[project.optional-dependencies]
+# Admin preview of the universal template (Notify installs this via requirements.txt).
+preview = ["python-liquid>=2,<3"]
 
 [build-system]
 requires = ["setuptools>=68"]

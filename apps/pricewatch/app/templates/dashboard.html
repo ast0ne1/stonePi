@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_filter_icon.html" import filter_icon %}
+{% block title %}Watches · PriceWatch{% endblock %}
+{% block content %}
+<section class="hero">
+  <div class="hero-row hero-row-inline">
+    <h1>Watches</h1>
+    <a class="btn btn-primary btn-with-icon" href="/watches/new">{{ icon("plus") }}<span class="btn-label-full">Add watch</span><span class="btn-label-short">Add</span></a>
+  </div>
+  <div class="page-status">
+    <span class="page-status-dot{% if not watches %} is-muted{% elif counts.strike_found %} is-busy{% elif counts.error %} is-error{% endif %}" aria-hidden="true"></span>
+    <p class="page-status-text">
+      {% if not watches %}Nothing watched yet.
+      {% else %}{{ watching_count }} watching{% if counts.strike_found %} · {{ counts.strike_found }} strike{{ 's' if counts.strike_found != 1 }}{% endif %}{% if counts.paused %} · {{ counts.paused }} paused{% endif %}{% if next_check %} · next check {{ next_check }}{% endif %}
+      {% endif %}
+    </p>
+    <button class="page-status-action" type="button" data-open-sheet="watches-help" aria-label="About watches" title="About watches">
+      {{ filter_icon("info") }}
+    </button>
+  </div>
+</section>
+
+{% if not watches %}
+<div class="empty card stack">
+  <h2 class="section-heading">{{ filter_icon("watches") }} No watches yet</h2>
+  <p class="hint">A watch is one product plus the price you’d pay. PriceWatch checks retailers on a schedule and pings you when an offer hits your target.</p>
+</div>
+{% else %}
+<div class="watch-groups">
+  {% for group_id, group_label, rows in watch_groups %}
+  <section class="watch-group" data-watch-group="{{ group_id }}">
+    <h2 class="section-label">{{ group_label }}</h2>
+    <ul class="group-card">
+      {% for w in rows %}
+      <li class="watch-row{% if w.status == 'paused' %} is-off{% endif %}">
+        <a class="watch-row-link" href="/watches/{{ w.id }}">
+          {% if w.image_url %}
+          <img class="watch-thumb" src="{{ w.image_url }}" alt="" width="40" height="40" loading="lazy" />
+          {% else %}
+          <span class="watch-thumb watch-thumb-fallback" aria-hidden="true">{{ filter_icon("watches") }}</span>
+          {% endif %}
+          <span class="watch-row-copy">
+            <span class="watch-row-title">{{ w.product_name }}</span>
+            <span class="watch-row-meta">{% if w.variant %}{{ w.variant }} · {% endif %}{% if w.last_checked_at %}checked {{ w.last_checked_at[11:16] }}{% else %}not checked yet{% endif %}</span>
+            <span class="watch-health watch-health-{{ w.status }}">
+              <span class="watch-health-dot" aria-hidden="true"></span>
+              {{ status_labels.get(w.status, w.status|replace('_', ' ')|capitalize) }}
+            </span>
+          </span>
+          <span class="watch-row-price">
+            <strong>{{ format_price(w.current_lowest, w.currency) }}</strong>
+            <span class="watch-row-meta">≤ {{ format_price(w.target_price, w.currency) }}</span>
+          </span>
+          <span class="watch-row-chevron" aria-hidden="true">{{ filter_icon("chevron") }}</span>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="sheet" hidden data-sheet="watches-help">
+  <div class="sheet-card card">
+    <h2>How watches work</h2>
+    <div class="help-sheet-body">
+      <p><strong>Watching</strong> — PriceWatch checks retailers on each watch’s schedule.</p>
+      <p><strong>Strike found</strong> — an offer met your target price and conditions. With Notifications ntfy on, you’re alerted when it’s found and again if the price drops further. Re-arm to clear the strike and start fresh.</p>
+      <p><strong>Error / No results</strong> — the last check failed or found no offers; PriceWatch keeps trying on schedule.</p>
+      <p><strong>Paused</strong> — kept with its history, but not checked.</p>
+      <p><strong>Refresh</strong> in the top bar checks every active watch now.</p>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" type="button" data-close-sheet>Close</button>
+    </div>
+  </div>
+</div>
+{% endblock %}

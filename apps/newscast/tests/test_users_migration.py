@@ -147,3 +147,26 @@ def test_migrate_creates_admin_and_owns_rows(tmp_path: Path, monkeypatch):
     # admin_password is instance-only; reader keys may be empty on this fixture
     assert setting is None or True
     db.close()
+
+
+def test_feeds_rebuild_keeps_homepage_and_rss_urls(tmp_path: Path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'feeds.db'}", future=True)
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "CREATE TABLE feeds (id INTEGER PRIMARY KEY, name VARCHAR(200) NOT NULL, "
+                "url VARCHAR(1000) NOT NULL UNIQUE, homepage_url VARCHAR(1000), rss_url VARCHAR(1000), "
+                "type VARCHAR(20))"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO feeds (name, url, homepage_url, rss_url, type) "
+                "VALUES ('BBC', 'https://example.com/rss', 'https://example.com/', 'https://example.com/rss', 'rss')"
+            )
+        )
+        assert users._needs_feeds_rebuild(conn)
+        users._rebuild_feeds_table(conn)
+        row = conn.execute(text("SELECT homepage_url, rss_url FROM feeds")).one()
+    assert row.homepage_url == "https://example.com/"
+    assert row.rss_url == "https://example.com/rss"

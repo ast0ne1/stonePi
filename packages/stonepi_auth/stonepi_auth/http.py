@@ -20,14 +20,21 @@ def exposure_file_path() -> Path:
 
 
 def _candidate_exposure_files() -> list[Path]:
+    """Paths to read for exposure mode.
+
+    If STONEPI_EXPOSURE_FILE is set, only that path is consulted (so tests and
+    explicit overrides are not overridden by a leftover repo data/exposure).
+    """
+    explicit = os.environ.get("STONEPI_EXPOSURE_FILE", "").strip()
+    if explicit:
+        return [Path(explicit)]
     seen: set[Path] = set()
     out: list[Path] = []
     for path in (
-        Path(os.environ["STONEPI_EXPOSURE_FILE"]) if os.environ.get("STONEPI_EXPOSURE_FILE", "").strip() else None,
         Path("/var/lib/stonepi/exposure"),
         _repo_data_exposure(),
     ):
-        if path is None or path in seen:
+        if path in seen:
             continue
         seen.add(path)
         out.append(path)
@@ -152,23 +159,31 @@ def request_public_origin(request: Any) -> str:
 def portal_home_url(request: Any, fallback: str = "") -> str:
     """Dashboard launcher URL for app nav / Back to apps.
 
-    Returns an absolute URL so PrefixRewriter does not turn ``/`` into
-    ``/auth/``, ``/news/``, etc. On path installs (nginx / Linux), prefer the
-    request host (``.home`` / ``.local`` / IP) so Home stays on the hostname
-    you opened. On Windows split-port solo-dev, each app has its own port —
-    use the dashboard ``PUBLIC_ORIGIN`` fallback instead of the app's origin.
+    Returns an absolute origin **without** a trailing slash so callers can join
+    paths as ``{{ stonepi_home_url }}/notify/...`` safely. On path
+    installs (nginx / Linux), prefer the request host (``.home`` / ``.local`` /
+    IP). On Windows split-port solo-dev, use the dashboard ``PUBLIC_ORIGIN``.
     """
     fb = (fallback or "").rstrip("/")
     # Windows run-dev: Studio is :8005, Dashboard is :8010 — request origin
     # would loop Home back into the app. Prefer the configured portal URL.
     if os.name == "nt" and fb:
-        return fb + "/"
+        return fb
     origin = request_public_origin(request)
     if origin:
-        return origin + "/"
+        return origin.rstrip("/")
     if fb:
-        return fb + "/"
-    return "/"
+        return fb
+    return ""
+
+
+def portal_href(home: str, path: str = "/") -> str:
+    """Join portal home + path without producing ``//`` or rewriting into an app prefix."""
+    base = (home or "").rstrip("/")
+    rel = path if path.startswith("/") else f"/{path}"
+    if not base:
+        return rel
+    return f"{base}{rel}"
 
 
 def browser_auth_url(configured: str, *, routing: str = "path") -> str:

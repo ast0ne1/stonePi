@@ -17,8 +17,8 @@ Household “what’s worth reading today” without five news apps — fetch, d
 
 - **Grants / capabilities:** `can_add_custom_sources`, `can_use_ntfy`, `can_view_status` (Dashboard → Users).
 - **Exposure:** home network vs internet-facing changes OPDS / X3 / sync token behaviour — see [deploy/SECURITY.md](../../deploy/SECURITY.md).
-- **Vault keys:** `OPENAI_API_KEY`, `X3_SYNC_TOKEN`, `NEWSCAST_NTFY_TOKEN`, `NEWSCAST_READER_SSH_PASSWORD`, and related secrets preferred from Settings → Vault.
-- **Display:** `GET …/api/display` for dashboard → TRMNL (denied at nginx edge when public).
+- **Vault keys:** `OPENAI_API_KEY`, `X3_SYNC_TOKEN`, `NEWSCAST_READER_SSH_PASSWORD`, and related secrets preferred from Settings → Vault. Phone alerts use the shared **Notify** Destinations token (`STONEPI_NTFY_TOKEN`).
+- **Display:** `GET …/api/display` for Notify → TRMNL (denied at nginx edge when public).
 - Under StonePi, apps bind loopback; nginx serves `/news/`. Per-app LAN HTTPS is for **solo** runs only.
 
 <p align="center">
@@ -72,22 +72,32 @@ The reader talks to **one NewsCast at a time**. Set an **Instance name** so the 
 
 On Settings → Reader, pick **Xteink** or **Kobo**. Both use OPDS for today’s frozen EPUB and Send-tab files. Under StonePi, catalog URLs are typically `http://stonepi.local/news/opds` or `…/opds/u/<username>` (path may include the `/news` prefix depending on reverse-proxy rewrite — copy the URL from Status).
 
-### Xteink (CrossPoint)
+### Xteink (CrossPoint or CrossInk)
 
-Add the OPDS server in CrossPoint. Leave username/password blank unless catalog login is on (Basic can crash CrossPoint). Push uses HTTP File Transfer to the reader host (default `crosspoint.local`). File Transfer must be on for **Push now**.
+Add the OPDS server in CrossPoint or CrossInk. Leave username/password blank unless catalog login is on (Basic can crash CrossPoint). Push uses HTTP File Transfer to the reader host (default `crosspoint.local`; CrossInk keeps that name). File Transfer must be on for **Push now**.
+
+The paper uses one layout that reads the same on both firmwares:
+- **Selectors:** simple ones only (`tag`, `.class`, `tag.class`).
+- **Page breaks:** only at new chapter files (cover, section page, source).
+- **Hierarchy:** bold, italic and spacing, since neither firmware applies font size, colour or borders.
+
+**Reader firmware** (Auto-detect / CrossPoint / CrossInk) only adds optional CrossInk extras. **Keep papers on reader** prunes older NewsCast papers from your folder on each push. Re-sending an unchanged paper is skipped; a changed one replaces NewsCast's own copy.
 
 ### Kobo (KOReader)
 
 Add the OPDS catalog in KOReader. Push uses KOReader’s **SSH server** (default port 2222) and SFTP into `/mnt/onboard/News` (or your chosen folder).
 
-### Send, Library, and queue
+### Reader: Status, Library, and Send
 
-| Action | What happens |
-|--------|----------------|
-| **Add to Library** | Stores EPUB/PDF for OPDS **Library** only — no device push |
-| **Queue for reader** (checkbox or per-file button) | Enqueues a `crosspoint` sync task; label is **File · {name}**, never “Today’s paper” |
-| **Queue for later** | Enqueues today’s frozen paper (if published) + library files; does not upload yet |
-| **Push now** | Enqueues then flushes pending uploads while the reader is online |
+The **Reader** section has one job per tab:
+
+| Tab | Purpose | Actions |
+|-----|---------|---------|
+| **Status** | Is everything working? (read-only) | Stories stored breakdown, delivery, health, catalog URL + QR code, downloads |
+| **Library** | Your own files in the reader's OPDS Library | **Add to Library** (optionally **Also send to reader**); per file **Send to reader** (shows *Waiting to send* once queued) or delete |
+| **Send** | Get things onto the reader | **Check reader**, **Push now** (sends everything queued); **Today's paper**: **Generate** and **Send to reader** (the paper alone); the **Queue**, with cancel per item |
+
+Queued items are `crosspoint` sync tasks. Files show as **File · {name}** and never as "Today's paper". Nothing uploads until the reader is online, via **Push now** or push-when-online.
 
 OPDS catalogs already list Daily Briefings and Library. Queue state does not affect OPDS visibility.
 
@@ -114,9 +124,9 @@ Sources shows last parse item count, how many were **new**, and a short reason w
 
 Patched firmware can poll Sync-style APIs (`/api/v1/device/tasks`, etc.). Prefer Tailscale or a strong catalog token when internet-facing — see SECURITY.md.
 
-## Notifications (ntfy)
+## Notifications
 
-Settings → Notifications: server, topic, token; events for publish and/or push. Non-admins need **Allow ntfy**.
+Phone alerts go through **StonePi Notify** (Destinations + Event prefs). Non-admins need the **Phone alerts** (`can_use_ntfy`) grant on Dashboard → Users. NewsCast emits on publish and reader push; day-dedupe stays in-app.
 
 ## Solo / standalone run (optional)
 

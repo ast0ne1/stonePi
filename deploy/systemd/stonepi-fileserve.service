@@ -1,7 +1,9 @@
 [Unit]
 Description=StonePi FileServe
-After=network-online.target
+After=network-online.target stonepi-auth.service
 Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -11,7 +13,7 @@ EnvironmentFile=/etc/stonepi/stonepi.env
 EnvironmentFile=-/etc/stonepi/fileserve.env
 WorkingDirectory=/opt/stonepi/apps/fileserve
 ExecStart=/opt/stonepi/apps/fileserve/.venv/bin/python run.py
-Restart=on-failure
+Restart=always
 RestartSec=5
 NoNewPrivileges=yes
 

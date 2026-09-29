@@ -22,15 +22,18 @@ Users/Updates/Services. Product apps keep their own product settings.
   **Dashboard → Settings → General** (not in each app’s General settings when SSO is on).
 - Prefer shared confirm sheets (NewsCast/FileServe) over bare `confirm()` where
   the shell already has them.
-- Theme/palette: light/dark/auto in header; palette can apply immediately without Save.
-- **Topbar:** brand → theme → optional **global Refresh** (beside logout) → POST sign-out.
+- Light/dark + palette: light/dark/auto on **dashboard header** only (shared `stonepi-theme`); colour palette in Dashboard → Settings → Appearance (`stonepi-palette`). Both apply immediately without Save; product apps consume via `_theme_boot`, no per-app toggles.
+- **Topbar (product apps):** brand → optional **global Refresh** (beside logout) → POST sign-out.
   Product apps with a sync action should follow NewsCast’s Refresh placement.
-- **Settings IA (phone/tablet):** Prefer a **grouped hub → L2 section list → panel**
-  over a long horizontal chip scroller when an app has many settings tabs. NewsCast
-  is the reference: `/settings` hub with labeled groups (icon + title + **subtext** +
-  chevron); `/settings?tab=` opens L2 rows (same icon the panel heading uses + short
-  subtext, never “Open this section”); `/settings?tab=&panel=` shows one card.
-  **Laptop+ (≥1024)** keeps the chip bar + stacked cards. Hide Users/Update under SSO.
+- **Settings IA (every viewport):** Prefer a **grouped hub → L2 section list → one stacked panel**
+  over a chip bar or a multi-column card mosaic. NewsCast is the reference: `/settings`
+  hub with labeled groups (icon + title + **subtext** + chevron); `/settings?tab=` opens
+  L2 rows when a section has more than one card (same icon the panel heading uses + short
+  subtext, never “Open this section”); `/settings?tab=&panel=` shows that one card, stacked.
+  **Laptop+ (≥1024)** uses the same drill-down. The hub stays **one column** of groups
+  (two columns leave gaps when groups are uneven). The L2 list and the open panel stay in a
+  readable column (about 48–56rem), inputs still capped.
+  A tab with a single card skips L2. Hide Users/Update under SSO.
   Full chrome contract: [new-stonepi-app/chrome.md](../new-stonepi-app/chrome.md).
 - **Sheets / mobile:** hoist sheets to `document.body`; clear bottom nav with safe-area;
   do not nest `position:fixed` UI inside scrolling `.main` (iOS).
@@ -74,7 +77,7 @@ main-wide.
 
 - **Sidebar / side rail** turns on at **`min-width: 1024px`** everywhere (dashboard
   and product apps). Portrait tablets at 800px stay on bottom nav — same as phone.
-- Default `.main` prose column ~720px on phone; from **laptop (≥1024)** `.main` / admin pages **fill the column beside the side rail** (no ~860–1200px island). Settings cards use a 2–3 column panel grid.
+- Default `.main` prose column ~720px on phone; from **laptop (≥1024)** `.main` / admin pages **fill the column beside the side rail** (no ~860–1200px island). Settings stay a stacked panel inside a readable column. The settings hub is one column of groups.
 - Dense admin grids (3–4 columns) prefer **`min-width: 1440px`** when a third
   column would crowd tablets.
 - Touch targets stay ≥44px on phone; laptop+ may tighten non-primary rows only

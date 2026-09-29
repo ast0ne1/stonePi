@@ -1,0 +1,10 @@
+{# Last phone-alert delivery — the quickest "is it working?" check. #}
+{% if o.last %}
+  {% if o.last.ok %}
+  <p class="hint last-delivery">Last alert: {{ o.last.ago }}{% if o.last.sent is not none %}, sent to {{ o.last.sent }} phone{{ '' if o.last.sent == 1 else 's' }}{% endif %} &middot; <a class="text-link" href="/history">History</a></p>
+  {% else %}
+  <p class="flash bad last-delivery" role="alert">Last alert failed {{ o.last.ago }}: {{ o.last.message or 'no details' }}. <a class="text-link" href="/history">History</a></p>
+  {% endif %}
+{% else %}
+  <p class="hint last-delivery">No alerts sent yet.</p>
+{% endif %}

@@ -1,36 +1,78 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
 {% block title %}Projects · Studio{% endblock %}
+{% block main_class %} main-create{% endblock %}
 {% block content %}
+{% set art = {"game": "🎮", "guide": "📖", "spa": "🛠️"} %}
 <section class="hero">
-  <h1>Projects</h1>
-  <p class="lede">Sites and games you’ve started in Studio. Open one to chat, build, and publish to FileServe.</p>
-</section>
-
-<section class="card stack">
-  {% if projects %}
-  <ul class="project-list">
-    {% for p in projects %}
-    <li>
-      <a href="/p/{{ p.id }}">
-        <span class="project-name">{{ p.name }}</span>
-        <span class="chip">{{ kind_labels.get(p.kind or 'spa', 'Project') }}</span>
-      </a>
-      <div class="project-actions">
-        <span class="hint">{{ (p.updated_at or '')[:10] }}</span>
-        <form method="post" action="/p/{{ p.id }}/delete" data-confirm="Delete {{ p.name }}?" data-confirm-detail="Workspace files for this project will be removed. Any FileServe page you already published stays until you delete it there." data-confirm-ok="Delete">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-          <button class="icon-btn" type="submit" aria-label="Delete {{ p.name }}" title="Delete">{{ icon("trash") }}</button>
-        </form>
-      </div>
-    </li>
+  <h1>{{ "All projects" if view == "all" else "Projects" }}</h1>
+  <p class="lede">{% if view == "all" %}Every project in the household. Filter by who made it.{% else %}Everything you've started in Studio. Jump back in to play, change it, or share it.{% endif %}</p>
+  {% if is_admin %}
+  <nav class="chips settings-chips project-filter-chips" aria-label="Whose projects">
+    <a class="chip-btn{% if view == 'mine' %} is-active{% endif %}" href="/projects"{% if view == 'mine' %} aria-current="page"{% endif %}>My projects</a>
+    <a class="chip-btn{% if view == 'all' %} is-active{% endif %}" href="/projects?view=all"{% if view == 'all' %} aria-current="page"{% endif %}>All projects</a>
+  </nav>
+  {% if view == "all" and owner_options %}
+  <nav class="chips settings-chips project-filter-chips" aria-label="Filter by person">
+    <a class="chip-btn{% if not owner_filter %} is-active{% endif %}" href="/projects?view=all">Everyone</a>
+    {% for oid, oname in owner_options %}
+    <a class="chip-btn{% if owner_filter == oid %} is-active{% endif %}" href="/projects?view=all&amp;owner={{ oid | urlencode }}">{{ oname }}</a>
     {% endfor %}
-  </ul>
-  {% else %}
-  <div class="empty-state">
-    <h3>Nothing here yet</h3>
-    <p class="hint">Start on <a href="/">Create</a> — pick SPA, Guide, or Game.</p>
-  </div>
+  </nav>
+  {% endif %}
   {% endif %}
 </section>
+
+<ul class="project-grid">
+  {% if view != "all" %}
+  <li>
+    <a class="project-card project-new" href="/">
+      <span class="project-new-plus" aria-hidden="true">{{ icon("plus") }}</span>
+      <strong>Start something new</strong>
+      <span class="hint">A game, a story or a handy app</span>
+    </a>
+  </li>
+  {% endif %}
+  {% for p in projects %}
+  {% set kind = p.kind or 'spa' %}
+  <li>
+    <article class="project-card" data-kind="{{ kind }}">
+      <a class="project-art" href="/p/{{ p.id }}" tabindex="-1" aria-hidden="true">
+        <span class="project-art-emoji">{{ art.get(kind, "✨") }}</span>
+        {% if p.built %}<span class="project-play">▶ Play</span>{% endif %}
+      </a>
+      <div class="project-body">
+        <div class="project-title-row">
+          <div class="project-name-row">
+            <h2><a href="/p/{{ p.id }}">{{ p.name }}</a></h2>
+            <button type="button" class="icon-btn icon-btn-sm is-edit project-rename-inline" data-rename-open data-rename-action="/p/{{ p.id }}/rename" data-rename-name="{{ p.name }}" aria-label="Rename {{ p.name }}" title="Rename">{{ icon("edit") }}</button>
+          </div>
+          <span class="chip">{{ kind_labels.get(kind, 'Project') }}</span>
+        </div>
+        <p class="project-status">
+          {% if p.fileserve_page_id %}<span class="status-dot is-published"></span>Published on FileServe
+          {% elif p.built %}<span class="status-dot is-built"></span>Built, ready to play
+          {% elif p.chats %}<span class="status-dot is-draft"></span>Chatting, not built yet
+          {% else %}<span class="status-dot"></span>Just started{% endif %}
+        </p>
+        <p class="hint project-meta">{% if view == "all" %}{{ "You" if p.is_mine else (p.owner_name or "Someone") }} · {% endif %}Updated {{ p.ago or (p.updated_at or '')[:10] }}{% if p.chats %} · {{ p.chats }} message{{ '' if p.chats == 1 else 's' }}{% endif %}</p>
+        <div class="project-actions">
+          <a class="btn btn-primary btn-sm" href="/p/{{ p.id }}">{{ "Open" if p.built else "Continue" }}</a>
+          <form method="post" action="/p/{{ p.id }}/delete" data-confirm="Delete {{ p.name }}?" data-confirm-detail="Workspace files for this project will be removed. Any FileServe page you already published stays until you delete it there." data-confirm-ok="Delete">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+            <button class="icon-btn" type="submit" aria-label="Delete {{ p.name }}" title="Delete">{{ icon("trash") }}</button>
+          </form>
+        </div>
+      </div>
+    </article>
+  </li>
+  {% endfor %}
+</ul>
+{% if projects %}
+{% set rename_back = "projects" %}
+{% include "_rename_sheet.html" %}
+{% endif %}
+{% if not projects %}
+<p class="hint">{% if view == "all" %}No projects{% if owner_filter %} from this person{% endif %} yet.{% else %}Nothing here yet. Press <strong>Start something new</strong> to make your first one.{% endif %}</p>
+{% endif %}
 {% endblock %}

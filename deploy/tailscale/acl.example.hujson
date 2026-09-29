@@ -1,0 +1,33 @@
+// StonePi example Tailscale ACL (admin console → Access controls).
+// Do NOT auto-apply from the Pi — paste/adapt in the Tailscale admin UI.
+// Restrict which devices can reach StonePi services on the tailnet.
+
+{
+  "tagOwners": {
+    "tag:stonepi": ["autogroup:admin"],
+    "tag:family": ["autogroup:admin"]
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "src": ["tag:family", "autogroup:admin"],
+      "dst": ["tag:stonepi:*"]
+    },
+    {
+      "action": "accept",
+      "src": ["tag:stonepi"],
+      "dst": ["autogroup:internet:*"]
+    }
+  ],
+  "ssh": [
+    {
+      "action": "check",
+      "src": ["autogroup:admin"],
+      "dst": ["tag:stonepi"],
+      "users": ["pi", "root", "autogroup:nonroot"]
+    }
+  ],
+  "hosts": {
+    "stonepi": "100.x.y.z"
+  }
+}

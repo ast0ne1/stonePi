@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_filter_icon.html" import filter_icon %}
+{% block title %}{{ watch.product_name }} · PriceWatch{% endblock %}
+{% block content %}
+<section class="hero">
+  <a class="settings-back" href="/">&larr; Watches</a>
+  <div class="watch-hero">
+    {% if watch.image_url %}
+    <img class="watch-hero-img" src="{{ watch.image_url }}" alt="" width="72" height="72" />
+    {% endif %}
+    <div class="watch-hero-copy">
+      <h1>{{ watch.product_name }}</h1>
+      {% if watch.variant or watch.manufacturer %}
+      <p class="lede">{{ watch.manufacturer or '' }}{% if watch.manufacturer and watch.variant %} · {% endif %}{{ watch.variant or '' }}</p>
+      {% endif %}
+    </div>
+  </div>
+  <div class="page-status">
+    <span class="page-status-dot{% if watch.status == 'strike_found' %} is-busy{% elif watch.status == 'error' %} is-error{% elif watch.status in ['paused', 'no_results'] %} is-muted{% endif %}" aria-hidden="true"></span>
+    <p class="page-status-text">
+      {{ status_labels.get(watch.status, watch.status|replace('_', ' ')|capitalize) }}
+      · {% if watch.last_checked_at %}checked {{ watch.last_checked_at[11:16] }}{% else %}not checked yet{% endif %}
+      {% if watch.next_check_at and watch.status != 'paused' %} · next {{ watch.next_check_at[11:16] }}{% endif %}
+    </p>
+  </div>
+</section>
+
+<div class="btn-row watch-actions">
+  {% if watch.status != 'paused' %}
+  <form method="post" action="/watches/{{ watch.id }}/check" data-busy-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("refresh") }} Check now</button>
+  </form>
+  {% endif %}
+  {% if watch.status == 'paused' %}
+  <form method="post" action="/watches/{{ watch.id }}/resume">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("play") }} Resume</button>
+  </form>
+  {% else %}
+  <form method="post" action="/watches/{{ watch.id }}/pause">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <button class="btn btn-secondary btn-with-icon" type="submit">{{ icon("pause") }} Pause</button>
+  </form>
+  {% endif %}
+  {% if watch.status == 'strike_found' %}
+  <form method="post" action="/watches/{{ watch.id }}/rearm"
+    data-confirm="Re-arm this watch?"
+    data-confirm-detail="Clears the current strike so you’re alerted again on the next qualifying offer."
+    data-confirm-ok="Re-arm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <button class="btn btn-secondary btn-with-icon" type="submit">{{ icon("rearm") }} Re-arm</button>
+  </form>
+  {% endif %}
+  <form method="post" action="/watches/{{ watch.id }}/delete"
+    data-confirm="Delete this watch?"
+    data-confirm-detail="Its price history and offers are removed too."
+    data-confirm-ok="Delete">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <button class="btn btn-ghost btn-with-icon" type="submit">{{ icon("trash") }} Delete</button>
+  </form>
+</div>
+
+{% if watch.last_error %}<p class="banner">{{ watch.last_error }}</p>{% endif %}
+
+<div class="watch-panels">
+  {% if watch.strike %}
+  <section class="card stack strike-card watch-panel-span">
+    <h2 class="section-heading">{{ filter_icon("strike") }} Strike found</h2>
+    <p class="strike-price">{{ format_price(watch.strike.product_price, watch.currency) }} <span class="hint">at {{ watch.strike.retailer }}</span></p>
+    <p class="hint">
+      Target ≤ {{ format_price(watch.target_price, watch.currency) }}
+      {% if watch.strike.availability %} · {{ watch.strike.availability|replace('_', ' ') }}{% endif %}
+      {% if watch.strike.found_at %} · found {{ watch.strike.found_at[:16]|replace('T', ' ') }}{% endif %}
+    </p>
+    {% if watch.strike.product_url %}
+    <a class="btn btn-primary btn-with-icon" href="{{ watch.strike.product_url }}" target="_blank" rel="noopener noreferrer">{{ icon("external") }} View offer</a>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  <section class="card stack">
+    <h2 class="section-heading">{{ filter_icon("target") }} Target</h2>
+    <dl class="fact-list">
+      <div><dt>Target</dt><dd>≤ {{ format_price(watch.target_price, watch.currency) }}</dd></div>
+      <div><dt>Current lowest</dt><dd>{{ format_price(watch.current_lowest, watch.currency) }}</dd></div>
+      <div><dt>Historical lowest</dt><dd>{{ format_price(historical_lowest, watch.currency) }}</dd></div>
+      <div><dt>Condition</dt><dd>{{ condition_labels.get(watch.condition, watch.condition) }}{% if watch.in_stock_required %}, in stock{% endif %}</dd></div>
+      <div><dt>Schedule</dt><dd>{{ schedule_labels.get(watch.schedule_minutes, 'Every ' ~ watch.schedule_minutes ~ ' min') }} · {{ watch.market }}</dd></div>
+    </dl>
+  </section>
+
+  <section class="card stack">
+    <h2 class="section-heading">{{ filter_icon("history") }} Price history</h2>
+    {% set prices = history | selectattr('lowest_price') | map(attribute='lowest_price') | list %}
+    {% if prices|length > 1 %}
+    {% set lo = prices|min %}
+    {% set hi = prices|max %}
+    {% set span = (hi - lo) if (hi - lo) > 0 else 1 %}
+    <div class="sparkline" aria-hidden="true">
+      {% for p in prices %}<span style="--h: {{ (8 + (p - lo) / span * 92) | round(1) }}%"></span>{% endfor %}
+    </div>
+    <p class="hint">{{ format_price(lo, watch.currency) }} – {{ format_price(hi, watch.currency) }} over {{ prices|length }} checks</p>
+    {% elif history %}
+    <p class="hint">The chart appears after a second check.</p>
+    {% else %}
+    <p class="hint">History appears after the first check.</p>
+    {% endif %}
+  </section>
+
+  <section class="card stack watch-panel-span">
+    <h2 class="section-heading">{{ filter_icon("offers") }} Current offers</h2>
+    {% if offers %}
+    <ul class="offer-list">
+      {% for o in offers %}
+      {% set total = o.total_price if o.total_price is not none else o.product_price %}
+      <li class="offer-row{% if total is not none and total <= watch.target_price %} is-hit{% endif %}">
+        <div class="offer-copy">
+          {% if o.product_url %}
+          <a class="offer-retailer" href="{{ o.product_url }}" target="_blank" rel="noopener noreferrer">{{ o.retailer }}</a>
+          {% else %}
+          <span class="offer-retailer">{{ o.retailer }}</span>
+          {% endif %}
+          <span class="hint">
+            {% if o.delivery_cost is not none %}{{ format_price(o.product_price, watch.currency) }} + {{ format_price(o.delivery_cost, watch.currency) }} delivery{% else %}Delivery not listed{% endif %}
+            · {{ (o.availability or 'stock unknown')|replace('_', ' ') }}
+          </span>
+        </div>
+        <strong class="offer-total">{{ format_price(total, watch.currency) }}</strong>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="hint">No offers stored yet. Check now to fetch them.</p>
+    {% endif %}
+  </section>
+
+  <section class="card stack watch-panel-span">
+    <h2 class="section-heading">{{ filter_icon("status") }} Activity</h2>
+    {% if observations %}
+    <ul class="activity-list">
+      {% for o in observations[:8] %}
+      <li>
+        <span class="activity-when">{{ o.checked_at[:16]|replace('T', ' ') }}</span>
+        <span class="hint">{{ o.offer_count }} offers · lowest {{ format_price(o.lowest_price, watch.currency) }}{% if o.qualifying_count %} · <strong class="activity-hit">{{ o.qualifying_count }} at target</strong>{% elif o.note %} · {{ o.note|lower }}{% endif %}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="hint">No checks yet.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

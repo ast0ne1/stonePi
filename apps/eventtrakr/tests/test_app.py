@@ -41,17 +41,18 @@ def test_app_routes():
     # 6. Sources view (showing catalog and configured sources)
     res = client.get("/sources")
     assert res.status_code == 200
-    assert b"Curated Catalog of Sources" in res.data
+    assert b'id="catalog-sources"' in res.data
+    assert b'<h2 class="section-label">Catalog</h2>' in res.data
     assert b"Kultunaut Copenhagen" in res.data
 
     # 7. Settings view
     res = client.get("/settings")
     assert res.status_code == 200
-    assert b"Appearance" in res.data
-    assert b"Default" in res.data
-    assert b"Ocean" in res.data
-    assert b"Forest" in res.data
-    assert b"Slate" in res.data
+    assert b"data-settings-hub-list" in res.data
+    assert b'data-settings-panel="general"' in res.data
+    # Palette moved to the portal; General points there instead of an in-app picker.
+    assert "Settings → General".encode() in res.data
+    assert b"olour palette" in res.data
 
 
 def test_favourite_api_and_public_agenda():

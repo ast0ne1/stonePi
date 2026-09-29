@@ -81,7 +81,19 @@ def strip_prefix(path: str, prefix: str) -> str:
 
 
 def _is_other_platform_path(path: str, prefix: str) -> bool:
-    for root in ("/auth", "/news", "/files", "/events", "/pinboard", "/studio"):
+    for root in (
+        "/auth",
+        "/news",
+        "/files",
+        "/events",
+        "/pinboard",
+        "/studio",
+        "/prices",
+        "/sports",
+        "/watch",
+        "/notify",
+        "/recover",
+    ):
         if root == prefix:
             continue
         if path == root or path.startswith(root + "/"):
@@ -128,13 +140,16 @@ class PrefixMiddleware:
             return
 
         path = scope.get("path") or ""
-        stripped = strip_prefix(path, self.prefix)
-        if stripped != path:
+        if strip_prefix(path, self.prefix) != path:
+            # Reached directly with the prefix (no nginx strip, e.g. run-dev):
+            # mark it as root_path and keep the full path. ASGI/Starlette
+            # routing strips root_path from path itself (routes *and* mounted
+            # StaticFiles); stripping here too broke /prefix/static/... (404).
             scope = dict(scope)
-            scope["path"] = stripped
-            root = scope.get("root_path") or ""
-            if not str(root).endswith(self.prefix):
-                scope["root_path"] = str(root).rstrip("/") + self.prefix
+            root = str(scope.get("root_path") or "").rstrip("/")
+            if not root.endswith(self.prefix):
+                scope["path"] = root + path
+                scope["root_path"] = root + self.prefix
 
         start: dict[str, Any] | None = None
         buf: list[bytes] = []

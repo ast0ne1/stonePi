@@ -160,7 +160,8 @@ def test_write_epub_strips_unsafe_html_and_groups_toc(tmp_path: Path):
         assert "BBC" in toc
         assert "Reuters" in toc
         assert toc.index("World News") < toc.index("BBC")
-        assert toc.index("BBC") < toc.index("Wire story")
+        # The chapter menu stops at source level; story headlines stay off it.
+        assert "Wire story" not in toc
         css = next(name for name in names if name.endswith("eink.css"))
         css_text = archive.read(css).decode("utf-8")
         assert "Georgia" in css_text
@@ -185,7 +186,7 @@ def test_group_stories_by_source_keeps_first_seen_order():
 
 
 def test_write_epub_x3_layout_omits_links_and_chapters_by_source(tmp_path: Path):
-    from app.services.briefing import CATEGORY_TURN_HINT, EpubLayout, write_epub
+    from app.services.briefing import EpubLayout, write_epub
     from PIL import Image
     import io
 
@@ -245,29 +246,39 @@ def test_write_epub_x3_layout_omits_links_and_chapters_by_source(tmp_path: Path)
         assert "https://example.com/a" not in html_all
         assert "source-chapter" in html_all
         assert "category-plate" in html_all
-        assert CATEGORY_TURN_HINT in html_all
+        assert "Turn the page" not in html_all
+        # Section page lists what is inside instead of a turn-the-page hint.
+        assert '<p class="plate-sources">BBC · Reuters</p>' in html_all
+        assert '<p class="plate-count">3 stories</p>' in html_all
+        # Position within the source, and a rule between stories.
+        assert '<p class="story-position">1 of 2</p>' in html_all
+        assert '<p class="story-position">2 of 2</p>' in html_all
+        assert "story-rule" in html_all
         assert "First BBC" in html_all and "Second BBC" in html_all
         cover = archive.read("EPUB/cover.xhtml").decode("utf-8", errors="ignore")
         assert "1. World News" in cover
         assert "1.1 BBC" in cover
         assert "1.2 Reuters" in cover
         css = archive.read(next(n for n in names if n.endswith("eink.css"))).decode("utf-8")
-        assert "528px" in css or "0.45em" in css
-        assert "word-spacing: normal" in css
-        assert "category-plate" in css
+        assert "0.45em" in css
+        # Shared Xteink baseline: flat selectors only, no properties the firmwares ignore.
+        assert "word-spacing" not in css
+        assert ".category-plate" in css
         cover_jpg = archive.read(next(n for n in names if n.endswith("cover.jpg")))
         img = Image.open(io.BytesIO(cover_jpg))
         assert img.size == (528, 792)
         opf = archive.read("EPUB/content.opf").decode("utf-8", errors="ignore")
         spine = opf[opf.find("<spine") : opf.find("</spine>")]
-        # Default: nav before cover (first body chapter).
-        assert spine.index('idref="nav"') < spine.index('idref="chapter_0"')
+        # Opens on the front cover; the outline stays in the manifest for the menu only.
+        assert 'idref="nav"' not in spine
+        assert spine.find("<itemref") == spine.find('<itemref idref="chapter_0"')
+        assert 'properties="nav"' in opf
 
 
-def test_write_epub_toc_numbers_off_and_cover_first(tmp_path: Path):
+def test_write_epub_toc_numbers_off(tmp_path: Path):
     from app.services.briefing import EpubLayout, write_epub
 
-    dest = tmp_path / "cover-first.epub"
+    dest = tmp_path / "plain.epub"
     payload = {
         "title": "NewsCast briefing",
         "generated_at": "2026-09-14T06:30:00Z",
@@ -290,18 +301,16 @@ def test_write_epub_toc_numbers_off_and_cover_first(tmp_path: Path):
         chapters_by_source=True,
         x3_screen=True,
         toc_outline_numbers=False,
-        cover_first=True,
     )
     write_epub(payload, dest, layout=layout)
     with zipfile.ZipFile(dest) as archive:
         cover = archive.read("EPUB/cover.xhtml").decode("utf-8", errors="ignore")
         assert "1. World News" not in cover
-        assert "<h3>World News</h3>" in cover
+        assert '<h3 class="toc-category-title">World News</h3>' in cover
         assert "1.1 BBC" not in cover
-        assert "<h4>BBC</h4>" in cover
-        opf = archive.read("EPUB/content.opf").decode("utf-8", errors="ignore")
-        spine = opf[opf.find("<spine") : opf.find("</spine>")]
-        assert spine.index('idref="chapter_0"') < spine.index('idref="nav"')
+        assert '<h4 class="toc-source-title">BBC</h4>' in cover
+        nav = archive.read("EPUB/nav.xhtml").decode("utf-8", errors="ignore")
+        assert "1. World News" not in nav
         body = "\n".join(
             archive.read(name).decode("utf-8", errors="ignore")
             for name in archive.namelist()

@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+
+{% block content %}
+<section class="hero page-hero">
+  <div class="page-hero-copy">
+    <h1>Board</h1>
+    <p class="lede">All household notices and reminders. Tap a card for details.</p>
+  </div>
+  <button type="button" class="btn btn-primary btn-with-icon" data-open-sheet="add-pick">
+    {{ icon("plus") }} Add
+  </button>
+</section>
+
+{% if cards %}
+<div class="pin-grid" id="board">
+  {% for item in cards %}
+  <article class="card pin-card" data-expand-card data-kind="{{ item.kind }}">
+    <button type="button" class="pin-card-summary" data-card-expand aria-expanded="false">
+      <span class="pin-kind-icon" aria-hidden="true">
+        {% if item.kind == "reminder" %}{{ icon("reminder") }}{% else %}{{ icon("pin") }}{% endif %}
+      </span>
+      <span class="pin-card-main">
+        <span class="kind-pill kind-{{ item.kind }}">
+          {% if item.kind == "reminder" %}Reminder{% else %}Notice{% endif %}
+        </span>
+        <span class="pin-card-title">{{ item.text }}</span>
+        {% if item.due_label or item.due %}
+        <span class="pin-meta-chip">{% if item.due_label %}Due {{ item.due_label }}{% else %}Due {{ item.due }}{% endif %}</span>
+        {% endif %}
+      </span>
+      <span class="pin-expand-affordance" aria-hidden="true">{{ icon("chevron-down") }}</span>
+    </button>
+    <div class="pin-card-body" hidden>
+      {% if item.assignee %}
+      <p class="pin-detail"><span class="meta-label">Assignee</span> {{ item.assignee }}</p>
+      {% endif %}
+      {% if item.due and not item.due_label %}
+      <p class="pin-detail"><span class="meta-label">Due</span> {{ item.due }}</p>
+      {% elif item.due %}
+      <p class="pin-detail"><span class="meta-label">Due</span> {{ item.due }}{% if item.due_label %} · {{ item.due_label }}{% endif %}</p>
+      {% endif %}
+      {% if item.created_at %}
+      <p class="pin-detail muted"><span class="meta-label">Added</span> {{ item.created_at[:10] }}</p>
+      {% endif %}
+      {% if user and user.is_admin %}
+      <form
+        method="post"
+        action="/delete/{{ item.kind }}/{{ item.id }}"
+        data-confirm="Remove this {{ item.kind }}?"
+        data-confirm-detail="It will no longer appear on Display."
+        data-confirm-ok="Remove"
+      >
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <input type="hidden" name="next" value="/" />
+        <button class="btn btn-ghost btn-with-icon" type="submit">{{ icon("trash") }} Remove</button>
+      </form>
+      {% endif %}
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+<section class="card empty-state" id="board">
+  <h3>Nothing on the board yet</h3>
+  <p class="hint">Pin a notice or add a reminder for the household.</p>
+</section>
+{% endif %}
+
+<div class="sheet" hidden data-sheet="add-pick">
+  <div class="sheet-card card stack">
+    <h2>Add to board</h2>
+    <p class="hint">Choose what you want to pin.</p>
+    <a class="btn btn-primary btn-with-icon sheet-choice" href="/reminders?new=1">
+      {{ icon("reminder") }} Add reminder
+    </a>
+    <a class="btn btn-secondary btn-with-icon sheet-choice" href="/notices?new=1">
+      {{ icon("pin") }} Add notice
+    </a>
+    <button type="button" class="btn btn-ghost" data-close-sheet>Cancel</button>
+  </div>
+</div>
+{% endblock %}
