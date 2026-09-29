@@ -5,11 +5,11 @@ import logging
 import re
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
-from threading import Lock, Thread
+from threading import Event as ThreadEvent, Lock, Thread
 from urllib.parse import urlparse
 
 import httpx
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, update
 from sqlalchemy.orm import Session
 
 from app.config import env
@@ -63,9 +63,26 @@ class IngestState:
     last_error: str | None = None
     last_new_events: int = 0
     last_message: str = "Idle"
+    stopping: bool = False
 
 
 state = IngestState()
+# Set by request_stop(); manual syncs check it between sources (a source mid-fetch finishes first).
+_stop_requested = ThreadEvent()
+
+
+def request_stop() -> bool:
+    """Ask the running manual sync to stop before its next source. False when nothing is running."""
+    if not state.running:
+        return False
+    _stop_requested.set()
+    state.stopping = True
+    return True
+
+
+def _reset_stop() -> None:
+    _stop_requested.clear()
+    state.stopping = False
 
 
 def get_scraper_for_source(source: EventSource):
@@ -416,7 +433,18 @@ def _apply_scraped_events(
 
 def purge_expired_events(db: Session) -> int:
     """Purge past events older than 24 hours to keep the database lean."""
+    from app.models import EventDiscovery, EventSocialLink, EventUpdate
+
     cutoff = datetime.now(timezone.utc) - timedelta(days=1)
+    expired_ids = (
+        select(Event.id).where(Event.start_time < cutoff, Event.is_favourited == False).scalar_subquery()
+    )
+    # Social rows reference events.id (FKs enforced) -- clear them first or the delete fails.
+    db.execute(delete(EventSocialLink).where(EventSocialLink.event_id.in_(expired_ids)))
+    db.execute(delete(EventUpdate).where(EventUpdate.event_id.in_(expired_ids)))
+    db.execute(
+        update(EventDiscovery).where(EventDiscovery.event_id.in_(expired_ids)).values(event_id=None)
+    )
     result = db.execute(delete(Event).where(Event.start_time < cutoff, Event.is_favourited == False))
     db.commit()
     return result.rowcount
@@ -432,7 +460,9 @@ def sync_all_sources(user_id: int | None = None) -> None:
     state.last_error = None
     state.progress = "Starting sync..."
     state.last_message = "Syncing..."
+    _reset_stop()
     total_new = 0
+    synced = 0
 
     try:
         with SessionLocal() as db:
@@ -448,25 +478,33 @@ def sync_all_sources(user_id: int | None = None) -> None:
             needs_browser = any(not is_ics_source(s) for s in sources)
             with browser_session() if needs_browser else nullcontext() as browser:
                 for idx, src in enumerate(sources, 1):
+                    if _stop_requested.is_set():
+                        break
                     state.progress = f"Syncing {idx}/{total}: {src.name}..."
                     try:
                         new_cnt, _ = fetch_and_extract_source(db, src, browser=browser)
                         total_new += new_cnt
                     except Exception as e:
                         logger.exception("Error syncing source %s: %s", src.id, e)
+                    synced = idx
 
             purge_expired_events(db)
 
         state.last_new_events = total_new
         state.last_finished_at = utcnow()
-        state.progress = f"Complete: {total_new} new events found."
-        state.last_message = "Idle"
+        if _stop_requested.is_set() and synced < total:
+            state.progress = f"Stopped after {synced}/{total} sources: {total_new} new events found."
+            state.last_message = "Stopped"
+        else:
+            state.progress = f"Complete: {total_new} new events found."
+            state.last_message = "Idle"
     except Exception as e:
         state.last_error = str(e)
         state.last_message = "Error"
         logger.exception("Sync all error: %s", e)
     finally:
         state.running = False
+        _reset_stop()
         _lock.release()
 
 
@@ -487,6 +525,7 @@ def _sync_single_source_thread(source_id: int, user_id: int) -> None:
     state.last_started_at = utcnow()
     state.last_error = None
     state.last_message = "Syncing..."
+    _reset_stop()
 
     try:
         with SessionLocal() as db:
@@ -505,7 +544,9 @@ def _sync_single_source_thread(source_id: int, user_id: int) -> None:
         state.last_message = "Error"
         logger.exception("Single-source sync error for source %s: %s", source_id, e)
     finally:
+        # One source is a single unit: a stop request just lets it finish.
         state.running = False
+        _reset_stop()
         _lock.release()
 
 

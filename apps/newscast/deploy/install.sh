@@ -84,7 +84,21 @@ fi
 systemctl enable --now avahi-daemon >/dev/null 2>&1 || true
 
 if [[ -n "$DEVICE_HOSTNAME" ]]; then
-  "$DEST/deploy/set-hostname.sh" "$DEVICE_HOSTNAME"
+  # Solo installs only — StonePi appliances set hostname via Dashboard → Network.
+  hostnamectl set-hostname "$DEVICE_HOSTNAME" || true
+  if grep -qE '^127\.0\.1\.1\b' /etc/hosts; then
+    sed -i "s/^127\\.0\\.1\\.1.*/127.0.1.1\t${DEVICE_HOSTNAME}/" /etc/hosts
+  else
+    printf '127.0.1.1\t%s\n' "$DEVICE_HOSTNAME" >> /etc/hosts
+  fi
+  if grep -q '^DEVICE_HOSTNAME=' "$DEST/.env"; then
+    sed -i "s|^DEVICE_HOSTNAME=.*|DEVICE_HOSTNAME=${DEVICE_HOSTNAME}|" "$DEST/.env"
+  else
+    printf 'DEVICE_HOSTNAME=%s\n' "$DEVICE_HOSTNAME" >> "$DEST/.env"
+  fi
+  port="$(awk -F= '$1=="PORT"{gsub(/\r/,"",$2); print $2; exit}' "$DEST/.env")"
+  port="${port:-8080}"
+  sed -i "s|^PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=http://${DEVICE_HOSTNAME}.local:${port}|" "$DEST/.env" || true
 else
   lan_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
   lan_ip="${lan_ip:-127.0.0.1}"
@@ -98,7 +112,7 @@ fi
 chown -R newscast:newscast "$DEST"
 
 cat > /etc/sudoers.d/newscast <<EOF
-newscast ALL=(root) NOPASSWD: $DEST/deploy/set-hostname.sh, /bin/systemctl restart newscast
+newscast ALL=(root) NOPASSWD: /bin/systemctl restart newscast
 EOF
 chmod 440 /etc/sudoers.d/newscast
 

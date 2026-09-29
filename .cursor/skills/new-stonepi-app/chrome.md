@@ -15,7 +15,7 @@ Living files:
 | CSS | `static/css/app.css` |
 | JS | `static/js/app.js` |
 | Settings maps | `routers/ui.py` (`SETTINGS_*`) |
-| Cache bust | `app/__init__.py` → `__asset_rev__` |
+| Cache bust | `app/__init__.py` → `__asset_rev__ = asset_rev(...)` (automatic) |
 
 Also read [ux-stonepi](../ux-stonepi/SKILL.md) for portal IA and the **720 / 1024 / 1440** contract.
 
@@ -28,7 +28,8 @@ Also read [ux-stonepi](../ux-stonepi/SKILL.md) for portal IA and the **720 / 102
   header.topbar
     .brand-row > a.brand (+ brand-mark)
     .topbar-actions
-      [.status-pill] · .theme-switch · [.refresh-form] · form.logout > .icon-btn.sign-out
+      [.status-pill] · [.refresh-form] · a.icon-btn.alerts-bell · form.logout > .icon-btn.sign-out
+      # light/dark/auto (.theme-switch) is portal (dashboard) only — do not add here
   [.activity-banner]          # optional progress strip under topbar
   main.main                   # ONLY scroller on phone
   nav.nav                     # bottom bar <1024; side rail ≥1024
@@ -46,9 +47,11 @@ Do not put sheets inside scrolling `.main` without hoist — `position:fixed` br
 
 1. **Brand** — mark + product name → app home (`/`), not portal Home.
 2. Optional status / activity pill (hide ≤420px when noisy).
-3. **Theme switch** — light / dark / auto (`data-theme-set`).
-4. **Global Refresh** (when the app has a global sync) — `btn btn-primary btn-refresh` **immediately before** logout.
+3. **Global Refresh** (when the app has a global sync) — `btn btn-primary btn-refresh` before the bell.
+4. **Bell** — shared `alerts_bell` macro (`stonepi/alerts.html`), links to the Dashboard Notifications page; dot until personal alerts are set up. Signed-in under the platform only. See [platform.md](platform.md) → Notifications.
 5. **Sign out** — POST `/logout`, `icon-btn.sign-out`, `aria-label` + `title`.
+
+**Light / dark / auto** lives only on the **dashboard** header (`.theme-switch` / `data-theme-set`). Product apps must not reintroduce it — they apply the shared `stonepi-theme` cookie via `_theme_boot.html`.
 
 ### Global Refresh (NewsCast pattern)
 
@@ -61,20 +64,21 @@ Do not put sheets inside scrolling `.main` without hoist — `position:fixed` br
 </form>
 ```
 
-- Place **next to logout**, after theme switch.
+- Place **next to logout**.
 - Busy state: `.is-busy` + disabled; spin the SVG.
 - **≤420px:** hide the `<span>` → icon-only primary (keep tap target).
-- Apps without a global sync may omit Refresh; do not invent a second theme-adjacent control.
+- Apps without a global sync may omit Refresh.
 
 ### Brand mark sizing
 
 - `.brand-mark`: **22×22**, `stroke-width: 1.6`, `fill: none`, `stroke: currentColor`.
 - Brand text: `--serif`, ~1.35rem, weight 600.
 
-### Theme buttons
+### Light/dark buttons (dashboard only)
 
 - Hit: **36×36**; SVG **16×16**, stroke **1.8**.
 - Active: `.is-active` → ink fill / paper stroke on glyphs.
+- Product apps: omit this control; still boot shared prefs.
 
 ---
 
@@ -86,7 +90,7 @@ All UI glyphs use `viewBox="0 0 24 24"`. Size is **CSS**, not width/height on th
 |---------|------------|--------|-------|
 | Brand mark | 22×22 | 1.6 | `_brand_mark.html` |
 | Bottom / side nav | 22×22 | 1.7 | `.nav svg` |
-| Theme switch | 16×16 | 1.8 | |
+| Theme switch (dashboard only) | 16×16 | 1.8 | Not in product-app topbars |
 | Refresh + sign-out | 18×18 | 1.8 | `.btn-refresh svg`, `.sign-out svg` |
 | Labelled `.btn-with-icon` | 18×18 | 2 | 15×15 OK ≤559px / dense CTAs |
 | `.icon-btn` | 18×18 | 1.7 | Hit area = `--tap` (44 / 40) |
@@ -186,7 +190,7 @@ Content-only: **720** (2-col forms), **559/560** (stack), **420** (icon-only ref
 
 ### Multi-column content
 
-- 1 col phone → **2 @1024** → **3 @1440** for story/feed/settings card grids.
+- 1 col phone → **2 @1024** → **3 @1440** for story/feed grids. Settings stay one stacked panel.
 
 ---
 
@@ -236,26 +240,28 @@ Every labelled button that siblings icon gets `btn-with-icon` + glyph (Save→ch
 
 ## 9. Settings IA (NewsCast reference)
 
-### Phone / tablet (&lt;1024)
+### Every viewport
 
 ```
 /settings                    → grouped HUB
 /settings?tab=…              → L2 panel list (multi-card tabs) OR single panel
-/settings?tab=…&panel=…      → one card (others .is-panel-hidden)
+/settings?tab=…&panel=…      → one stacked card (others .is-panel-hidden)
 ```
 
 1. **Hub** — `SETTINGS_GROUPS`: section label + `.settings-hub-row` (icon tile, title, **subtext**, chevron).
-2. **L2 list** — from `SETTINGS_SECTION_PANELS`; each row uses `SETTINGS_PANEL_ICONS` + **`SETTINGS_PANEL_SUBTEXTS`** (never leave “Open this section”).
-3. **Cards** — `.card.stack[data-settings-panel-card]`; heading icon matches L2.
+2. **L2 list** — from `SETTINGS_SECTION_PANELS` when a tab has more than one card; each row uses `SETTINGS_PANEL_ICONS` + **`SETTINGS_PANEL_SUBTEXTS`** (never leave “Open this section”).
+3. **Cards** — `.card.stack[data-settings-panel-card]`; heading icon matches L2. One panel at a time, stacked (not a 2–3 column mosaic).
 4. Back: `.settings-back` → hub or L2 (`data-settings-hub-back`).
 
 Icon bank (hidden): `[data-settings-panel-icon-bank]` + `[data-settings-panel-icon="tab-panelId"]` for JS-built L2 rows.
 
-### Laptop+ (≥1024)
+### Laptop+ (≥1024) layout only
 
-- Force hub + L2 list **hidden**; show `.settings-top-chips` (all tabs, icon+label).
-- Show **all** cards in the active tab (2–3 column grid); no panel filter.
-- Help on page-status can hide (space for chips).
+Same drill-down as the phone. Do not switch to a chip bar.
+
+- Hub groups: **one column** (uneven You/House/System-style groups leave gaps in two columns).
+- L2 list and the open panel: a readable column (`max-width` about 48rem, 56rem from 1440).
+- Keep input `max-width` so fields do not stretch edge to edge.
 
 ### Maps to define in the router
 
@@ -292,8 +298,9 @@ Palettes: `default` | `ocean` | `forest` | `slate` × light/dark.
 
 ### Behaviour
 
-- `_theme_boot.html` + shared cookies (`stonepi-theme`, `stonepi-palette`).
-- Topbar: theme only; palette pickers may live in portal Settings.
+- `_theme_boot.html` + shared cookies (`stonepi-theme` = light/dark/auto, `stonepi-palette` = colour palette).
+- **Light / dark / auto:** set only on the **dashboard** header; product apps consume the shared pref (no topbar toggle).
+- **Colour palette:** portal Settings → Appearance only; apps apply via boot.
 - Fonts: IBM Plex Sans + Source Serif 4 (same Google Fonts URLs as siblings).
 - Inputs: `font-size: 16px` minimum on phone (prevent iOS zoom).
 
@@ -315,18 +322,38 @@ Palettes: `default` | `ocean` | `forest` | `slate` × light/dark.
 
 ## 12. Asset cache bust
 
+Automatic — nothing to bump by hand. The token is a hash of `app/static/`, so any CSS/JS change (edit or update overlay) busts the cache on the next restart.
+
 ```python
 # app/__init__.py
-__version__ = "0.0.x"
-__asset_rev__ = "YYYYMMDDa"  # bump on every CSS/JS chrome change
+from pathlib import Path
+
+from stonepi_auth.brand import asset_rev
+
+__version__ = "0.0.6"  # user apps: the shared user-app version; see Versioning below
+__asset_rev__ = asset_rev(Path(__file__).resolve().parent / "static")  # cache-bust token; changes with static/
+```
+
+```python
+# where the Jinja env is created (FastAPI shown; Flask: app.jinja_env.globals.update(...))
+from stonepi_auth.brand import fonts_rev
+templates.env.globals.update(asset_rev=__asset_rev__, fonts_rev=fonts_rev())
 ```
 
 ```html
+<link rel="stylesheet" href="/assets/fonts/fonts.css?v={{ fonts_rev }}" />
 <link rel="stylesheet" href="/static/css/app.css?v={{ app_version }}-{{ asset_rev }}" />
 <script src="/static/js/app.js?v={{ app_version }}-{{ asset_rev }}" defer></script>
 ```
 
-Pass `asset_rev` from `_base_context`. Prefer this over one-off date stamps in HTML.
+Never type a date or number after `?v=` — `packages/stonepi_auth/tests/test_platform_consistency.py` fails on it.
+
+### Versioning
+
+- `__version__` in `app/__init__.py` is the only place an app's version lives. Dashboard Health / Services / Updates, the app's own Settings "Version:" line, release zips and the CHANGELOG versions table all read it.
+- System apps (Dashboard, Auth, Notify, Recover) carry the platform version (`VERSION`, e.g. `0.1.8`), then `0.1.8.N` for patches between platform cuts.
+- User apps were aligned to `0.0.6` at the 0.1.8 cut. From there each moves **independently**: an app bumps its own patch (e.g. NewsCast `0.0.7`) when it changes, and others stay put. Three-part only, no four-part versions. A new user app starts at `0.0.6`.
+- Register the app in `APP_CATALOG` (`packages/stonepi_auth/stonepi_auth/catalog.py`): Updates, release zips and icons follow it automatically.
 
 ---
 
@@ -334,10 +361,10 @@ Pass `asset_rev` from `_base_context`. Prefer this over one-off date stamps in H
 
 Copy from NewsCast `app.js` and keep:
 
-- Theme + palette setters
+- Light/dark + palette **apply** (read shared cookies; no product-app light/dark click setters)
 - Confirm sheet + `data-confirm*`
 - `mountSheetsToBody` + `sheet-open`
-- Optional: settings hub / L2 / `matchMedia("(min-width: 1024px)")`
+- Settings hub / L2 on every viewport (no desktop chip-bar branch)
 - `data-native` on forms that must full-page navigate
 - Toast positioning: above bottom nav on phone; under topbar on desktop
 
@@ -349,7 +376,7 @@ Copy from NewsCast `app.js` and keep:
 |---------|-------------------|-----------------|
 | Nav | Bottom bar + safe-area | Side rail 200px |
 | Scroll | `.main` only | Document scroll |
-| Settings | Hub → L2 → one card | Chip bar + all cards |
+| Settings | Hub → L2 → one stacked card | Same drill-down; hub in 2 columns |
 | Sheets | Bottom sheet, nav clearance, body hoist | Centered modal |
 | Refresh | Icon-only ≤420px | Label + icon |
 | Story cards | No left accent rail; expand for body | Optional multi-col grid |
@@ -360,15 +387,15 @@ Copy from NewsCast `app.js` and keep:
 ## 15. Scaffold parity checklist (chrome)
 
 ```
-- [ ] base.html: viewport-fit=cover, theme-color, _theme_boot, fonts, theme switch
-- [ ] Topbar: brand → theme → [Refresh] → POST logout
+- [ ] base.html: viewport-fit=cover, theme-color, _theme_boot, fonts (no light/dark switch)
+- [ ] Topbar: brand → [Refresh] → POST logout
 - [ ] SVG sizes match matrix (nav 22, actions 18, chips 14, hub tile 18-in-40)
 - [ ] fill:none stroke icons + filled-pip restore rules
 - [ ] Home → portal; nav column count = link count; rail ≥1024
 - [ ] Confirm sheet + mountSheetsToBody + safe-area clearance
-- [ ] Settings: hub+L2+subtexts if many tabs; chips on desktop; SSO hides ownership
+- [ ] Settings: hub → L2 → one stacked panel on every viewport; one-column hub from 1024; SSO hides ownership
 - [ ] section-heading icons match L2 icons
 - [ ] Empty states + overflow-wrap
-- [ ] __asset_rev__ wired on CSS/JS
+- [ ] `asset_rev` / `fonts_rev` globals wired on CSS/JS/fonts (no literal `?v=`)
 - [ ] No app-specific --accent override
 ```

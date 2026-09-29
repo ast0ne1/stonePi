@@ -1,6 +1,6 @@
 # StonePi security notes
 
-Household LAN portal. Default install is **trusted LAN**. Use these controls before exposing StonePi beyond your network.
+StonePi is a private hub on your home network. Default install is **trusted LAN**. Use these controls before exposing StonePi beyond your network.
 
 ## First boot
 
@@ -37,6 +37,23 @@ After Tailscale is connected, StonePi enables **Tailscale Serve** so the MagicDN
 - Access via **`stonepi.local`**, Pi LAN IP, or router LAN DNS (e.g. **`stonepi.home`**). Portal login and Home links follow the host you typed.
 - `stonepi.local` needs Avahi (`avahi-daemon` + `avahi-utils`). If `.local` fails, use the Pi LAN IP or router DNS; `sudo systemctl restart avahi-daemon` often restores IPv4 mDNS.
 - Rate limits trust **`X-Real-IP`** from nginx (not client-supplied leftmost `X-Forwarded-For`).
+
+## Host firewall (nftables)
+
+Installer applies [`nftables/stonepi.nft`](nftables/stonepi.nft) via [`nftables/install-firewall.sh`](nftables/install-firewall.sh):
+
+| Allow | Notes |
+|-------|--------|
+| TCP 22 | SSH |
+| TCP 80, 443 | nginx |
+| TCP 8099 | Recover (Recovery Console) escape hatch |
+| UDP 41641 + `tailscale0` | Tailscale |
+| UDP 5353 | mDNS |
+| TCP 9090 | Cockpit — **not** via `tailscale0` (LAN / local only) |
+
+Default input policy is **drop**. App processes remain on **`127.0.0.1`** (8001–8012). Health → Listening compares `ss` against this expected set (plus Avahi/Tailscale process names and Tailscale companion / `100.x` binds).
+
+Re-apply: `sudo bash /opt/stonepi/deploy/nftables/install-firewall.sh`
 
 ## X3 / CrossPoint on the internet
 

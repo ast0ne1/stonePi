@@ -5,10 +5,14 @@ from sqlalchemy import select
 
 from app.config import env
 from app.db import SessionLocal
-from app.models import CatalogSource, Category, Event, EventSource, utcnow
+from app.models import CatalogSource, Category, Event, EventSource, SocialAccount, utcnow
 from app.services import auth, categories, favicon, ingest, settings
+from app.services.social import config as social_config
+from app.services.social import poll as social_poll
 
 bp = Blueprint("sources", __name__, url_prefix="/sources")
+
+ACCOUNT_TYPE_LABELS = dict(social_config.ACCOUNT_TYPES)
 
 
 @bp.route("")
@@ -219,4 +223,193 @@ def update_schedule(source_id: int):
                 )
     return redirect(url_for("sources.list_sources"))
 
+
+@bp.route("/social")
+@auth.login_required
+def social_accounts():
+    user = auth.get_current_user()
+    with SessionLocal() as db:
+        accounts = list(
+            db.execute(
+                select(SocialAccount)
+                .where(SocialAccount.user_id == user.user_id)
+                .order_by(SocialAccount.username)
+            ).scalars()
+        )
+        tracking_on = social_config.instagram_enabled(db)
+        brightdata_ok = bool(settings.get_brightdata_api_key(db))
+        poll_mins = social_config.poll_minutes(db)
+        global_schedule = {"mode": "interval", "interval_minutes": poll_mins}
+        global_schedule_summary = settings.describe_schedule(global_schedule)
+        account_schedules = {
+            a.id: settings.get_source_schedule(a, poll_mins)
+            or {"mode": "interval", "interval_minutes": poll_mins}
+            for a in accounts
+        }
+        account_schedule_summaries = {
+            a.id: (
+                settings.describe_schedule(account_schedules[a.id])
+                if getattr(a, "schedule_mode", "global") == "custom"
+                else f"Global ({global_schedule_summary})"
+            )
+            for a in accounts
+        }
+    return render_template(
+        "social.html",
+        accounts=accounts,
+        account_types=social_config.ACCOUNT_TYPES,
+        account_type_labels=ACCOUNT_TYPE_LABELS,
+        tracking_on=tracking_on,
+        brightdata_ok=brightdata_ok,
+        poll_minutes=poll_mins,
+        global_schedule_summary=global_schedule_summary,
+        account_schedules=account_schedules,
+        account_schedule_summaries=account_schedule_summaries,
+        weekdays=settings.WEEKDAYS,
+        interval_choices=settings.INTERVAL_CHOICES,
+    )
+
+
+@bp.route("/social/<int:account_id>/schedule", methods=["POST"])
+@auth.login_required
+def social_schedule(account_id: int):
+    user = auth.get_current_user()
+    with SessionLocal() as db:
+        poll_mins = social_config.poll_minutes(db)
+        custom_schedule = settings.schedule_config_from_form(request.form, default_minutes=poll_mins)
+        account = db.get(SocialAccount, account_id)
+        if account and account.user_id == user.user_id:
+            settings.apply_source_schedule(account, custom_schedule)
+            account.updated_at = utcnow()
+            db.commit()
+            if custom_schedule is None:
+                flash(f"@{account.username} now follows the Discovery global interval.", "success")
+            else:
+                flash(
+                    f"@{account.username} schedule: {settings.describe_schedule(custom_schedule)}.",
+                    "success",
+                )
+    return redirect(url_for("sources.social_accounts"))
+
+
+@bp.route("/social/add", methods=["POST"])
+@auth.login_required
+def social_add():
+    user = auth.get_current_user()
+    username = social_config.normalize_username(request.form.get("username", ""))
+    account_type = (request.form.get("account_type") or "other").strip()
+    display_name = (request.form.get("display_name") or "").strip()
+    if account_type not in ACCOUNT_TYPE_LABELS:
+        account_type = "other"
+    if not username:
+        flash("Enter an Instagram username.", "error")
+        return redirect(url_for("sources.social_accounts"))
+    with SessionLocal() as db:
+        existing = db.execute(
+            select(SocialAccount).where(
+                SocialAccount.user_id == user.user_id,
+                SocialAccount.platform == "instagram",
+                SocialAccount.username == username,
+            )
+        ).scalar_one_or_none()
+        if existing:
+            flash(f"@{username} is already tracked.", "error")
+            return redirect(url_for("sources.social_accounts"))
+        account = SocialAccount(
+            user_id=user.user_id,
+            platform="instagram",
+            username=username,
+            display_name=display_name or username,
+            profile_url=social_config.profile_url_for(username),
+            account_type=account_type,
+            tracking_enabled=True,
+            schedule_mode="global",
+            created_at=utcnow(),
+            updated_at=utcnow(),
+        )
+        db.add(account)
+        db.commit()
+        flash(f"Tracking @{username}.", "success")
+    return redirect(url_for("sources.social_accounts"))
+
+
+@bp.route("/social/<int:account_id>/toggle", methods=["POST"])
+@auth.login_required
+def social_toggle(account_id: int):
+    user = auth.get_current_user()
+    with SessionLocal() as db:
+        account = db.get(SocialAccount, account_id)
+        if account and account.user_id == user.user_id:
+            account.tracking_enabled = not account.tracking_enabled
+            account.updated_at = utcnow()
+            db.commit()
+            state = "on" if account.tracking_enabled else "off"
+            flash(f"Tracking @{account.username} {state}.", "success")
+    return redirect(url_for("sources.social_accounts"))
+
+
+@bp.route("/social/<int:account_id>/delete", methods=["POST"])
+@auth.login_required
+def social_delete(account_id: int):
+    user = auth.get_current_user()
+    with SessionLocal() as db:
+        account = db.get(SocialAccount, account_id)
+        if account and account.user_id == user.user_id:
+            name = account.username
+            from app.models import EventDiscovery, EventSocialLink, EventUpdate, SocialPost, SocialPostMedia
+
+            posts = list(
+                db.execute(select(SocialPost).where(SocialPost.social_account_id == account.id)).scalars()
+            )
+            post_ids = [p.id for p in posts]
+            if post_ids:
+                for link in db.execute(
+                    select(EventSocialLink).where(EventSocialLink.social_post_id.in_(post_ids))
+                ).scalars():
+                    db.delete(link)
+                for upd in db.execute(
+                    select(EventUpdate).where(EventUpdate.social_post_id.in_(post_ids))
+                ).scalars():
+                    db.delete(upd)
+                for media in db.execute(
+                    select(SocialPostMedia).where(SocialPostMedia.social_post_id.in_(post_ids))
+                ).scalars():
+                    db.delete(media)
+                for disc in db.execute(
+                    select(EventDiscovery).where(EventDiscovery.social_account_id == account.id)
+                ).scalars():
+                    db.delete(disc)
+                for post in posts:
+                    db.delete(post)
+            db.delete(account)
+            db.commit()
+            flash(f"Removed @{name}.", "success")
+    return redirect(url_for("sources.social_accounts"))
+
+
+@bp.route("/social/<int:account_id>/check", methods=["POST"])
+@auth.login_required
+def social_check(account_id: int):
+    user = auth.get_current_user()
+    with SessionLocal() as db:
+        account = db.get(SocialAccount, account_id)
+        if not account or account.user_id != user.user_id:
+            flash("Account not found.", "error")
+            return redirect(url_for("sources.social_accounts"))
+        result = social_poll.poll_account(db, account, force=True)
+        if result.get("error"):
+            flash(f"Check failed: {result['error']}", "error")
+        else:
+            flash(
+                f"Checked @{account.username}: {result.get('new', 0)} new post(s), "
+                f"{result.get('processed', 0)} processed.",
+                "success",
+            )
+            from app.services import notify as notify_service
+
+            for item in result.get("results") or []:
+                notify_service.notify_from_process_result(
+                    db, item, username=account.username, account_user_id=account.user_id
+                )
+    return redirect(url_for("sources.social_accounts"))
 

@@ -173,8 +173,49 @@ def main() -> int:
     configure(vault_dir)
     moved = migrate_newscast(args.newscast_db)
     moved += migrate_eventtrakr(args.eventtrakr_db)
+    moved += seed_platform_secrets_from_env()
     print(f"done: migrated={moved}")
     return 0
+
+
+def seed_platform_secrets_from_env() -> int:
+    """Copy installer .env secrets into Vault when Vault is empty for that key."""
+    from stonepi_vault import get_vault, set_secret
+
+    vault = get_vault()
+    stored = set(vault.list_keys())
+
+    mapping = {
+        "STONEPI_SESSION_SECRET": ("STONEPI_SESSION_SECRET", "SESSION_SECRET"),
+        "STONEPI_NTFY_TOKEN": ("STONEPI_NTFY_TOKEN",),
+        "DISPLAY_WEBHOOK_URL": ("DISPLAY_WEBHOOK_URL", "STONEPI_DISPLAY_WEBHOOK"),
+        "STONEPI_RECOVER_PASSWORD": ("STONEPI_RECOVER_PASSWORD",),
+    }
+    env_file = Path("/etc/stonepi/stonepi.env")
+    file_vals: dict[str, str] = {}
+    if env_file.is_file():
+        for line in env_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            file_vals[k.strip()] = v.strip().strip('"').strip("'")
+
+    moved = 0
+    for vault_key, env_names in mapping.items():
+        if vault_key in stored:
+            continue
+        value = ""
+        for name in env_names:
+            value = (os.environ.get(name) or file_vals.get(name) or "").strip()
+            if value:
+                break
+        if not value:
+            continue
+        set_secret(vault_key, value)
+        print(f"platform: {vault_key} seeded from env")
+        moved += 1
+    return moved
 
 
 if __name__ == "__main__":

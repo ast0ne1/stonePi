@@ -24,6 +24,8 @@ def connect() -> sqlite3.Connection:
     conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 
@@ -314,7 +316,7 @@ def replace_source_offers(source_id: str, rows: list[dict[str, Any]]) -> int:
 
 
 def _enrich_offer_row(row: dict[str, Any]) -> dict[str, Any]:
-    """Ensure public leaflet links exist (backfill from raw_json when columns empty)."""
+    """Ensure public leaflet links exist (dealer page preferred over publication)."""
     from app.money import offer_public_urls
 
     out = dict(row)
@@ -326,11 +328,14 @@ def _enrich_offer_row(row: dict[str, Any]) -> dict[str, Any]:
                 raw = parsed.get("raw") if isinstance(parsed.get("raw"), dict) else parsed
         except (TypeError, json.JSONDecodeError):
             raw = {}
-    urls = offer_public_urls(out.get("external_id"), raw)
+    urls = offer_public_urls(out.get("external_id"), raw, source_id=out.get("source_id"))
     if not out.get("offer_url"):
         out["offer_url"] = urls.get("offer_url")
-    if not out.get("catalog_url"):
-        out["catalog_url"] = urls.get("catalog_url")
+    # Always prefer the dealer homepage when we know the store.
+    if urls.get("catalog_url"):
+        out["catalog_url"] = urls["catalog_url"]
+    elif not out.get("catalog_url"):
+        out["catalog_url"] = None
     if not out.get("currency"):
         pricing = raw.get("pricing") if isinstance(raw.get("pricing"), dict) else {}
         out["currency"] = str(pricing.get("currency") or "DKK").upper()

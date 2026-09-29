@@ -5,15 +5,27 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import threading
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
 
 HELPER = Path("/usr/local/sbin/stonepi-tailscale")
+HOSTNAME_HELPER = Path("/usr/local/sbin/stonepi-hostname")
 INTERNET_PROBE_URL = "https://connectivitycheck.gstatic.com/generate_204"
 INTERNET_TIMEOUT_S = 1.5
 STATUS_HELPER_TIMEOUT_S = 4.0
+TAILSCALE_CACHE_TTL_S = 20.0
+INTERNET_CACHE_TTL_S = 60.0
+HOSTNAME_HELPER_TIMEOUT_S = 20.0
+
+_cache_lock = threading.Lock()
+_tailscale_cache: dict[str, Any] | None = None
+_tailscale_cache_at = 0.0
+_internet_cache: dict[str, Any] | None = None
+_internet_cache_at = 0.0
 
 
 def _repo_data_dir() -> Path:
@@ -49,6 +61,16 @@ def _wanted_candidates() -> list[Path]:
     return out
 
 
+def clear_network_cache() -> None:
+    """Drop TTL caches so the next read hits the helper / probe."""
+    global _tailscale_cache, _tailscale_cache_at, _internet_cache, _internet_cache_at
+    with _cache_lock:
+        _tailscale_cache = None
+        _tailscale_cache_at = 0.0
+        _internet_cache = None
+        _internet_cache_at = 0.0
+
+
 def tailscale_wanted() -> bool:
     for path in _wanted_candidates():
         try:
@@ -76,11 +98,56 @@ def set_tailscale_wanted(enabled: bool) -> Path:
         os.chmod(path, 0o644)
     except OSError:
         pass
+    clear_network_cache()
     return path
 
 
 def helper_available() -> bool:
     return HELPER.is_file() and os.name != "nt"
+
+
+def hostname_helper_available() -> bool:
+    return HOSTNAME_HELPER.is_file() and os.name != "nt"
+
+
+def apply_hostname(name: str) -> tuple[bool, str]:
+    """Apply appliance hostname via privileged helper, or file-only on Windows/dev.
+
+    Returns (ok, message). Always writes the hot-read file when the name is valid.
+    """
+    from stonepi_auth import normalize_hostname, set_platform_hostname, valid_hostname
+
+    cleaned = normalize_hostname(name)
+    if not valid_hostname(cleaned):
+        return False, "Hostname must be 1–63 letters, digits, or hyphens (not starting or ending with a hyphen)."
+
+    if hostname_helper_available():
+        try:
+            proc = subprocess.run(
+                ["sudo", "-n", str(HOSTNAME_HELPER), cleaned],
+                capture_output=True,
+                text=True,
+                timeout=HOSTNAME_HELPER_TIMEOUT_S,
+                check=False,
+                errors="replace",
+            )
+        except Exception as exc:  # noqa: BLE001
+            return False, str(exc) or "Could not run hostname helper."
+        if proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout or "").strip() or f"exit {proc.returncode}"
+            return False, detail[:240]
+        # Helper already wrote the file; ensure package path matches for this process.
+        try:
+            set_platform_hostname(cleaned)
+        except OSError:
+            pass
+        return True, cleaned
+
+    try:
+        set_platform_hostname(cleaned)
+    except (OSError, ValueError) as exc:
+        return False, str(exc) or "Could not save hostname."
+    return True, cleaned
 
 
 def _run_helper(subcommand: str, *, timeout: float = 20.0) -> tuple[int, str]:
@@ -110,7 +177,7 @@ def _run_helper(subcommand: str, *, timeout: float = 20.0) -> tuple[int, str]:
         return 1, json.dumps({"ok": False, "Installed": True, "BackendState": "Unknown", "error": str(exc)})
 
 
-def internet_status() -> dict[str, Any]:
+def _probe_internet() -> dict[str, Any]:
     """Outbound reachability from the Pi (not Tailscale-specific)."""
     try:
         req = urllib.request.Request(INTERNET_PROBE_URL, method="GET")
@@ -125,6 +192,23 @@ def internet_status() -> dict[str, Any]:
         return {"ok": False, "detail": f"HTTP {exc.code}"}
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "detail": str(exc) or "unreachable"}
+
+
+def internet_status(*, fresh: bool = False) -> dict[str, Any]:
+    global _internet_cache, _internet_cache_at
+    now = time.monotonic()
+    with _cache_lock:
+        if (
+            not fresh
+            and _internet_cache is not None
+            and (now - _internet_cache_at) < INTERNET_CACHE_TTL_S
+        ):
+            return dict(_internet_cache)
+    result = _probe_internet()
+    with _cache_lock:
+        _internet_cache = dict(result)
+        _internet_cache_at = time.monotonic()
+    return result
 
 
 def parse_tailscale_status(raw: dict[str, Any] | None, *, wanted: bool) -> dict[str, Any]:
@@ -161,11 +245,15 @@ def parse_tailscale_status(raw: dict[str, Any] | None, *, wanted: bool) -> dict[
     connected = backend == "Running" and bool(self_node or ipv4 or dns_name)
     needs_login = backend in {"NeedsLogin", "NeedsMachineAuth"} or bool(auth_url and not connected)
 
+    serve_http = bool(data.get("ServeHTTP"))
+    serve_enable_url = (data.get("ServeEnableURL") or "").strip() or None
+
     access_url = None
-    if connected and dns_name:
+    if connected and serve_http and dns_name:
         # Tailscale Serve publishes HTTPS on the MagicDNS name → local nginx :80.
         access_url = f"https://{dns_name}/"
     elif connected and ipv4:
+        # Plain HTTP over the encrypted tailnet (no Serve / HTTPS yet).
         access_url = f"http://{ipv4}/"
 
     state = "not_installed"
@@ -194,6 +282,8 @@ def parse_tailscale_status(raw: dict[str, Any] | None, *, wanted: bool) -> dict[
         "magicdns": bool(magic_enabled and dns_name),
         "magicdns_name": dns_name if (magic_enabled and dns_name) else None,
         "access_url": access_url,
+        "serve_http": serve_http,
+        "serve_enable_url": serve_enable_url,
         "error": (data.get("Error") or data.get("error") or None),
     }
 
@@ -222,16 +312,34 @@ def _raw_status_from_helper() -> dict[str, Any]:
     }
 
 
-def tailscale_status() -> dict[str, Any]:
+def tailscale_status(*, fresh: bool = False) -> dict[str, Any]:
+    global _tailscale_cache, _tailscale_cache_at
     wanted = tailscale_wanted()
     if not helper_available():
         return parse_tailscale_status({"Installed": False, "BackendState": "NoState"}, wanted=wanted)
-    return parse_tailscale_status(_raw_status_from_helper(), wanted=wanted)
+
+    now = time.monotonic()
+    with _cache_lock:
+        if (
+            not fresh
+            and _tailscale_cache is not None
+            and (now - _tailscale_cache_at) < TAILSCALE_CACHE_TTL_S
+        ):
+            cached = dict(_tailscale_cache)
+            cached["wanted"] = wanted
+            return cached
+
+    parsed = parse_tailscale_status(_raw_status_from_helper(), wanted=wanted)
+    with _cache_lock:
+        _tailscale_cache = dict(parsed)
+        _tailscale_cache_at = time.monotonic()
+    return parsed
 
 
 def start_login() -> dict[str, Any]:
     """Start Tailscale login; return normalized status (may include auth_url)."""
     set_tailscale_wanted(True)
+    clear_network_cache()
     if not helper_available():
         return parse_tailscale_status({"Installed": False, "BackendState": "NoState"}, wanted=True)
     # Helper captures AuthURL from CLI output (status JSON alone often omits it).
@@ -253,26 +361,36 @@ def start_login() -> dict[str, Any]:
             raw = cached
         elif code not in (0, 124):
             raw.setdefault("Error", f"connect failed (exit {code})")
-    return parse_tailscale_status(raw, wanted=True)
+    result = parse_tailscale_status(raw, wanted=True)
+    with _cache_lock:
+        global _tailscale_cache, _tailscale_cache_at
+        _tailscale_cache = dict(result)
+        _tailscale_cache_at = time.monotonic()
+    return result
 
 
 def disconnect() -> dict[str, Any]:
     if helper_available():
         _run_helper("down", timeout=20.0)
-    return tailscale_status()
+    clear_network_cache()
+    return tailscale_status(fresh=True)
 
 
-def network_snapshot() -> dict[str, Any]:
+def network_snapshot(*, fresh: bool = False) -> dict[str, Any]:
     from concurrent.futures import ThreadPoolExecutor
 
+    from stonepi_auth import platform_hostname
+
     with ThreadPoolExecutor(max_workers=2) as pool:
-        internet_f = pool.submit(internet_status)
-        ts_f = pool.submit(tailscale_status)
+        internet_f = pool.submit(internet_status, fresh=fresh)
+        ts_f = pool.submit(tailscale_status, fresh=fresh)
         internet = internet_f.result()
         ts = ts_f.result()
     return {
         "internet": internet,
         "tailscale": ts,
         "helper_available": helper_available(),
+        "hostname_helper_available": hostname_helper_available(),
         "appliance": helper_available(),
+        "hostname": platform_hostname(),
     }

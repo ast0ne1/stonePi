@@ -48,15 +48,18 @@ import subprocess
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
+from urllib.parse import urlparse
 
 CMD = os.environ.get("STONEPI_TS_CMD", "status")
 CACHE = Path(os.environ.get("STONEPI_TS_AUTH_CACHE", "/var/lib/stonepi/dashboard/tailscale_auth_url"))
+# Legacy flag from older helpers — deleted on status/up/down; never used for ServeHTTP.
 SERVE_FLAG = CACHE.parent / "tailscale_serve_ok"
 DEBUG = Path(os.environ.get("STONEPI_TS_DEBUG_LOG", "/tmp/stonepi-tailscale-helper.log"))
 SOCKETS = (
     "/var/run/tailscale/tailscaled.sock",
     "/run/tailscale/tailscaled.sock",
 )
+SERVE_TIMEOUT_S = 6.0
 
 
 def dbg(msg: str) -> None:
@@ -72,6 +75,15 @@ def emit_json(payload: Dict[str, Any]) -> None:
     print(json.dumps(payload), flush=True)
 
 
+def delete_legacy_serve_flag() -> None:
+    try:
+        if SERVE_FLAG.is_file():
+            SERVE_FLAG.unlink()
+            dbg("deleted legacy tailscale_serve_ok")
+    except OSError as exc:
+        dbg("legacy serve flag delete failed: %s" % exc)
+
+
 class UnixHTTPConnection(http.client.HTTPConnection):
     def __init__(self, sock_path: str) -> None:
         super(UnixHTTPConnection, self).__init__("local-tailscaled.sock")
@@ -80,6 +92,8 @@ class UnixHTTPConnection(http.client.HTTPConnection):
     def connect(self) -> None:
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.sock.connect(self._sock_path)
+        if self.timeout is not None:
+            self.sock.settimeout(self.timeout)
 
 
 def sock_path() -> Optional[str]:
@@ -154,23 +168,84 @@ def clear_cache() -> None:
             CACHE.unlink()
     except OSError:
         pass
-    try:
-        if SERVE_FLAG.is_file():
-            SERVE_FLAG.unlink()
-    except OSError:
-        pass
-
-
-def mark_serve_ok() -> None:
-    try:
-        SERVE_FLAG.parent.mkdir(parents=True, exist_ok=True)
-        SERVE_FLAG.write_text("ok\n", encoding="utf-8")
-    except OSError:
-        pass
+    delete_legacy_serve_flag()
 
 
 def extract_url(data: Dict[str, Any]) -> str:
     return (data.get("AuthURL") or "").strip()
+
+
+def url_from_text(blob: str) -> str:
+    match = re.search(r"https://[^\s\"'<>]*tailscale\.com/[^\s\"'<>]+", blob or "")
+    return match.group(0) if match else ""
+
+
+def serve_status_json() -> Dict[str, Any]:
+    try:
+        proc = subprocess.run(
+            ["tailscale", "serve", "status", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            stdin=subprocess.DEVNULL,
+        )
+        raw = (proc.stdout or "").strip()
+        if not raw:
+            return {}
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else {}
+    except Exception as exc:
+        dbg("serve status --json failed: %s" % exc)
+        return {}
+
+
+def _proxies_loopback_80(handler: Any) -> bool:
+    """True when a Serve handler proxies to loopback TCP 80 (local nginx)."""
+    if isinstance(handler, str):
+        target = handler
+    elif isinstance(handler, dict):
+        target = handler.get("Proxy") or handler.get("proxy") or ""
+    else:
+        return False
+    if not isinstance(target, str) or not target.strip():
+        return False
+    raw = target.strip()
+    if "://" not in raw:
+        raw = "http://" + raw
+    try:
+        u = urlparse(raw)
+        host = (u.hostname or "").lower()
+        scheme = (u.scheme or "http").lower()
+        port = u.port
+    except Exception:
+        return False
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        return False
+    if port is None:
+        if scheme in ("http", ""):
+            port = 80
+        else:
+            return False
+    return port == 80
+
+
+def serve_http_configured(data: Optional[Dict[str, Any]] = None) -> bool:
+    """True only when Serve proxies to local nginx (loopback:80)."""
+    cfg = data if data is not None else serve_status_json()
+    if not cfg:
+        return False
+    web = cfg.get("Web")
+    if isinstance(web, dict):
+        for _host, entry in web.items():
+            if not isinstance(entry, dict):
+                continue
+            handlers = entry.get("Handlers") or {}
+            if not isinstance(handlers, dict):
+                continue
+            for _path, handler in handlers.items():
+                if _proxies_loopback_80(handler):
+                    return True
+    return False
 
 
 def ensure_want_running() -> None:
@@ -253,41 +328,64 @@ def wait_for_auth_url(seconds: float = 18.0) -> str:
     return extract_url(status_json()) or read_cache()
 
 
-def ensure_http_serve() -> None:
-    """Expose local nginx (:80) over Tailscale HTTPS at the MagicDNS name."""
+def ensure_http_serve() -> Tuple[bool, str]:
+    """Expose local nginx (:80) over Tailscale HTTPS. Returns (ok, serve_enable_url)."""
+    if serve_http_configured():
+        return True, ""
     attempts = (
         ["tailscale", "serve", "--bg", "http://127.0.0.1:80"],
         ["tailscale", "serve", "--bg", "80"],
     )
+    enable_url = ""
     for cmd in attempts:
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=12)
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=SERVE_TIMEOUT_S,
+                stdin=subprocess.DEVNULL,
+            )
+            blob = (proc.stdout or "") + "\n" + (proc.stderr or "")
             dbg(
                 "serve cmd=%s exit=%s out=%r err=%r"
                 % (cmd, proc.returncode, (proc.stdout or "")[:200], (proc.stderr or "")[:200])
             )
-            if proc.returncode == 0:
-                return
+            found = url_from_text(blob)
+            if found and ("/f/serve" in found or "serve" in found.lower()):
+                enable_url = found
+            elif found and not enable_url:
+                enable_url = found
+            if proc.returncode == 0 and serve_http_configured():
+                return True, ""
+        except subprocess.TimeoutExpired as exc:
+            blob = ""
+            if exc.stdout:
+                blob += exc.stdout if isinstance(exc.stdout, str) else exc.stdout.decode("utf-8", "replace")
+            if exc.stderr:
+                blob += "\n" + (
+                    exc.stderr if isinstance(exc.stderr, str) else exc.stderr.decode("utf-8", "replace")
+                )
+            found = url_from_text(blob)
+            if found:
+                enable_url = found
+            dbg("serve timed out %s: %s enable=%r" % (cmd, exc, enable_url))
         except Exception as exc:
             dbg("serve failed %s: %s" % (cmd, exc))
-    try:
-        proc = subprocess.run(
-            ["tailscale", "serve", "https", "/", "http://127.0.0.1:80"],
-            capture_output=True,
-            text=True,
-            timeout=12,
-        )
-        dbg(
-            "serve legacy exit=%s out=%r err=%r"
-            % (proc.returncode, (proc.stdout or "")[:200], (proc.stderr or "")[:200])
-        )
-    except Exception as exc:
-        dbg("serve legacy failed: %s" % exc)
+    if serve_http_configured():
+        return True, ""
+    return False, enable_url
 
 
 def reset_serve() -> None:
     try:
-        subprocess.run(["tailscale", "serve", "reset"], capture_output=True, text=True, timeout=15)
+        subprocess.run(
+            ["tailscale", "serve", "reset"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            stdin=subprocess.DEVNULL,
+        )
     except Exception as exc:
         dbg("serve reset failed: %s" % exc)
 
@@ -295,6 +393,7 @@ def reset_serve() -> None:
 def emit(data: Dict[str, Any], auth_override: str = "", enable_serve: bool = False) -> None:
     out = dict(data)
     out["Installed"] = True
+    delete_legacy_serve_flag()
     backend = str(out.get("BackendState") or "")
     auth = (auth_override or extract_url(out) or read_cache()).strip()
     if backend == "Running":
@@ -304,10 +403,10 @@ def emit(data: Dict[str, Any], auth_override: str = "", enable_serve: bool = Fal
                 CACHE.unlink()
         except OSError:
             pass
+        serve_enable_url = ""
         if enable_serve:
             try:
-                ensure_http_serve()
-                mark_serve_ok()
+                _ok, serve_enable_url = ensure_http_serve()
             except Exception as exc:
                 dbg("ensure_http_serve: %s" % exc)
             try:
@@ -315,13 +414,19 @@ def emit(data: Dict[str, Any], auth_override: str = "", enable_serve: bool = Fal
                 out.update(refreshed)
             except Exception:
                 pass
+        serve_ok = serve_http_configured()
         out["Installed"] = True
-        out["ServeHTTP"] = SERVE_FLAG.is_file()
+        out["ServeHTTP"] = serve_ok
+        if serve_enable_url and not serve_ok:
+            out["ServeEnableURL"] = serve_enable_url
     elif auth:
         out["AuthURL"] = auth
         if backend in ("NoState", "Stopped", "Unknown", ""):
             out["BackendState"] = "NeedsLogin"
         write_cache(auth)
+        out["ServeHTTP"] = False
+    else:
+        out["ServeHTTP"] = False
     emit_json(out)
 
 
@@ -331,11 +436,6 @@ def do_down() -> None:
     subprocess.run(["tailscale", "down"], capture_output=True, text=True, timeout=15)
     clear_cache()
     emit_json({"ok": True})
-
-
-def url_from_text(blob: str) -> str:
-    match = re.search(r"https://[^\s\"'<>]*tailscale\.com/[^\s\"'<>]+", blob or "")
-    return match.group(0) if match else ""
 
 
 def do_up() -> None:
@@ -354,6 +454,7 @@ def do_up() -> None:
                 capture_output=True,
                 text=True,
                 timeout=12,
+                stdin=subprocess.DEVNULL,
             )
             blob = (proc.stdout or "") + "\n" + (proc.stderr or "")
             dbg("tailscale login exit=%s out=%r" % (proc.returncode, blob[:500]))
@@ -376,10 +477,10 @@ def do_up() -> None:
 
 
 def do_status() -> None:
+    """Read-only: never runs `tailscale serve` setup."""
     data = status_json()
     auth = extract_url(data) or read_cache()
-    enable = str(data.get("BackendState") or "") == "Running" and not SERVE_FLAG.is_file()
-    emit(data, auth, enable_serve=enable)
+    emit(data, auth, enable_serve=False)
 
 
 try:
@@ -396,6 +497,7 @@ except Exception as exc:
             "Installed": True,
             "BackendState": "Unknown",
             "Error": "helper failed: %s" % exc,
+            "ServeHTTP": False,
         }
     )
 PY

@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from stonepi_auth.brand import mount_brand_fonts
 from fastapi.staticfiles import StaticFiles
 
 from app.config import ROOT_DIR, env
@@ -14,6 +15,7 @@ if _prefix:
 
 _static = str(ROOT_DIR / "app" / "static")
 app.mount("/static", StaticFiles(directory=_static), name="static")
+mount_brand_fonts(app)  # /assets/fonts when reached directly (run-dev); nginx serves it on the Pi
 # When HTML rewrites assets to /{prefix}/static/... and the process is hit
 # directly (no nginx strip), serve the same files under the prefixed path too.
 if _prefix:

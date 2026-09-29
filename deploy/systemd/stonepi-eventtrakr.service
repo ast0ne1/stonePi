@@ -2,6 +2,8 @@
 Description=StonePi EventTrakr
 After=network-online.target stonepi-auth.service
 Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -11,9 +13,13 @@ EnvironmentFile=/etc/stonepi/stonepi.env
 EnvironmentFile=-/etc/stonepi/eventtrakr.env
 WorkingDirectory=/opt/stonepi/apps/eventtrakr
 ExecStart=/opt/stonepi/apps/eventtrakr/.venv/bin/python -m app.serve
-Restart=on-failure
+Restart=always
 RestartSec=5
 NoNewPrivileges=yes
+Nice=10
+CPUWeight=20
+IOWeight=20
+MemoryMax=400M
 
 [Install]
 WantedBy=multi-user.target

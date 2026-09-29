@@ -13,11 +13,18 @@ from urllib.parse import urljoin
 import httpx
 
 from app.config import DATA_DIR, env
-from stonepi_auth import APP_CATALOG, LAUNCHER_APP_IDS, COOKIE_NAME, decode_session
+from stonepi_auth import (
+    APP_CATALOG,
+    LAUNCHER_APP_IDS,
+    SERVICE_GROUP_LABELS,
+    COOKIE_NAME,
+    decode_session,
+)
 
 TIMEOUT = 1.0
 APP_COLORS_PATH = DATA_DIR / "app-colors.json"
 _HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+_AUTH_HTTP = httpx.Client(timeout=8.0, follow_redirects=False)
 
 
 def session_secret() -> str:
@@ -76,6 +83,47 @@ def app_public_url(item: dict) -> str:
     return origin + item["path"]
 
 
+def notify_page_url(page: str = "") -> str:
+    """A Notify page (``displays``, ``alerts``, ``alerts#choose``): ``/notify/...`` behind nginx,
+    Notify's own port in dev."""
+    notify = next((a for a in APP_CATALOG if a["id"] == "notify"), None)
+    base = app_public_url(notify) if notify else "/notify/"
+    return f"{base}{page.lstrip('/')}"
+
+
+def notify_settings_url(tab: str = "") -> str:
+    """Old Notify Settings link (now redirects to the page for ``tab``)."""
+    return notify_page_url("settings" + (f"?tab={tab}" if tab else ""))
+
+
+def notify_admin_status(cookies: dict[str, str]) -> dict[str, str] | None:
+    """Status lines for Dashboard -> Settings: Displays and Phone alerts. None if Notify can't say."""
+    status, body = notify_request("GET", "/api/admin/summary", cookies)
+    if status != 200 or not body.get("ok"):
+        return None
+    displays = body.get("displays") or {}
+    count, pushing = int(displays.get("count") or 0), int(displays.get("pushing") or 0)
+    if count:
+        displays_line = f"{count} screen{'' if count == 1 else 's'}"
+        displays_line += f" · {'all' if pushing == count and count > 1 else pushing} pushing to TRMNL" if pushing else " · not pushing yet"
+    else:
+        displays_line = "No screens yet"
+    alerts = body.get("alerts") or {}
+    if not alerts.get("enabled"):
+        alerts_line = "Off · set up in a couple of minutes"
+    else:
+        people = int(alerts.get("people_on") or 0)
+        alerts_line = (
+            f"On · {alerts.get('approved', 0)} of {alerts.get('total', 0)} alerts approved"
+            f" · {people} {'person' if people == 1 else 'people'}"
+        )
+        if alerts.get("needs_attention"):
+            alerts_line += " · needs attention"
+        elif not alerts.get("all_set"):
+            alerts_line += " · setup not finished"
+    return {"displays": displays_line, "alerts": alerts_line, "alerts_attention": bool(alerts.get("needs_attention"))}
+
+
 def app_display_url(item: dict, *, access_origin: str = "") -> str:
     """URL text on Health cards — same host the browser used to open Health."""
     origin = (access_origin or "").rstrip("/")
@@ -121,14 +169,8 @@ def probe(url: str, client: httpx.Client | None = None) -> dict:
 
 
 def health_url(item: dict) -> str:
-    if os.name == "nt" or not Path("/etc/nginx/sites-enabled/stonepi").exists():
-        return f"http://127.0.0.1:{item['port']}{item['health']}"
-    origin = env.public_origin.rstrip("/")
-    if item["id"] == "dashboard":
-        return origin + item["health"]
-    if item["id"] == "auth":
-        return origin + "/auth" + item["health"]
-    return origin + item["path"].rstrip("/") + item["health"]
+    """Always probe loopback — avoids mDNS + nginx on every health check."""
+    return f"http://127.0.0.1:{item['port']}{item['health']}"
 
 
 def unit_status(unit: str) -> str:
@@ -155,6 +197,7 @@ def unit_statuses(units: list[str]) -> dict[str, str]:
             capture_output=True,
             text=True,
             check=False,
+            timeout=8,
         )
         lines = (result.stdout or "").strip().splitlines()
         out: dict[str, str] = {}
@@ -177,6 +220,7 @@ def control_unit(unit: str, action: str) -> tuple[bool, str]:
             capture_output=True,
             text=True,
             check=False,
+            timeout=30,
         )
         if result.returncode != 0:
             return False, (result.stderr or result.stdout or "systemctl failed").strip()
@@ -194,6 +238,7 @@ def unit_logs(unit: str, lines: int = 40) -> str:
             capture_output=True,
             text=True,
             check=False,
+            timeout=15,
         )
         return (result.stdout or result.stderr or "").strip()
     except Exception as exc:
@@ -201,6 +246,15 @@ def unit_logs(unit: str, lines: int = 40) -> str:
 
 
 def auth_request(method: str, path: str, cookies: dict[str, str], json_body=None):
+    """JSON Auth API helper. Raises RuntimeError on HTTP errors."""
+    response = auth_exchange(method, path, cookies, json_body=json_body)
+    if not response.content:
+        return {}
+    return response.json()
+
+
+def auth_exchange(method: str, path: str, cookies: dict[str, str], json_body=None) -> httpx.Response:
+    """Raw Auth API call (keeps Set-Cookie headers for callers that must forward them)."""
     from stonepi_auth.session import CSRF_COOKIE
 
     url = urljoin(env.auth_url.rstrip("/") + "/", path.lstrip("/"))
@@ -208,8 +262,7 @@ def auth_request(method: str, path: str, cookies: dict[str, str], json_body=None
     csrf = (cookies or {}).get(CSRF_COOKIE) or (cookies or {}).get("stonepi_csrf")
     if csrf and method.upper() in {"POST", "PATCH", "PUT", "DELETE"}:
         headers["X-StonePi-CSRF"] = csrf
-    with httpx.Client(timeout=8.0, follow_redirects=False) as client:
-        response = client.request(method, url, cookies=cookies, json=json_body, headers=headers or None)
+    response = _AUTH_HTTP.request(method, url, cookies=cookies, json=json_body, headers=headers or None)
     if response.status_code >= 400:
         detail = response.text
         try:
@@ -218,38 +271,178 @@ def auth_request(method: str, path: str, cookies: dict[str, str], json_body=None
         except Exception:
             pass
         raise RuntimeError(str(detail))
-    if not response.content:
-        return {}
-    return response.json()
+    return response
+
+
+_NOTIFY_HTTP = httpx.Client(timeout=5.0, follow_redirects=False)
+
+
+def notify_request(method: str, path: str, cookies: dict[str, str], json_body=None) -> tuple[int, dict]:
+    """Notify personal-alerts API as the signed-in person: ``(status, body)``.
+
+    Never raises; a network failure comes back as ``(503, {"message": ...})``.
+    """
+    from stonepi_auth.session import CSRF_COOKIE, COOKIE_NAME
+    from stonepi_contracts import notify_base_url
+
+    url = f"{notify_base_url().rstrip('/')}/{path.lstrip('/')}"
+    forward = {k: v for k, v in (cookies or {}).items() if k in {COOKIE_NAME, CSRF_COOKIE}}
+    headers = {}
+    if method.upper() in {"POST", "PUT", "PATCH", "DELETE"} and forward.get(CSRF_COOKIE):
+        headers["X-StonePi-CSRF"] = forward[CSRF_COOKIE]
+    try:
+        response = _NOTIFY_HTTP.request(method, url, cookies=forward, json=json_body, headers=headers or None)
+    except Exception as exc:  # noqa: BLE001
+        return 503, {"ok": False, "message": f"Notify is not reachable ({type(exc).__name__})."}
+    try:
+        body = response.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    return response.status_code, body
+
+
+def forward_auth_cookies(response, auth_response: httpx.Response) -> None:
+    """Copy Set-Cookie from an Auth response onto a Dashboard response (e.g. password change)."""
+    # Prefer raw Set-Cookie headers so httponly / max-age / samesite survive.
+    for key, value in auth_response.headers.multi_items():
+        if key.lower() == "set-cookie" and value:
+            response.headers.append("set-cookie", value)
+            continue
+    if any(k.lower() == "set-cookie" for k, _ in auth_response.headers.multi_items()):
+        return
+    # Fallback: cookie jar (loses some flags but still clears fac).
+    from stonepi_auth.session import COOKIE_NAME, CSRF_COOKIE
+
+    for name, value in auth_response.cookies.items():
+        if name in {COOKIE_NAME, CSRF_COOKIE}:
+            response.set_cookie(name, value, path="/", httponly=True, samesite="lax")
 
 
 def backup_info() -> dict:
-    candidates = []
-    if env.backup_stamp:
-        candidates.append(Path(env.backup_stamp))
-    candidates.extend(
+    """Return local and USB stamp info (plus legacy flat fields for older templates)."""
+    from stonepi_watch import read_backup_info
+
+    return read_backup_info(env.backup_stamp or None)
+
+
+def _helper_run(args: list[str], timeout: float = 120) -> tuple[int, str]:
+    helper = "/usr/local/sbin/stonepi-backup-helper"
+    if os.name == "nt" or not Path(helper).exists():
+        return 1, "helper unavailable (Pi only)"
+    cmd = ["sudo", "-n", helper, *args]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=timeout)
+        out = ((result.stdout or "") + (result.stderr or "")).strip()
+        return result.returncode, out
+    except Exception as exc:  # noqa: BLE001
+        return 1, str(exc)
+
+
+def list_usb_backups() -> list[dict]:
+    """List local + USB snapshots (kind field on each row)."""
+    code, out = _helper_run(["list"], timeout=30)
+    if code != 0 or not out.strip():
+        return []
+    try:
+        data = json.loads(out)
+        return data if isinstance(data, list) else []
+    except json.JSONDecodeError:
+        return []
+
+
+def local_backup_schedule() -> dict:
+    code, out = _helper_run(["local-schedule-status"], timeout=15)
+    defaults = {
+        "enabled": 0,
+        "conf_enabled": "0",
+        "cadence": "weekly",
+        "weekday": "Sun",
+        "time": "03:30",
+        "root": "/var/backups/stonepi",
+        "next": "",
+    }
+    if code != 0 or not out.strip():
+        return defaults
+    try:
+        data = json.loads(out)
+        if isinstance(data, dict):
+            defaults.update(data)
+            return defaults
+    except json.JSONDecodeError:
+        pass
+    return defaults
+
+
+def set_local_backup_schedule(
+    enabled: bool,
+    cadence: str = "weekly",
+    time_of_day: str = "03:30",
+    weekday: str = "Sun",
+) -> tuple[bool, str]:
+    cadence = cadence if cadence in {"daily", "weekly"} else "weekly"
+    weekday = weekday if weekday in {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"} else "Sun"
+    time_of_day = time_of_day.strip() or "03:30"
+    code, out = _helper_run(
         [
-            Path("/var/lib/stonepi/backup-info.txt"),
-            Path("/var/lib/stonepi/last-backup.json"),
-        ]
+            "local-schedule",
+            "1" if enabled else "0",
+            cadence,
+            time_of_day,
+            weekday,
+        ],
+        timeout=30,
     )
-    for path in candidates:
-        if path.exists():
-            text = path.read_text(encoding="utf-8").strip()
-            if not text:
-                continue
-            if path.suffix == ".json":
-                try:
-                    return json.loads(text)
-                except json.JSONDecodeError:
-                    pass
-            info = {"path": str(path)}
-            for line in text.splitlines():
-                if "=" in line:
-                    key, value = line.split("=", 1)
-                    info[key.strip().lower()] = value.strip()
-            return info
-    return {"status": "none", "message": "No backup has been recorded yet."}
+    if code != 0 and "password is required" in (out or "").lower():
+        out = (
+            "Backup helper needs passwordless sudo for stonepi-dash "
+            "(missing /etc/sudoers.d/stonepi-dash entry for stonepi-backup-helper). "
+            "Re-run the local-backup push overlay, or add that NOPASSWD line on the Pi."
+        )
+    return code == 0, out
+
+
+def run_local_backup_now() -> tuple[bool, str]:
+    code, out = _helper_run(["backup-now", "local"], timeout=30)
+    return code == 0, out
+
+
+def restore_drill_status() -> dict:
+    path = Path("/var/lib/stonepi/last-restore-drill.txt")
+    if not path.exists():
+        return {"status": "none"}
+    info: dict = {"path": str(path)}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if "=" in line:
+            k, v = line.split("=", 1)
+            info[k.strip().lower()] = v.strip()
+    return info
+
+
+def run_restore_drill(backup_path: str = "") -> tuple[bool, str]:
+    args = ["drill"]
+    if backup_path:
+        args.append(backup_path)
+    code, out = _helper_run(args, timeout=180)
+    return code == 0, out
+
+
+def run_usb_restore(backup_path: str) -> tuple[bool, str]:
+    code, out = _helper_run(["restore", backup_path], timeout=600)
+    return code == 0, out
+
+
+def failover_status() -> str:
+    code, out = _helper_run(["failover-status"], timeout=10)
+    if "failover=on" in (out or ""):
+        return "on"
+    return "off"
+
+
+def set_failover(on: bool) -> tuple[bool, str]:
+    code, out = _helper_run(["failover-on" if on else "failover-off"], timeout=30)
+    return code == 0, out
 
 
 def now_iso() -> str:
@@ -334,7 +527,12 @@ def save_app_colors(colors: dict[str, str], *, reset: bool = False) -> dict[str,
     return resolved_app_colors()
 
 
-def catalog_apps(*, include_auth: bool = True, cookies: dict[str, str] | None = None) -> list[dict]:
+def catalog_apps(
+    *,
+    include_auth: bool = True,
+    include_non_grantable: bool = True,
+    cookies: dict[str, str] | None = None,
+) -> list[dict]:
     disabled: set[str] = set()
     if cookies is not None:
         try:
@@ -350,6 +548,8 @@ def catalog_apps(*, include_auth: bool = True, cookies: dict[str, str] | None = 
     items = []
     for item in APP_CATALOG:
         if not include_auth and item["id"] == "auth":
+            continue
+        if not include_non_grantable and item.get("grants") is False:
             continue
         merged = {**item, **(remote.get(item["id"]) or {})}
         # Household tile accents win over catalog / auth payload defaults.
@@ -392,6 +592,33 @@ def application_cards(cookies: dict[str, str] | None = None) -> list[dict]:
     return cards
 
 
+def application_card_groups(
+    cookies: dict[str, str] | None = None,
+    cards: list[dict] | None = None,
+) -> list[tuple[str, list[dict]]]:
+    """Services / Health groups: SYSTEM (Dashboard/Auth/…) then USER apps."""
+    items = cards if cards is not None else application_cards(cookies)
+    buckets: dict[str, list[dict]] = {key: [] for key, _ in SERVICE_GROUP_LABELS}
+    for card in items:
+        raw = str(card.get("group") or "user")
+        # Legacy catalog key before SYSTEM/USER rename.
+        key = "user" if raw == "apps" else raw
+        if key not in buckets:
+            buckets[key] = []
+        buckets[key].append(card)
+    groups: list[tuple[str, list[dict]]] = []
+    for key, label in SERVICE_GROUP_LABELS:
+        group_items = buckets.get(key) or []
+        if group_items:
+            groups.append((label, group_items))
+    known = {key for key, _ in SERVICE_GROUP_LABELS}
+    for key, group_items in buckets.items():
+        if key in known or not group_items:
+            continue
+        groups.append((key.replace("_", " ").title(), group_items))
+    return groups
+
+
 def parse_permissions_form(form, apps: list[dict]) -> dict[str, dict[str, bool]]:
     permissions: dict[str, dict[str, bool]] = {}
     for app in apps:
@@ -414,26 +641,89 @@ def ensure_fileserve_for_studio_publish(apps: list[str], permissions: dict) -> l
     return out
 
 
+def apply_disabled_to_watch(watch: dict, disabled: set[str]) -> dict:
+    """Mark disabled apps healthy in a Watch snapshot and recompute rollup level/reasons."""
+    import copy
+
+    import stonepi_watch
+
+    out = copy.deepcopy(watch) if isinstance(watch, dict) else {}
+    apps = list(out.get("apps") or [])
+    for row in apps:
+        if str(row.get("id") or "") not in disabled:
+            continue
+        row["enabled"] = False
+        row["running"] = False
+        row["level"] = stonepi_watch.LEVEL_HEALTHY
+        row["health_ok"] = bool(row.get("health_ok"))
+    out["apps"] = apps
+
+    reasons: list[str] = []
+    level = stonepi_watch.LEVEL_HEALTHY
+
+    def raise_to(next_level: str, reason: str) -> None:
+        nonlocal level
+        order = {
+            stonepi_watch.LEVEL_HEALTHY: 0,
+            stonepi_watch.LEVEL_ATTENTION: 1,
+            stonepi_watch.LEVEL_CRITICAL: 2,
+        }
+        if order[next_level] > order[level]:
+            level = next_level
+        reasons.append(reason)
+
+    for row in apps:
+        if not row.get("enabled", True):
+            continue
+        if row.get("level") == stonepi_watch.LEVEL_CRITICAL:
+            raise_to(stonepi_watch.LEVEL_CRITICAL, f"{row.get('n') or row.get('id')} is down")
+        elif row.get("level") == stonepi_watch.LEVEL_ATTENTION:
+            raise_to(stonepi_watch.LEVEL_ATTENTION, f"{row.get('n') or row.get('id')} is not running")
+
+    backup_status = str(out.get("backup_status") or "").strip().lower()
+    age_days = out.get("backup_age_days")
+    if backup_status in {"failed", "error"}:
+        raise_to(stonepi_watch.LEVEL_CRITICAL, "Backup failed")
+    elif age_days is None and backup_status in {"", "none", "unknown"}:
+        raise_to(stonepi_watch.LEVEL_ATTENTION, "No backup recorded")
+    elif isinstance(age_days, (int, float)) and age_days >= stonepi_watch.BACKUP_ATTENTION_DAYS:
+        raise_to(stonepi_watch.LEVEL_ATTENTION, f"Backup {int(age_days)}d ago")
+
+    disk = out.get("disk_pct")
+    if disk is not None:
+        try:
+            disk_i = int(disk)
+        except (TypeError, ValueError):
+            disk_i = None
+        if disk_i is not None:
+            if disk_i >= stonepi_watch.DISK_CRITICAL_PCT:
+                raise_to(stonepi_watch.LEVEL_CRITICAL, f"Disk {disk_i}% full")
+            elif disk_i >= stonepi_watch.DISK_SERIOUS_PCT:
+                raise_to(stonepi_watch.LEVEL_ATTENTION, f"Disk {disk_i}% used — serious")
+            elif disk_i >= stonepi_watch.DISK_ATTENTION_PCT:
+                raise_to(stonepi_watch.LEVEL_ATTENTION, f"Disk {disk_i}% used")
+
+    out["level"] = level
+    out["reasons"] = reasons[:8]
+    out.update(stonepi_watch.summarize(reasons, apps))
+    return out
+
+
 def launcher_tiles(user, cookies: dict[str, str] | None = None) -> list[dict]:
     """Product apps the signed-in user may open (not Auth/Dashboard chrome)."""
     catalog = {item["id"]: item for item in catalog_apps(include_auth=False, cookies=cookies)}
+    # Prefer the user's saved order from Auth; fall back to catalog order.
+    # Factory-admin banner still uses the session `fac` claim (no /api/me for that).
     order = list(LAUNCHER_APP_IDS)
     if cookies:
         try:
             me = auth_request("GET", "/api/me", cookies)
             saved = me.get("launcher_order")
             if isinstance(saved, list) and saved:
-                seen = set()
-                ordered = []
-                for app_id in saved:
-                    value = str(app_id or "").strip()
-                    if value in LAUNCHER_APP_IDS and value not in seen:
-                        ordered.append(value)
-                        seen.add(value)
-                for app_id in LAUNCHER_APP_IDS:
-                    if app_id not in seen:
-                        ordered.append(app_id)
-                order = ordered
+                known = set(LAUNCHER_APP_IDS)
+                preferred = [str(app_id) for app_id in saved if str(app_id) in known]
+                rest = [app_id for app_id in LAUNCHER_APP_IDS if app_id not in preferred]
+                order = preferred + rest
         except Exception:
             pass
     tiles = []

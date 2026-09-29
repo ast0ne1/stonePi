@@ -164,6 +164,59 @@ a {
   text-decoration: none;
 }
 
+/* Match NewsCast: form controls inherit the chrome font (otherwise <button>
+   chips render in the UA's ~13px Arial beside <a> chips in IBM Plex), and
+   inputs stay at 16px so iOS Safari doesn't zoom on focus. */
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+input, select, textarea {
+  font-size: 16px;
+}
+
+h1, h2, h3 { margin: 0 0 0.35em; }
+h1 { font-family: var(--serif); font-size: 2rem; font-weight: 600; }
+h2 { font-family: var(--serif); font-size: 1.35rem; }
+
+:root,
+html,
+body,
+.main,
+.sheet {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+.main::-webkit-scrollbar,
+.sheet::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+  background: var(--scroll-track);
+}
+html::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track,
+.main::-webkit-scrollbar-track,
+.sheet::-webkit-scrollbar-track {
+  background: var(--scroll-track);
+}
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb,
+.main::-webkit-scrollbar-thumb,
+.sheet::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 999px;
+  border: 3px solid var(--scroll-track);
+  background-clip: padding-box;
+}
+html::-webkit-scrollbar-thumb:hover,
+body::-webkit-scrollbar-thumb:hover,
+.main::-webkit-scrollbar-thumb:hover,
+.sheet::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover);
+}
+
 .app {
   display: flex;
   flex-direction: column;
@@ -176,7 +229,9 @@ a {
 /* Topbar */
 .topbar {
   flex: 0 0 auto;
-  min-height: var(--topbar-height);
+  /* Fixed floor — never the JS-measured --topbar-height, or the bar latches at
+     any transient tall height (it can grow but never shrink back). */
+  min-height: 65px;
   background: color-mix(in srgb, var(--paper) 92%, transparent);
   backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--line);
@@ -240,7 +295,7 @@ a {
   width: 22px;
   height: 22px;
   flex: 0 0 auto;
-  color: var(--accent);
+  display: block;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.6;
@@ -300,7 +355,7 @@ a {
   color: var(--muted);
   display: grid;
   place-items: center;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s;
 }
 
 .theme-switch button svg {
@@ -345,6 +400,8 @@ a {
 
 .hero {
   margin-bottom: 4px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .hero-row {
@@ -355,6 +412,15 @@ a {
   min-width: 0;
 }
 .hero-row > div { min-width: 0; flex: 1 1 auto; }
+.hero-row > .row-actions {
+  flex: 0 0 auto;
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
 .hero-row .btn-with-icon { flex: 0 0 auto; }
 .hero-row-inline {
   align-items: center;
@@ -396,6 +462,8 @@ a {
   display: grid;
   gap: 6px;
   margin: 0 0 4px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .page-status {
@@ -797,8 +865,22 @@ a {
 .settings-section[hidden] { display: none !important; }
 .settings-tabs.is-hub .settings-section { display: none !important; }
 .settings-tabs:not(.is-hub) .settings-hub { display: none !important; }
-/* Phone/tablet: hub → section only. Chip bar is desktop (≥1024). */
+/* Hub → panel on all viewports (many tabs; chip scroller was noisy on laptop). */
 .settings-top-chips { display: none !important; }
+@media (min-width: 1024px) {
+  .settings-hub {
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+  }
+  .settings-section {
+    max-width: 48rem;
+  }
+}
+@media (min-width: 1440px) {
+  .settings-section {
+    max-width: 56rem;
+  }
+}
 
 .section-heading {
   display: flex;
@@ -846,23 +928,6 @@ a {
   overflow-y: hidden;
   scrollbar-width: thin;
   scrollbar-color: var(--muted) transparent;
-}
-
-@media (min-width: 1024px) {
-  .settings-tabs.is-hub .settings-section,
-  .settings-tabs .settings-section {
-    display: grid !important;
-  }
-  .settings-tabs .settings-hub,
-  .settings-hub {
-    display: none !important;
-  }
-  .settings-back {
-    display: none !important;
-  }
-  .settings-top-chips {
-    display: flex !important;
-  }
 }
 
 .chips.settings-chips::-webkit-scrollbar {
@@ -931,7 +996,7 @@ a {
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s, filter 0.15s;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -980,6 +1045,8 @@ a {
   display: grid;
   grid-template-columns: 1fr;
   gap: 12px;
+  min-width: 0;
+  width: 100%;
 }
 
 .event-card {
@@ -994,6 +1061,11 @@ a {
   box-shadow: var(--shadow);
   transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
   position: relative;
+  /* Same as .card: avoid min-width:auto expanding .main and clipping the
+     agenda toolbar (info + filter buttons) when a long title/location is present. */
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .event-card:hover {
@@ -1454,6 +1526,8 @@ a {
   font-weight: 600;
   line-height: 1.35;
   margin-bottom: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .event-time, .event-location {
@@ -1463,6 +1537,13 @@ a {
   align-items: center;
   gap: 6px;
   margin-bottom: 6px;
+  min-width: 0;
+}
+
+.event-time span,
+.event-location span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .event-time svg, .event-location svg {
@@ -1484,6 +1565,8 @@ a {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .event-footer {
@@ -1493,6 +1576,9 @@ a {
   align-items: center;
   justify-content: space-between;
   margin-top: auto;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .dropdown {
@@ -1565,7 +1651,7 @@ a {
   font-weight: 500;
   font-size: 0.88rem;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s, filter 0.15s;
   border: 1px solid transparent;
   font-family: var(--chrome);
 }
@@ -1630,6 +1716,23 @@ a {
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.btn-stop {
+  gap: 6px;
+}
+.btn-stop svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  stroke: none;
+}
+.btn-stop:disabled { opacity: 0.6; }
+.page-status .btn-stop {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 0.85rem;
 }
 
 .btn-refresh.is-busy svg {
@@ -2093,9 +2196,9 @@ th {
   flex: 0 0 auto;
   z-index: 12;
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 2px;
-  padding: 8px var(--gutter) calc(10px + var(--safe-bottom));
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 4px;
+  padding: 8px max(var(--gutter), env(safe-area-inset-right, 0px)) calc(10px + var(--safe-bottom)) max(var(--gutter), env(safe-area-inset-left, 0px));
   background: color-mix(in srgb, var(--card) 94%, transparent);
   backdrop-filter: blur(16px);
   border-top: 1px solid var(--line);
@@ -2107,14 +2210,15 @@ th {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 3px;
   text-decoration: none;
-  font-size: 0.62rem;
+  font-size: 0.7rem;
   font-weight: 500;
   color: var(--muted);
   border-radius: 12px;
   min-width: 0;
   text-align: center;
+  padding: 4px 2px;
 }
 
 .nav a span {
@@ -2301,15 +2405,12 @@ html.sheet-open body {
     height: 30px;
   }
 
-  .btn-refresh span {
-    display: none;
-  }
-
-  /* 7 bottom-nav items at this width need denser icons/labels. */
+  /* 8 bottom-nav items: reclaim side gutter (still clear of the notch) and
+     shrink icons, but keep labels at the shared 0.7rem so they stay legible. */
   .nav {
     gap: 0;
-    padding-left: 4px;
-    padding-right: 4px;
+    padding-left: max(4px, env(safe-area-inset-left, 0px));
+    padding-right: max(4px, env(safe-area-inset-right, 0px));
   }
 
   .nav svg {
@@ -2317,13 +2418,11 @@ html.sheet-open body {
     height: 20px;
   }
 
-  .nav a span {
-    font-size: 0.58rem;
-  }
-
-  .btn-refresh {
-    min-width: var(--tap);
-    padding: 0 12px;
+  /* Same phone button density as NewsCast. */
+  .btn {
+    padding: 0 11px;
+    font-size: 0.86rem;
+    border-radius: 10px;
   }
 
   .hero h1,
@@ -2351,17 +2450,38 @@ html.sheet-open body {
   }
 }
 
+/* Icon-only Refresh — same ≤420px contract as NewsCast / PriceScout / PriceWatch. */
+@media (max-width: 420px) {
+  .btn-refresh span,
+  .topbar .btn-stop span {
+    display: none;
+  }
+
+  .topbar .btn-stop {
+    min-width: var(--tap);
+    padding: 0 12px;
+  }
+
+  .btn-refresh {
+    min-width: var(--tap);
+    padding: 0 12px;
+  }
+}
+
 @media (min-width: 1024px) {
   :root,
   [data-theme="light"],
   [data-theme="dark"] {
     --gutter: 24px;
+    --main-pad-x: 28px;
   }
 
   html {
     height: auto;
     overflow-x: hidden;
     overflow-y: auto;
+    /* Reserve the scrollbar lane so short vs long pages don't shift sideways. */
+    scrollbar-gutter: stable;
   }
 
   body {
@@ -2406,12 +2526,43 @@ html.sheet-open body {
     font-size: 0.85rem;
   }
 
+  /* Fill the column beside the rail. The base rule's `margin: 0 auto` must be
+     reset here: a grid item with auto inline margins shrink-wraps to its
+     content, so each page (and each filter) got a different width and the
+     headers jumped sideways. Matches NewsCast. */
   .main,
   .app-container {
     grid-column: 2;
     grid-row: 2;
-    width: auto; max-width: none;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    justify-self: stretch;
+    padding: 0 var(--main-pad-x) 40px;
     overflow: visible;
+  }
+
+  /* The page (not .main) scrolls at this tier, so sticky rows must clear
+     the sticky topbar instead of sliding under it. Full-bleed offsets track
+     .main's side padding rather than --gutter. */
+  .chips.settings-chips {
+    top: var(--topbar-height);
+    width: calc(100% + 2 * var(--main-pad-x));
+    margin-left: calc(-1 * var(--main-pad-x));
+    margin-right: calc(-1 * var(--main-pad-x));
+    padding-left: var(--main-pad-x);
+    padding-right: var(--main-pad-x);
+  }
+
+  .toast {
+    top: calc(var(--topbar-height) + 16px);
+    right: max(24px, var(--gutter, 24px));
+    left: auto;
+    bottom: auto;
+    transform: translateY(-6px);
+  }
+  .toast.is-on {
+    transform: translateY(0);
   }
 }
 
@@ -2420,12 +2571,15 @@ html.sheet-open body {
    data tables (Sources) don't need to scroll horizontally when there's
    plenty of room, and event cards can lay out side by side. */
 @media (min-width: 1440px) {
+  :root,
+  [data-theme="light"],
+  [data-theme="dark"] {
+    --main-pad-x: 36px;
+  }
+
   .main,
   .app-container {
-    /* Padding (--gutter, 24px here) already provides the side margin, so
-       there's no need to also shrink via a percentage -- that was leaving
-       a lot of the sidebar-adjusted track unused. */
-    width: auto; max-width: none;
+    padding-bottom: 48px;
   }
 
   .events-grid {
@@ -2453,7 +2607,7 @@ html.sheet-open body {
   .settings-panel:not([hidden]),
   .settings-panels {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
     gap: 16px;
     align-items: start;
   }
@@ -2480,7 +2634,7 @@ html.sheet-open body {
   }
   .settings-panel:not([hidden]),
   .settings-panels {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: 1fr;
   }
   .settings-panel:not([hidden]) > .settings-panel-span-2,
   .settings-panels > .settings-panel-span-2 {
@@ -2493,4 +2647,64 @@ html.sheet-open body {
     transition: none !important;
     animation: none !important;
   }
+}
+
+.empty-state {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--muted);
+}
+
+.discovery-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.discovery-row {
+  padding: 16px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.discovery-row:last-child {
+  border-bottom: 0;
+}
+
+.discovery-title {
+  margin: 0 0 4px;
+  font-size: 1.05rem;
+}
+
+.discovery-meta,
+.discovery-source,
+.discovery-excerpt {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.discovery-reasons {
+  margin: 8px 0 0;
+  padding-left: 1.2rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.discovery-actions {
+  flex-wrap: wrap;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--tap);
+  margin: 4px 0;
+}
+
+.check-row.is-disabled {
+  opacity: 0.55;
 }

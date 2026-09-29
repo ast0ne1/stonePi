@@ -262,7 +262,7 @@ class TjekClient:
         image = images.get("view") or images.get("zoom") or images.get("thumb")
         from app.money import offer_public_urls
 
-        urls = offer_public_urls(str(item.get("id") or ""), item)
+        urls = offer_public_urls(str(item.get("id") or ""), item, source_id=source_id)
         currency = str(pricing.get("currency") or "DKK").upper() or "DKK"
         external_id = str(item.get("id") or "").strip()
         if not external_id:

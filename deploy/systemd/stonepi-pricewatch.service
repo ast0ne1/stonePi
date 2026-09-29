@@ -1,0 +1,26 @@
+[Unit]
+Description=StonePi PriceWatch
+After=network-online.target stonepi-auth.service
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=stonepi-watch
+Group=stonepi-watch
+EnvironmentFile=/etc/stonepi/stonepi.env
+EnvironmentFile=-/etc/stonepi/pricewatch.env
+Environment=HOME=/opt/stonepi
+WorkingDirectory=/opt/stonepi/apps/pricewatch
+ExecStart=/opt/stonepi/apps/pricewatch/.venv/bin/python -m app.serve
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+Nice=10
+CPUWeight=20
+IOWeight=20
+MemoryMax=400M
+
+[Install]
+WantedBy=multi-user.target

@@ -6,7 +6,7 @@ After=local-fs.target
 [Service]
 Type=oneshot
 ExecStartPre=/bin/sleep 3
-ExecStart=/usr/local/sbin/stonepi-backup
+ExecStart=/usr/local/sbin/stonepi-backup --usb
 User=root
 Nice=10
 IOSchedulingClass=best-effort

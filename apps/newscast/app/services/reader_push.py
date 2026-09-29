@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import socket
-from datetime import date, datetime, timezone
+import threading
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from posixpath import dirname, join
 
@@ -18,7 +20,31 @@ from app.services.paper_naming import day_from_briefing_path, paper_download_nam
 
 logger = logging.getLogger("newscast.reader_push")
 UPLOAD_TIMEOUT = httpx.Timeout(60.0, connect=5.0)
-_last_probe: dict | None = None
+MAX_PRUNE_PER_PUSH = 10
+# Background push: the scheduler ticks every AUTO_PUSH_SECONDS, but only probes readers
+# with something queued, and waits longer between probes while a reader stays asleep.
+AUTO_PUSH_SECONDS = 60
+AUTO_PROBE_TIMEOUT = 1.5
+AUTO_BACKOFF_FAST_MISSES = 3
+AUTO_BACKOFF_MAX_SECONDS = 300
+AUTO_DUE_SLACK_SECONDS = 5
+# Uploads that fail while the reader is awake retry on later ticks, then give up.
+MAX_UPLOAD_ATTEMPTS = 5
+# Manual pushes wait this long for a push already running to the same reader.
+PUSH_WAIT_SECONDS = 30.0
+RECENT_HOURS = 12
+RECENT_LIMIT = 5
+
+# In-memory reader state (single app process): last probe per host, one push lock per
+# host, and the task ids uploading right now.
+_probes: dict[str, dict] = {}
+_push_locks: dict[str, threading.Lock] = {}
+_push_locks_guard = threading.Lock()
+_sending: set[str] = set()
+
+
+class ReaderConflict(RuntimeError):
+    """The reader already holds a file NewsCast did not send: retrying will not help."""
 
 
 def reader_host(db: Session, user_id: int | None = None) -> str:
@@ -159,6 +185,13 @@ def _http_upload(host: str, path: Path, dest_dir: str) -> None:
                     if retry.status_code < 400:
                         return
                     response = retry
+            if response.status_code >= 400 and "already exists" in (response.text or "").lower():
+                # CrossPoint / CrossInk refuse to overwrite. NewsCast replaces its own
+                # uploads before this point, so this file came from somewhere else.
+                raise ReaderConflict(
+                    f"{path.name} is already on the reader in {folder} but was not sent by NewsCast. "
+                    "Delete or rename it on the reader, then send again."
+                )
             if response.status_code >= 400:
                 detail = (response.text or "").strip().replace("\n", " ")[:160]
                 raise RuntimeError(
@@ -167,6 +200,164 @@ def _http_upload(host: str, path: Path, dest_dir: str) -> None:
                     + ". Check the upload folder exists on the SD card and File Transfer is on."
                 )
             response.raise_for_status()
+
+
+def _http_file_names(host: str, folder: str) -> set[str] | None:
+    """Names in a reader folder (GET /api/files), or None when the listing fails."""
+    try:
+        with httpx.Client(timeout=httpx.Timeout(10.0, connect=5.0), follow_redirects=True) as client:
+            response = client.get(f"http://{host}/api/files", params={"path": folder or "/"})
+        if response.status_code != 200:
+            return None
+        return {str(item.get("name") or "") for item in response.json() if not item.get("isDirectory")}
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _http_delete(host: str, device_path: str) -> bool:
+    """Delete one file on the reader (POST /delete). Missing files count as gone.
+
+    Both CrossPoint and CrossInk also clear the book's saved layout cache on delete.
+    """
+    try:
+        with httpx.Client(timeout=httpx.Timeout(15.0, connect=5.0), follow_redirects=True) as client:
+            response = client.post(f"http://{host}/delete", data={"path": device_path})
+    except httpx.HTTPError:
+        return False
+    return response.status_code < 400 or "not found" in (response.text or "").lower()
+
+
+def detect_firmware(host: str) -> tuple[str, str] | None:
+    """Best-effort (family, version) for an Xteink reader, or None when unreachable.
+
+    /api/status only reports a version number, and both firmwares ship a 1.6.0, so
+    the family comes from CrossInk's extra web assets (/logo.png). This is a hint:
+    the manual Reader firmware setting always wins.
+    """
+    try:
+        with httpx.Client(timeout=httpx.Timeout(3.0, connect=2.0), follow_redirects=True) as client:
+            status = client.get(f"http://{host}/api/status")
+            if status.status_code != 200:
+                return None
+            version = str(status.json().get("version") or "")
+            logo = client.get(f"http://{host}/logo.png")
+    except Exception:  # noqa: BLE001
+        return None
+    is_crossink = logo.status_code == 200 and logo.headers.get("content-type", "").startswith("image/")
+    return ("crossink" if is_crossink else "crosspoint", version)
+
+
+def _file_digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(65536), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _device_path(task: SyncTask, default_dir: str) -> str:
+    """Where the upload lands on the reader: task folder + the uploaded file's name."""
+    return join(_task_folder(task, default_dir), Path(task.file_path).name)
+
+
+def _previous_uploads(db: Session, task: SyncTask, default_dir: str) -> list[SyncTask]:
+    """Earlier completed uploads of the same file that are still on the reader, newest first."""
+    target = _device_path(task, default_dir)
+    rows = (
+        db.query(SyncTask)
+        .filter(SyncTask.user_id == task.user_id)
+        .filter(SyncTask.kind == "crosspoint")
+        .filter(SyncTask.status == "complete")
+        .filter(SyncTask.removed_at.is_(None))
+        .filter(SyncTask.id != task.id)
+        .order_by(SyncTask.completed_at.desc(), SyncTask.id.desc())
+        .all()
+    )
+    return [row for row in rows if _device_path(row, default_dir) == target]
+
+
+def _prepare_http_resend(db: Session, host: str, task: SyncTask, digest: str, default_dir: str) -> bool:
+    """Clear the way for a re-send of a file NewsCast already put on the reader.
+
+    Returns True when the reader already holds this exact content (skip the upload).
+    Otherwise deletes NewsCast's older copy so the same file name can be uploaded
+    again — the firmware refuses to overwrite, and delete also resets its cache.
+    """
+    previous = _previous_uploads(db, task, default_dir)
+    if not previous:
+        return False
+    device_path = _device_path(task, default_dir)
+    names = _http_file_names(host, dirname(device_path) or "/")
+    now = utcnow()
+    if names is not None and Path(device_path).name not in names:
+        # Removed on the device since the last push — upload fresh.
+        for row in previous:
+            row.removed_at = now
+        return False
+    if names is not None and previous[0].content_hash == digest:
+        return True
+    if not _http_delete(host, device_path):
+        raise RuntimeError(
+            f"Could not replace {Path(device_path).name} on the reader. "
+            "Check File Transfer is on, then send again."
+        )
+    for row in previous:
+        row.removed_at = now
+    return False
+
+
+def prune_reader_papers(
+    db: Session,
+    host: str,
+    user_id: int,
+    *,
+    today: date | None = None,
+) -> int:
+    """Delete this account's older NewsCast papers from the reader (Keep papers on reader).
+
+    Only files NewsCast itself uploaded (completed tasks) are touched, never Send /
+    library files, and today's and yesterday's papers always stay.
+    """
+    from app.services import reader_config
+    from app.services.delivery import briefing_day_for_task
+
+    keep = reader_config.reader_keep_days(db, user_id)
+    if keep <= 0:
+        return 0
+    keep = max(keep, settings.MIN_READER_KEEP_DAYS)
+    current = today or datetime.now().astimezone().date()
+    cutoff = current - timedelta(days=keep - 1)
+    default_dir = reader_upload_dir(db, user_id=user_id)
+    stale: dict[str, list[SyncTask]] = {}
+    rows = (
+        db.query(SyncTask)
+        .filter(SyncTask.user_id == int(user_id))
+        .filter(SyncTask.kind == "crosspoint")
+        .filter(SyncTask.status == "complete")
+        .filter(SyncTask.removed_at.is_(None))
+        .all()
+    )
+    for row in rows:
+        if _is_library_task(row):
+            continue
+        day = briefing_day_for_task(row)
+        if day is None or day >= cutoff:
+            continue
+        stale.setdefault(_device_path(row, default_dir), []).append(row)
+    removed = 0
+    now = utcnow()
+    # Oldest first, a few per push: history from before this setting existed can hold
+    # many papers, and each delete is a round-trip to the reader.
+    ordered = sorted(stale.items(), key=lambda item: min(briefing_day_for_task(row) for row in item[1]))
+    for device_path, group in ordered[:MAX_PRUNE_PER_PUSH]:
+        if not _http_delete(host, device_path):
+            # Reader likely went to sleep mid-prune; try again on the next push.
+            logger.warning("prune stopped at %s on %s", device_path, host)
+            break
+        for row in group:
+            row.removed_at = now
+        removed += 1
+    return removed
 
 
 def _known_hosts_path() -> Path:
@@ -305,10 +496,63 @@ def _created_label(value: datetime | None) -> str:
     return when.astimezone(timezone.utc).strftime("%d %b %Y %H:%M") + " UTC"
 
 
+def _clock(value: datetime | None) -> str:
+    """Local HH:MM for queue status lines (SQLite hands back naive UTC)."""
+    if value is None:
+        return ""
+    when = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    return when.astimezone().strftime("%H:%M")
+
+
+def _auto_push_on(db: Session, user_id: int | None) -> bool:
+    if user_id is None:
+        return settings.reader_push_enabled(db)
+    from app.services import reader_config
+
+    return reader_config.reader_push_enabled(db, int(user_id))
+
+
+def next_try_at(host: str) -> datetime | None:
+    """When the background push will next look for this reader (None before the first probe)."""
+    probe = last_probe(host)
+    if probe is None:
+        return None
+    due = probe.get("next_try_at")
+    if due is not None:
+        return due
+    at = probe.get("at")
+    return at + timedelta(seconds=AUTO_PUSH_SECONDS) if at is not None else None
+
+
+def queue_status(task: SyncTask, host: str, *, auto_on: bool) -> tuple[str, str]:
+    """(state, short label) for one waiting task: sending, retry, or waiting."""
+    if task.task_id in _sending:
+        return "sending", "Sending…"
+    probe = last_probe(host)
+    next_label = _clock(next_try_at(host)) if auto_on else ""
+    if (task.attempts or 0) > 0 and (task.error_message or "").strip():
+        label = f"Failed: {task.error_message.strip()}"
+        if auto_on:
+            label += f" · will retry {next_label}" if next_label else " · will retry"
+        else:
+            label += " · Push now to retry"
+        return "retry", label
+    label = "Waiting for reader"
+    if probe is not None and probe.get("at") is not None:
+        seen = "online" if probe.get("online") else "asleep"
+        label += f" · last tried {_clock(probe['at'])} ({seen})"
+    if next_label:
+        label += f" · next try {next_label}"
+    return "waiting", label
+
+
 def queue_items(db: Session, user_id: int | None = None) -> list[dict]:
+    host = reader_host(db, user_id=user_id)
+    auto_on = _auto_push_on(db, user_id)
     items = []
     for task in sorted(pending_crosspoint(db, user_id=user_id), key=_queue_display_sort_key):
         name = Path(task.save_path or task.file_path).name
+        state, status_label = queue_status(task, host, auto_on=auto_on)
         items.append(
             {
                 "task_id": task.task_id,
@@ -316,6 +560,38 @@ def queue_items(db: Session, user_id: int | None = None) -> list[dict]:
                 "name": name,
                 "size_label": pretty_size(task.size or 0),
                 "created_label": _created_label(task.created_at),
+                "state": state,
+                "status_label": status_label,
+            }
+        )
+    return items
+
+
+def recent_items(db: Session, user_id: int | None = None, *, now: datetime | None = None) -> list[dict]:
+    """Reader uploads that finished (sent or gave up) in the last few hours, newest first."""
+    cutoff = (now or utcnow()) - timedelta(hours=RECENT_HOURS)
+    query = (
+        db.query(SyncTask)
+        .filter(SyncTask.kind == "crosspoint")
+        .filter(SyncTask.status.in_(("complete", "failed")))
+        .filter(SyncTask.completed_at.isnot(None))
+        .filter(SyncTask.completed_at >= cutoff)
+    )
+    if user_id is not None:
+        query = query.filter(SyncTask.user_id == int(user_id))
+    items = []
+    for task in query.order_by(SyncTask.completed_at.desc(), SyncTask.id.desc()).limit(RECENT_LIMIT).all():
+        if task.status == "complete":
+            state, status_label = "sent", f"Sent {_clock(task.completed_at)}"
+        else:
+            state, status_label = "failed", f"Failed: {(task.error_message or 'unknown error').strip()}"
+        items.append(
+            {
+                "task_id": task.task_id,
+                "label": queue_label(task),
+                "name": Path(task.save_path or task.file_path).name,
+                "state": state,
+                "status_label": status_label,
             }
         )
     return items
@@ -403,31 +679,96 @@ def _task_folder(task: SyncTask, default: str) -> str:
     return folder if folder and folder != "." else default
 
 
-def flush_pending(db: Session, user_id: int | None = None) -> dict:
-    from app.services.delivery import briefing_day_for_task, mark_briefing_pushed
+def _push_lock(host: str) -> threading.Lock:
+    with _push_locks_guard:
+        return _push_locks.setdefault(host, threading.Lock())
 
+
+def push_in_progress(host: str) -> bool:
+    lock = _push_locks.get(host)
+    return bool(lock and lock.locked())
+
+
+def flush_pending(
+    db: Session,
+    user_id: int | None = None,
+    *,
+    wait: bool = True,
+    probe_timeout: float | None = None,
+) -> dict:
+    """Upload everything queued for this account, one push per reader at a time.
+
+    ``wait=False`` (the background tick) skips instead of queueing behind a push that
+    is already running to the same reader.
+    """
     uid = int(user_id) if user_id is not None else None
     host = reader_host(db, user_id=uid)
+    lock = _push_lock(host)
+    acquired = lock.acquire(timeout=PUSH_WAIT_SECONDS) if wait else lock.acquire(blocking=False)
+    if not acquired:
+        probe = last_probe(host) or {}
+        return {
+            "ok": False,
+            "busy": True,
+            "online": bool(probe.get("online")),
+            "uploaded": 0,
+            "pending": len(pending_crosspoint(db, user_id=uid)),
+            "host": host,
+        }
+    try:
+        return _flush_locked(db, uid, host, probe_timeout)
+    finally:
+        lock.release()
+
+
+def _flush_locked(db: Session, uid: int | None, host: str, probe_timeout: float | None) -> dict:
+    from app.services.delivery import briefing_day_for_task, mark_briefing_pushed
+
     dest = reader_upload_dir(db, user_id=uid) if uid is not None else reader_upload_dir(db)
     tasks = pending_crosspoint(db, user_id=uid)
-    online = reader_reachable(host, db=db, user_id=uid)
+    online = reader_reachable(host, timeout=probe_timeout, db=db, user_id=uid)
+    remember_probe(host, online)
     if not online:
         return {"ok": False, "online": False, "uploaded": 0, "pending": len(tasks), "host": host}
     uploaded = 0
+    skipped = 0
+    errors: list[str] = []
     today = datetime.now().astimezone().date()
+    http_reader = uid is None or not _is_kobo(db, uid)
+    # Detection and pruning ride along with real pushes only — the background tick
+    # calls this every minute and the reader's web server is a small ESP32.
+    per_push_upkeep = bool(tasks) and uid is not None and http_reader
+    if per_push_upkeep:
+        _remember_firmware(db, host, uid)
     for task in tasks:
         path = Path(task.file_path)
         if not path.exists():
             task.status = "failed"
             task.error_message = "File missing before upload."
             task.completed_at = utcnow()
+            db.commit()
             continue
         task_uid = getattr(task, "user_id", None) or uid
+        _sending.add(task.task_id)
         try:
-            upload_file(host, path, _task_folder(task, dest), db=db, user_id=task_uid)
+            digest = _file_digest(path)
+            # CrossPoint / CrossInk refuse to overwrite: skip unchanged re-sends and
+            # delete NewsCast's own older copy before sending a changed one.
+            unchanged = bool(uid is not None and http_reader and _prepare_http_resend(db, host, task, digest, dest))
+            if not unchanged:
+                upload_file(host, path, _task_folder(task, dest), db=db, user_id=task_uid)
             task.status = "complete"
             task.error_message = None
             task.completed_at = utcnow()
+            task.attempts = (task.attempts or 0) + 1
+            task.last_attempt_at = task.completed_at
+            task.content_hash = digest
+            if unchanged:
+                skipped += 1
+                if briefing_day_for_task(task) == today:
+                    mark_briefing_pushed(db, today)
+                db.commit()
+                continue
             uploaded += 1
             if briefing_day_for_task(task) == today:
                 mark_briefing_pushed(db, today)
@@ -443,41 +784,128 @@ def flush_pending(db: Session, user_id: int | None = None) -> dict:
                     body=f"Morning paper is on the reader — {label}",
                     user_id=getattr(task, "user_id", None),
                 )
+            db.commit()
         except Exception as exc:  # noqa: BLE001
             logger.warning("upload failed for %s: %s", path.name, exc)
-            task.status = "failed"
-            task.error_message = str(exc)[:240]
-            task.completed_at = utcnow()
+            task.last_attempt_at = utcnow()
+            if not isinstance(exc, ReaderConflict) and not reader_reachable(
+                host, timeout=probe_timeout, db=db, user_id=uid
+            ):
+                # The reader went to sleep mid-push: not the file's fault, so it keeps
+                # waiting and the rest of the queue goes out on the next try.
+                remember_probe(host, False)
+                db.commit()
+                break
+            reason = str(exc)[:240]
+            errors.append(reason)
+            task.attempts = (task.attempts or 0) + 1
+            task.error_message = reason
+            if isinstance(exc, ReaderConflict) or task.attempts >= MAX_UPLOAD_ATTEMPTS:
+                task.status = "failed"
+                task.completed_at = task.last_attempt_at
+            db.commit()
+        finally:
+            _sending.discard(task.task_id)
     db.commit()
+    removed = 0
+    if per_push_upkeep:
+        removed = prune_reader_papers(db, host, uid, today=today)
+        db.commit()
     pending = len(pending_crosspoint(db, user_id=uid))
-    return {"ok": True, "online": True, "uploaded": uploaded, "pending": pending, "host": host}
+    return {
+        "ok": True,
+        "online": True,
+        "uploaded": uploaded,
+        "skipped": skipped,
+        "removed": removed,
+        "pending": pending,
+        "errors": errors,
+        "host": host,
+    }
 
 
-def flush_all_enabled(db: Session) -> list[dict]:
-    """Background tick: flush each active user who has push-when-online and a host."""
+def _is_kobo(db: Session, user_id: int) -> bool:
+    from app.services import reader_config
+
+    return reader_config.reader_is_kobo(db, user_id)
+
+
+def _remember_firmware(db: Session, host: str, user_id: int) -> None:
+    from app.services import reader_config
+
+    found = detect_firmware(host)
+    if found:
+        reader_config.remember_detected_firmware(db, user_id, *found)
+
+
+def _push_users(db: Session) -> list:
+    """Active accounts with Push when the reader is on Wi-Fi turned on and a reader host."""
     from app.models import User
     from app.services import reader_config
 
-    results: list[dict] = []
     users = db.query(User).filter(User.active.is_(True)).order_by(User.id.asc()).all()
-    for user in users:
-        if not reader_config.reader_push_enabled(db, user.id):
+    return [
+        user
+        for user in users
+        if reader_config.reader_push_enabled(db, user.id) and reader_config.reader_host(db, user.id)
+    ]
+
+
+def flush_all_enabled(db: Session) -> list[dict]:
+    """Flush each active user who has push-when-online and a host (no backoff)."""
+    return [flush_pending(db, user_id=user.id) for user in _push_users(db)]
+
+
+def auto_push(db: Session, *, now: datetime | None = None) -> list[dict]:
+    """Scheduler tick: send each account's queue as soon as its reader answers.
+
+    Readers with nothing queued are never probed, a reader that stays asleep is probed
+    less often (see ``_backoff_seconds``), and a push already running to that reader is
+    left alone rather than doubled up.
+    """
+    when = now or utcnow()
+    results: list[dict] = []
+    for user in _push_users(db):
+        uid = int(user.id)
+        if not pending_crosspoint(db, user_id=uid):
             continue
-        if not reader_config.reader_host(db, user.id):
+        host = reader_host(db, user_id=uid)
+        if push_in_progress(host):
             continue
-        results.append(flush_pending(db, user_id=user.id))
+        due = (last_probe(host) or {}).get("next_try_at")
+        if due is not None and when + timedelta(seconds=AUTO_DUE_SLACK_SECONDS) < due:
+            continue
+        results.append(flush_pending(db, user_id=uid, wait=False, probe_timeout=AUTO_PROBE_TIMEOUT))
     return results
 
 
+def _backoff_seconds(misses: int) -> int:
+    """Every tick for the first few misses, then doubling up to a five-minute gap."""
+    if misses <= AUTO_BACKOFF_FAST_MISSES:
+        return AUTO_PUSH_SECONDS
+    return min(AUTO_PUSH_SECONDS * 2 ** (misses - AUTO_BACKOFF_FAST_MISSES), AUTO_BACKOFF_MAX_SECONDS)
+
+
 def remember_probe(host: str, online: bool) -> None:
-    global _last_probe
-    _last_probe = {"host": host, "online": bool(online)}
+    when = utcnow()
+    misses = 0 if online else int((_probes.get(host) or {}).get("misses") or 0) + 1
+    _probes[host] = {
+        "host": host,
+        "online": bool(online),
+        "at": when,
+        "misses": misses,
+        "next_try_at": None if online else when + timedelta(seconds=_backoff_seconds(misses)),
+    }
 
 
 def last_probe(host: str) -> dict | None:
-    if _last_probe and _last_probe.get("host") == host:
-        return _last_probe
-    return None
+    return _probes.get(host)
+
+
+def reset_probe_state() -> None:
+    """Forget remembered probes and in-flight uploads (tests)."""
+    _probes.clear()
+    _sending.clear()
 
 
 def snapshot(db: Session, *, probe: bool = True, user_id: int | None = None) -> dict:
@@ -504,13 +932,17 @@ def snapshot(db: Session, *, probe: bool = True, user_id: int | None = None) -> 
         device = settings.reader_device(db)
         ssh_port = settings.reader_ssh_port(db)
         upload_path = reader_upload_dir(db)
+    probe_at = (last_probe(host) or {}).get("at")
     return {
         "host": host,
         "upload_path": upload_path,
         "online": online,
         "checked": checked,
+        "checked_label": _clock(probe_at),
+        "sending": push_in_progress(host),
         "pending": len(pending),
         "queue": queue_items(db, user_id=uid),
+        "recent": recent_items(db, user_id=uid),
         "push_when_online": push_on,
         "device": device,
         "ssh_port": ssh_port,

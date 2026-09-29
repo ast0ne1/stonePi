@@ -18,7 +18,7 @@ Hard-refresh the browser after syncing code. Confirm units with `stonepi status`
 ## 3. Smoke test
 
 1. Home — Edit order drag → Done; refresh keeps order  
-2. Settings → Display — Status wall + Household previews are landscape and full-width  
+2. Notify → Displays — Status wall + Household designs; Destinations for webhook / ntfy  
 3. Copy markup → paste into TRMNL → Push now → panel updates  
 4. Health (`/overview`) shows app health (Healthy/Down) plus disk and backup; Status Services metadata not all `—` when apps respond  
 5. Health → Cockpit opens with HTTPS  
@@ -29,13 +29,19 @@ Hard-refresh the browser after syncing code. Confirm units with `stonepi status`
 
 ## 4. Commit (when you ask)
 
-Do **not** commit until you explicitly request it. Suggested message focus: Status wall + Home drag + StonePi-labelled zips + install hardening for 0.1.1.
+Do **not** commit until you explicitly request it. Summarize the cut from the root `CHANGELOG.md` entry for the version in [`VERSION`](../VERSION).
 
 Before the first commit, dry-run staged paths and confirm no `vault.key`, `secrets.enc`, `*.db`, or `apps/*/data/` runtime files.
 
 ## 5. Build release zips
 
-From repo root (versions already in each `app/__init__.py`):
+From repo root (versions already in each `app/__init__.py`; the app list comes from `APP_CATALOG`):
+
+```bash
+python scripts/build_release_zips.py --versions-table
+```
+
+Paste the output under `### App versions in this cut` in the root [CHANGELOG.md](../CHANGELOG.md) — never type the table by hand. Then build:
 
 ```bash
 python scripts/build_release_zips.py --all
@@ -43,13 +49,15 @@ python scripts/build_release_zips.py --all
 
 Assets are **StonePi portal variants** (not standalone app releases):
 
-- `stonepi-dashboard-0.0.2.zip`, `stonepi-auth-0.0.2.zip`, `stonepi-eventtrakr-0.0.2.zip`, `stonepi-studio-0.0.2.zip`, …
-- `stonepi-platform-0.1.1.zip`
+- `stonepi-<app>-<version>.zip` for every user app (catalog apps without `ships_with: platform`)
+- `stonepi-platform-<version>.zip`, which also carries the system apps (`apps/dashboard`, `apps/auth`, `apps/notify`, `apps/recover`)
 
 Each zip includes `STONEPI.txt`. The updater prefers `stonepi-{app}-*.zip` and still accepts legacy `{app}-*.zip` for one cycle.
 
-Do **not** ship ad-hoc Pi overlay helpers (`scripts/push-*-fixes.*`, `scripts/apply-*-on-pi.sh`) — those stay local-only (gitignored).
+Do **not** ship ad-hoc Pi overlay helpers (`scripts/push-*-fixes.*`, `scripts/apply-*-on-pi.sh`, `scripts/*-bootstrap-on-pi.sh`) — those stay local-only (gitignored).
 
 ## 6. GitHub Release
 
-Tag platform **v0.1.5** (or your chosen tag), attach the `stonepi-*.zip` assets, summarize from root `CHANGELOG.md`.
+Tag the platform `v<VERSION>` (the value in [`VERSION`](../VERSION)), attach the `stonepi-*.zip` assets, the source tarball and `SHA256SUMS`, summarize from root `CHANGELOG.md`. Tag every cut you publish.
+
+`SHA256SUMS` is required: Pis refuse app updates from a release without it, or whose zip doesn't match it. `build_release_zips.py` writes it; after adding the source tarball to the folder, refresh it with `python scripts/build_release_zips.py --out <folder> --checksums`.

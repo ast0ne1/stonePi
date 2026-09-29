@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
@@ -29,6 +30,11 @@ from app.services.scrapers.browser_fetch import browser_session
 logger = logging.getLogger("eventtrakr.ui")
 
 bp = Blueprint("ui", __name__)
+
+# Pending sentinel for deep_search_sources_checked (browser scrape still running).
+DEEP_SEARCH_PENDING = -1
+_deep_search_lock = threading.Lock()
+_deep_search_inflight: set[tuple[int, str, str]] = set()
 
 
 def _enrich_events(events: list[Event]) -> None:
@@ -176,13 +182,13 @@ def favourites():
     )
 
 
-def _deep_search_sources(db, user, target_date, cat_query: str) -> int:
+def _deep_search_sources(db, user_id: int, target_date, cat_query: str) -> int:
     """A search date past the normal Agenda horizon means we've likely never
     scraped that far out. Rather than come back empty, go fetch it live from
     whichever of the user's sources match the requested category (or all of
     them, when no category was chosen). Returns how many sources were checked.
     """
-    src_query = select(EventSource).where(EventSource.user_id == user.user_id, EventSource.enabled == True)
+    src_query = select(EventSource).where(EventSource.user_id == user_id, EventSource.enabled == True)
     if cat_query and cat_query != "all":
         matching_keys = db.execute(select(Category.key).where(Category.label == cat_query)).scalars().all()
         if not matching_keys:
@@ -206,6 +212,49 @@ def _deep_search_sources(db, user, target_date, cat_query: str) -> int:
                 logger.exception("Deep search sync failed for source %s", src.id)
 
     return len(sources)
+
+
+def _deep_search_worker(user_id: int, target_date, cat_query: str, key: tuple[int, str, str]) -> None:
+    try:
+        with SessionLocal() as db:
+            _deep_search_sources(db, user_id, target_date, cat_query)
+    except Exception:
+        logger.exception("Background deep search failed for user=%s date=%s", user_id, target_date)
+    finally:
+        with _deep_search_lock:
+            _deep_search_inflight.discard(key)
+
+
+def _start_deep_search_background(user_id: int, target_date, cat_query: str) -> bool:
+    """Kick off a deep search in a daemon thread. Returns False if one is already
+    in flight for the same user/date/category (so we still show pending)."""
+    key = (user_id, target_date.isoformat(), cat_query or "all")
+    with _deep_search_lock:
+        if key in _deep_search_inflight:
+            return False
+        _deep_search_inflight.add(key)
+    threading.Thread(
+        target=_deep_search_worker,
+        args=(user_id, target_date, cat_query, key),
+        daemon=True,
+        name="eventtrakr-deep-search",
+    ).start()
+    return True
+
+
+def _deep_search_needs_browser(db, user_id: int, cat_query: str) -> bool | None:
+    """True if any matching source needs Chromium; False for ICS-only; None if
+    no sources match (caller can treat as checked=0)."""
+    src_query = select(EventSource).where(EventSource.user_id == user_id, EventSource.enabled == True)
+    if cat_query and cat_query != "all":
+        matching_keys = db.execute(select(Category.key).where(Category.label == cat_query)).scalars().all()
+        if not matching_keys:
+            return None
+        src_query = src_query.where(EventSource.category.in_(matching_keys))
+    sources = list(db.execute(src_query).scalars())
+    if not sources:
+        return None
+    return any(not ingest.is_ics_source(s) for s in sources)
 
 
 @bp.route("/search")
@@ -238,7 +287,16 @@ def search():
             if target_date:
                 horizon = datetime.now(timezone.utc).date() + timedelta(days=env.max_lookahead_days)
                 if target_date > horizon:
-                    deep_search_sources_checked = _deep_search_sources(db, user, target_date, cat_query)
+                    needs_browser = _deep_search_needs_browser(db, user.user_id, cat_query)
+                    if needs_browser is None:
+                        deep_search_sources_checked = 0
+                    elif needs_browser:
+                        # Browser scrapes must not block the request on the Pi.
+                        _start_deep_search_background(user.user_id, target_date, cat_query)
+                        deep_search_sources_checked = DEEP_SEARCH_PENDING
+                    else:
+                        # ICS-only: cheap enough to finish before render.
+                        deep_search_sources_checked = _deep_search_sources(db, user.user_id, target_date, cat_query)
 
             query = select(Event).where(Event.user_id == user.user_id, Event.is_cancelled == False)
 
@@ -274,6 +332,7 @@ def search():
         cat_query=cat_query,
         categories=categories,
         deep_search_sources_checked=deep_search_sources_checked,
+        deep_search_pending=deep_search_sources_checked == DEEP_SEARCH_PENDING,
     )
 
 

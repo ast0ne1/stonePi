@@ -25,16 +25,18 @@ Complements NewsCast (“what’s worth reading”) with “what’s on near us�
 
 - **7-day agenda** — Today through +6d, category chips, free/price badges
 - **Source catalog + custom feeds** — Eventbrite, Meetup, ICS/webcal, community sites; keyword include/exclude; global or per-source schedule
+- **Instagram discovery** — track public accounts (Sources → Instagram); Bright Data poll + local OCR; Discoveries review queue; high-confidence auto-create (Settings → Discovery)
 - **Favourites** — star events; optional Google Calendar forward; one-click Google Calendar link; `.ics` download; live **webcal** feed
 - **Public overview** — optional shareable `/u/<username>` agenda without login
 - **Search** — date + location across configured sources
-- **Bright Data** (optional) — Facebook Events discover/scrape when an API key is set; otherwise catalog/ICS/browser paths still work
+- **Bright Data** (optional) — Facebook Events discover/scrape and Instagram post discovery when an API key is set; otherwise catalog/ICS/browser paths still work
 
 ## Integrations (this app)
 
 | Integration | Role |
 |-------------|------|
-| **Bright Data** | Facebook Events API scrape when keyed |
+| **Bright Data** | Facebook Events + Instagram posts (Web Scraper API; shared free monthly credits) |
+| **Tesseract OCR** | Local poster text extraction (optional system package `tesseract-ocr`) |
 | **Google Calendar** | OAuth forward of favourites |
 | **ICS / webcal** | Apple, Outlook, native calendars |
 | **TRMNL** | Display block for upcoming favourites |
@@ -45,6 +47,7 @@ Complements NewsCast (“what’s worth reading”) with “what’s on near us�
 - Appearance (theme + palette)
 - Privacy (public vs private overview)
 - Schedule / location defaults
+- Discovery (Instagram tracking, poll interval, OCR, auto-create, social ntfy)
 - Integrations: Bright Data key, Google OAuth client
 - Network / TLS tabs matter mainly for **solo** runs
 
@@ -56,6 +59,8 @@ python -m venv .venv
 .venv\Scripts\python.exe -m playwright install chromium
 .venv\Scripts\python.exe -m app.serve
 ```
+
+For Instagram OCR on the Pi, also install the system package (Debian/Ubuntu): `sudo apt install tesseract-ocr`.
 
 Open http://127.0.0.1:8085 — default **admin** / **admin**. Prefer `scripts\run-dev.bat` from the StonePi root for SSO with the rest of the portal.
 

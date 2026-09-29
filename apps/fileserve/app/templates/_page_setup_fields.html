@@ -1,3 +1,4 @@
+{% from "_icons.html" import password_toggle %}
 <label>
   Label
   <input type="text" name="label" value="{{ label or '' }}" required autocomplete="off" placeholder="Emergency Planner" data-label-field />
@@ -48,10 +49,7 @@
     Page password
     <span class="password-field">
       <input type="password" name="page_password" autocomplete="new-password" placeholder="{{ password_placeholder or '' }}" />
-      <button type="button" class="icon-btn icon-btn-quiet password-toggle" data-password-toggle aria-label="Show password" title="Show password">
-        <svg data-icon-show viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 6.5 12 6.5 21.5 12 21.5 12 18 17.5 12 17.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.6"/></svg>
-        <svg data-icon-hide hidden viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 6.5 12 6.5 21.5 12 21.5 12 18 17.5 12 17.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.6"/><path d="M4 20 20 4"/></svg>
-      </button>
+      {{ password_toggle() }}
     </span>
   </label>
   {% if password_hint %}

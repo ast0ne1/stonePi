@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}History · Notify{% endblock %}
+
+{% block content %}
+<section class="hero">
+  {% include "_back_to_settings.html" %}
+  <h1>History</h1>
+  <p class="lede">Recent phone-alert and TRMNL deliveries. Handy when something didn't arrive.</p>
+</section>
+
+<div class="card stack">
+  <h2 class="section-heading">{{ filter_icon('history') }} Delivery history</h2>
+  {% if history %}
+  <ul class="vault-list">
+    {% for item in history %}
+    <li class="vault-row">
+      <div class="vault-row-text">
+        <strong>{% if item.ok %}✓{% else %}✕{% endif %} {{ 'Phone alert' if item.channel == 'ntfy' else ('TRMNL' if item.channel == 'trmnl' else item.channel) }}</strong>
+        — {{ item.title }}
+        <p class="muted">{{ item.at[:19]|replace('T', ' ') }}{% if item.message %} · {{ item.message }}{% endif %}</p>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">No deliveries yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

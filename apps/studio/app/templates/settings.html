@@ -4,16 +4,46 @@
 
 {% block content %}
 <section class="hero">
-  <h1>Settings</h1>
+  {% if not settings_hub %}
+  <a class="settings-back" href="/settings">&larr; Settings</a>
+  {% endif %}
+  <h1>{% if settings_hub %}Settings{% elif settings_tab == 'model' %}Model{% elif settings_tab == 'prompts' %}Prompts{% elif settings_tab == 'notifications' %}Notifications{% else %}About{% endif %}</h1>
   <p class="lede">{{ settings_lede }}</p>
 </section>
 
+{% if settings_hub %}
+<nav class="settings-hub" aria-label="Settings groups">
+  {% for group_id, group_label, rows in settings_groups %}
+  <div class="settings-hub-group">
+    <h2 class="settings-hub-heading">{{ group_label }}</h2>
+    <div class="settings-hub-card">
+      {% for key, label, subtext, icon_name in rows %}
+      <a class="settings-hub-row" href="/settings?tab={{ key }}">
+        <span class="settings-hub-icon" aria-hidden="true">{{ icon(icon_name) }}</span>
+        <span class="settings-hub-copy">
+          <span class="settings-hub-title">{{ label }}</span>
+          <span class="settings-hub-sub">{{ subtext }}</span>
+        </span>
+        <span class="settings-hub-chevron" aria-hidden="true">&rsaquo;</span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</nav>
+{% else %}
 <div class="settings-tabs">
-  <div class="chips settings-chips" role="tablist" aria-label="Settings sections">
+  <div class="chips settings-chips settings-top-chips" role="tablist" aria-label="Settings sections">
     <a class="chip-btn{% if settings_tab == 'about' %} is-active{% endif %}" href="/settings?tab=about" role="tab" id="settings-tab-about" aria-selected="{{ 'true' if settings_tab == 'about' else 'false' }}" aria-controls="settings-panel-about">
       {{ icon("about") }}<span>About</span>
     </a>
+    <a class="chip-btn{% if settings_tab == 'notifications' %} is-active{% endif %}" href="/settings?tab=notifications" role="tab" id="settings-tab-notifications" aria-selected="{{ 'true' if settings_tab == 'notifications' else 'false' }}" aria-controls="settings-panel-notifications">
+      {{ icon("bell") }}<span>Notifications</span>
+    </a>
     {% if is_admin %}
+    <a class="chip-btn{% if settings_tab == 'model' %} is-active{% endif %}" href="/settings?tab=model" role="tab" id="settings-tab-model" aria-selected="{{ 'true' if settings_tab == 'model' else 'false' }}" aria-controls="settings-panel-model">
+      {{ icon("model") }}<span>Model</span>
+    </a>
     <a class="chip-btn{% if settings_tab == 'prompts' %} is-active{% endif %}" href="/settings?tab=prompts" role="tab" id="settings-tab-prompts" aria-selected="{{ 'true' if settings_tab == 'prompts' else 'false' }}" aria-controls="settings-panel-prompts">
       {{ icon("prompts") }}<span>Prompts</span>
     </a>
@@ -28,6 +58,111 @@
       <p class="hint">Version: {{ app_version }}</p>
     </div>
   </div>
+
+  <div class="stack settings-panel" id="settings-panel-notifications" role="tabpanel" aria-labelledby="settings-tab-notifications"{% if settings_tab != 'notifications' %} hidden{% endif %}>
+    {% from "stonepi/alerts.html" import notifications_card %}
+    {% if notifications_card_state %}
+    {{ notifications_card(notifications_card_state) }}
+    {% else %}
+    <div class="card stack">
+      <h2>{{ icon("bell") }} Publish alerts</h2>
+      <p class="hint">Phone alerts need StonePi sign-in. When Studio runs on its own, it doesn't send alerts.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if is_admin and settings_tab == 'model' %}
+  <div class="stack settings-panel" id="settings-panel-model" role="tabpanel" aria-labelledby="settings-tab-model">
+    <div class="card stack settings-panel-span model-status">
+      <h2>Now using</h2>
+      {% if active_provider.id %}
+      <p class="lede"><strong>{{ active_provider.label }}</strong> · <code>{{ active_provider.model }}</code></p>
+      {% else %}
+      <p class="lede">No AI service is connected yet. Add <code>OPENAI_API_KEY</code> or <code>ANTHROPIC_API_KEY</code> in the StonePi Vault, and Studio picks it up automatically.</p>
+      {% endif %}
+      {% if key_status.local %}<p class="hint">A local OpenAI-compatible server (<code>STUDIO_LLM_BASE_URL</code>) is also configured and is used when the choice below is Automatic.</p>{% endif %}
+    </div>
+
+    <form method="post" action="/settings/model" class="stack settings-panel-span model-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+
+      <fieldset class="card stack">
+        <legend><h2>AI service</h2></legend>
+        {% set services = [
+          ("auto", "Automatic", "Use whichever key is in the Vault (Anthropic first if both are set).", True),
+          ("openai", "OpenAI", "Uses OPENAI_API_KEY.", key_status.openai),
+          ("anthropic", "Anthropic (Claude)", "Uses ANTHROPIC_API_KEY.", key_status.anthropic),
+        ] %}
+        {% for value, label, blurb, ready in services %}
+        <label class="choice-row">
+          <input type="radio" name="provider" value="{{ value }}" {% if provider_pref == value %}checked{% endif %} data-provider-choice />
+          <span>
+            <span class="choice-title"><strong>{{ label }}</strong>{% if value != "auto" %}<span class="key-pill {{ 'is-ok' if ready else 'is-missing' }}">{{ "Key found" if ready else "No key" }}</span>{% endif %}</span>
+            <span class="hint">{{ blurb }}{% if value != "auto" and not ready %} Add it to the Vault first; until then Studio falls back to Automatic.{% endif %}</span>
+          </span>
+        </label>
+        {% endfor %}
+      </fieldset>
+
+      {# Model cards follow the service: Automatic shows both, a single service collapses the other. #}
+      <details class="card model-panel" data-model-panel="openai" {% if provider_pref in ("auto", "openai") %}open{% endif %}>
+        <summary>
+          <h2>OpenAI model</h2>
+          <span class="hint model-panel-current">{{ openai_model }}</span>
+        </summary>
+        <div class="stack model-panel-body">
+          {% for m in openai_choices %}
+          <label class="choice-row">
+            <input type="radio" name="openai_model" value="{{ m.id }}" {% if openai_model == m.id %}checked{% endif %} />
+            <span>
+              <span class="choice-title"><strong>{{ m.label }}</strong><span class="cost-pill" title="Relative cost">{{ m.cost }}</span></span>
+              <span class="hint">{{ m.blurb }} <code>{{ m.id }}</code></span>
+            </span>
+          </label>
+          {% endfor %}
+          <label class="choice-row">
+            <input type="radio" name="openai_model" value="custom" {% if openai_custom %}checked{% endif %} />
+            <span>
+              <strong>Other model ID</strong>
+              <input type="text" name="openai_custom" value="{{ openai_model if openai_custom else '' }}" placeholder="gpt-…" autocomplete="off" spellcheck="false" />
+              <span class="hint">Any chat model your OpenAI account can use. Prices change, so check your OpenAI account for current rates.</span>
+            </span>
+          </label>
+        </div>
+      </details>
+
+      <details class="card model-panel" data-model-panel="anthropic" {% if provider_pref in ("auto", "anthropic") %}open{% endif %}>
+        <summary>
+          <h2>Claude model</h2>
+          <span class="hint model-panel-current">{{ anthropic_model }}</span>
+        </summary>
+        <div class="stack model-panel-body">
+        {% for m in model_choices %}
+        <label class="choice-row">
+          <input type="radio" name="anthropic_model" value="{{ m.id }}" {% if anthropic_model == m.id %}checked{% endif %} />
+          <span>
+            <span class="choice-title"><strong>{{ m.label }}</strong><span class="cost-pill" title="Relative cost">{{ m.cost }}</span></span>
+            <span class="hint">{{ m.blurb }} <code>{{ m.id }}</code></span>
+          </span>
+        </label>
+        {% endfor %}
+        <label class="choice-row">
+          <input type="radio" name="anthropic_model" value="custom" {% if anthropic_custom %}checked{% endif %} data-custom-model />
+          <span>
+            <strong>Other model ID</strong>
+            <input type="text" name="anthropic_custom" value="{{ anthropic_model if anthropic_custom else '' }}" placeholder="claude-…" autocomplete="off" spellcheck="false" />
+          </span>
+        </label>
+        </div>
+      </details>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" type="submit" name="action" value="save">Save model</button>
+        <button class="btn btn-ghost" type="submit" name="action" value="reset" formnovalidate data-confirm="Go back to the default service and models?">Reset to defaults</button>
+      </div>
+    </form>
+  </div>
+  {% endif %}
 
   {% if is_admin %}
   <div class="stack settings-panel" id="settings-panel-prompts" role="tabpanel" aria-labelledby="settings-tab-prompts"{% if settings_tab != 'prompts' %} hidden{% endif %}>
@@ -47,7 +182,8 @@
       <input type="hidden" name="prompt" value="{{ prompt_id }}" />
       <div class="stack prompt-editor-head">
         <h2>{{ prompt_def.label }}</h2>
-        <p class="hint">{{ prompt_def.blurb }} Saved copies live in Studio data and override the packaged file until you reset.</p>
+        <p class="hint">{{ prompt_def.blurb }} Saving keeps your copy in Studio data, and it overrides the packaged default until you reset.</p>
+        <p class="hint">You don't need to describe the reply format. Studio adds the output rules (file blocks on Build, plain chat on Clarify) and the current project files automatically.</p>
         {% if prompt_customized %}
         <p class="hint">Using your edited copy.</p>
         {% else %}
@@ -67,4 +203,5 @@
   </div>
   {% endif %}
 </div>
+{% endif %}
 {% endblock %}

@@ -15,8 +15,8 @@ def _session() -> Session:
 
 def test_https_off_keeps_http_urls(monkeypatch):
     monkeypatch.setattr(hostname.env, "port", 8080)
+    monkeypatch.setattr(hostname, "device_hostname", lambda: "newscast")
     db = _session()
-    settings.set_value(db, "device_hostname", "newscast")
     settings.set_value(db, "https_enabled", "0")
     assert hostname.get_public_base_url(db) == "http://newscast.local:8080"
     assert hostname.get_share_url(db) == "http://newscast.local:8080"
@@ -24,8 +24,8 @@ def test_https_off_keeps_http_urls(monkeypatch):
 
 def test_https_on_includes_app_port(monkeypatch):
     monkeypatch.setattr(hostname.env, "port", 8080)
+    monkeypatch.setattr(hostname, "device_hostname", lambda: "newscast")
     db = _session()
-    settings.set_value(db, "device_hostname", "newscast")
     settings.set_value(db, "https_enabled", "1")
     assert hostname.get_public_base_url(db) == "https://newscast.local:8080"
     assert hostname.get_share_url(db) == "https://newscast.local:8080"
@@ -33,8 +33,8 @@ def test_https_on_includes_app_port(monkeypatch):
 
 def test_https_on_omits_default_https_port(monkeypatch):
     monkeypatch.setattr(hostname.env, "port", 443)
+    monkeypatch.setattr(hostname, "device_hostname", lambda: "newscast")
     db = _session()
-    settings.set_value(db, "device_hostname", "newscast")
     settings.set_value(db, "https_enabled", "1")
     assert hostname.get_public_base_url(db) == "https://newscast.local"
 
@@ -47,8 +47,8 @@ def test_ensure_certificate_creates_files_with_sans(tmp_path, monkeypatch):
     monkeypatch.setattr(tls, "SERVER_KEY", tmp_path / "tls" / "server.key")
     monkeypatch.setattr(tls, "META_PATH", tmp_path / "tls" / "meta.json")
     monkeypatch.setattr(hostname, "get_lan_ip", lambda: "192.168.1.50")
+    monkeypatch.setattr(hostname, "device_hostname", lambda: "newscast")
     db = _session()
-    settings.set_value(db, "device_hostname", "newscast")
     paths = tls.ensure_certificate(db)
     assert paths.server_cert.exists()
     assert paths.server_key.exists()
@@ -72,13 +72,18 @@ def test_ensure_certificate_is_idempotent_until_hostname_changes(tmp_path, monke
     monkeypatch.setattr(tls, "SERVER_KEY", tmp_path / "tls" / "server.key")
     monkeypatch.setattr(tls, "META_PATH", tmp_path / "tls" / "meta.json")
     monkeypatch.setattr(hostname, "get_lan_ip", lambda: "10.0.0.2")
+    names = {"value": "pi"}
+
+    def _host():
+        return names["value"]
+
+    monkeypatch.setattr(hostname, "device_hostname", _host)
     db = _session()
-    settings.set_value(db, "device_hostname", "pi")
     tls.ensure_certificate(db)
     first = Path(tls.SERVER_CERT).read_bytes()
     tls.ensure_certificate(db)
     assert Path(tls.SERVER_CERT).read_bytes() == first
-    settings.set_value(db, "device_hostname", "living-room")
+    names["value"] = "living-room"
     tls.ensure_certificate(db)
     assert Path(tls.SERVER_CERT).read_bytes() != first
     assert "living-room.local" in tls.certificate_status(db).sans

@@ -4,17 +4,64 @@
 
 {% block content %}
 <section class="hero">
-  <h1>Settings</h1>
-  <p class="lede">App name, description, GitHub, and the version running here.</p>
+  {% if settings_tab and not settings_hub %}
+  <a class="settings-back" href="/settings">&larr; Settings</a>
+  {% endif %}
+  <h1>{{ settings_title | default("About") }}</h1>
+  <p class="lede">{{ settings_lede | default("App name, description, GitHub, and the version running here.") }}</p>
 </section>
 
-<div class="settings-tabs">
-  <div class="chips settings-chips" role="tablist" aria-label="Settings sections">
-    <a class="chip-btn is-active" href="/settings?tab=about" role="tab" id="settings-tab-about" aria-selected="true" aria-controls="settings-panel-about">
-      {{ icon("about") }}<span>About</span>
-    </a>
+{% if settings_hub %}
+<nav class="settings-hub" aria-label="Settings groups">
+  {% for group_id, group_label, rows in settings_groups %}
+  <div class="settings-hub-group">
+    <h2 class="settings-hub-heading">{{ group_label }}</h2>
+    <div class="settings-hub-card">
+      {% for key, label, subtext, icon_name in rows %}
+      <a class="settings-hub-row" href="/settings?tab={{ key }}">
+        <span class="settings-hub-icon" aria-hidden="true">{{ icon(icon_name) }}</span>
+        <span class="settings-hub-copy">
+          <span class="settings-hub-title">{{ label }}</span>
+          <span class="settings-hub-sub">{{ subtext }}</span>
+        </span>
+        <span class="settings-hub-chevron" aria-hidden="true">&rsaquo;</span>
+      </a>
+      {% endfor %}
+    </div>
   </div>
-
+  {% endfor %}
+</nav>
+{% else %}
+<div class="settings-tabs">
+  {% if settings_tab == 'notifications' %}
+  <div class="stack settings-panel" id="settings-panel-notifications" role="tabpanel">
+    {% from "stonepi/alerts.html" import notifications_card %}
+    {% if notifications_card_state %}
+    {{ notifications_card(notifications_card_state) }}
+    {% else %}
+    <div class="card stack">
+      <h2>Phone alerts</h2>
+      <p class="hint">Phone alerts need StonePi sign-in. When Pinboard runs on its own, it doesn't send alerts.</p>
+    </div>
+    {% endif %}
+    <div class="card stack">
+      <h2>Reminder time</h2>
+      <p class="hint">Due reminders are sent once, on the morning they're due: to the person assigned, or to the household when unassigned. Uses the StonePi clock.</p>
+      {% if can_set_reminder_time %}
+      <form method="post" action="/settings/reminder-time" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <label>
+          Send at
+          <input type="time" name="reminder_time" value="{{ reminder_time }}" required />
+        </label>
+        <button class="btn btn-primary" type="submit">Save</button>
+      </form>
+      {% else %}
+      <p><strong>{{ reminder_time }}</strong> <span class="hint">· set by an admin</span></p>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
   <div class="stack settings-panel" id="settings-panel-about" role="tabpanel" aria-labelledby="settings-tab-about">
     <div class="card stack about-card">
       <h2>{{ app_name }}</h2>
@@ -23,5 +70,7 @@
       <p class="hint">Version: {{ app_version }}</p>
     </div>
   </div>
+  {% endif %}
 </div>
+{% endif %}
 {% endblock %}

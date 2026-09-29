@@ -65,18 +65,9 @@ function applyTheme(pref, palette) {
   document.documentElement.style.colorScheme = theme;
   const meta = document.querySelector("[data-theme-color]");
   if (meta) meta.setAttribute("content", THEME_COLORS[chosen][theme]);
-  document.querySelectorAll("[data-theme-set]").forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.themeSet === pref);
-  });
 }
 
 applyTheme(readShared(THEME_KEY, LEGACY_THEME_KEYS, "system"));
-document.querySelectorAll("[data-theme-set]").forEach((button) => {
-  button.addEventListener("click", () => {
-    persistPref(THEME_KEY, button.dataset.themeSet);
-    applyTheme(button.dataset.themeSet);
-  });
-});
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
   if (readShared(THEME_KEY, LEGACY_THEME_KEYS, "system") === "system") applyTheme("system");
 });
@@ -98,6 +89,10 @@ function askConfirm({ title, body, okLabel }) {
     const finish = (value) => {
       sheet.hidden = true;
       sheet.classList.remove("is-open");
+      if (!document.querySelector(".sheet.is-open")) {
+        document.documentElement.classList.remove("sheet-open");
+        document.body.classList.remove("sheet-open");
+      }
       sheet.removeEventListener("click", onBackdrop);
       okBtn?.removeEventListener("click", onOk);
       cancelBtn?.removeEventListener("click", onCancel);
@@ -116,8 +111,13 @@ function askConfirm({ title, body, okLabel }) {
     okBtn?.addEventListener("click", onOk);
     cancelBtn?.addEventListener("click", onCancel);
     document.addEventListener("keydown", onKey);
+    if (sheet.parentElement !== document.body) {
+      document.body.appendChild(sheet);
+    }
     sheet.hidden = false;
     sheet.classList.add("is-open");
+    document.documentElement.classList.add("sheet-open");
+    document.body.classList.add("sheet-open");
     okBtn?.focus();
   });
 }
@@ -151,21 +151,66 @@ document.querySelectorAll("[data-focus]").forEach((button) => {
   });
 });
 
-function setNavActive(id) {
-  document.querySelectorAll(".nav a[data-nav]").forEach((link) => {
-    link.classList.toggle("is-active", link.dataset.nav === id);
+function openSheetEl(sheet) {
+  if (!sheet) return;
+  if (sheet.parentElement !== document.body) {
+    document.body.appendChild(sheet);
+  }
+  sheet.hidden = false;
+  sheet.classList.add("is-open");
+  document.documentElement.classList.add("sheet-open");
+  document.body.classList.add("sheet-open");
+}
+
+function closeSheetEl(sheet) {
+  if (!sheet) return;
+  sheet.hidden = true;
+  sheet.classList.remove("is-open");
+  if (!document.querySelector(".sheet.is-open")) {
+    document.documentElement.classList.remove("sheet-open");
+    document.body.classList.remove("sheet-open");
+  }
+}
+
+document.querySelectorAll("[data-open-sheet]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const name = btn.getAttribute("data-open-sheet") || "";
+    const sheet = document.querySelector(`[data-sheet="${name}"]`);
+    openSheetEl(sheet);
   });
-}
-
-function syncNavFromHash() {
-  if (/\/settings\/?$/.test(window.location.pathname)) return;
-  const raw = (window.location.hash || "#board").replace(/^#/, "");
-  const id = ["board", "notices", "reminders"].includes(raw) ? raw : "board";
-  setNavActive(id);
-}
-
-document.querySelectorAll(".nav a[data-nav]").forEach((link) => {
-  link.addEventListener("click", () => setNavActive(link.dataset.nav));
 });
-window.addEventListener("hashchange", syncNavFromHash);
-syncNavFromHash();
+
+document.querySelectorAll("[data-sheet]").forEach((sheet) => {
+  sheet.querySelectorAll("[data-close-sheet]").forEach((closeBtn) => {
+    closeBtn.addEventListener("click", () => closeSheetEl(sheet));
+  });
+  sheet.addEventListener("click", (event) => {
+    if (event.target === sheet) closeSheetEl(sheet);
+  });
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  document.querySelectorAll("[data-sheet].is-open").forEach((sheet) => closeSheetEl(sheet));
+});
+
+document.querySelectorAll("[data-card-expand]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const card = btn.closest("[data-expand-card]");
+    if (!card) return;
+    const on = !card.classList.contains("is-expanded");
+    card.classList.toggle("is-expanded", on);
+    btn.setAttribute("aria-expanded", on ? "true" : "false");
+    const body = card.querySelector(".pin-card-body");
+    if (body) body.hidden = !on;
+  });
+});
+
+if (new URLSearchParams(window.location.search).get("new") === "1") {
+  const target =
+    document.querySelector("#notice-text") || document.querySelector("#reminder-text");
+  if (target) {
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.focus();
+  }
+}

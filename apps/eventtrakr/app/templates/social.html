@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+
+{% block title %}Instagram · Sources · EventTrakr{% endblock %}
+
+{% block content %}
+{% macro custom_schedule_fields(cfg, id_prefix) -%}
+{% set cfg = cfg or {"mode": "interval", "interval_minutes": 30} %}
+  <label>
+    How often
+    <select name="schedule_type" class="form-control" data-schedule-type>
+      <option value="interval" {% if cfg.mode != 'weekly' %}selected{% endif %}>Simple interval</option>
+      <option value="weekly" {% if cfg.mode == 'weekly' %}selected{% endif %}>Specific days &amp; times</option>
+    </select>
+  </label>
+
+  <div data-schedule-panel="interval" {% if cfg.mode == 'weekly' %}hidden{% endif %}>
+    <label>
+      Interval
+      <select name="interval_minutes" class="form-control" id="{{ id_prefix }}-interval">
+        {% for minutes, label in interval_choices %}
+        <option value="{{ minutes }}" {% if cfg.mode != 'weekly' and cfg.interval_minutes == minutes %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+
+  <div data-schedule-panel="weekly" {% if cfg.mode != 'weekly' %}hidden{% endif %}>
+    <span class="source-schedule-label">Days</span>
+    <div class="weekday-picker" role="group" aria-label="Days to check">
+      {% for code, label in weekdays %}
+      <label class="weekday-check">
+        <input type="checkbox" name="schedule_days" value="{{ code }}" {% if code in cfg.get('days', []) %}checked{% endif %} />
+        <span>{{ label }}</span>
+      </label>
+      {% endfor %}
+    </div>
+    <p class="form-hint">Check only on the days you tick, at the times below.</p>
+
+    <div class="time-list" data-time-list>
+      {% for t in (cfg.get('times') or ['09:00']) %}
+      <div class="time-row" data-time-row>
+        <input type="time" name="schedule_times" class="form-control" value="{{ t }}" />
+        <button type="button" class="time-remove-btn" data-remove-time aria-label="Remove time" title="Remove time">{{ icon('trash') }}</button>
+      </div>
+      {% endfor %}
+    </div>
+    <button type="button" class="btn btn-outline btn-sm btn-with-icon" data-add-time>{{ icon('plus') }} Add time</button>
+  </div>
+{%- endmacro %}
+
+<section class="hero">
+  <div class="hero-row hero-row-inline">
+    <h1>Instagram</h1>
+    <a href="/sources" class="btn btn-outline btn-with-icon">{{ icon('sources') }} <span>URL sources</span></a>
+  </div>
+  <div class="page-status">
+    <p class="page-status-text">
+      Track public Instagram accounts for event enrichment and discovery.
+      {% if not tracking_on %}Tracking is <strong>off</strong> — enable it in <a href="/settings?tab=discovery">Settings → Discovery</a>.{% elif not brightdata_ok %}Add a Bright Data key under <a href="/settings?tab=providers">Data Providers</a>.{% else %}Accounts on Global poll every {{ poll_minutes }} minutes ({{ global_schedule_summary }}). Override per account below.{% endif %}
+    </p>
+  </div>
+</section>
+
+<section class="source-group">
+  <h2 class="section-label">Add account</h2>
+  <form method="post" action="/sources/social/add" class="card stack">
+    <div class="form-group">
+      <label for="username">Instagram username</label>
+      <input type="text" id="username" name="username" class="form-control" placeholder="theglobe" autocomplete="off" required />
+      <span class="form-hint">Without the @ prefix.</span>
+    </div>
+    <div class="form-group">
+      <label for="display_name">Display name (optional)</label>
+      <input type="text" id="display_name" name="display_name" class="form-control" placeholder="The Globe" />
+    </div>
+    <div class="form-group">
+      <label for="account_type">Account type</label>
+      <select id="account_type" name="account_type" class="form-control">
+        {% for key, label in account_types %}
+        <option value="{{ key }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary btn-with-icon">{{ icon('plus') }} Track account</button>
+  </form>
+</section>
+
+<section class="source-group">
+  <h2 class="section-label">Tracked accounts ({{ accounts|length }})</h2>
+  {% if accounts %}
+  <ul class="group-card source-list">
+    {% for account in accounts %}
+    {% set acc_cfg = account_schedules.get(account.id, {"mode": "interval", "interval_minutes": poll_minutes}) %}
+    <li class="source-row{% if not account.tracking_enabled %} is-off{% endif %}">
+      <div class="source-row-layout">
+        <details class="source-row-details">
+          <summary class="source-row-summary">
+            <div class="source-row-summary-inner">
+              <span class="source-row-icon-fallback" aria-hidden="true">{{ icon('search') }}</span>
+              <div class="source-row-copy">
+                <h3 class="source-row-title">@{{ account.username }}</h3>
+                <p class="source-row-meta">
+                  {{ account_type_labels.get(account.account_type, account.account_type) }}
+                  · {% if account.tracking_enabled %}Active{% else %}Paused{% endif %}
+                  · {{ account_schedule_summaries.get(account.id, global_schedule_summary) }}
+                </p>
+                <p class="source-row-meta">
+                  {% if account.last_successful_check %}Last OK {{ account.last_successful_check|format_datetime }}{% elif account.last_checked %}Last check {{ account.last_checked|format_datetime }}{% else %}Never checked{% endif %}
+                  · Posts {{ account.posts_processed or 0 }}
+                  · Matched {{ account.events_matched or 0 }}
+                  · Discovered {{ account.events_discovered or 0 }}
+                </p>
+                {% if account.last_error %}
+                <p class="source-row-health is-error">{{ account.last_error }}</p>
+                {% endif %}
+                <p class="source-row-hint">Tap for schedule</p>
+              </div>
+              <span class="source-row-chevron" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+              </span>
+            </div>
+          </summary>
+          <div class="source-row-panel">
+            <div class="source-row-actions">
+              <form method="post" action="/sources/social/{{ account.id }}/toggle">
+                <button type="submit" class="btn btn-outline btn-sm">{% if account.tracking_enabled %}Pause{% else %}Resume{% endif %}</button>
+              </form>
+              <form method="post" action="/sources/social/{{ account.id }}/delete" data-confirm="Stop tracking @{{ account.username }}?">
+                <button type="submit" class="icon-btn" style="color: var(--error);" aria-label="Remove @{{ account.username }}">{{ icon('trash') }}</button>
+              </form>
+            </div>
+
+            <p class="form-hint" style="margin-bottom: 8px;">
+              Posts {{ account.posts_processed or 0 }}
+              · Matched {{ account.events_matched or 0 }}
+              · Discovered {{ account.events_discovered or 0 }}
+              · Ignored {{ account.posts_ignored or 0 }}
+              · OCR fails {{ account.ocr_failures or 0 }}
+            </p>
+
+            <form method="post" action="/sources/social/{{ account.id }}/schedule" class="source-settings-form schedule-edit-form" data-schedule-form>
+              <label>
+                Schedule
+                <select name="schedule_mode" class="form-control" data-schedule-mode>
+                  <option value="global" {% if account.schedule_mode != 'custom' %}selected{% endif %}>Global ({{ global_schedule_summary }})</option>
+                  <option value="custom" {% if account.schedule_mode == 'custom' %}selected{% endif %}>Custom</option>
+                </select>
+              </label>
+              <div class="source-schedule-custom" data-schedule-custom {% if account.schedule_mode != 'custom' %}hidden{% endif %}>
+                {{ custom_schedule_fields(acc_cfg, 'ig-' ~ account.id) }}
+              </div>
+              <button type="submit" class="btn btn-outline btn-sm btn-with-icon">{{ icon('check') }} Save schedule</button>
+            </form>
+          </div>
+        </details>
+        <form method="post" action="/sources/social/{{ account.id }}/check" class="source-row-sync">
+          <button type="submit" class="icon-btn icon-btn-quiet" aria-label="Check @{{ account.username }} now" title="Check now" {% if not brightdata_ok %}disabled{% endif %}>
+            {{ icon('refresh') }}
+          </button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty-state">
+    <p>No Instagram accounts yet.</p>
+    <p class="form-hint">Add a venue, organiser, or artist above. EventTrakr will poll for new posts and suggest events on Discoveries.</p>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

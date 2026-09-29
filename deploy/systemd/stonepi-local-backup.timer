@@ -1,0 +1,11 @@
+[Unit]
+Description=Scheduled StonePi local backup (disabled until enabled in Settings)
+
+[Timer]
+Unit=stonepi-local-backup.service
+OnCalendar=Sun *-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target

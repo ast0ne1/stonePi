@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_filter_icon.html" import filter_icon %}
 {% block title %}Add · FileServe{% endblock %}
 {% block content %}
 <section class="hero">
@@ -8,8 +10,8 @@
 
 <div data-add-tabs>
   <div class="chips add-chips" role="tablist" aria-label="Add options">
-    <a class="chip-btn{% if add_tab != 'url' %} is-active{% endif %}" href="{{ url_for('add_page') }}" role="tab" id="add-tab-file" data-add-tab="file" aria-selected="{{ 'false' if add_tab == 'url' else 'true' }}" aria-controls="add-panel-file">Add file</a>
-    <a class="chip-btn{% if add_tab == 'url' %} is-active{% endif %}" href="{{ url_for('add_from_url') }}" role="tab" id="add-tab-url" data-add-tab="url" aria-selected="{{ 'true' if add_tab == 'url' else 'false' }}" aria-controls="add-panel-url">Add from URL</a>
+    <a class="chip-btn{% if add_tab != 'url' %} is-active{% endif %}" href="{{ url_for('add_page') }}" role="tab" id="add-tab-file" data-add-tab="file" aria-selected="{{ 'false' if add_tab == 'url' else 'true' }}" aria-controls="add-panel-file">{{ filter_icon("file") }}<span>Add file</span></a>
+    <a class="chip-btn{% if add_tab == 'url' %} is-active{% endif %}" href="{{ url_for('add_from_url') }}" role="tab" id="add-tab-url" data-add-tab="url" aria-selected="{{ 'true' if add_tab == 'url' else 'false' }}" aria-controls="add-panel-url">{{ filter_icon("link") }}<span>Add from URL</span></a>
   </div>
 
   <div class="card stack add-card" id="add-panel-file" role="tabpanel" data-add-panel="file" aria-labelledby="add-tab-file"{% if add_tab == 'url' %} hidden{% endif %}>
@@ -30,7 +32,7 @@
           </span>
         </span>
       </label>
-      <button class="btn btn-primary btn-block" type="submit">Host Page</button>
+      <button class="btn btn-primary btn-block btn-with-icon" type="submit">{{ icon("upload") }}<span>Host Page</span></button>
     </form>
   </div>
 
@@ -45,11 +47,11 @@
     </label>
     <p class="hint">FileServe fetches on the server. Only same-site scripts, styles, and media are included.</p>
     <div class="btn-row">
-      <button class="btn btn-primary" type="button" id="pack-go">Download zip</button>
-      <button class="btn btn-ghost" type="button" id="pack-clear">Clear log</button>
+      <button class="btn btn-primary btn-with-icon" type="button" id="pack-go">{{ icon("download") }}<span>Download zip</span></button>
+      <button class="btn btn-ghost btn-with-icon" type="button" id="pack-clear">{{ icon("clear") }}<span>Clear log</span></button>
     </div>
     <pre class="pack-log" id="pack-log" aria-live="polite"><span class="muted">Ready.</span></pre>
   </div>
 </div>
-<script src="{{ url_for('static', filename='js/url-pack.js') }}?v={{ app_version }}" defer></script>
+<script src="{{ url_for('static', filename='js/url-pack.js') }}?v={{ asset_rev }}" defer></script>
 {% endblock %}

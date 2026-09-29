@@ -1,17 +1,54 @@
-{% macro filter_icon(name) -%}
-<svg viewBox="0 0 24 24" aria-hidden="true">
-  {%- if name == "device" -%}
-  <path d="M4 8h9M17 8h3M4 16h3M11 16h9"/><circle cx="15.5" cy="8" r="2"/><circle cx="8.5" cy="16" r="2"/>
-  {%- elif name == "backup" -%}
-  <path d="M12 5v10"/><path d="M8 11l4 4 4-4"/><path d="M5 19h14"/>
-  {%- elif name == "update" -%}
-  <path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 5v5h-5"/>
-  {%- elif name == "users" -%}
-  <circle cx="9" cy="8" r="3"/><path d="M3 19c1.2-2.8 3.2-4.2 6-4.2"/><circle cx="16.5" cy="9" r="2.5"/><path d="M12.5 19c1-2.2 2.6-3.4 4.5-3.4S20.5 16.8 21.5 19"/>
-  {%- elif name == "about" -%}
-  <circle cx="12" cy="12" r="8"/><path d="M12 11.2V17"/><circle cx="12" cy="8" r="0.7"/>
-  {%- else -%}
-  <circle cx="12" cy="12" r="7"/>
-  {%- endif -%}
-</svg>
+{# Shared stroke icons for action buttons. Usage: {% from "_icons.html" import icon %}{{ icon("check") }} #}
+{% macro icon(name, attrs="") -%}
+{%- if name == "plus" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"{{ attrs }}><path d="M12 5v14M5 12h14"/></svg>
+{%- elif name == "check" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"{{ attrs }}><path d="m5 12 5 5L20 7"/></svg>
+{%- elif name == "trash" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"{{ attrs }}><path d="M5 7h14M10 11v6M14 11v6M9 7V5h6v2M7 7l1 13h8l1-13"/></svg>
+{%- elif name == "edit" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"{{ attrs }}><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 3-3z"/></svg>
+{%- elif name == "open" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"{{ attrs }}><path d="M14 5h5v5M19 5 10 14"/><path d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5"/></svg>
+{%- elif name == "qr" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"{{ attrs }}><rect x="3.5" y="3.5" width="7" height="7" rx="1"/><rect x="13.5" y="3.5" width="7" height="7" rx="1"/><rect x="3.5" y="13.5" width="7" height="7" rx="1"/><path d="M14 14h2.8v2.8H14zM18.2 14H21v2.8h-2.8zM14 18.2h2.8V21H14zM19.6 19.6H21V21"/></svg>
+{%- elif name == "print" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"{{ attrs }}><path d="M7 4h10v5H7z"/><path d="M5 9h14a2 2 0 0 1 2 2v6h-4v-3H7v3H3v-6a2 2 0 0 1 2-2z"/><path d="M7 16h10v5H7z"/></svg>
+{%- elif name == "copy" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"{{ attrs }}><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M6 16H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+{%- elif name == "user" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"{{ attrs }}><circle cx="12" cy="8" r="3"/><path d="M5 19c1.4-3.2 3.7-4.8 7-4.8s5.6 1.6 7 4.8"/></svg>
+{%- elif name == "download" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"{{ attrs }}><path d="M12 5v11"/><path d="m8 12 4 4 4-4"/><path d="M5 19h14"/></svg>
+{%- elif name == "upload" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"{{ attrs }}><path d="M12 16V5"/><path d="m8 9 4-4 4 4"/><path d="M5 19h14"/></svg>
+{%- elif name == "restart" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"{{ attrs }}><path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 4v6h-6"/></svg>
+{%- elif name == "rollback" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"{{ attrs }}><path d="M3 12a9 9 0 1 0 2.6-6.3"/><path d="M3 4v6h6"/></svg>
+{%- elif name == "update" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"{{ attrs }}><path d="M4 12a8 8 0 0 1 13.5-5.8L20 4v6h-6"/><path d="M20 12a8 8 0 0 1-13.5 5.8L4 20v-6h6"/></svg>
+{%- elif name == "clear" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"{{ attrs }}><path d="M6 6l12 12M18 6 6 18"/></svg>
+{%- elif name == "key" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"{{ attrs }}><rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>
+{%- elif name == "eye" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"{{ attrs }}><path d="M2.5 12S6 6.5 12 6.5 21.5 12 21.5 12 18 17.5 12 17.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.6"/></svg>
+{%- elif name == "eye-off" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"{{ attrs }}><path d="M2.5 12S6 6.5 12 6.5 21.5 12 21.5 12 18 17.5 12 17.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.6"/><path d="M4 20 20 4"/></svg>
+{%- elif name == "more" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"{{ attrs }}><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+{%- elif name == "globe" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"{{ attrs }}><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.8 2.6 4.2 5.7 4.2 9S14.8 18.4 12 21c-2.8-2.6-4.2-5.7-4.2-9S9.2 5.6 12 3z"/></svg>
+{%- elif name == "lock" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"{{ attrs }}><rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>
+{%- endif -%}
+{%- endmacro %}
+
+{# Show/hide toggle for a .password-field input (JS: data-password-toggle). #}
+{% macro password_toggle() -%}
+<button type="button" class="icon-btn icon-btn-quiet password-toggle" data-password-toggle aria-label="Show password" title="Show password">
+  {{ icon("eye", " data-icon-show"|safe) }}
+  {{ icon("eye-off", " data-icon-hide hidden"|safe) }}
+</button>
 {%- endmacro %}

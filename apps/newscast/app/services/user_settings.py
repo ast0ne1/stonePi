@@ -66,16 +66,22 @@ def get_value(db: Session, user_id: int, key: str, default: str = "") -> str:
 
 
 def set_value(db: Session, user_id: int, key: str, value: str) -> None:
-    if _user_vault_key(user_id, key) and _write_user_vault(user_id, key, value):
+    if _user_vault_key(user_id, key):
         row = db.get(UserSetting, {"user_id": user_id, "key": key})
-        if row is not None:
-            db.delete(row)
-            db.commit()
-        return
+        vaulted = _read_user_vault(user_id, key)
+        if vaulted == value and (row is None or row.value == ""):
+            return
+        if _write_user_vault(user_id, key, value):
+            if row is not None:
+                db.delete(row)
+                db.commit()
+            return
     now = datetime.now(timezone.utc)
     row = db.get(UserSetting, {"user_id": user_id, "key": key})
     if row is None:
         db.add(UserSetting(user_id=user_id, key=key, value=value, updated_at=now))
+    elif row.value == value:
+        return
     else:
         row.value = value
         row.updated_at = now

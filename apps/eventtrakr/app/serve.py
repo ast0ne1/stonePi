@@ -45,7 +45,14 @@ def main() -> None:
     else:
         logger.info("Serving HTTP on http://%s:%s", env.host, env.port)
         from waitress import serve
-        serve(app, host=env.host, port=env.port, threads=6)
+        serve(
+            app,
+            host=env.host,
+            port=env.port,
+            threads=6,
+            trusted_proxy="127.0.0.1",
+            trusted_proxy_headers=["x-forwarded-for", "x-forwarded-proto", "x-forwarded-host"],
+        )
 
 
 if __name__ == "__main__":

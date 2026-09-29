@@ -127,12 +127,27 @@ def get_or_fetch_feed(
     return body, response.status_code
 
 
-def get_or_fetch_article(db: Session, url: str, *, force: bool = False) -> tuple[str, str]:
-    """Return (title, excerpt) from ArticleCache or by extracting the page."""
+def get_or_fetch_article(
+    db: Session,
+    url: str,
+    *,
+    force: bool = False,
+    strict: bool = False,
+    stats: dict | None = None,
+) -> tuple[str, str]:
+    """Return (title, excerpt) from ArticleCache or by extracting the page.
+
+    ``strict`` uses the Strict text cleanup (see text_cleanup); a cached excerpt is
+    tidied of page furniture. ``stats["strict_fallback"]`` counts pages where Strict
+    found nothing and Standard was used instead.
+    """
+    from app.services.text_cleanup import extract_text, tidy_lines
+
     key = (url or "").strip()
     row = db.get(ArticleCache, key)
     if row and not force and (row.excerpt or "").strip():
-        return row.title or "", row.excerpt or ""
+        excerpt = row.excerpt or ""
+        return row.title or "", tidy_lines(excerpt) if strict else excerpt
 
     title = (row.title if row else "") or ""
     excerpt = ""
@@ -145,7 +160,9 @@ def get_or_fetch_article(db: Session, url: str, *, force: bool = False) -> tuple
             response = client.get(key)
             response.raise_for_status()
             html = response.text
-        text = trafilatura.extract(html, include_comments=False, include_tables=False)
+        text, fell_back = extract_text(html, strict=strict)
+        if fell_back and stats is not None:
+            stats["strict_fallback"] = stats.get("strict_fallback", 0) + 1
         if text:
             excerpt = text.strip()
         meta_title = trafilatura.extract_metadata(html)

@@ -1,13 +1,18 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}Pages · FileServe{% endblock %}
 {% block content %}
 <section class="hero hero-row">
   <div>
-    <h1>Hosted Pages</h1>
-    <p class="lede">Each page gets a public URL on this machine. Turn a page off to hide it without deleting files. Pages stay until you remove them, unless you set an expiry.</p>
+    <h1>Hosted pages</h1>
+    {% if pages or filter_user_id %}
+    <p class="lede">Each page has its own link and QR code. Switch a page off to hide it without deleting it.</p>
+    {% else %}
+    <p class="lede">Share files with everyone on your home network.</p>
+    {% endif %}
   </div>
   <a class="btn btn-secondary btn-with-icon" href="{{ url_for('add_page') }}">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    {{ icon("plus") }}
     <span>Add page</span>
   </a>
 </section>
@@ -18,16 +23,16 @@
   <p class="hint">Shown once for {{ reveal.title }}. FileServe cannot show the password again.</p>
   <div class="reveal-row">
     <p>Username <code data-copy-value="{{ reveal.username }}">{{ reveal.username }}</code></p>
-    <button class="btn btn-ghost btn-compact" type="button" data-copy="{{ reveal.username }}">Copy username</button>
+    <button class="btn btn-ghost btn-compact btn-with-icon" type="button" data-copy="{{ reveal.username }}">{{ icon("copy") }}<span>Copy username</span></button>
   </div>
   <div class="reveal-row">
     <p>Password <code data-copy-value="{{ reveal.password }}">{{ reveal.password }}</code></p>
-    <button class="btn btn-ghost btn-compact" type="button" data-copy="{{ reveal.password }}">Copy password</button>
+    <button class="btn btn-ghost btn-compact btn-with-icon" type="button" data-copy="{{ reveal.password }}">{{ icon("copy") }}<span>Copy password</span></button>
   </div>
 </div>
 {% endif %}
 
-{% if pages or current_user_is_admin %}
+{% if pages or filter_user_id %}
 <div class="page-toolbar">
   <label class="search-field">
     Search
@@ -56,99 +61,136 @@
 </div>
 {% endif %}
 {% if pages %}
-<ul class="feed-list" data-page-list>
+<ul class="feed-list hosted-list" data-page-list>
   {% for item in pages %}
   {% set page = item.page %}
-  <li class="card feed-card{% if not page.enabled %} is-off{% endif %}"
+  <li class="card hosted-card{% if not page.enabled %} is-off{% endif %}"
       data-page-card
       data-title="{{ page.title|lower }}"
       data-created="{{ page.created_at.timestamp() }}"
       data-opened="{{ page.last_opened_at.timestamp() if page.last_opened_at else 0 }}"
       data-opens="{{ page.open_count or 0 }}"
-      data-search="{{ page.title }} {{ page.slug }} {{ page.description }} {{ page.owner_username }} {{ page.public_path }}">
-    <header class="feed-head">
-      <div class="feed-copy">
-        <h2 class="feed-title">{{ page.title }}</h2>
-        {% if page.description %}<p class="feed-note">{{ page.description }}</p>{% endif %}
-        <p class="feed-kicker">
-          <span class="chip chip-quiet">{{ page.public_path }}</span>
-          <span class="chip chip-quiet">{{ page.type_label }}</span>
-          {% if current_user_is_admin %}<span class="chip chip-quiet">{{ page.owner_username }}</span>{% endif %}
-          {% if not page.enabled %}<span class="chip chip-quiet">Disabled</span>{% endif %}
-          {% if page.is_protected %}<span class="chip chip-quiet">Protected</span>{% endif %}
-          {% if page.expires_at %}<span class="chip chip-quiet">Until {{ page.expiry_label }}</span>{% endif %}
+      data-search="{{ page.title }} {{ page.slug }} {{ page.description }} {{ page.owner_username }} {{ page.public_path }}"
+      data-share-label="{{ page.title }}"
+      data-share-url="{{ item.url }}"
+      data-share-qr="{{ item.qr_png }}"
+      data-share-download="{{ url_for('download_qr', page_id=page.id) }}"
+      data-share-print="{{ url_for('print_qr', page_id=page.id) }}">
+    <header class="hosted-head">
+      <span class="hosted-icon hosted-icon-{{ page.page_type }}" aria-hidden="true">{{ icon("globe") }}</span>
+      <div class="hosted-identity">
+        <h2 class="hosted-title">{{ page.title }}</h2>
+        <p class="hosted-meta">
+          <span>{{ page.type_label }}</span>
+          {% if page.is_protected %}
+          <span class="hosted-meta-sep" aria-hidden="true">·</span>
+          <span class="hosted-meta-lock">{{ icon("lock") }} Protected</span>
+          {% endif %}
+          {% if current_user_is_admin %}
+          <span class="hosted-meta-sep" aria-hidden="true">·</span>
+          <span>{{ page.owner_username }}</span>
+          {% endif %}
+          {% if page.expires_at %}
+          <span class="hosted-meta-sep" aria-hidden="true">·</span>
+          <span>Until {{ page.expiry_label }}</span>
+          {% endif %}
         </p>
       </div>
-      <div class="feed-actions">
-        <form method="post" action="{{ url_for('toggle_page', page_id=page.id) }}">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-          <button class="toggle{% if page.enabled %} is-on{% endif %}" type="submit" aria-pressed="{{ 'true' if page.enabled else 'false' }}" aria-label="{{ 'Disable ' ~ page.title if page.enabled else 'Enable ' ~ page.title }}">
-            {{ 'Enabled' if page.enabled else 'Disabled' }}
-          </button>
-        </form>
-        <a class="btn btn-secondary feed-open" href="{{ page.public_path }}" target="_blank" rel="noopener">Open</a>
-        <button class="icon-btn icon-btn-quiet" type="button" data-edit-page data-page-id="{{ page.id }}" data-page-label="{{ page.title }}" data-page-slug="{{ page.slug }}" data-page-description="{{ page.description }}" data-page-protected="{{ '1' if page.is_protected else '0' }}" data-page-username="{{ page.auth_username }}" data-page-expiry="{{ 'custom' if page.expires_at else 'none' }}" data-page-expiry-date="{{ page.expiry_date_value }}" aria-label="Edit {{ page.title }}" title="Edit page">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 3-3z"/></svg>
+      <form method="post" action="{{ url_for('toggle_page', page_id=page.id) }}" class="hosted-live-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <button
+          class="hosted-live{% if page.enabled %} is-on{% endif %}"
+          type="submit"
+          aria-pressed="{{ 'true' if page.enabled else 'false' }}"
+          aria-label="{{ 'Turn off ' ~ page.title if page.enabled else 'Turn on ' ~ page.title }}"
+        >
+          <span class="hosted-live-label">{{ 'Live' if page.enabled else 'Off' }}</span>
+          <span class="hosted-live-switch" aria-hidden="true"></span>
         </button>
-        <form method="post" action="{{ url_for('delete_page', page_id=page.id) }}" data-confirm="Delete {{ page.title }}?" data-confirm-detail="This will permanently remove the hosted page." data-confirm-ok="Delete">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-          <button class="icon-btn" type="submit" aria-label="Delete {{ page.title }}" title="Remove page">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M9 7V5h6v2M7 7l1 13h8l1-13"/></svg>
-          </button>
-        </form>
-      </div>
+      </form>
     </header>
-    <div class="page-share">
-      <div class="page-qr-block">
-        <div class="qr-frame">
-          <img class="qr-image" src="{{ item.qr_png }}" alt="QR code for {{ page.title }}" />
-        </div>
-        <div class="tool-group" role="group" aria-label="QR">
-          <a class="icon-btn icon-btn-quiet" href="{{ url_for('download_qr', page_id=page.id) }}" aria-label="Download QR for {{ page.title }}" title="Download QR">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1"/><rect x="13.5" y="3.5" width="7" height="7" rx="1"/><rect x="3.5" y="13.5" width="7" height="7" rx="1"/><path d="M14 14h2.8v2.8H14zM18.2 14H21v2.8h-2.8zM14 18.2h2.8V21H14zM19.6 19.6H21V21"/></svg>
+
+    <div class="hosted-url">
+      <a class="hosted-url-text" href="{{ item.url }}">{{ item.url }}</a>
+      <button class="icon-btn icon-btn-quiet hosted-url-copy" type="button" data-copy="{{ item.url }}" aria-label="Copy URL for {{ page.title }}" title="Copy URL">
+        {{ icon("copy") }}
+      </button>
+    </div>
+
+    <p class="hosted-usage">
+      {% if not page.enabled %}
+      Hidden from the public URL · files kept
+      {% elif page.open_count %}
+      Opened {{ page.open_count }} time{% if page.open_count != 1 %}s{% endif %}{% if page.last_opened_label %} · last {{ page.last_opened_label }} UTC{% endif %} · added {{ page.created_at.strftime('%d %b %Y') }}
+      {% else %}
+      Never opened · added {{ page.created_at.strftime('%d %b %Y') }}
+      {% endif %}
+      {% if page.enabled and page.expires_at %} · removes {{ page.expiry_label }}{% endif %}
+    </p>
+
+    <div class="hosted-actions">
+      <a class="btn btn-primary btn-with-icon" href="{{ page.public_path }}" target="_blank" rel="noopener">{{ icon("open") }}<span>Open</span></a>
+      <button class="btn btn-secondary btn-with-icon" type="button" data-share-page>{{ icon("qr") }}<span>Share</span></button>
+      <details class="hosted-more">
+        <summary class="icon-btn icon-btn-quiet" aria-label="More actions for {{ page.title }}" title="More">
+          {{ icon("more") }}
+        </summary>
+        <div class="hosted-more-menu" role="menu">
+          <button class="hosted-more-item" type="button" role="menuitem" data-edit-page data-page-id="{{ page.id }}" data-page-label="{{ page.title }}" data-page-slug="{{ page.slug }}" data-page-description="{{ page.description }}" data-page-protected="{{ '1' if page.is_protected else '0' }}" data-page-username="{{ page.auth_username }}" data-page-expiry="{{ 'custom' if page.expires_at else 'none' }}" data-page-expiry-date="{{ page.expiry_date_value }}">
+            {{ icon("edit") }}<span>Edit</span>
+          </button>
+          <a class="hosted-more-item" role="menuitem" href="{{ url_for('download_page_file', page_id=page.id) }}">
+            {{ icon("download") }}<span>Download file</span>
           </a>
-          <a class="icon-btn icon-btn-quiet" href="{{ url_for('print_qr', page_id=page.id) }}" target="_blank" rel="noopener" aria-label="Print QR for {{ page.title }}" title="Print QR">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v5H7z"/><path d="M5 9h14a2 2 0 0 1 2 2v6h-4v-3H7v3H3v-6a2 2 0 0 1 2-2z"/><path d="M7 16h10v5H7z"/></svg>
-          </a>
-        </div>
-      </div>
-      <div class="page-link-block">
-        <p class="hint page-qr-hint">{% if page.enabled %}Scan to open this page on another device on the same network{% if page.is_protected %}. This page asks for a username and password{% endif %}.{% else %}This page is off. Enable it to make the URL public again.{% endif %}</p>
-        <div class="page-url-row">
-          <a class="page-url" href="{{ item.url }}">{{ item.url }}</a>
-          <div class="tool-group" role="group" aria-label="Link and file">
-            <button class="icon-btn icon-btn-quiet" type="button" data-copy="{{ item.url }}" aria-label="Copy URL for {{ page.title }}" title="Copy URL">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M6 16H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          {% if page.is_protected %}
+          <button class="hosted-more-item" type="button" role="menuitem" data-copy="{{ page.auth_username }}">
+            {{ icon("user") }}<span>Copy username</span>
+          </button>
+          {% endif %}
+          <form method="post" action="{{ url_for('delete_page', page_id=page.id) }}" data-confirm="Delete {{ page.title }}?" data-confirm-detail="This will permanently remove the hosted page." data-confirm-ok="Delete">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+            <button class="hosted-more-item is-danger" type="submit" role="menuitem">
+              {{ icon("trash") }}<span>Delete</span>
             </button>
-            {% if page.is_protected %}
-            <button class="icon-btn icon-btn-quiet" type="button" data-copy="{{ page.auth_username }}" aria-label="Copy username for {{ page.title }}" title="Copy username">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3"/><path d="M5 19c1.4-3.2 3.7-4.8 7-4.8s5.6 1.6 7 4.8"/></svg>
-            </button>
-            {% endif %}
-            <a class="icon-btn icon-btn-quiet" href="{{ url_for('download_page_file', page_id=page.id) }}" aria-label="Download file for {{ page.title }}" title="Download file">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="M8 11l4 4 4-4"/><path d="M5 19h14"/></svg>
-            </a>
-          </div>
+          </form>
         </div>
-        <p class="feed-status">{% if page.enabled %}Added {{ page.created_at.strftime('%d %b %Y %H:%M') }} UTC{% if page.expires_at %} · Removes {{ page.expiry_label }} UTC{% endif %}{% else %}Hidden from the public URL · files kept{% endif %} · {% if page.open_count %}Opened {{ page.open_count }} time{% if page.open_count != 1 %}s{% endif %}{% if page.last_opened_label %} · Last opened {{ page.last_opened_label }} UTC{% endif %}{% else %}Never opened{% endif %}</p>
-      </div>
+      </details>
     </div>
   </li>
   {% endfor %}
 </ul>
 <p class="hint empty-search" hidden data-search-empty>No pages match that search.</p>
 {% else %}
-<div class="card empty">
+<div class="card stack empty">
   <h2>No pages yet</h2>
-  <p class="hint">Upload an HTML, PDF, Word, or zip site to give it a friendly URL such as {{ share_url }}/emergency-planner. The public list at {{ share_url }}/browse shows household (admin) pages to visitors; your own pages appear there when you are signed in.</p>
+  <p class="hint">Add a web page, PDF, Word document or zipped site. FileServe gives it a short link and a QR code that anyone at home can open.</p>
   <div class="row-actions">
     <a class="btn btn-primary btn-with-icon" href="{{ url_for('add_page') }}">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      {{ icon("plus") }}
       <span>Add page</span>
     </a>
   </div>
 </div>
 {% endif %}
+
+<div class="sheet" hidden data-share-sheet>
+  <div class="sheet-card card stack hosted-share-sheet">
+    <h2 data-share-title>Share</h2>
+    <p class="hint">Scan on a phone or tablet on the same network.</p>
+    <div class="qr-frame share-qr-frame">
+      <img class="qr-image" data-share-qr alt="" />
+    </div>
+    <div class="hosted-url hosted-url-share">
+      <span class="hosted-url-text" data-share-url></span>
+      <button class="btn btn-ghost btn-compact" type="button" data-share-copy>Copy</button>
+    </div>
+    <div class="hosted-share-actions">
+      <a class="btn btn-secondary btn-with-icon" data-share-download href="#">{{ icon("download") }}<span>Save QR</span></a>
+      <a class="btn btn-secondary btn-with-icon" data-share-print href="#" target="_blank" rel="noopener">{{ icon("print") }}<span>Print</span></a>
+    </div>
+    <button class="btn btn-ghost" type="button" data-close-share>Close</button>
+  </div>
+</div>
 
 <div class="sheet" hidden data-edit-sheet>
   <div class="sheet-card card">
@@ -171,7 +213,7 @@
         </span>
       </label>
       <div class="btn-row">
-        <button class="btn btn-primary" type="submit">Save</button>
+        <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("check") }}<span>Save</span></button>
         <button class="btn btn-ghost" type="button" data-close-edit>Cancel</button>
       </div>
     </form>

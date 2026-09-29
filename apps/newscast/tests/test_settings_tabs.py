@@ -80,7 +80,7 @@ def test_settings_groups_for_respects_role_and_platform():
 
     user_keys = [
         key
-        for _gid, _label, rows in settings_groups_for("user", can_use_ntfy=True)
+        for _gid, _label, rows in settings_groups_for("user", platform_managed=True)
         for key, _name, _sub in rows
     ]
     assert "publication" in user_keys
@@ -127,7 +127,6 @@ def test_multi_card_tabs_have_panel_maps():
         "schedule",
         "catalog",
         "reader",
-        "notifications",
         "users",
         "update",
     }
@@ -137,7 +136,7 @@ def test_multi_card_tabs_have_panel_maps():
 
 
 def test_non_admin_settings_tabs_hide_household_controls():
-    keys = {key for key, _label in settings_tabs_for("user", can_use_ntfy=True)}
+    keys = {key for key, _label in settings_tabs_for("user", platform_managed=True)}
     assert "llm" not in keys
     assert "backup" not in keys
     assert "users" not in keys
@@ -153,14 +152,13 @@ def test_non_admin_settings_tabs_hide_household_controls():
     assert normalize_settings_tab_for_role("llm", "admin") == "llm"
 
 
-def test_notifications_tab_requires_ntfy_permission():
-    without = {key for key, _ in settings_tabs_for("user", can_use_ntfy=False)}
-    with_ntfy = {key for key, _ in settings_tabs_for("user", can_use_ntfy=True)}
-    assert "notifications" not in without
-    assert "notifications" in with_ntfy
-    assert normalize_settings_tab_for_role("notifications", "user", can_use_ntfy=False) == "device"
-    assert normalize_settings_tab_for_role("notifications", "user", can_use_ntfy=True) == "notifications"
-    assert "notifications" in {key for key, _ in settings_tabs_for("admin")}
+def test_notifications_tab_only_under_platform():
+    """Phone alerts need StonePi sign-in; the tab is for everyone there, nobody standalone."""
+    for role in ("user", "admin"):
+        assert "notifications" in {key for key, _ in settings_tabs_for(role, platform_managed=True)}
+        assert "notifications" not in {key for key, _ in settings_tabs_for(role, platform_managed=False)}
+    assert normalize_settings_tab_for_role("notifications", "user", platform_managed=True) == "notifications"
+    assert normalize_settings_tab_for_role("notifications", "user", platform_managed=False) == "device"
 
 
 def test_platform_managed_hides_users_and_update_for_admin():

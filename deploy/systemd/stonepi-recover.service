@@ -1,0 +1,19 @@
+[Unit]
+Description=StonePi Recovery
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=root
+Environment=HOST=0.0.0.0
+Environment=PORT=8099
+WorkingDirectory=/opt/stonepi/apps/recover
+ExecStart=/opt/stonepi/apps/recover/.venv/bin/python -m app.serve
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

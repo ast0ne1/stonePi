@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import math
 import re
 import textwrap
 from pathlib import Path
@@ -258,82 +259,71 @@ def render_newspaper_cover(
     return buffer.getvalue()
 
 
-def render_category_icon(category_key: str, *, size: int = 160) -> bytes:
-    """Simple 1-bit-friendly PNG glyph for category divider pages."""
-    key = (category_key or "").strip().lower() or "news"
+CATEGORY_ICON_SIZE = 150
+ICON_INK = (0, 0, 0)
+# Material Symbols glyphs pre-rendered to 150px black/white PNGs (see the README there).
+CATEGORY_ICON_DIR = Path(__file__).resolve().parent.parent / "assets" / "category_icons"
+# Drawn in code: Material has no country icons for these.
+DRAWN_CATEGORY_ICONS = {"nordic", "australia"}
+
+
+def _star_points(cx: float, cy: float, outer: float, inner: float) -> list[tuple[float, float]]:
+    points = []
+    for i in range(10):
+        radius = outer if i % 2 == 0 else inner
+        angle = math.pi / 2 + i * math.pi / 5
+        points.append((cx + radius * math.cos(angle), cy - radius * math.sin(angle)))
+    return points
+
+
+def _drawn_region_icon(key: str, size: int) -> Image.Image:
     image = Image.new("RGB", (size, size), (255, 255, 255))
     draw = ImageDraw.Draw(image)
-    ink = INK
-    pad = size // 6
-    left, top, right, bottom = pad, pad, size - pad, size - size // 6
-    cx = size // 2
+    ink = ICON_INK
     cy = size // 2
-    stroke = max(2, size // 28)
-
-    def line(*xy: tuple[int, int]) -> None:
-        draw.line(list(xy), fill=ink, width=stroke)
-
-    if key == "technology":
-        draw.rectangle([cx - size // 5, cy - size // 5, cx + size // 5, cy + size // 5], outline=ink, width=stroke)
-        for dx in (-size // 5, 0, size // 5):
-            line((cx + dx, top + pad // 2), (cx + dx, cy - size // 5))
-            line((cx + dx, cy + size // 5), (cx + dx, bottom - pad // 2))
-        for dy in (-size // 5, 0, size // 5):
-            line((left + pad // 2, cy + dy), (cx - size // 5, cy + dy))
-            line((cx + size // 5, cy + dy), (right - pad // 2, cy + dy))
-    elif key == "security":
-        draw.polygon(
-            [
-                (cx, top + pad // 2),
-                (right - pad // 3, top + pad),
-                (right - pad // 3, cy + size // 10),
-                (cx, bottom - pad // 3),
-                (left + pad // 3, cy + size // 10),
-                (left + pad // 3, top + pad),
-            ],
-            outline=ink,
-            width=stroke,
-        )
-    elif key == "science":
-        line((cx, top + pad // 2), (cx, cy - size // 12))
-        draw.ellipse([cx - size // 4, cy - size // 12, cx + size // 4, bottom - pad // 3], outline=ink, width=stroke)
-        line((cx - size // 6, cy + size // 8), (cx + size // 6, cy + size // 8))
-        line((cx - size // 10, top + pad // 2), (cx + size // 10, top + pad // 2))
-    elif key == "business":
-        draw.rectangle([left + pad // 3, cy - size // 10, right - pad // 3, bottom - pad // 4], outline=ink, width=stroke)
-        draw.rectangle([cx - size // 6, top + pad, cx + size // 6, cy - size // 10], outline=ink, width=stroke)
-        line((left + pad // 3, cy + size // 12), (right - pad // 3, cy + size // 12))
-    elif key == "sport":
-        r = size // 3
-        draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=ink, width=stroke)
-        line((cx, cy - r), (cx, cy + r))
-        line((cx - r, cy), (cx + r, cy))
-        draw.arc([cx - r, cy - r // 2, cx + r, cy + r // 2], 0, 180, fill=ink, width=stroke)
-        draw.arc([cx - r, cy - r // 2, cx + r, cy + r // 2], 180, 360, fill=ink, width=stroke)
-    elif key == "culture":
-        draw.polygon(
-            [(cx, top + pad), (right - pad // 2, bottom - pad // 2), (left + pad // 2, bottom - pad // 2)],
-            outline=ink,
-            width=stroke,
-        )
-        line((cx, top + pad), (cx, bottom - pad // 2))
-    elif key in {"nordic", "australia"}:
-        r = size // 3
-        draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=ink, width=stroke)
-        line((cx, cy - r), (cx, cy + r))
-        line((cx - r, cy), (cx + r, cy))
-    elif key == "longreads":
-        draw.rectangle([left + pad // 2, top + pad // 2, right - pad // 2, bottom - pad // 3], outline=ink, width=stroke)
-        for i in range(3):
-            y = top + pad + (i + 1) * (size // 7)
-            line((left + pad, y), (right - pad, y))
+    stroke = max(3, size // 15)
+    if key == "nordic":
+        # Nordic cross flag: outlined field with the off-centre (hoist-side) cross.
+        flag_top, flag_bottom = cy - size // 4, cy + size // 4
+        flag_left, flag_right = size // 10, size - size // 10
+        draw.rectangle([flag_left, flag_top, flag_right, flag_bottom], outline=ink, width=stroke)
+        bar = max(stroke * 2, size // 9)
+        cross_x = flag_left + (flag_right - flag_left) * 3 // 8
+        draw.rectangle([cross_x - bar // 2, flag_top, cross_x + bar // 2, flag_bottom], fill=ink)
+        draw.rectangle([flag_left, cy - bar // 2, flag_right, cy + bar // 2], fill=ink)
     else:
-        # news / default: newspaper
-        draw.rectangle([left + pad // 3, top + pad // 2, right - pad // 3, bottom - pad // 3], outline=ink, width=stroke)
-        for i in range(3):
-            y = top + pad + size // 6 + i * (size // 8)
-            line((left + pad, y), (right - pad, y))
+        # Southern Cross: four large stars in a kite plus the small Epsilon star.
+        big, small = size / 9, size / 16
+        for sx, sy, outer in (
+            (0.50, 0.18, big),
+            (0.24, 0.46, big),
+            (0.76, 0.40, big),
+            (0.52, 0.80, big),
+            (0.62, 0.58, small),
+        ):
+            draw.polygon(_star_points(sx * size, sy * size, outer, outer * 0.45), fill=ink)
+    return image
 
+
+def render_category_icon(category_key: str, *, size: int = CATEGORY_ICON_SIZE) -> bytes:
+    """Pure black-and-white PNG glyph for section pages, at the size the reader shows it.
+
+    Built-in categories use the stored Material Symbols PNGs; Nordic and Australia are
+    drawn here; custom categories fall back to the World News newspaper.
+    """
+    key = (category_key or "").strip().lower() or "news"
+    if key in DRAWN_CATEGORY_ICONS:
+        image = _drawn_region_icon(key, size)
+    else:
+        # Category keys are slugs; anything else (or no stored file) gets the newspaper.
+        path = CATEGORY_ICON_DIR / f"{key}.png"
+        if not re.fullmatch(r"[a-z0-9-]+", key) or not path.exists():
+            path = CATEGORY_ICON_DIR / "news.png"
+        with Image.open(path) as stored:
+            image = stored.convert("RGB")
+        if image.size != (size, size):
+            # Nearest-neighbour keeps the pixels pure black / white.
+            image = image.resize((size, size), Image.NEAREST)
     buffer = io.BytesIO()
     image.save(buffer, format="PNG", optimize=True)
     return buffer.getvalue()

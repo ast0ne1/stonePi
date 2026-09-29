@@ -17,6 +17,15 @@
     slate: { light: "#ececee", dark: "#121314" },
   };
 
+  // nginx serves this file straight from disk, so the server-side prefix rewrite never
+  // touches it. Apply the app prefix (/events) to root-absolute request paths here.
+  function withPrefix(path) {
+    var prefix = (document.documentElement.getAttribute("data-stonepi-prefix") || "").replace(/\/$/, "");
+    if (!prefix || path.charAt(0) !== "/" || path.indexOf("//") === 0) return path;
+    if (path === prefix || path.indexOf(prefix + "/") === 0) return path;
+    return prefix + path;
+  }
+
   function syncTopbarHeight() {
     var topbar = document.querySelector(".topbar");
     if (!topbar) return;
@@ -79,18 +88,13 @@
     persistPref(PALETTE_KEY, chosen);
     var meta = document.querySelector("[data-theme-color]");
     if (meta && THEME_COLORS[chosen]) meta.setAttribute("content", THEME_COLORS[chosen][theme]);
-    document.querySelectorAll("[data-theme-set]").forEach(function (btn) {
-      btn.classList.toggle("is-active", btn.dataset.themeSet === pref);
-    });
-    document.querySelectorAll("[data-palette-set]").forEach(function (btn) {
-      btn.classList.toggle("is-active", btn.dataset.paletteSet === chosen);
-    });
   }
 
   var savedTheme = readShared(THEME_KEY, LEGACY_THEME_KEYS, "system");
   applyTheme(savedTheme);
   syncTopbarHeight();
   window.addEventListener("resize", syncTopbarHeight);
+  window.addEventListener("pageshow", syncTopbarHeight);
   window.addEventListener("orientationchange", syncTopbarHeight);
   if (window.visualViewport) window.visualViewport.addEventListener("resize", syncTopbarHeight);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(syncTopbarHeight);
@@ -99,16 +103,6 @@
     if (topbarEl) new ResizeObserver(syncTopbarHeight).observe(topbarEl);
   }
 
-  document.querySelectorAll("[data-theme-set]").forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      applyTheme(btn.dataset.themeSet);
-    });
-  });
-  document.querySelectorAll("[data-palette-set]").forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      applyTheme(readShared(THEME_KEY, LEGACY_THEME_KEYS, "system"), btn.dataset.paletteSet);
-    });
-  });
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () {
     if (readShared(THEME_KEY, LEGACY_THEME_KEYS, "system") === "system") applyTheme("system");
   });
@@ -162,7 +156,7 @@
         var eventId = btn.dataset.favToggle;
         btn.disabled = true;
 
-        fetch("/api/events/" + eventId + "/favourite", {
+        fetch(withPrefix("/api/events/" + eventId + "/favourite"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
         })
@@ -273,15 +267,39 @@
     // --- Sync All & Status Pill Polling ---
     var syncPill = document.querySelector("[data-sync-pill]");
     var syncBtn = document.querySelector("[data-sync-btn]");
+    var stopBtns = document.querySelectorAll("[data-sync-stop-btn]");
+
+    // Stop shows only while a sync runs; once asked it waits for the current source.
+    function setStopButtons(running, stopping) {
+      stopBtns.forEach(function (btn) {
+        btn.hidden = !running;
+        btn.disabled = Boolean(stopping);
+        var label = btn.querySelector("span");
+        if (label) label.textContent = stopping ? "Stopping…" : "Stop";
+      });
+    }
+
+    stopBtns.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        setStopButtons(true, true);
+        fetch(withPrefix("/api/sync/stop"), { method: "POST" })
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (!data.running) setStopButtons(false, false);
+          })
+          .catch(function () { setStopButtons(true, false); });
+      });
+    });
 
     function updateSyncStatus() {
-      fetch("/api/sync/status")
+      fetch(withPrefix("/api/sync/status"))
         .then(function (res) { return res.json(); })
         .then(function (data) {
+          setStopButtons(data.running, data.stopping);
           if (!syncPill) return;
           if (data.running) {
             syncPill.hidden = false;
-            syncPill.textContent = "Syncing";
+            syncPill.textContent = "Refreshing";
             syncPill.classList.add("is-busy");
             syncPill.classList.remove("is-error");
             if (syncBtn) {
@@ -313,13 +331,14 @@
       syncBtn.addEventListener("click", function () {
         syncBtn.disabled = true;
         syncBtn.classList.add("is-busy");
+        setStopButtons(true, false);
         if (syncPill) {
           syncPill.hidden = false;
-          syncPill.textContent = "Syncing";
+          syncPill.textContent = "Refreshing";
           syncPill.classList.add("is-busy");
           syncPill.classList.remove("is-error");
         }
-        fetch("/api/sync/trigger", { method: "POST" })
+        fetch(withPrefix("/api/sync/trigger"), { method: "POST" })
           .then(function () {
             setTimeout(updateSyncStatus, 1500);
           })
@@ -348,9 +367,10 @@
     }
 
     function pollSourceSync() {
-      fetch("/api/sync/status")
+      fetch(withPrefix("/api/sync/status"))
         .then(function (res) { return res.json(); })
         .then(function (data) {
+          setStopButtons(data.running, data.stopping);
           if (data.running) {
             setSourceButtonsBusy(true);
             if (sourceSyncStatus) {
@@ -389,10 +409,11 @@
         var sourceId = btn.getAttribute("data-sync-source-btn");
         var sourceName = btn.getAttribute("data-source-name") || "source";
         setSourceButtonsBusy(true);
+        setStopButtons(true, false);
         if (sourceSyncStatus) {
           sourceSyncStatus.textContent = "Syncing '" + sourceName + "'… this can take a few minutes.";
         }
-        fetch("/api/sources/" + sourceId + "/sync", { method: "POST" })
+        fetch(withPrefix("/api/sources/" + sourceId + "/sync"), { method: "POST" })
           .then(function (res) { return res.json(); })
           .then(function (data) {
             if (!data.started) {
@@ -416,7 +437,7 @@
     // reflect that immediately instead of showing idle, clickable buttons
     // that would just queue up requests the backend silently rejects.
     if (sourceSyncBtns.length) {
-      fetch("/api/sync/status")
+      fetch(withPrefix("/api/sync/status"))
         .then(function (res) { return res.json(); })
         .then(function (data) {
           if (data.running) startSourcePolling();
@@ -441,7 +462,7 @@
         fbStatus.hidden = false;
         fbStatus.textContent = "Fetching event details... this can take up to a couple of minutes.";
 
-        fetch("/add-event/fetch-facebook", {
+        fetch(withPrefix("/add-event/fetch-facebook"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url: url }),
@@ -626,7 +647,6 @@
 
   var settingsRoot = document.querySelector("[data-settings-tabs]");
   if (settingsRoot) {
-    var DESKTOP_MQ = window.matchMedia("(min-width: 1024px)");
     var settingsChips = settingsRoot.querySelectorAll("[data-settings-tab]");
     var settingsLede = document.querySelector("[data-settings-lede]");
     var settingsTitle = document.querySelector("[data-settings-title]");
@@ -645,21 +665,13 @@
       if (labelsNode && labelsNode.textContent) labelsByTab = JSON.parse(labelsNode.textContent);
     } catch (_err) {}
 
-    function isDesktopSettings() {
-      return DESKTOP_MQ.matches;
-    }
-
-    function syncDesktopClass() {
-      settingsRoot.classList.toggle("is-desktop-settings", isDesktopSettings());
-    }
-
     function setViewMode(hub) {
-      var onHub = Boolean(hub) && !isDesktopSettings();
+      var onHub = Boolean(hub);
       settingsRoot.dataset.settingsHub = onHub ? "true" : "false";
       settingsRoot.classList.toggle("is-hub", onHub);
       if (hubList) hubList.hidden = !onHub;
       if (sectionEl) sectionEl.hidden = onHub;
-      if (settingsBack) settingsBack.hidden = onHub || isDesktopSettings();
+      if (settingsBack) settingsBack.hidden = onHub;
       if (settingsTitle) {
         settingsTitle.textContent = onHub
           ? "Settings"
@@ -696,7 +708,7 @@
         settingsLede.textContent = ledesByTab[next] || "";
       }
       var url = new URL(window.location.href);
-      if (opts.hub && !isDesktopSettings()) {
+      if (opts.hub) {
         url.searchParams.delete("tab");
       } else {
         url.searchParams.set("tab", next);
@@ -731,28 +743,7 @@
       });
     }
 
-    function onDesktopChange() {
-      syncDesktopClass();
-      if (isDesktopSettings()) {
-        setViewMode(false);
-        showSettingsTab(settingsRoot.dataset.settingsActiveTab || "general", { hub: false });
-      } else if (settingsRoot.dataset.settingsHub === "true") {
-        setViewMode(true);
-      } else {
-        setViewMode(false);
-      }
-    }
-
-    syncDesktopClass();
-    if (DESKTOP_MQ.addEventListener) {
-      DESKTOP_MQ.addEventListener("change", onDesktopChange);
-    } else if (DESKTOP_MQ.addListener) {
-      DESKTOP_MQ.addListener(onDesktopChange);
-    }
-
-    if (isDesktopSettings()) {
-      setViewMode(false);
-    } else if (settingsRoot.dataset.settingsHub === "true") {
+    if (settingsRoot.dataset.settingsHub === "true") {
       setViewMode(true);
     } else {
       setViewMode(false);

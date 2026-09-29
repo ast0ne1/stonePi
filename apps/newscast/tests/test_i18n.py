@@ -13,8 +13,8 @@ def test_missing_key_returns_key():
 def test_es_partial_returns_spanish_for_briefing():
     assert i18n.t("Briefing", lang="es") == "Resumen"
     assert i18n.t("Feeds", lang="es") == "Fuentes"
+    assert i18n.t("Catalog", lang="es") == "Catálogo"
     # Absent in es.json → English fallback
-    assert i18n.t("Catalog", lang="es") == "Catalog"
     assert i18n.t("Idle", lang="es") == "Idle"
 
 

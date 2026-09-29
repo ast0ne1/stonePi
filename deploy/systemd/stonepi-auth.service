@@ -2,6 +2,8 @@
 Description=StonePi Authentication
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -11,9 +13,11 @@ EnvironmentFile=/etc/stonepi/stonepi.env
 EnvironmentFile=-/etc/stonepi/auth.env
 WorkingDirectory=/opt/stonepi/apps/auth
 ExecStart=/opt/stonepi/apps/auth/.venv/bin/python -m app.serve
-Restart=on-failure
+Restart=always
 RestartSec=5
 NoNewPrivileges=yes
+MemoryHigh=150M
+OOMScoreAdjust=-200
 
 [Install]
 WantedBy=multi-user.target

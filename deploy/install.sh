@@ -71,6 +71,7 @@ ensure_user() {
 
 ensure_user stonepi-auth
 ensure_user stonepi-dash
+ensure_user stonepi-notify
 ensure_user stonepi-news
 ensure_user stonepi-files
 ensure_user stonepi-events
@@ -78,9 +79,14 @@ ensure_user stonepi-pin
 ensure_user stonepi-studio
 ensure_user stonepi-prices
 ensure_user stonepi-sport
-ensure_user stonepi-sport
+ensure_user stonepi-watch
 
-mkdir -p "$DEST" "$DATA/auth" "$DATA/newscast" "$DATA/fileserve/hosted" "$DATA/eventtrakr" "$DATA/pinboard" "$DATA/studio" "$DATA/pricescout" "$DATA/sportguide" "$DATA/dashboard" "$DATA/vault" "$CONF"
+# Health hardware probes: vcgencmd (video) + journalctl --list-boots (systemd-journal)
+for g in video systemd-journal; do
+  getent group "$g" >/dev/null 2>&1 && usermod -aG "$g" stonepi-dash || true
+done
+
+mkdir -p "$DEST" "$DATA/auth" "$DATA/newscast" "$DATA/fileserve/hosted" "$DATA/eventtrakr" "$DATA/pinboard" "$DATA/studio" "$DATA/pricescout" "$DATA/sportguide" "$DATA/pricewatch" "$DATA/dashboard" "$DATA/notify" "$DATA/vault" "$CONF"
 if [[ ! -f "$DATA/exposure" ]]; then
   printf 'lan\n' > "$DATA/exposure"
   chmod 644 "$DATA/exposure"
@@ -115,9 +121,14 @@ if [[ ! -f "$DEST/deploy/nginx/stonepi-public-deny-display.conf" ]]; then
   exit 1
 fi
 
+# Renamed services (notifications -> notify, recovery -> recover): retire old
+# units and carry code/venv, data, env, passwd and Vault key forward. Idempotent.
+bash "$DEST/deploy/stonepi-migrate-renames.sh" "$DEST"
+
 if [[ ! -f "$CONF/stonepi.env" ]]; then
   SECRET="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
   cat > "$CONF/stonepi.env" <<EOF
+# Prefer Vault when set; installer .env remains bootstrap only.
 HOST=127.0.0.1
 SESSION_SECRET=$SECRET
 STONEPI_SESSION_SECRET=$SECRET
@@ -125,6 +136,7 @@ STONEPI_VAULT_DIR=/var/lib/stonepi/vault
 STONEPI_EXPOSURE=lan
 STONEPI_EXPOSURE_FILE=/var/lib/stonepi/exposure
 STONEPI_HOSTNAME=$HOSTNAME_VALUE
+STONEPI_HOSTNAME_FILE=/var/lib/stonepi/hostname
 STONEPI_AUTH_URL=http://127.0.0.1:8011
 STONEPI_PUBLIC_ORIGIN=http://${HOSTNAME_VALUE}.local
 PUBLIC_ORIGIN=http://${HOSTNAME_VALUE}.local
@@ -144,6 +156,9 @@ fi
 if ! grep -q '^STONEPI_EXPOSURE_FILE=' "$CONF/stonepi.env" 2>/dev/null; then
   echo 'STONEPI_EXPOSURE_FILE=/var/lib/stonepi/exposure' >> "$CONF/stonepi.env"
 fi
+if ! grep -q '^STONEPI_HOSTNAME_FILE=' "$CONF/stonepi.env" 2>/dev/null; then
+  echo 'STONEPI_HOSTNAME_FILE=/var/lib/stonepi/hostname' >> "$CONF/stonepi.env"
+fi
 if ! grep -q '^STONEPI_VAULT_DIR=' "$CONF/stonepi.env" 2>/dev/null; then
   echo 'STONEPI_VAULT_DIR=/var/lib/stonepi/vault' >> "$CONF/stonepi.env"
 fi
@@ -157,6 +172,10 @@ fi
 if [[ ! -f "$DATA/exposure" ]]; then
   printf 'lan\n' > "$DATA/exposure"
   chmod 644 "$DATA/exposure"
+fi
+if [[ ! -f "$DATA/hostname" ]]; then
+  printf '%s\n' "$HOSTNAME_VALUE" > "$DATA/hostname"
+  chmod 644 "$DATA/hostname"
 fi
 mkdir -p "$DATA/dashboard"
 if [[ ! -f "$DATA/dashboard/tailscale_wanted" ]]; then
@@ -196,6 +215,14 @@ write_env "$CONF/dashboard.env" <<EOF
 PORT=8010
 STONEPI_DATA_DIR=/var/lib/stonepi/dashboard
 STONEPI_PREFIX=
+EOF
+
+write_env "$CONF/notify.env" <<EOF
+PORT=8012
+STONEPI_DATA_DIR=/var/lib/stonepi/notify
+STONEPI_PREFIX=/notify
+STONEPI_APP_ID=notify
+STONEPI_NOTIFY_URL=http://127.0.0.1:8012
 EOF
 
 write_env "$CONF/newscast.env" <<EOF
@@ -260,9 +287,19 @@ STONEPI_APP_ID=sportguide
 STONEPI_DATA_DIR=/var/lib/stonepi/sportguide
 EOF
 
+write_env "$CONF/pricewatch.env" <<EOF
+PORT=8008
+PUBLIC_BASE_URL=http://${HOSTNAME_VALUE}.local/watch
+STONEPI_PREFIX=/watch
+STONEPI_APP_ID=pricewatch
+STONEPI_DATA_DIR=/var/lib/stonepi/pricewatch
+EOF
+
 # Upgrade path: existing env files keep secrets but pick up new keys.
 ensure_env_key "$CONF/auth.env" STONEPI_DATA_DIR /var/lib/stonepi/auth
 ensure_env_key "$CONF/dashboard.env" STONEPI_DATA_DIR /var/lib/stonepi/dashboard
+ensure_env_key "$CONF/notify.env" STONEPI_DATA_DIR /var/lib/stonepi/notify
+ensure_env_key "$CONF/notify.env" STONEPI_PREFIX /notify
 ensure_env_key "$CONF/newscast.env" STONEPI_DATA_DIR /var/lib/stonepi/newscast
 ensure_env_key "$CONF/fileserve.env" STONEPI_DATA_DIR /var/lib/stonepi/fileserve
 ensure_env_key "$CONF/eventtrakr.env" STONEPI_DATA_DIR /var/lib/stonepi/eventtrakr
@@ -270,6 +307,7 @@ ensure_env_key "$CONF/pinboard.env" STONEPI_DATA_DIR /var/lib/stonepi/pinboard
 ensure_env_key "$CONF/studio.env" STONEPI_DATA_DIR /var/lib/stonepi/studio
 ensure_env_key "$CONF/pricescout.env" STONEPI_DATA_DIR /var/lib/stonepi/pricescout
 ensure_env_key "$CONF/sportguide.env" STONEPI_DATA_DIR /var/lib/stonepi/sportguide
+ensure_env_key "$CONF/pricewatch.env" STONEPI_DATA_DIR /var/lib/stonepi/pricewatch
 ensure_env_key "$CONF/newscast.env" PUBLIC_BASE_URL "http://${HOSTNAME_VALUE}.local/news"
 ensure_env_key "$CONF/fileserve.env" PUBLIC_BASE_URL "http://${HOSTNAME_VALUE}.local/files"
 ensure_env_key "$CONF/eventtrakr.env" PUBLIC_BASE_URL "http://${HOSTNAME_VALUE}.local/events"
@@ -281,6 +319,7 @@ ensure_env_key "$CONF/studio.env" STONEPI_PREFIX /studio
 ensure_env_key "$CONF/pricescout.env" STONEPI_PREFIX /prices
 ensure_env_key "$CONF/pricescout.env" PINBOARD_URL http://127.0.0.1:8004
 ensure_env_key "$CONF/sportguide.env" STONEPI_PREFIX /sports
+ensure_env_key "$CONF/pricewatch.env" STONEPI_PREFIX /watch
 
 install_app() {
   local name="$1"
@@ -293,6 +332,9 @@ install_app() {
   "$dir/.venv/bin/pip" install --upgrade pip
   "$dir/.venv/bin/pip" install -r "$dir/requirements.txt"
   "$dir/.venv/bin/pip" install -e "$DEST/packages/stonepi_auth"
+  if [[ -d "$DEST/packages/stonepi_contracts" ]]; then
+    "$dir/.venv/bin/pip" install -e "$DEST/packages/stonepi_contracts"
+  fi
   if [[ -d "$DEST/packages/stonepi_update" ]]; then
     "$dir/.venv/bin/pip" install -e "$DEST/packages/stonepi_update"
   fi
@@ -306,7 +348,20 @@ install_app() {
       fi
     done
   fi
+  if [[ "$name" == "notify" ]]; then
+    for pkg in stonepi_display stonepi_notify stonepi_watch; do
+      if [[ -d "$DEST/packages/$pkg" ]]; then
+        "$dir/.venv/bin/pip" install -e "$DEST/packages/$pkg"
+      fi
+    done
+  fi
   if [[ "$extra" == "playwright" ]]; then
+    if [[ -d "$DEST/packages/stonepi_browser" ]]; then
+      "$dir/.venv/bin/pip" install -e "$DEST/packages/stonepi_browser"
+    fi
+    # Shared Chromium launch lock across scraper apps.
+    mkdir -p /run/stonepi
+    chmod 1777 /run/stonepi
     # Browsers must live under the service user's home (/opt/stonepi), not root's cache.
     mkdir -p /opt/stonepi/.cache/ms-playwright
     chown -R "$user:$user" /opt/stonepi/.cache
@@ -321,6 +376,21 @@ install_app() {
 
 install_app auth stonepi-auth
 install_app dashboard stonepi-dash
+install_app notify stonepi-notify
+# Recover is a tiny root-owned escape hatch (HTTP Basic + optional SSO cookie).
+if [[ -d "$DEST/apps/recover" ]]; then
+  if [[ ! -d "$DEST/apps/recover/.venv" ]]; then
+    python3 -m venv "$DEST/apps/recover/.venv"
+  fi
+  "$DEST/apps/recover/.venv/bin/pip" install --upgrade pip
+  "$DEST/apps/recover/.venv/bin/pip" install -r "$DEST/apps/recover/requirements.txt"
+  if [[ -d "$DEST/packages/stonepi_vault" ]]; then
+    "$DEST/apps/recover/.venv/bin/pip" install -e "$DEST/packages/stonepi_vault"
+  fi
+  if [[ -d "$DEST/packages/stonepi_auth" ]]; then
+    "$DEST/apps/recover/.venv/bin/pip" install -e "$DEST/packages/stonepi_auth"
+  fi
+fi
 install_app newscast stonepi-news
 install_app fileserve stonepi-files
 install_app eventtrakr stonepi-events playwright
@@ -328,6 +398,7 @@ install_app pinboard stonepi-pin
 install_app studio stonepi-studio
 install_app pricescout stonepi-prices
 install_app sportguide stonepi-sport playwright
+install_app pricewatch stonepi-watch
 
 # Runtime data lives under /var/lib/stonepi (STONEPI_DATA_DIR). Also create
 # writable apps/*/data dirs so a missing env key cannot brick boot with EACCES.
@@ -340,6 +411,7 @@ ensure_writable_data() {
 }
 ensure_writable_data stonepi-auth "$DATA/auth" "$DEST/apps/auth/data"
 ensure_writable_data stonepi-dash "$DATA/dashboard" "$DEST/apps/dashboard/data"
+ensure_writable_data stonepi-notify "$DATA/notify" "$DEST/apps/notify/data"
 ensure_writable_data stonepi-news "$DATA/newscast" "$DEST/apps/newscast/data"
 # Bundled catalog/favicons under app/data must be readable by the service user.
 if [[ -d "$DEST/apps/newscast/app/data" ]]; then
@@ -351,12 +423,13 @@ ensure_writable_data stonepi-pin "$DATA/pinboard" "$DEST/apps/pinboard/data"
 ensure_writable_data stonepi-studio "$DATA/studio" "$DEST/apps/studio/data"
 ensure_writable_data stonepi-prices "$DATA/pricescout" "$DEST/apps/pricescout/data"
 ensure_writable_data stonepi-sport "$DATA/sportguide" "$DEST/apps/sportguide/data"
+ensure_writable_data stonepi-watch "$DATA/pricewatch" "$DEST/apps/pricewatch/data"
 mkdir -p "$DATA/fileserve/hosted"
 chown -R stonepi-files:stonepi-files "$DATA/fileserve"
 
 # Vault readable by app service users (group stonepi-vault); dashboard can write.
 groupadd --system stonepi-vault 2>/dev/null || true
-for u in stonepi-dash stonepi-auth stonepi-news stonepi-files stonepi-events stonepi-pin stonepi-studio stonepi-prices stonepi-sport; do
+for u in stonepi-dash stonepi-auth stonepi-notify stonepi-news stonepi-files stonepi-events stonepi-pin stonepi-studio stonepi-prices stonepi-sport stonepi-watch; do
   id -u "$u" >/dev/null 2>&1 && usermod -aG stonepi-vault "$u" || true
 done
 chown -R stonepi-dash:stonepi-vault "$DATA/vault" 2>/dev/null || true
@@ -364,7 +437,7 @@ chmod 750 "$DATA/vault" 2>/dev/null || true
 # New vault files inherit stonepi-vault group.
 chmod g+s "$DATA/vault" 2>/dev/null || true
 find "$DATA/vault" -type f -exec chmod 640 {} \; 2>/dev/null || true
-chmod 700 "$DATA/auth" "$DATA/newscast" "$DATA/fileserve" "$DATA/eventtrakr" "$DATA/pinboard" "$DATA/studio" "$DATA/pricescout" "$DATA/sportguide" "$DATA/dashboard"
+chmod 700 "$DATA/auth" "$DATA/newscast" "$DATA/fileserve" "$DATA/eventtrakr" "$DATA/pinboard" "$DATA/studio" "$DATA/pricescout" "$DATA/sportguide" "$DATA/pricewatch" "$DATA/dashboard" "$DATA/notify"
 chmod 750 "$DATA/vault" 2>/dev/null || true
 chmod g+s "$DATA/vault" 2>/dev/null || true
 
@@ -380,6 +453,17 @@ systemctl restart avahi-daemon >/dev/null 2>&1 || true
 
 install -m 755 "$DEST/deploy/backup/stonepi-backup.sh" /usr/local/sbin/stonepi-backup
 install -m 755 "$DEST/deploy/backup/stonepi-restore.sh" /usr/local/sbin/stonepi-restore
+install -m 755 "$DEST/deploy/backup/stonepi-restore-drill.sh" /usr/local/sbin/stonepi-restore-drill
+install -m 755 "$DEST/deploy/backup/stonepi-backup-helper.sh" /usr/local/sbin/stonepi-backup-helper
+install -m 755 "$DEST/deploy/backup/stonepi-failover-monitor.sh" /usr/local/sbin/stonepi-failover-monitor
+install -m 755 "$DEST/deploy/stonepi-tailscale-acl.sh" /usr/local/sbin/stonepi-tailscale-acl
+# Settings → Updates: Dashboard downloads, this root helper installs (app code is root-owned).
+install -m 755 "$DEST/deploy/stonepi-update-helper.py" /usr/local/sbin/stonepi-update-helper
+sed -i 's/\r$//' /usr/local/sbin/stonepi-update-helper  # a CRLF shebang (Windows copy) would not run
+mkdir -p "$DATA/updates"
+chmod 700 "$DATA/updates"
+mkdir -p /etc/nginx/snippets
+install -m 644 "$DEST/deploy/nginx/stonepi-failover.conf" /etc/nginx/snippets/stonepi-failover.conf
 if [[ -f "$DEST/deploy/udev/99-stonepi-backup.rules" ]]; then
   install -m 644 "$DEST/deploy/udev/99-stonepi-backup.rules" /etc/udev/rules.d/99-stonepi-backup.rules
   udevadm control --reload-rules >/dev/null 2>&1 || true
@@ -389,9 +473,63 @@ if [[ ! -f "$CONF/backup.conf" ]]; then
   cat > "$CONF/backup.conf" <<'EOF'
 LABEL=STONEPI-BACKUP
 UUID=
-APPS="stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-dashboard stonepi-auth"
+APPS="stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch"
+LOCAL_ENABLED=0
+LOCAL_CADENCE=weekly
+LOCAL_WEEKDAY=Sun
+LOCAL_TIME=03:30
+LOCAL_ROOT=/var/backups/stonepi
 EOF
   chmod 644 "$CONF/backup.conf"
+fi
+# Keep existing backup.conf APPS in sync with catalog (append missing units).
+if [[ -f "$CONF/backup.conf" ]] && ! grep -q 'stonepi-notify' "$CONF/backup.conf" 2>/dev/null; then
+  sed -i 's/APPS="/APPS="stonepi-notify /' "$CONF/backup.conf" 2>/dev/null || true
+fi
+# Ensure local-backup keys exist on upgrades.
+if [[ -f "$CONF/backup.conf" ]] && ! grep -q '^LOCAL_ENABLED=' "$CONF/backup.conf" 2>/dev/null; then
+  cat >> "$CONF/backup.conf" <<'EOF'
+LOCAL_ENABLED=0
+LOCAL_CADENCE=weekly
+LOCAL_WEEKDAY=Sun
+LOCAL_TIME=03:30
+LOCAL_ROOT=/var/backups/stonepi
+EOF
+fi
+mkdir -p /var/backups/stonepi
+chmod 755 /var/backups/stonepi
+
+# Persistent, size-bounded journal.
+mkdir -p /etc/systemd/journald.conf.d
+if [[ -f "$DEST/deploy/journald/stonepi.conf" ]]; then
+  install -m 644 "$DEST/deploy/journald/stonepi.conf" /etc/systemd/journald.conf.d/stonepi.conf
+  systemctl restart systemd-journald >/dev/null 2>&1 || true
+fi
+if [[ -f "$DEST/deploy/tmpfiles.d/stonepi.conf" ]]; then
+  install -m 644 "$DEST/deploy/tmpfiles.d/stonepi.conf" /etc/tmpfiles.d/stonepi.conf
+  systemd-tmpfiles --create /etc/tmpfiles.d/stonepi.conf >/dev/null 2>&1 || true
+fi
+
+# Runtime/hardware watchdog (no-op on boards without a watchdog device).
+mkdir -p /etc/systemd/system.conf.d
+if [[ -f "$DEST/deploy/systemd/stonepi-watchdog.conf" ]]; then
+  install -m 644 "$DEST/deploy/systemd/stonepi-watchdog.conf" /etc/systemd/system.conf.d/stonepi-watchdog.conf
+fi
+
+# Host firewall (nftables) — LAN Cockpit, nginx, Tailscale, SSH.
+if [[ -f "$DEST/deploy/nftables/install-firewall.sh" ]]; then
+  bash "$DEST/deploy/nftables/install-firewall.sh" || echo "WARNING: nftables firewall install failed — check manually." >&2
+fi
+
+# Timezone (household default).
+if command -v timedatectl >/dev/null 2>&1; then
+  timedatectl set-timezone Europe/Copenhagen >/dev/null 2>&1 || true
+fi
+
+# OS security updates only (StonePi app zips stay on Dashboard → Updates).
+if [[ -f "$DEST/deploy/apt/51stonepi-unattended" ]]; then
+  DEBIAN_FRONTEND=noninteractive apt-get install -y unattended-upgrades >/dev/null 2>&1 || true
+  install -m 644 "$DEST/deploy/apt/51stonepi-unattended" /etc/apt/apt.conf.d/51stonepi-unattended
 fi
 
 cp "$DEST/deploy/nginx/stonepi.conf" /etc/nginx/sites-available/stonepi
@@ -403,11 +541,19 @@ nginx -t
 systemctl enable nginx >/dev/null 2>&1 || true
 systemctl reload nginx 2>/dev/null || systemctl restart nginx
 
-for unit in stonepi-auth stonepi-dashboard stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-backup; do
-  cp "$DEST/deploy/systemd/${unit}.service" "/etc/systemd/system/${unit}.service"
+for unit in stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-backup stonepi-local-backup stonepi-recover stonepi-failover-monitor; do
+  if [[ -f "$DEST/deploy/systemd/${unit}.service" ]]; then
+    cp "$DEST/deploy/systemd/${unit}.service" "/etc/systemd/system/${unit}.service"
+  fi
 done
+if [[ -f "$DEST/deploy/systemd/stonepi.target" ]]; then
+  cp "$DEST/deploy/systemd/stonepi.target" /etc/systemd/system/stonepi.target
+fi
 if [[ -f "$DEST/deploy/systemd/stonepi-backup.timer" ]]; then
   cp "$DEST/deploy/systemd/stonepi-backup.timer" /etc/systemd/system/stonepi-backup.timer
+fi
+if [[ -f "$DEST/deploy/systemd/stonepi-local-backup.timer" ]]; then
+  cp "$DEST/deploy/systemd/stonepi-local-backup.timer" /etc/systemd/system/stonepi-local-backup.timer
 fi
 
 install -m 755 "$DEST/deploy/stonepi-cli.sh" /usr/local/bin/stonepi
@@ -446,18 +592,40 @@ if ! /usr/local/sbin/stonepi-tailscale install-check >/dev/null 2>&1; then
   echo "ERROR: stonepi-tailscale install-check failed." >&2
   exit 1
 fi
+if [[ ! -f "$DEST/deploy/stonepi-hostname.sh" ]]; then
+  echo "Missing $DEST/deploy/stonepi-hostname.sh — aborting." >&2
+  exit 1
+fi
+install -m 755 "$DEST/deploy/stonepi-hostname.sh" /usr/local/sbin/stonepi-hostname
+if ! /usr/local/sbin/stonepi-hostname install-check >/dev/null 2>&1; then
+  echo "ERROR: stonepi-hostname install-check failed." >&2
+  exit 1
+fi
 
 cat > /etc/sudoers.d/stonepi-dash <<'EOF'
 stonepi-dash ALL=(root) NOPASSWD: /bin/systemctl start stonepi-*, /bin/systemctl stop stonepi-*, /bin/systemctl restart stonepi-*, /bin/systemctl is-active stonepi-*, /bin/journalctl -u stonepi-*
 stonepi-dash ALL=(root) NOPASSWD: /usr/local/sbin/stonepi-tailscale
+stonepi-dash ALL=(root) NOPASSWD: /usr/local/sbin/stonepi-hostname
+stonepi-dash ALL=(root) NOPASSWD: /usr/local/sbin/stonepi-backup-helper
+stonepi-dash ALL=(root) NOPASSWD: /usr/local/sbin/stonepi-tailscale-acl
+stonepi-dash ALL=(root) NOPASSWD: /usr/local/sbin/stonepi-update-helper
 EOF
 chmod 440 /etc/sudoers.d/stonepi-dash
 
 systemctl daemon-reload
-systemctl enable --now stonepi-auth stonepi-dashboard stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide
-# Backup runs on USB insert (udev), not on a calendar timer.
+systemctl enable --now stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch
+systemctl enable --now stonepi-recover >/dev/null 2>&1 || true
+systemctl enable --now stonepi-failover-monitor >/dev/null 2>&1 || true
+systemctl enable stonepi.target >/dev/null 2>&1 || true
+# Backup: USB on insert (udev); local schedule only when enabled in Settings.
 systemctl disable --now stonepi-backup.timer >/dev/null 2>&1 || true
 systemctl reset-failed stonepi-backup.service >/dev/null 2>&1 || true
+systemctl disable --now stonepi-local-backup.timer >/dev/null 2>&1 || true
+systemctl reset-failed stonepi-local-backup.service >/dev/null 2>&1 || true
+# Re-apply local schedule from conf if previously enabled.
+if [[ -f "$CONF/backup.conf" ]] && grep -qE '^LOCAL_ENABLED=(1|true|yes)' "$CONF/backup.conf" 2>/dev/null; then
+  /usr/local/sbin/stonepi-backup-helper local-schedule >/dev/null 2>&1 || true
+fi
 systemctl enable cockpit.socket >/dev/null 2>&1 || true
 systemctl start cockpit.socket >/dev/null 2>&1 || true
 
@@ -473,6 +641,20 @@ STONEPI_VAULT_DIR="$DATA/vault" "$DEST/apps/dashboard/.venv/bin/python" \
   --newscast-db "$DATA/newscast/newscast.sqlite" \
   --eventtrakr-db "$DATA/eventtrakr/eventtrakr.sqlite" || true
 
+# Seed recover HTTP Basic password (once).
+if [[ ! -f /etc/stonepi/recover.passwd ]]; then
+  RECOVERY_PASS="$(python3 -c 'import secrets; print(secrets.token_urlsafe(12))')"
+  printf 'stonepi:%s\n' "$RECOVERY_PASS" > /etc/stonepi/recover.passwd
+  chmod 600 /etc/stonepi/recover.passwd
+  STONEPI_VAULT_DIR="$DATA/vault" "$DEST/apps/dashboard/.venv/bin/python" - <<PY || true
+from stonepi_vault import configure, set_secret
+configure("$DATA/vault")
+set_secret("STONEPI_RECOVER_PASSWORD", "$RECOVERY_PASS")
+print("recover password stored in vault (STONEPI_RECOVER_PASSWORD)")
+PY
+  echo "Recover login: user stonepi — password in Vault key STONEPI_RECOVER_PASSWORD (also /etc/stonepi/recover.passwd)"
+fi
+
 # Migrator may create files as root; restore group-readable vault ownership.
 chown -R stonepi-dash:stonepi-vault "$DATA/vault" 2>/dev/null || true
 chmod 750 "$DATA/vault" 2>/dev/null || true
@@ -480,13 +662,13 @@ chmod g+s "$DATA/vault" 2>/dev/null || true
 find "$DATA/vault" -type f -exec chmod 640 {} \; 2>/dev/null || true
 
 # Pick up stonepi-vault supplementary group + any new env keys.
-systemctl restart stonepi-auth stonepi-dashboard stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide >/dev/null 2>&1 || true
+systemctl restart stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch >/dev/null 2>&1 || true
 
 # Wait briefly for apps, then verify edge + backends (catches welcome-page / 502 installs).
 sleep 3
 echo
 echo "Health checks"
-UNITS=(stonepi-auth stonepi-dashboard stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide)
+UNITS=(stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch)
 failed_units=0
 for u in "${UNITS[@]}"; do
   if systemctl is-active --quiet "$u"; then
@@ -540,6 +722,6 @@ echo "  PriceScout http://${HOSTNAME_VALUE}.local/prices/"
 echo "  Cockpit    https://${HOSTNAME_VALUE}.local:9090  (or https://<pi-lan-ip>:9090)"
 echo "  Sign in with admin / admin and change the password."
 echo "  Helper:    stonepi status | stonepi urls | stonepi restart | stonepi logs"
-echo "  Backup:    plug in a USB labelled STONEPI-BACKUP (auto-starts), or: sudo systemctl start stonepi-backup"
+echo "  Backup:    plug in USB labelled STONEPI-BACKUP, or enable local schedule in Settings → Backup"
 echo "  Docs:      $DEST/deploy/INSTALL.md"
 echo

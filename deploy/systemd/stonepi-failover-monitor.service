@@ -1,0 +1,13 @@
+[Unit]
+Description=StonePi dashboard failover monitor
+After=network-online.target stonepi-recover.service
+Wants=network-online.target stonepi-recover.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/stonepi-failover-monitor
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

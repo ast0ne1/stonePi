@@ -1,25 +1,32 @@
-import re
-import shutil
 import socket
-import subprocess
 from urllib.parse import urlparse
 
 from sqlalchemy.orm import Session
 
-from app.config import ROOT_DIR, env
+from app.config import env
 from app.services import settings
 
-HOSTNAME_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
-SET_HOSTNAME = ROOT_DIR / "deploy" / "set-hostname.sh"
+try:
+    from stonepi_auth import normalize_hostname, platform_hostname, valid_hostname
+except ImportError:  # pragma: no cover - solo / older overlay
+    import re
+
+    HOSTNAME_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
+
+    def normalize_hostname(raw: str) -> str:
+        value = (raw or "").strip().lower().removesuffix(".local").rstrip(".")
+        return value
+
+    def valid_hostname(name: str) -> bool:
+        return bool(name) and HOSTNAME_RE.fullmatch(name) is not None
+
+    def platform_hostname() -> str:
+        return normalize_hostname(getattr(env, "device_hostname", "") or "stonepi") or "stonepi"
 
 
-def normalize_hostname(raw: str) -> str:
-    value = raw.strip().lower().removesuffix(".local").rstrip(".")
-    return value
-
-
-def valid_hostname(name: str) -> bool:
-    return bool(name) and HOSTNAME_RE.fullmatch(name) is not None
+def device_hostname() -> str:
+    """Appliance LAN short name (Dashboard → Settings → Network)."""
+    return platform_hostname()
 
 
 def _scheme(db: Session) -> str:
@@ -39,7 +46,7 @@ def _host_url(db: Session, host: str) -> str:
 
 
 def get_public_base_url(db: Session) -> str:
-    host = normalize_hostname(settings.get_value(db, "device_hostname"))
+    host = device_hostname()
     if host:
         return _host_url(db, host)
     public = env.public_base_url.rstrip("/")
@@ -83,7 +90,7 @@ def get_lan_url(db: Session | None = None) -> str:
 
 
 def get_share_url(db: Session) -> str:
-    host = normalize_hostname(settings.get_value(db, "device_hostname"))
+    host = device_hostname()
     if host:
         return _host_url(db, host)
     return get_lan_url(db)
@@ -93,21 +100,7 @@ def homescreen_name(db: Session) -> str:
     instance = settings.get_value(db, "instance_name").strip()
     if instance:
         return f"NewsCast {instance}"
-    host = normalize_hostname(settings.get_value(db, "device_hostname"))
+    host = device_hostname()
     if host:
         return f"NewsCast {host.replace('-', ' ').title()}"
     return "NewsCast"
-
-
-def apply_os_hostname(name: str) -> bool:
-    if not SET_HOSTNAME.is_file() or shutil.which("hostnamectl") is None:
-        return False
-    command = [str(SET_HOSTNAME), name]
-    sudo = shutil.which("sudo")
-    if sudo:
-        command = [sudo, "-n", *command]
-    try:
-        subprocess.run(command, check=True, capture_output=True, text=True, timeout=20)
-    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        return False
-    return True

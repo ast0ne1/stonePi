@@ -4,32 +4,52 @@ import json
 from pathlib import Path
 
 from app.config import DATA_DIR, ROOT_DIR, env
+from stonepi_auth import APP_CATALOG, SERVICE_GROUP_LABELS, UPDATABLE_APP_IDS
 from stonepi_update import Updater, normalize_repo, read_app_version, read_platform_version, refresh_check
 
 UPDATE_STORE = DATA_DIR / "updates-state.json"
 UPDATES_DIR = DATA_DIR / "updates"
+# Root helper installed by deploy/install.sh; app code under /opt/stonepi is root-owned on the Pi.
+UPDATE_HELPER = Path("/usr/local/sbin/stonepi-update-helper")
+REINSTALL_COMMAND = "curl -fsSL https://stonepi-install.vercel.app/install.sh | sudo bash -s -- --reinstall"
 
-APP_TARGETS = (
-    ("platform", "StonePi platform"),
-    ("auth", "Authentication"),
-    ("dashboard", "Dashboard"),
-    ("newscast", "NewsCast"),
-    ("fileserve", "FileServe"),
-    ("eventtrakr", "EventTrakr"),
-    ("pinboard", "Pinboard"),
-    ("studio", "Studio"),
-)
 
-APP_COLORS = {
-    "platform": "#0a6e6e",
-    "auth": "#6d645a",
-    "dashboard": "#b08900",
-    "newscast": "#8b1e1e",
-    "fileserve": "#1d5a8a",
-    "eventtrakr": "#3a5628",
-    "pinboard": "#6b4c2a",
-    "studio": "#5c3d6e",
-}
+def privileged_helper() -> Path | None:
+    """The update helper when Dashboard runs as a service user on the Pi; None in dev (write directly)."""
+    import os
+
+    if os.name == "nt" or not UPDATE_HELPER.exists():
+        return None
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        return None
+    return UPDATE_HELPER
+
+# The platform is the one update target not in APP_CATALOG.
+PLATFORM_TARGET = {"id": "platform", "name": "StonePi platform", "color": "#0a6e6e", "group": "system"}
+
+# Apps that ship inside the platform zip; the platform install overlays them.
+PLATFORM_APP_PATHS = tuple(f"apps/{item['id']}" for item in APP_CATALOG if item.get("ships_with") == "platform")
+
+
+def update_targets() -> list[dict]:
+    """Platform + every catalog app, in catalog order."""
+    targets = [dict(PLATFORM_TARGET, updatable=True)]
+    for item in APP_CATALOG:
+        targets.append(
+            {
+                "id": item["id"],
+                "name": item["name"],
+                "color": item.get("color") or "",
+                "group": item.get("group") or "user",
+                "updatable": not item.get("ships_with"),
+                "ships_with": item.get("ships_with") or "",
+            }
+        )
+    return targets
+
+
+def updatable_ids() -> set[str]:
+    return {"platform", *UPDATABLE_APP_IDS}
 
 
 def stonepi_root() -> Path:
@@ -86,10 +106,17 @@ def current_version(app_id: str) -> str:
     return read_app_version(app_root(app_id))
 
 
-def _extra_pip() -> list[str]:
+# Platform packages an app imports beyond auth/update; re-installed on app
+# update so a newly added dependency lands in that app's venv.
+_APP_EXTRA_PACKAGES = {
+    "notify": ("stonepi_contracts", "stonepi_display", "stonepi_notify", "stonepi_watch"),
+}
+
+
+def _extra_pip(app_id: str = "") -> list[str]:
     root = stonepi_root()
     extras = []
-    for name in ("stonepi_auth", "stonepi_update"):
+    for name in ("stonepi_auth", "stonepi_update", *_APP_EXTRA_PACKAGES.get(app_id, ())):
         path = root / "packages" / name
         if path.exists():
             extras.append(str(path))
@@ -104,7 +131,7 @@ def _updater(app_id: str) -> Updater:
     root = app_root(app_id)
     updates = UPDATES_DIR / app_id
     if app_id == "platform":
-        code_names = ("VERSION", "deploy", "packages", "scripts", "README.md", "CHANGELOG.md")
+        code_names = ("VERSION", "deploy", "packages", "scripts", "README.md", "CHANGELOG.md", *PLATFORM_APP_PATHS)
         service_names: tuple[str, ...] = ()
         require_app = False
         extra: list[str] = []
@@ -122,7 +149,7 @@ def _updater(app_id: str) -> Updater:
         )
         service_names = (f"stonepi-{app_id}",)
         require_app = True
-        extra = _extra_pip()
+        extra = _extra_pip(app_id)
 
     def get_last() -> dict:
         return ((_load_store().get("checks") or {}).get(app_id) or {})
@@ -150,6 +177,7 @@ def _updater(app_id: str) -> Updater:
         get_last_check=get_last,
         save_last_check=save_last,
         require_app_layout=require_app,
+        privileged_helper=None if app_id == "platform" else privileged_helper(),
     )
 
 
@@ -164,10 +192,14 @@ def check_latest(app_id: str, download: bool = True) -> dict:
 
 def install_latest(app_id: str) -> dict:
     if app_id == "platform":
+        if privileged_helper() is not None:
+            # In-place platform updates arrive in a later release; the installer does it safely now.
+            raise ValueError(f"Platform updates are applied with the installer for now. On the Pi, run: {REINSTALL_COMMAND}")
         return _install_platform()
     updater = _updater(app_id)
     result = updater.install_latest()
-    updater.schedule_restart()
+    if result.get("ok", True) and result.get("restart", True):
+        updater.schedule_restart()
     return result
 
 
@@ -179,13 +211,13 @@ def _install_platform() -> dict:
     check = updater.last_check()
     zip_path = Path(check.get("zip_path") or "")
     version = str(check.get("version") or check.get("tag") or "")
-    if not zip_path.exists():
+    if not zip_path.is_file():  # is_file, not exists: an empty zip_path is "." which exists
         check = updater.check_latest(download=True)
         zip_path = Path(check.get("zip_path") or "")
         version = str(check.get("version") or check.get("tag") or "")
     if not check.get("newer"):
         raise ValueError(check.get("message") or "No newer platform release.")
-    if not zip_path.exists():
+    if not zip_path.is_file():
         raise ValueError(check.get("message") or "Download the platform update first.")
 
     extract_to = updater.updates_dir / "extracted"
@@ -207,20 +239,29 @@ def _install_platform() -> dict:
 
 def version_cards() -> list[dict]:
     from app import services
-    from stonepi_auth import app_by_id
 
     colors = services.resolved_app_colors()
     cards = []
-    for app_id, label in APP_TARGETS:
-        catalog = app_by_id(app_id) or {}
+    for target in update_targets():
+        app_id = target["id"]
         cards.append(
             {
-                "id": app_id,
-                "name": label,
-                "color": colors.get(app_id) or catalog.get("color") or APP_COLORS.get(app_id, ""),
+                **target,
+                "color": colors.get(app_id) or target["color"],
                 "version": current_version(app_id),
-                "check": last_check(app_id),
+                "check": last_check(app_id) if target["updatable"] else {},
                 "root": str(app_root(app_id)),
             }
         )
     return cards
+
+
+def version_card_groups() -> list[tuple[str, list[dict]]]:
+    """Updates tab: SYSTEM (platform, Dashboard, Auth, …) then USER apps."""
+    cards = version_cards()
+    groups = []
+    for key, label in SERVICE_GROUP_LABELS:
+        items = [card for card in cards if card["group"] == key]
+        if items:
+            groups.append((label, items))
+    return groups

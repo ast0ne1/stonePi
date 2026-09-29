@@ -62,10 +62,25 @@ def test_import_creates_category_and_feed(tmp_path, monkeypatch):
     feed = db.query(Feed).one()
     assert feed.catalog_id == "romania.hotnews"
     assert feed.category == "romania"
-    assert feed.enabled is False
+    # Importing a package adds its sources (enabled); disabled never-fetched
+    # catalog rows are treated as stubs and dropped by the catalog seed.
+    assert feed.enabled is True
     assert feed.translate is True
+    assert feed.rss_url == "https://hotnews.example/rss"
     again = import_package(db, SAMPLE)
     assert again["created"] == 0
+
+
+def test_imported_package_feed_survives_catalog_seed(tmp_path, monkeypatch):
+    from app.services import catalog, packages
+
+    monkeypatch.setattr(packages, "PACKAGES_DIR", tmp_path)
+    monkeypatch.setattr(catalog.env, "seed_recommended_feeds", True)
+    db = _session()
+    import_package(db, SAMPLE)
+    catalog.seed_recommended_feeds(db)
+    feed = db.query(Feed).filter(Feed.catalog_id == "romania.hotnews").one()
+    assert feed.enabled is True
 
 
 def test_load_catalog_includes_imported_package(tmp_path, monkeypatch):

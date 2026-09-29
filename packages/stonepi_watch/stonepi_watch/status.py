@@ -16,7 +16,8 @@ LEVEL_HEALTHY = "healthy"
 LEVEL_ATTENTION = "attention"
 LEVEL_CRITICAL = "critical"
 
-DISK_ATTENTION_PCT = 87
+DISK_ATTENTION_PCT = 75
+DISK_SERIOUS_PCT = 85
 DISK_CRITICAL_PCT = 95
 BACKUP_ATTENTION_DAYS = 8
 
@@ -43,6 +44,7 @@ def _unit_statuses(units: list[str]) -> dict[str, str]:
             capture_output=True,
             text=True,
             check=False,
+            timeout=8,
         )
         lines = (result.stdout or "").strip().splitlines()
         out: dict[str, str] = {}
@@ -183,13 +185,14 @@ def evaluate(
     if disk is not None:
         if disk >= DISK_CRITICAL_PCT:
             raise_to(LEVEL_CRITICAL, f"Disk {disk}% full")
+        elif disk >= DISK_SERIOUS_PCT:
+            raise_to(LEVEL_ATTENTION, f"Disk {disk}% used — serious")
         elif disk >= DISK_ATTENTION_PCT:
             raise_to(LEVEL_ATTENTION, f"Disk {disk}% used")
 
-    summary = reasons[0] if reasons else "All clear"
     return {
         "level": level,
-        "summary": summary,
+        **summarize(reasons, app_rows),
         "reasons": reasons[:8],
         "apps": app_rows,
         "disk_pct": disk,
@@ -197,3 +200,34 @@ def evaluate(
         "backup_age_days": age_days,
         "checked_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+MULTIPLE_NOT_RUNNING = "Multiple services are not running"
+
+
+def summarize(reasons: list[str], apps: list[dict]) -> dict:
+    """Headline for a Watch snapshot: ``summary`` + optional ``summary_detail``.
+
+    The headline is the first reason. When that is an app "is not running" and
+    two or more enabled apps are not running, it becomes "Multiple services are
+    not running" with the app names in ``summary_detail`` (shown smaller on
+    Health; plain-text consumers should use :func:`summary_text`).
+    """
+    if not reasons:
+        return {"summary": "All clear", "summary_detail": ""}
+    not_running = [
+        str(row.get("n") or row.get("id") or "")
+        for row in apps
+        if row.get("enabled", True) and row.get("level") == LEVEL_ATTENTION
+    ]
+    first = reasons[0]
+    if len(not_running) > 1 and first.endswith(" is not running"):
+        return {"summary": MULTIPLE_NOT_RUNNING, "summary_detail": ", ".join(not_running)}
+    return {"summary": first, "summary_detail": ""}
+
+
+def summary_text(watch: dict) -> str:
+    """One-line headline for plain-text surfaces (TRMNL, phone): summary + (detail)."""
+    summary = str(watch.get("summary") or "").strip()
+    detail = str(watch.get("summary_detail") or "").strip()
+    return f"{summary} ({detail})" if summary and detail else summary

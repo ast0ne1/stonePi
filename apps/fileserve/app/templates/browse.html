@@ -6,10 +6,8 @@
     <meta name="theme-color" content="#f4efe4" data-theme-color />
     <title>Pages · FileServe</title>
     {% include "_theme_boot.html" %}
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ app_version }}" />
+    <link rel="stylesheet" href="/assets/fonts/fonts.css?v={{ fonts_rev }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ asset_rev }}" />
   </head>
   <body class="login-body">
     <div class="login-shell browse-shell">

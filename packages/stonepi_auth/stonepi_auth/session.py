@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping
 from urllib.parse import quote, urlparse
 
+from .catalog import canonical_app_id
+
 COOKIE_NAME = "stonepi"
 CSRF_COOKIE = "stonepi_csrf"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 14
@@ -24,6 +26,9 @@ class PlatformUser:
     permissions: dict[str, dict[str, bool]] = field(default_factory=dict)
     session_id: str = ""
     exp: int = 0
+    using_factory_admin: bool = False
+    # Platform Phone alerts permission; None for cookies issued before it existed.
+    phone_alerts: bool | None = None
 
     def can_access(self, app_id: str) -> bool:
         # Admins still go through the apps list so platform-disabled apps stay off.
@@ -47,6 +52,8 @@ def encode_session(
     apps: list[str],
     session_id: str,
     permissions: dict[str, dict[str, bool]] | None = None,
+    using_factory_admin: bool = False,
+    phone_alerts: bool = False,
     max_age: int = COOKIE_MAX_AGE,
 ) -> str:
     body = json.dumps(
@@ -58,6 +65,8 @@ def encode_session(
             "apps": list(apps),
             "perms": permissions or {},
             "sid": session_id,
+            "fac": bool(using_factory_admin and is_admin),
+            "pa": bool(phone_alerts or is_admin),
             "exp": int(time.time()) + max_age,
         },
         separators=(",", ":"),
@@ -87,24 +96,33 @@ def decode_session(value: str | None, secret: str) -> PlatformUser | None:
     username = str(data.get("u") or "")
     if not user_id or not username:
         return None
-    apps = [str(item) for item in (data.get("apps") or [])]
+    # canonical_app_id: cookies minted before an app rename keep working.
+    apps = [canonical_app_id(str(item)) for item in (data.get("apps") or [])]
     raw_perms = data.get("perms") or {}
     permissions: dict[str, dict[str, bool]] = {}
     if isinstance(raw_perms, dict):
         for app_id, caps in raw_perms.items():
             if not isinstance(caps, dict):
                 continue
-            permissions[str(app_id)] = {str(k): bool(v) for k, v in caps.items()}
+            permissions[canonical_app_id(str(app_id))] = {str(k): bool(v) for k, v in caps.items()}
+    is_admin = bool(data.get("adm"))
     return PlatformUser(
         user_id=user_id,
         username=username,
         display_name=str(data.get("dn") or username),
-        is_admin=bool(data.get("adm")),
+        is_admin=is_admin,
         apps=apps,
         permissions=permissions,
         session_id=str(data.get("sid") or ""),
         exp=int(data.get("exp") or 0),
+        using_factory_admin=bool(data.get("fac")) and is_admin,
+        phone_alerts=(bool(data["pa"]) or is_admin) if "pa" in data else None,
     )
+
+
+def factory_admin_warning(user: PlatformUser | None) -> bool:
+    """True when Auth encoded the shared cookie with the factory-password nudge."""
+    return bool(user and user.is_admin and user.using_factory_admin)
 
 
 def read_request_session(cookies: Mapping[str, str] | None, secret: str) -> PlatformUser | None:
@@ -153,7 +171,7 @@ def safe_next(value: str | None, *, allowed_ports: set[int] | None = None) -> st
     host = (parsed.hostname or "").lower()
     if not _host_allowed_for_redirect(host):
         return "/"
-    ports = allowed_ports or {80, 443, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8010, 8011, 8080, 8081, 8085}
+    ports = allowed_ports or {80, 443, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8010, 8011, 8012, 8080, 8081, 8085}
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
     if port not in ports:
         return "/"

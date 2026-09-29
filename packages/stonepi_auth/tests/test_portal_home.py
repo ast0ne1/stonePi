@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from stonepi_auth.http import portal_home_url
+from stonepi_auth.http import portal_home_url, portal_href
 
 
 class _Headers(dict):
@@ -24,10 +24,18 @@ def _request(*, host: str, scheme: str = "http"):
 def test_portal_home_windows_uses_dashboard_fallback(monkeypatch):
     monkeypatch.setattr("stonepi_auth.http.os.name", "nt")
     req = _request(host="127.0.0.1:8005")
-    assert portal_home_url(req, "http://127.0.0.1:8010") == "http://127.0.0.1:8010/"
+    assert portal_home_url(req, "http://127.0.0.1:8010") == "http://127.0.0.1:8010"
 
 
 def test_portal_home_path_install_keeps_request_host(monkeypatch):
     monkeypatch.setattr("stonepi_auth.http.os.name", "posix")
     req = _request(host="stonepi.home")
-    assert portal_home_url(req, "http://127.0.0.1:8010") == "http://stonepi.home/"
+    assert portal_home_url(req, "http://127.0.0.1:8010") == "http://stonepi.home"
+
+
+def test_portal_href_avoids_double_slash():
+    assert portal_href("http://stonepi.home/", "/notify/settings") == (
+        "http://stonepi.home/notify/settings"
+    )
+    assert portal_href("", "/notify/settings") == "/notify/settings"
+    assert portal_href("http://stonepi.home", "settings") == "http://stonepi.home/settings"

@@ -7,21 +7,36 @@
   <p class="lede">Look through briefing stories, favourites, and Saved long-reads stored on this copy.</p>
 </section>
 
-<form method="get" action="/search" class="card panel saved-form search-form" data-native>
+<form method="get" action="/search" class="card panel search-form" data-native>
   <div class="panel-head">
     <h2>Find stories</h2>
-    <p class="hint">Search titles, summaries, sources, and Saved long-reads. Favourites stay after they leave Briefing.</p>
+    <p class="hint">Pick an outlet, type a keyword, or both. Covers the last {{ retention_days }} days of stories plus your favourites and Saved long-reads.</p>
   </div>
-  <div class="panel-form">
-    <label>
-      Query
-      <input type="search" name="q" value="{{ query }}" autocomplete="off" placeholder="keyword or outlet" />
+  <div class="search-fields">
+    <label class="search-keyword">
+      Keyword
+      <input type="search" name="q" value="{{ query }}" autocomplete="off" placeholder="e.g. election, climate, Ukraine" />
     </label>
-    <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("search") }} Search</button>
+    <label class="search-outlet">
+      Outlet
+      <select name="source" data-autosubmit>
+        <option value="">All outlets</option>
+        {% for name, count in outlets %}
+        <option value="{{ name }}" {% if name == outlet %}selected{% endif %}>{{ name }} ({{ count }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="search-actions">
+      <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("search") }} Search</button>
+      {% if searched %}<a class="btn btn-ghost" href="/search">Clear</a>{% endif %}
+    </div>
   </div>
 </form>
 
-{% if query %}
+{% if searched %}
+  <p class="hint search-summary">
+    {{ stories|length }}{% if stories|length >= 50 %}+{% endif %} stor{{ 'y' if stories|length == 1 else 'ies' }}{% if outlet %} from <strong>{{ outlet }}</strong>{% endif %}{% if query %} matching “{{ query }}”{% endif %}, newest first.
+  </p>
   {% if stories %}
   <ol class="story-list">
     {% for story in stories %}
@@ -43,7 +58,7 @@
   {% else %}
   <div class="empty card">
     <h2>No matches</h2>
-    <p>Nothing in the current store matched “{{ query }}”.</p>
+    <p>Nothing{% if outlet %} from {{ outlet }}{% endif %}{% if query %} matched “{{ query }}”{% endif %}. Try another keyword, or All outlets.</p>
   </div>
   {% endif %}
 {% endif %}

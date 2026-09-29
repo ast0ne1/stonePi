@@ -35,7 +35,7 @@ def test_snapshot_skips_probe_until_remembered(monkeypatch):
         "reader_reachable",
         lambda host, timeout=None, db=None, user_id=None: called.append(host) or True,
     )
-    reader_push._last_probe = None
+    reader_push.reset_probe_state()
     snap = reader_push.snapshot(db, probe=False)
     assert snap["checked"] is False
     assert snap["online"] is None
@@ -407,3 +407,200 @@ def test_flush_uploads_library_crosspoint_task(tmp_path: Path, monkeypatch):
     assert result["ok"] is True
     assert uploaded == ["book.epub"]
     assert db.query(SyncTask).one().status == "complete"
+
+
+def _reader_user(db: Session) -> int:
+    from app.models import User
+
+    user = User(username="adam", role="user", active=True)
+    db.add(user)
+    db.commit()
+    return int(user.id)
+
+
+def _completed_upload(db: Session, uid: int, path: Path, save_path: str, digest: str | None) -> SyncTask:
+    import uuid
+
+    from app.models import utcnow
+
+    task = SyncTask(
+        user_id=uid,
+        task_id=uuid.uuid4().hex,
+        status="complete",
+        kind="crosspoint",
+        file_path=str(path),
+        save_path=save_path,
+        size=path.stat().st_size if path.exists() else 0,
+        completed_at=utcnow(),
+        content_hash=digest,
+    )
+    db.add(task)
+    db.commit()
+    return task
+
+
+def _online_reader(monkeypatch, *, names, deleted, uploaded):
+    monkeypatch.setattr(reader_push, "reader_reachable", lambda *a, **k: True)
+    monkeypatch.setattr(reader_push, "detect_firmware", lambda host: None)
+    monkeypatch.setattr(reader_push, "_http_file_names", lambda host, folder: names)
+    monkeypatch.setattr(reader_push, "_http_delete", lambda host, device_path: deleted.append(device_path) or True)
+    monkeypatch.setattr(
+        reader_push,
+        "upload_file",
+        lambda host, file_path, dest, db=None, user_id=None: uploaded.append((file_path.name, dest)),
+    )
+
+
+def test_resend_of_unchanged_paper_is_skipped(tmp_path: Path, monkeypatch):
+    db = _session()
+    uid = _reader_user(db)
+    path = tmp_path / "news-2026-09-29.epub"
+    path.write_bytes(b"paper v1")
+    digest = reader_push._file_digest(path)
+    _completed_upload(db, uid, path, "/News/adam/NewsCast.epub", digest)
+    enqueue_sync_file(db, path, "NewsCast.epub", kind="crosspoint", save_path="/News/adam/NewsCast.epub", user_id=uid)
+    deleted: list[str] = []
+    uploaded: list[tuple] = []
+    _online_reader(monkeypatch, names={"news-2026-09-29.epub"}, deleted=deleted, uploaded=uploaded)
+
+    result = reader_push.flush_pending(db, user_id=uid)
+
+    assert result["skipped"] == 1 and result["uploaded"] == 0
+    assert deleted == [] and uploaded == []
+    assert all(task.status == "complete" for task in db.query(SyncTask).all())
+
+
+def test_resend_of_changed_paper_replaces_readers_copy(tmp_path: Path, monkeypatch):
+    db = _session()
+    uid = _reader_user(db)
+    path = tmp_path / "news-2026-09-29.epub"
+    path.write_bytes(b"paper v2")
+    previous = _completed_upload(db, uid, path, "/News/adam/NewsCast.epub", "old-digest")
+    enqueue_sync_file(db, path, "NewsCast.epub", kind="crosspoint", save_path="/News/adam/NewsCast.epub", user_id=uid)
+    deleted: list[str] = []
+    uploaded: list[tuple] = []
+    _online_reader(monkeypatch, names={"news-2026-09-29.epub"}, deleted=deleted, uploaded=uploaded)
+
+    result = reader_push.flush_pending(db, user_id=uid)
+
+    assert result["uploaded"] == 1
+    assert deleted == ["/News/adam/news-2026-09-29.epub"]
+    assert uploaded == [("news-2026-09-29.epub", "/News/adam")]
+    db.refresh(previous)
+    assert previous.removed_at is not None
+    newest = db.query(SyncTask).filter(SyncTask.id != previous.id).one()
+    assert newest.content_hash == reader_push._file_digest(path)
+
+
+def test_resend_after_reader_deleted_file_uploads_without_delete(tmp_path: Path, monkeypatch):
+    db = _session()
+    uid = _reader_user(db)
+    path = tmp_path / "news-2026-09-29.epub"
+    path.write_bytes(b"paper v1")
+    previous = _completed_upload(db, uid, path, "/News/adam/NewsCast.epub", reader_push._file_digest(path))
+    enqueue_sync_file(db, path, "NewsCast.epub", kind="crosspoint", save_path="/News/adam/NewsCast.epub", user_id=uid)
+    deleted: list[str] = []
+    uploaded: list[tuple] = []
+    _online_reader(monkeypatch, names=set(), deleted=deleted, uploaded=uploaded)
+
+    reader_push.flush_pending(db, user_id=uid)
+
+    assert deleted == []
+    assert uploaded == [("news-2026-09-29.epub", "/News/adam")]
+    db.refresh(previous)
+    assert previous.removed_at is not None
+
+
+def test_prune_removes_only_old_newscast_papers(tmp_path: Path, monkeypatch):
+    from app.services import user_settings
+
+    db = _session()
+    uid = _reader_user(db)
+    today = date(2026, 9, 29)
+    for day in ("2026-09-29", "2026-09-28", "2026-09-27", "2026-09-24"):
+        path = tmp_path / f"news-{day}.epub"
+        path.write_bytes(day.encode())
+        _completed_upload(db, uid, path, f"/News/adam/NewsCast {day}.epub", "x")
+    library_dir = tmp_path / "library" / "1"
+    library_dir.mkdir(parents=True)
+    old_send = library_dir / "news-2020-01-01.epub"
+    old_send.write_bytes(b"send")
+    _completed_upload(db, uid, old_send, "/News/adam/news-2020-01-01.epub", "y")
+    deleted: list[str] = []
+    monkeypatch.setattr(reader_push, "_http_delete", lambda host, device_path: deleted.append(device_path) or True)
+
+    assert reader_push.prune_reader_papers(db, "crosspoint.local", uid, today=today) == 0
+    assert deleted == []
+
+    user_settings.set_value(db, uid, "reader_keep_days", "3")
+    assert reader_push.prune_reader_papers(db, "crosspoint.local", uid, today=today) == 1
+    assert deleted == ["/News/adam/news-2026-09-24.epub"]
+    removed = db.query(SyncTask).filter(SyncTask.removed_at.is_not(None)).all()
+    assert [Path(task.file_path).name for task in removed] == ["news-2026-09-24.epub"]
+
+
+def test_detect_firmware_uses_crossink_assets(monkeypatch):
+    class FakeResponse:
+        def __init__(self, status_code, payload=None, content_type="text/plain"):
+            self.status_code = status_code
+            self._payload = payload or {}
+            self.headers = {"content-type": content_type}
+
+        def json(self):
+            return self._payload
+
+    def fake_client(logo_status):
+        class FakeClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def get(self, url, **kwargs):
+                if url.endswith("/api/status"):
+                    return FakeResponse(200, {"version": "1.6.0"})
+                return FakeResponse(logo_status, content_type="image/png" if logo_status == 200 else "text/plain")
+
+        return FakeClient
+
+    monkeypatch.setattr(reader_push.httpx, "Client", fake_client(200))
+    assert reader_push.detect_firmware("crosspoint.local") == ("crossink", "1.6.0")
+    monkeypatch.setattr(reader_push.httpx, "Client", fake_client(404))
+    assert reader_push.detect_firmware("crosspoint.local") == ("crosspoint", "1.6.0")
+
+
+def test_idle_flush_skips_detection_and_prune(monkeypatch):
+    db = _session()
+    uid = _reader_user(db)
+    monkeypatch.setattr(reader_push, "reader_reachable", lambda *a, **k: True)
+    monkeypatch.setattr(reader_push, "detect_firmware", lambda host: (_ for _ in ()).throw(AssertionError("detect")))
+    monkeypatch.setattr(
+        reader_push, "prune_reader_papers", lambda *a, **k: (_ for _ in ()).throw(AssertionError("prune"))
+    )
+    result = reader_push.flush_pending(db, user_id=uid)
+    assert result["ok"] is True and result["uploaded"] == 0
+
+
+def test_prune_caps_deletes_and_stops_when_reader_drops(tmp_path: Path, monkeypatch):
+    from app.services import user_settings
+
+    db = _session()
+    uid = _reader_user(db)
+    user_settings.set_value(db, uid, "reader_keep_days", "2")
+    for day in range(1, 16):
+        path = tmp_path / f"news-2026-08-{day:02d}.epub"
+        path.write_bytes(b"old")
+        _completed_upload(db, uid, path, f"/News/adam/old-{day}.epub", "x")
+    deleted: list[str] = []
+    monkeypatch.setattr(reader_push, "_http_delete", lambda host, device_path: deleted.append(device_path) or True)
+    assert reader_push.prune_reader_papers(db, "crosspoint.local", uid, today=date(2026, 9, 29)) == 10
+    assert deleted[0] == "/News/adam/news-2026-08-01.epub"  # oldest first
+
+    attempts: list[str] = []
+    monkeypatch.setattr(reader_push, "_http_delete", lambda host, device_path: attempts.append(device_path) and False)
+    assert reader_push.prune_reader_papers(db, "crosspoint.local", uid, today=date(2026, 9, 29)) == 0
+    assert len(attempts) == 1  # gave up after the first failure

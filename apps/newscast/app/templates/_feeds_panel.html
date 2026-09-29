@@ -137,6 +137,14 @@
                     </select>
                   </label>
                   <label>
+                    Text cleanup
+                    <select name="text_cleanup">
+                      {% for value, label in text_cleanup_choices %}
+                      <option value="{{ value }}" {% if (feed.text_cleanup or 'standard') == value %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                  <label>
                     Language
                     <select name="translate">
                       {% for value, label in translate_modes %}
@@ -144,6 +152,7 @@
                       {% endfor %}
                     </select>
                   </label>
+                  <p class="hint schedule-span">Strict cleanup drops ads and page furniture (like “Advertisement” or “Loading”) from article text. If it finds nothing on a page it uses Standard. Applies to stories fetched from now on.</p>
                   <p class="hint schedule-span">Global translation is currently {{ 'LLM' if global_translate_provider == 'llm' else 'Google' }} (Settings → Translation).</p>
                   <label class="check schedule-span">
                     <input type="checkbox" name="paywall_skip" value="1" {% if feed.paywall_skip %}checked{% endif %} {% if not paywall_skip_enabled %}disabled{% endif %} />
@@ -182,7 +191,7 @@
   <p>Try another category, or leave the filter on All.</p>
 </div>
 {% else %}
-<div class="empty card">No feeds yet. Add one from Catalog, or tap Add feed.</div>
+<div class="empty card">No feeds yet. Add one from Catalog, or tap Add.</div>
 {% endif %}
 </div>
 

@@ -90,7 +90,10 @@ def save_article(
     custom_date: str = "",
     *,
     origin: str = ORIGIN_MANUAL,
+    user_id: int | None = None,
 ) -> Story:
+    """Scrape ``url`` into the given account's Saved long-reads (default: the first account)."""
+    uid = int(user_id or 1)
     raw = normalize_article_url(url)
     canonical = canonicalize_url(raw)
     expires_at = parse_expiry(keep_days, custom_date)
@@ -108,13 +111,19 @@ def save_article(
         raise ValueError(f"Could not open that page ({code}).") from exc
     except Exception as exc:  # noqa: BLE001
         raise ValueError("Could not open that page. Check the URL, or try a different article.") from exc
-    text = trafilatura.extract(page_html, include_comments=False, include_tables=False)
-    text = (text or "").strip()
+    # Saved articles are single pages chosen on purpose: always use Strict cleanup
+    # (drops ads / page furniture), falling back to Standard if it finds nothing.
+    from app.services.text_cleanup import extract_text
+
+    text, _fell_back = extract_text(page_html, strict=True)
     if len(text) < 80:
         raise ValueError("Could not read the full article from that page. Some sites block scrapes.")
     title = _title_from_html(page_html, canonical)
     host = urlparse(canonical).netloc.removeprefix("www.") or "Saved"
-    existing = db.query(Story).filter(Story.canonical_url == canonical).one_or_none()
+    # Stories are per account (unique on user + URL): only ever touch this account's copy.
+    existing = (
+        db.query(Story).filter(Story.user_id == uid).filter(Story.canonical_url == canonical).one_or_none()
+    )
     if existing:
         existing.title = title[:500]
         existing.summary = text
@@ -132,6 +141,7 @@ def save_article(
         _capture_favicon(canonical)
         return existing
     story = Story(
+        user_id=uid,
         title=title[:500],
         summary=text,
         source_name=host,

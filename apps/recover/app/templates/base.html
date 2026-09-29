@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-theme-pref="system" data-palette="default">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f3eee4" />
+    <title>{% block title %}StonePi{% endblock %}</title>
+    <script>
+      (function () {
+        var p = location.pathname || "/";
+        var base = p.replace(/\/[^/]*$/, "/");
+        if (!base) base = "/";
+        document.write('<base href="' + base + '">');
+      })();
+    </script>
+    {% include "_theme_boot.html" %}
+    <link rel="stylesheet" href="/assets/fonts/fonts.css?v={{ fonts_rev }}" />
+    <link rel="stylesheet" href="static/css/app.css?v={{ app_version }}-{{ asset_rev }}" />
+  </head>
+  <body class="{% block body_class %}{% endblock %}">
+    {% block body %}{% endblock %}
+    <div class="sheet" hidden data-confirm-sheet>
+      <div class="sheet-card card">
+        <h2 data-confirm-title>Continue?</h2>
+        <p class="hint" data-confirm-body></p>
+        <div class="btn-row">
+          <button class="btn btn-primary" type="button" data-confirm-ok>OK</button>
+          <button class="btn btn-ghost" type="button" data-confirm-cancel>Cancel</button>
+        </div>
+      </div>
+    </div>
+    <script src="static/js/app.js?v={{ app_version }}-{{ asset_rev }}" defer></script>
+  </body>
+</html>

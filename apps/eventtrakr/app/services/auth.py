@@ -17,7 +17,7 @@ from stonepi_auth.http import request_is_https
 from app.config import DATA_DIR, env
 from app.db import SessionLocal
 from app.models import User
-from app.services import passwords
+from app.services import hostname, passwords
 
 COOKIE_NAME = "eventtrakr_session"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 14
@@ -51,7 +51,7 @@ def _platform_settings():
         prefix=env.stonepi_prefix,
         auth_url=browser_auth_url(env.stonepi_auth_url),
         public_origin=env.stonepi_public_origin,
-        hostname=env.device_hostname or "stonepi",
+        hostname=hostname.device_hostname(),
     )
 
 
@@ -200,11 +200,15 @@ def login_required(f: Callable) -> Callable:
         user = get_current_user()
         if not user:
             settings = _platform_settings()
+            pfx = (env.stonepi_prefix or "").rstrip("/")
+            path = request.path or "/"
+            if pfx and path != pfx and not path.startswith(f"{pfx}/"):
+                path = f"{pfx}{path}" if path.startswith("/") else f"{pfx}/{path}"
             if settings is not None:
                 from stonepi_auth import login_url
 
-                return redirect(login_url(settings, request.path))
-            return redirect(url_for("auth.login", next=request.path))
+                return redirect(login_url(settings, path))
+            return redirect(url_for("auth.login", next=path))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -214,7 +218,11 @@ def admin_required(f: Callable) -> Callable:
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
         user = get_current_user()
         if not user:
-            return redirect(url_for("auth.login", next=request.path))
+            pfx = (env.stonepi_prefix or "").rstrip("/")
+            path = request.path or "/"
+            if pfx and path != pfx and not path.startswith(f"{pfx}/"):
+                path = f"{pfx}{path}" if path.startswith("/") else f"{pfx}/{path}"
+            return redirect(url_for("auth.login", next=path))
         if user.role != "admin":
             abort(403)
         return f(*args, **kwargs)

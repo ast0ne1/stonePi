@@ -61,6 +61,18 @@ def _ensure_schema() -> None:
             conn.execute(text("ALTER TABLE events ADD COLUMN google_event_id VARCHAR(200)"))
         if "is_cancelled" not in event_cols:
             conn.execute(text("ALTER TABLE events ADD COLUMN is_cancelled BOOLEAN DEFAULT 0"))
+        if "origin" not in event_cols:
+            conn.execute(text("ALTER TABLE events ADD COLUMN origin VARCHAR(40) DEFAULT 'api'"))
+
+        # Social accounts (Instagram) — schedule fields added after initial table
+        social_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(social_accounts)")).fetchall()}
+        if social_cols:
+            if "schedule_mode" not in social_cols:
+                conn.execute(text("ALTER TABLE social_accounts ADD COLUMN schedule_mode VARCHAR(20) DEFAULT 'global'"))
+            if "interval_minutes" not in social_cols:
+                conn.execute(text("ALTER TABLE social_accounts ADD COLUMN interval_minutes INTEGER"))
+            if "schedule_config" not in social_cols:
+                conn.execute(text("ALTER TABLE social_accounts ADD COLUMN schedule_config TEXT DEFAULT ''"))
 
         # Check catalog_sources table
         catalog_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(catalog_sources)")).fetchall()}

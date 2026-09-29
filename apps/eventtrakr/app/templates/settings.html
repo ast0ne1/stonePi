@@ -214,8 +214,90 @@
   {% endif %}
 
   <button type="button" class="btn btn-primary btn-with-icon" data-sync-btn>
-    {{ icon('refresh') }} Trigger Manual Sync for All Sources
+    {{ icon('refresh') }} Trigger Manual Refresh for All Sources
   </button>
+</div>
+</div>
+
+<!-- Tab: Notifications -->
+<div class="stack settings-panel" id="settings-panel-notifications" role="tabpanel" data-settings-panel="notifications" aria-labelledby="settings-tab-notifications"{% if active_tab != 'notifications' %} hidden{% endif %}>
+{% from "stonepi/alerts.html" import notifications_card %}
+{{ notifications_card(notifications_card_state) }}
+<div class="card">
+  <h2 class="section-heading">{{ icon('clock') }} Lead time</h2>
+  <p class="form-hint" style="margin-bottom: 16px;">
+    {% if notifications_card_state %}How early the favourite-event alert arrives.{% else %}Phone alerts need StonePi sign-in. When EventTrakr runs on its own, it doesn't send alerts.{% endif %}
+    Instagram discovery / update alerts are toggled under <a href="/settings?tab=discovery">Discovery</a>.
+  </p>
+  {% if user.role == 'admin' %}
+  <form method="post" action="/settings/notifications">
+    <div class="form-group">
+      <label for="notify_approaching_minutes">Lead time (minutes)</label>
+      <input type="number" id="notify_approaching_minutes" name="notify_approaching_minutes" class="form-control" min="5" max="1440" step="5" value="{{ notify_approaching_minutes }}" />
+      <span class="form-hint">Alert once when a favourited event is this many minutes away (default 30). Checked every 5 minutes with the sync tick.</span>
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm btn-with-icon">{{ icon('check') }} Save</button>
+  </form>
+  {% else %}
+  <p class="form-hint">Lead time is {{ notify_approaching_minutes }} minutes. Only an admin can change it.</p>
+  {% endif %}
+</div>
+</div>
+
+<!-- Tab: Discovery -->
+<div class="stack settings-panel" id="settings-panel-discovery" role="tabpanel" data-settings-panel="discovery" aria-labelledby="settings-tab-discovery"{% if active_tab != 'discovery' %} hidden{% endif %}>
+<div class="card">
+  <h2 class="section-heading">{{ icon('search') }} Event Discovery</h2>
+  <p class="form-hint" style="margin-bottom: 16px;">
+    Track public Instagram accounts as an extra information source. Posts are polled via Bright Data (same vault key as Facebook Events).
+    Manage accounts under <a href="/sources/social">Sources → Instagram</a>. Review candidates on <a href="/discoveries">Discoveries</a>.
+  </p>
+  {% if user.role == 'admin' %}
+  <form method="post" action="/settings/discovery">
+    <label class="check-row">
+      <input type="checkbox" name="social_instagram_enabled" value="1" {% if social_instagram_enabled %}checked{% endif %} />
+      <span>Instagram tracking</span>
+    </label>
+    <div class="form-group" style="margin-top: 14px;">
+      <label for="social_poll_minutes">Polling interval (minutes)</label>
+      <input type="number" id="social_poll_minutes" name="social_poll_minutes" class="form-control" min="15" max="1440" step="5" value="{{ social_poll_minutes }}" />
+      <span class="form-hint">Default for accounts set to Global (default 30). Each account can override under Sources → Instagram.</span>
+    </div>
+    <div class="form-group">
+      <label for="social_posts_per_check">Posts per check</label>
+      <input type="number" id="social_posts_per_check" name="social_posts_per_check" class="form-control" min="1" max="20" value="{{ social_posts_per_check }}" />
+      <span class="form-hint">Ask Bright Data for at most this many recent posts per account (keeps free-tier usage low).</span>
+    </div>
+    <label class="check-row">
+      <input type="checkbox" name="social_auto_discover" value="1" {% if social_auto_discover %}checked{% endif %} />
+      <span>Automatic discovery</span>
+    </label>
+    <label class="check-row">
+      <input type="checkbox" name="social_auto_create_high" value="1" {% if social_auto_create_high %}checked{% endif %} />
+      <span>Automatic event creation (high confidence only)</span>
+    </label>
+    <label class="check-row">
+      <input type="checkbox" name="social_candidate_review" value="1" {% if social_candidate_review %}checked{% endif %} />
+      <span>Candidate review queue</span>
+    </label>
+    <label class="check-row">
+      <input type="checkbox" name="social_ocr_enabled" value="1" {% if social_ocr_enabled %}checked{% endif %} />
+      <span>Local OCR (Tesseract)</span>
+    </label>
+    <label class="check-row is-disabled" title="Not available in v1">
+      <input type="checkbox" name="social_ai_fallback" value="1" disabled {% if social_ai_fallback %}checked{% endif %} />
+      <span>External AI fallback (off)</span>
+    </label>
+    <label class="check-row">
+      <input type="checkbox" name="social_notify_enabled" value="1" {% if social_notify_enabled %}checked{% endif %} />
+      <span>ntfy for discoveries &amp; important updates</span>
+    </label>
+    <p class="form-hint" style="margin-top: 8px;">Destinations still live in StonePi Notify. Approaching favourite alerts are under the Notifications tab.</p>
+    <button type="submit" class="btn btn-primary btn-sm btn-with-icon" style="margin-top: 14px;">{{ icon('check') }} Save Discovery</button>
+  </form>
+  {% else %}
+  <p class="form-hint">Only an admin can change discovery settings.</p>
+  {% endif %}
 </div>
 </div>
 
@@ -403,7 +485,7 @@
 <div class="stack settings-panel" id="settings-panel-network" role="tabpanel" data-settings-panel="network" aria-labelledby="settings-tab-network"{% if active_tab != 'network' %} hidden{% endif %}>
 <div class="card">
   <h2 class="section-heading">{{ icon('wifi') }} Network &amp; Local SSL Certificates</h2>
-  <p class="form-hint" style="margin-bottom: 16px;">EventTrakr includes an internal certificate authority matching NewsCast, providing secure HTTPS for your local network without external cloud certificates.</p>
+  <p class="form-hint" style="margin-bottom: 16px;">Appliance hostname is set in Dashboard → Settings → Network. EventTrakr can still serve HTTPS on the LAN with a local certificate — download the root CA and trust it on each device.</p>
 
   <form method="post" action="/settings/network" style="margin-bottom: 20px;">
     <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 600; margin-bottom: 14px;">

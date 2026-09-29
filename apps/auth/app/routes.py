@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 
 from app.config import ROOT_DIR, env, resolve_cockpit_url
 from app.db import get_db, init_db
-from app import users as users_svc
+from app import __asset_rev__, __version__, users as users_svc
+from stonepi_auth.brand import fonts_rev
 from stonepi_auth import COOKIE_NAME, clear_cookie, encode_session, set_cookie
 from stonepi_auth.csrf import csrf_from_request, csrf_ok, csrf_ok_request, set_csrf_cookie
 from stonepi_auth.http import client_ip, portal_home_url, request_is_https
@@ -20,6 +21,7 @@ from stonepi_auth.session import COOKIE_MAX_AGE, CSRF_COOKIE, safe_next
 
 logger = logging.getLogger("stonepi.auth")
 templates = Jinja2Templates(directory=str(ROOT_DIR / "app" / "templates"))
+templates.env.globals.update(app_version=__version__, asset_rev=__asset_rev__, fonts_rev=fonts_rev())
 router = APIRouter()
 
 LOGIN_WINDOW_SECONDS = 15 * 60
@@ -197,7 +199,9 @@ def _attach(response, user, session_id: str, request: Request, db: Session):
         is_admin=user.is_admin,
         apps=users_svc.granted_apps(user, enabled_only=enabled),
         permissions=users_svc.granted_permissions(user, enabled_only=enabled),
+        phone_alerts=users_svc.phone_alerts_allowed(user),
         session_id=session_id,
+        using_factory_admin=users_svc.using_factory_admin(db) if user.is_admin else False,
         max_age=COOKIE_MAX_AGE,
     )
     set_cookie(response, token, secure=_https(request), max_age=COOKIE_MAX_AGE)
@@ -410,13 +414,37 @@ async def api_change_password(request: Request, db: Annotated[Session, Depends(g
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"ok": True, "message": "Password updated."}
+    # Re-issue the cookie so sibling apps drop the factory-password banner without re-login.
+    response = JSONResponse({"ok": True, "message": "Password updated."})
+    if keep_sid:
+        _attach(response, user, keep_sid, request, db)
+    return response
 
 
 @router.get("/api/users")
 def api_users(request: Request, db: Annotated[Session, Depends(get_db)]):
     require_admin(request, db)
     return {"users": [users_svc.user_payload(user, db) for user in users_svc.list_users(db)]}
+
+
+@router.get("/api/internal/people")
+def api_internal_people(request: Request, db: Annotated[Session, Depends(get_db)]):
+    """Signed service call (Notify): who is enabled, admin, and allowed phone alerts."""
+    from stonepi_auth.internal import verify_internal
+
+    if not verify_internal(users_svc.session_secret(), "GET", "/api/internal/people", request.headers):
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"people": users_svc.internal_people(db)}
+
+
+@router.get("/api/internal/people/names")
+def api_internal_people_names(request: Request, db: Annotated[Session, Depends(get_db)]):
+    """Signed service call: display names only (kept apart from the Notify roster)."""
+    from stonepi_auth.internal import verify_internal
+
+    if not verify_internal(users_svc.session_secret(), "GET", "/api/internal/people/names", request.headers):
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"people": users_svc.internal_people_names(db)}
 
 
 @router.post("/api/users")
@@ -434,6 +462,7 @@ async def api_create_user(request: Request, db: Annotated[Session, Depends(get_d
             enabled=body.get("enabled", True) is not False,
             apps=body.get("apps"),
             permissions=body.get("permissions"),
+            phone_alerts=bool(body.get("phone_alerts")),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -458,6 +487,7 @@ async def api_update_user(user_id: str, request: Request, db: Annotated[Session,
             apps=body.get("apps"),
             permissions=body.get("permissions"),
             password=body.get("password"),
+            phone_alerts=(bool(body["phone_alerts"]) if "phone_alerts" in body else None),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

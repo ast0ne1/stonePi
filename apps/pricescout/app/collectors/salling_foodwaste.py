@@ -5,6 +5,7 @@ from typing import Any
 
 import httpx
 
+from app import __version__
 from app.collectors.base import OfferRow
 from app.config import env
 
@@ -23,7 +24,7 @@ def fetch_food_waste(*, source_id: str, brand: str, zip_code: str) -> list[Offer
     headers = {
         "Authorization": f"Bearer {token}",
         "Accept": "application/json",
-        "User-Agent": "StonePi-PriceScout/0.0.1",
+        "User-Agent": f"StonePi-PriceScout/{__version__}",
     }
     params = {"zip": zip_code}
     with httpx.Client(timeout=30.0, headers=headers) as client:

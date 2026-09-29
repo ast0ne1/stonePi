@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en" data-stonepi-prefix="{{ stonepi_prefix or '' }}">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, shrink-to-fit=no" />
+  <meta name="theme-color" content="#f3eee4" data-theme-color />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Notify" />
+  <title>{% block title %}Notify · StonePi{% endblock %}</title>
+  {% include "_theme_boot.html" %}
+    <link rel="stylesheet" href="/assets/fonts/fonts.css?v={{ fonts_rev }}" />
+  <link rel="stylesheet" href="/static/css/app.css?v={{ app_version }}-{{ asset_rev }}" />
+</head>
+<body>
+  {% from "_filter_icon.html" import filter_icon %}
+  <div class="app">
+    <header class="topbar">
+      <div class="brand-row">
+        <a class="brand" href="/">{% include "_brand_mark.html" %}Notify</a>
+      </div>
+      <div class="topbar-actions">
+        <p class="status-pill" title="{{ display_count|default(0) }} display{{ '' if (display_count|default(0)) == 1 else 's' }} configured">{{ display_count|default(0) }}</p>
+        {% if user %}
+        {% from "stonepi/alerts.html" import alerts_bell %}
+        {{ alerts_bell(alerts_bell_state) }}
+        <form method="post" action="/logout" data-native>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <button class="icon-btn sign-out" type="submit" aria-label="Sign out" title="Sign out">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 7V5a2 2 0 0 1 2-2h7v18h-7a2 2 0 0 1-2-2v-2"/><path d="M15 12H3m0 0 3-3m-3 3 3 3"/></svg>
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </header>
+
+    <main class="main">
+      {% if using_factory_admin and active == 'alerts' %}
+      <p class="banner banner-muted">Factory login is still <strong>admin / admin</strong>. Change it under <a href="{{ stonepi_home_url }}/settings?tab=general">StonePi → Settings → General</a>.</p>
+      {% endif %}
+      {% if error %}<p class="banner">{{ error }}</p>{% endif %}
+      {% if message %}<p class="banner banner-ok">{{ message }}</p>{% endif %}
+      {% block content %}{% endblock %}
+    </main>
+
+    <nav class="nav" aria-label="Main">
+      <a href="{{ stonepi_home_url or public_origin or 'http://127.0.0.1:8010' }}">
+        {{ filter_icon("home") }}
+        <span>Home</span>
+      </a>
+      <a href="/displays" class="{% if active == 'displays' %}is-active{% endif %}">
+        {{ filter_icon("displays") }}
+        <span>Displays</span>
+      </a>
+      <a href="/alerts" class="{% if active == 'alerts' %}is-active{% endif %}">
+        {{ filter_icon("bell") }}
+        <span>Phone alerts</span>
+      </a>
+      <a href="/history" class="{% if active in ('history', 'about') %}is-active{% endif %}">
+        {{ filter_icon("history") }}
+        <span>History</span>
+      </a>
+    </nav>
+  </div>
+
+  <div class="sheet" hidden data-confirm-sheet>
+    <div class="sheet-card card">
+      <h2 data-confirm-title>Remove this?</h2>
+      <p class="hint" data-confirm-body hidden></p>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-with-icon" type="button" data-confirm-ok>Remove</button>
+        <button class="btn btn-ghost" type="button" data-confirm-cancel>Cancel</button>
+      </div>
+    </div>
+  </div>
+  <script src="/static/js/app.js?v={{ app_version }}-{{ asset_rev }}" defer></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

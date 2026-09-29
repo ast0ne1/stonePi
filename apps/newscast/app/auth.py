@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.config import DATA_DIR, env
 from app.db import get_db
-from app.services import passwords, settings
+from app.services import hostname, passwords, settings
 
 COOKIE_NAME = "newscast"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 14
@@ -101,7 +101,7 @@ def _platform_settings():
         prefix=env.stonepi_prefix,
         auth_url=browser_auth_url(env.stonepi_auth_url),
         public_origin=env.stonepi_public_origin,
-        hostname=env.device_hostname or "stonepi",
+        hostname=hostname.device_hostname(),
     )
 
 
@@ -132,10 +132,18 @@ def logout_location() -> str:
     return logout_url(settings, "/")
 
 
+_SESSION_UNSET = object()
+
+
 def session_from_request(request: Request, db: Session | None = None) -> SessionUser | None:
+    cached = getattr(request.state, "newscast_session", _SESSION_UNSET)
+    if cached is not _SESSION_UNSET:
+        return cached  # type: ignore[return-value]
+
     platform = _platform_user(request)
     if platform is not None:
         if not platform.can_access("newscast"):
+            request.state.newscast_session = None
             return None
         from app.db import SessionLocal
         from app.services import users as users_service
@@ -145,30 +153,39 @@ def session_from_request(request: Request, db: Session | None = None) -> Session
         try:
             local = users_service.get_or_create_from_platform(session_db, platform)
             if not local.active:
+                request.state.newscast_session = None
                 return None
-            return SessionUser(username=local.username, user_id=local.id, role=local.role)
+            session = SessionUser(username=local.username, user_id=local.id, role=local.role)
+            request.state.newscast_session = session
+            return session
         finally:
             if own:
                 session_db.close()
     value = request.cookies.get(COOKIE_NAME)
     if not value or "." not in value:
+        request.state.newscast_session = None
         return None
     token, signature = value.rsplit(".", 1)
     pad = "=" * (-len(token) % 4)
     try:
         body = base64.urlsafe_b64decode(token + pad)
     except (ValueError, TypeError):
+        request.state.newscast_session = None
         return None
     if not hmac.compare_digest(_sign(body), signature):
+        request.state.newscast_session = None
         return None
     try:
         data = json.loads(body.decode("utf-8"))
     except (ValueError, UnicodeDecodeError):
+        request.state.newscast_session = None
         return None
     if int(data.get("exp") or 0) < time.time():
+        request.state.newscast_session = None
         return None
     user = data.get("u")
     if not user:
+        request.state.newscast_session = None
         return None
     uid = data.get("uid")
     try:
@@ -176,7 +193,9 @@ def session_from_request(request: Request, db: Session | None = None) -> Session
     except (TypeError, ValueError):
         user_id = None
     role = str(data.get("role") or "admin")
-    return SessionUser(username=str(user), user_id=user_id, role=role)
+    session = SessionUser(username=str(user), user_id=user_id, role=role)
+    request.state.newscast_session = session
+    return session
 
 
 def user_from_request(request: Request) -> str | None:
@@ -312,7 +331,11 @@ def require_login(request: Request, db: Annotated[Session, Depends(get_db)]) -> 
         return session
     if wants_json(request):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not signed in")
-    nxt = request.url.path
+    pfx = (env.stonepi_prefix or "").rstrip("/")
+    path = request.url.path or "/"
+    if pfx and path != pfx and not path.startswith(f"{pfx}/"):
+        path = f"{pfx}{path}" if path.startswith("/") else f"{pfx}/{path}"
+    nxt = path
     if request.url.query:
         nxt = f"{nxt}?{request.url.query}"
     raise HTTPException(

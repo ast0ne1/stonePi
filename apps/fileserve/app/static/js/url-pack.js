@@ -129,7 +129,7 @@
   }
 
   async function fetchBytes(url) {
-    const res = await fetch(`${FETCH_PATH}?url=${encodeURIComponent(url)}`, {
+    const res = await fetch(`${(window.withPrefix || ((p) => p))(FETCH_PATH)}?url=${encodeURIComponent(url)}`, {
       credentials: "same-origin",
       headers: { Accept: "*/*" },
     });

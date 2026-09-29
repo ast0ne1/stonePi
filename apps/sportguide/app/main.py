@@ -4,12 +4,12 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from stonepi_auth.brand import mount_brand_fonts
 from fastapi.staticfiles import StaticFiles
 
 from app import db
 from app.config import ROOT_DIR, env
 from app.routes import router
-from app.services import ingest
 from stonepi_auth.prefix import clean_prefix
 
 logger = logging.getLogger("sportguide")
@@ -26,10 +26,18 @@ async def lifespan(_app: FastAPI):
     except Exception:
         logger.exception("favicon bootstrap failed")
     try:
-        ingest.maybe_daily_refresh(async_=True)
+        from app.services import schedule as schedule_service
+
+        schedule_service.start_scheduler()
     except Exception:
-        logger.exception("daily refresh check failed")
+        logger.exception("notify scheduler failed to start")
     yield
+    try:
+        from app.services import schedule as schedule_service
+
+        schedule_service.stop_scheduler()
+    except Exception:
+        pass
 
 
 app = FastAPI(title="StonePi SportGuide", lifespan=lifespan)
@@ -41,6 +49,7 @@ if _prefix:
 
 _static = str(ROOT_DIR / "app" / "static")
 app.mount("/static", StaticFiles(directory=_static), name="static")
+mount_brand_fonts(app)  # /assets/fonts when reached directly (run-dev); nginx serves it on the Pi
 if _prefix:
     app.mount(f"{_prefix}/static", StaticFiles(directory=_static), name="static_prefixed")
 

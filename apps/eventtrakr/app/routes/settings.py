@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from flask import Blueprint, Response, flash, redirect, render_template, request, url_for
 from sqlalchemy import select
+from stonepi_auth.alerts import notifications_card_context
+from stonepi_auth.http import portal_home_url
 
 from app.config import env
 from app.db import SessionLocal
@@ -15,9 +17,11 @@ SETTINGS_TABS = [
     ("general", "General"),
     ("privacy", "Privacy & Overview"),
     ("schedule", "Schedule"),
+    ("notifications", "Notifications"),
     ("filters", "Filters"),
     ("categories", "Categories"),
     ("calendar", "Calendar Integrations"),
+    ("discovery", "Discovery"),
     ("providers", "Data Providers"),
     ("network", "Network & SSL"),
     ("users", "Users"),
@@ -28,11 +32,13 @@ SETTINGS_LEDES = {
     "general": "Default location and your account password. Colour palette is under StonePi → Settings → General.",
     "privacy": "What others can see on your public calendar and favourites.",
     "schedule": "How often sources sync across EventTrakr.",
+    "notifications": "Phone alerts for your favourites and followed accounts, and how early they arrive.",
     "filters": "Words to keep or drop for every source.",
     "categories": "Labels for organising events and sources.",
     "calendar": "Connect Google Calendar to push favourites out.",
+    "discovery": "Instagram tracking, polling, OCR, and auto-create rules.",
     "providers": "API keys for scrapers that need them.",
-    "network": "Hostname and local HTTPS for this copy.",
+    "network": "Local HTTPS for this copy (hostname is set in Dashboard).",
     "users": "Local accounts when StonePi SSO is not configured.",
     "update": "Check GitHub Releases and install a newer zip.",
     "about": "App name, description, GitHub, and the version running here.",
@@ -41,28 +47,32 @@ SETTINGS_HUB_SUBTEXTS = {
     "general": "Location and account password.",
     "privacy": "Public agenda and favourites.",
     "schedule": "How often sources sync.",
+    "notifications": "Personal alerts and lead time.",
     "filters": "Words to keep or drop.",
     "categories": "Labels for events and sources.",
     "calendar": "Google Calendar push.",
+    "discovery": "Instagram discovery and OCR.",
     "providers": "Scraper API keys.",
-    "network": "Hostname and local HTTPS.",
+    "network": "Local HTTPS (hostname in Dashboard).",
     "users": "Local household accounts.",
     "update": "Check GitHub Releases.",
     "about": "Version and project links.",
 }
 SETTINGS_HUB_LEDE = "Everything that shapes your calendar, in one place."
 SETTINGS_GROUPS = (
-    ("your_calendar", "Your calendar", ("privacy", "calendar")),
-    ("sources_sync", "Sources & sync", ("schedule", "filters", "categories", "providers")),
+    ("your_calendar", "Your calendar", ("privacy", "calendar", "notifications")),
+    ("sources_sync", "Sources & sync", ("schedule", "filters", "categories", "discovery", "providers")),
     ("app", "App", ("general", "network", "users", "update", "about")),
 )
 SETTINGS_TAB_ICONS = {
     "general": "sliders",
     "privacy": "lock",
     "schedule": "refresh",
+    "notifications": "bell",
     "filters": "filter",
     "categories": "tag",
     "calendar": "calendar",
+    "discovery": "search",
     "providers": "key",
     "network": "wifi",
     "users": "users",
@@ -145,6 +155,20 @@ def view_settings():
         google_configured = bool(google_client_id)
         github_repo = update.repo_from_db(db) if user.role == "admin" and not platform_managed else ""
         update_check = update.last_check(db) if user.role == "admin" and not platform_managed else {}
+        from app.services import notify as notify_service
+
+        notify_approaching_minutes = notify_service.approaching_lead_minutes(db)
+        from app.services.social import config as social_config
+
+        social_instagram_enabled = social_config.instagram_enabled(db)
+        social_poll_minutes = social_config.poll_minutes(db)
+        social_auto_discover = social_config.auto_discover(db)
+        social_auto_create_high = social_config.auto_create_high(db)
+        social_candidate_review = social_config.candidate_review(db)
+        social_ocr_enabled = social_config.ocr_enabled(db)
+        social_ai_fallback = False
+        social_notify_enabled = social_config.notify_enabled(db)
+        social_posts_per_check = social_config.posts_per_check(db)
 
     return render_template(
         "settings.html",
@@ -183,6 +207,21 @@ def view_settings():
         app_github_user=__github_user__,
         app_github=__github__,
         interval_choices=settings.INTERVAL_CHOICES,
+        notify_approaching_minutes=notify_approaching_minutes,
+        social_instagram_enabled=social_instagram_enabled,
+        social_poll_minutes=social_poll_minutes,
+        social_auto_discover=social_auto_discover,
+        social_auto_create_high=social_auto_create_high,
+        social_candidate_review=social_candidate_review,
+        social_ocr_enabled=social_ocr_enabled,
+        social_ai_fallback=social_ai_fallback,
+        social_notify_enabled=social_notify_enabled,
+        social_posts_per_check=social_posts_per_check,
+        notifications_card_state=notifications_card_context(
+            "eventtrakr",
+            auth._platform_user(),
+            home_url=portal_home_url(request, env.stonepi_public_origin).rstrip("/"),
+        ),
         env=env,
     )
 
@@ -252,6 +291,23 @@ def save_schedule():
     return redirect(url_for("settings.view_settings", tab="schedule"))
 
 
+@bp.route("/notifications", methods=["POST"])
+@auth.admin_required
+def save_notifications():
+    from app.services import notify as notify_service
+
+    raw = (request.form.get("notify_approaching_minutes") or "").strip()
+    try:
+        minutes = int(raw)
+    except (TypeError, ValueError):
+        minutes = notify_service.DEFAULT_LEAD_MINUTES
+    minutes = max(notify_service.MIN_LEAD_MINUTES, min(notify_service.MAX_LEAD_MINUTES, minutes))
+    with SessionLocal() as db:
+        settings.set_value(db, "notify_approaching_minutes", str(minutes))
+        flash(f"Approaching alerts set to {minutes} minutes before start.", "success")
+    return redirect(url_for("settings.view_settings", tab="notifications"))
+
+
 @bp.route("/filters", methods=["POST"])
 @auth.admin_required
 def save_filters():
@@ -263,6 +319,35 @@ def save_filters():
         flash("Global filters updated.", "success")
 
     return redirect(url_for("settings.view_settings", tab="filters"))
+
+
+@bp.route("/discovery", methods=["POST"])
+@auth.admin_required
+def save_discovery():
+    from app.services.social import config as social_config
+
+    with SessionLocal() as db:
+        social_config.set_instagram_enabled(db, request.form.get("social_instagram_enabled") == "1")
+        raw_poll = request.form.get("social_poll_minutes", "30")
+        try:
+            poll = int(raw_poll)
+        except (TypeError, ValueError):
+            poll = 30
+        social_config.set_poll_minutes(db, poll)
+        social_config.set_auto_discover(db, request.form.get("social_auto_discover") == "1")
+        social_config.set_auto_create_high(db, request.form.get("social_auto_create_high") == "1")
+        social_config.set_candidate_review(db, request.form.get("social_candidate_review") == "1")
+        social_config.set_ocr_enabled(db, request.form.get("social_ocr_enabled") == "1")
+        social_config.set_ai_fallback_enabled(db, False)
+        social_config.set_notify_enabled(db, request.form.get("social_notify_enabled") == "1")
+        raw_posts = request.form.get("social_posts_per_check", "10")
+        try:
+            posts = max(1, min(20, int(raw_posts)))
+        except (TypeError, ValueError):
+            posts = 10
+        settings.set_value(db, "social_posts_per_check", str(posts))
+        flash("Discovery settings saved.", "success")
+    return redirect(url_for("settings.view_settings", tab="discovery"))
 
 
 @bp.route("/categories", methods=["POST"])

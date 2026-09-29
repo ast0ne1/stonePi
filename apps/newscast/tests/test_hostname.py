@@ -1,8 +1,10 @@
+from pathlib import Path
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.models import Base
-from app.services import hostname, settings
+from app.services import hostname, settings, tls
 
 
 def _session() -> Session:
@@ -27,8 +29,8 @@ def test_valid_hostname():
 def test_public_base_url_uses_hostname(monkeypatch):
     monkeypatch.setattr(hostname.env, "port", 8080)
     monkeypatch.setattr(hostname.env, "public_base_url", "http://127.0.0.1:8080")
+    monkeypatch.setattr(hostname, "device_hostname", lambda: "newscast")
     db = _session()
-    settings.set_value(db, "device_hostname", "newscast")
     assert hostname.get_public_base_url(db) == "http://newscast.local:8080"
 
 
@@ -36,6 +38,7 @@ def test_public_base_url_falls_back_to_env(monkeypatch):
     monkeypatch.setattr(hostname.env, "port", 8080)
     monkeypatch.setattr(hostname.env, "public_base_url", "http://192.168.1.10:8080")
     monkeypatch.setattr(hostname, "get_lan_ip", lambda: "192.168.1.20")
+    monkeypatch.setattr(hostname, "device_hostname", lambda: "")
     db = _session()
     assert hostname.get_public_base_url(db) == "http://192.168.1.10:8080"
 
@@ -44,6 +47,7 @@ def test_public_base_url_uses_lan_when_env_is_loopback(monkeypatch):
     monkeypatch.setattr(hostname.env, "port", 8080)
     monkeypatch.setattr(hostname.env, "public_base_url", "http://127.0.0.1:8080")
     monkeypatch.setattr(hostname, "get_lan_ip", lambda: "192.168.0.223")
+    monkeypatch.setattr(hostname, "device_hostname", lambda: "")
     db = _session()
     assert hostname.get_public_base_url(db) == "http://192.168.0.223:8080"
 
@@ -51,8 +55,8 @@ def test_public_base_url_uses_lan_when_env_is_loopback(monkeypatch):
 def test_share_url_uses_hostname(monkeypatch):
     monkeypatch.setattr(hostname.env, "port", 8080)
     monkeypatch.setattr(hostname, "get_lan_ip", lambda: "192.168.1.20")
+    monkeypatch.setattr(hostname, "device_hostname", lambda: "newscast")
     db = _session()
-    settings.set_value(db, "device_hostname", "newscast")
     assert hostname.get_share_url(db) == "http://newscast.local:8080"
     assert hostname.get_lan_url() == "http://192.168.1.20:8080"
 
@@ -63,9 +67,9 @@ def test_homescreen_name_uses_instance():
     assert hostname.homescreen_name(db) == "NewsCast Home"
 
 
-def test_homescreen_name_falls_back_to_hostname():
+def test_homescreen_name_falls_back_to_hostname(monkeypatch):
+    monkeypatch.setattr(hostname, "device_hostname", lambda: "living-room")
     db = _session()
-    settings.set_value(db, "device_hostname", "living-room")
     assert hostname.homescreen_name(db) == "NewsCast Living Room"
 
 
@@ -73,5 +77,6 @@ def test_share_url_uses_lan_ip_when_public_is_loopback(monkeypatch):
     monkeypatch.setattr(hostname.env, "port", 8080)
     monkeypatch.setattr(hostname.env, "public_base_url", "http://127.0.0.1:8080")
     monkeypatch.setattr(hostname, "get_lan_ip", lambda: "192.168.1.20")
+    monkeypatch.setattr(hostname, "device_hostname", lambda: "")
     db = _session()
     assert hostname.get_share_url(db) == "http://192.168.1.20:8080"

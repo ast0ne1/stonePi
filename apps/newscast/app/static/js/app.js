@@ -90,28 +90,10 @@ function applyTheme(pref, palette) {
   document.documentElement.style.colorScheme = theme;
   const meta = document.querySelector("[data-theme-color]");
   if (meta) meta.setAttribute("content", THEME_COLORS[chosen][theme]);
-  document.querySelectorAll("[data-theme-set]").forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.themeSet === pref);
-  });
-  document.querySelectorAll("[data-palette-set]").forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.paletteSet === chosen);
-  });
 }
 
 const savedTheme = readShared(THEME_KEY, LEGACY_THEME_KEYS, "system");
 applyTheme(savedTheme);
-document.querySelectorAll("[data-theme-set]").forEach((button) => {
-  button.addEventListener("click", () => {
-    persistPref(THEME_KEY, button.dataset.themeSet);
-    applyTheme(button.dataset.themeSet);
-  });
-});
-document.querySelectorAll("[data-palette-set]").forEach((button) => {
-  button.addEventListener("click", () => {
-    persistPref(PALETTE_KEY, button.dataset.paletteSet);
-    applyTheme(readShared(THEME_KEY, LEGACY_THEME_KEYS, "system"), button.dataset.paletteSet);
-  });
-});
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
   if (readShared(THEME_KEY, LEGACY_THEME_KEYS, "system") === "system") applyTheme("system");
 });
@@ -223,6 +205,19 @@ function applyIngestStatus(data) {
     button.disabled = running;
     button.classList.toggle("is-busy", running);
   });
+  // Stop is only offered for a Refresh started from the top-bar button.
+  const stopForm = document.querySelector("[data-ingest-stop]");
+  if (stopForm) {
+    const stopping = Boolean(data.stopping);
+    stopForm.hidden = !(running && data.stoppable);
+    const stopBtn = stopForm.querySelector("button");
+    if (stopBtn) {
+      stopBtn.disabled = stopping;
+      const label = stopping ? t("Stopping") : t("Stop refresh");
+      stopBtn.title = label;
+      stopBtn.setAttribute("aria-label", label);
+    }
+  }
   if (ingestWasRunning && !running && document.querySelector("[data-briefing-list]")) {
     ingestWasRunning = false;
     window.location.reload();
@@ -231,20 +226,58 @@ function applyIngestStatus(data) {
   ingestWasRunning = running;
 }
 
-function setActivityBanner(text, { busy = false, error = false } = {}) {
+const BANNER_ICONS = {
+  queued: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 2"/>',
+  sending: '<path d="M12 19V5"/><path d="m6 11 6-6 6 6"/>',
+};
+const BANNER_STATES = ["is-busy", "is-error", "is-queued", "is-sending"];
+
+function setActivityBanner(text, { busy = false, error = false, reader = "" } = {}) {
   const banner = document.querySelector("[data-activity-banner]");
   if (!banner) return;
   const value = (text || "").trim();
+  banner.classList.remove(...BANNER_STATES);
   if (!value) {
     banner.hidden = true;
     banner.textContent = "";
-    banner.classList.remove("is-busy", "is-error");
+    banner.removeAttribute("href");
     return;
   }
   banner.hidden = false;
+  if (reader) {
+    // Reader queue states link to Reader → Send, where the queue lives. JS-set hrefs miss the
+    // server-side prefix rewrite, so apply the app prefix (/news etc.) here.
+    banner.href = withPrefix("/device?tab=send");
+    banner.classList.add(reader === "sending" ? "is-sending" : "is-queued");
+    banner.innerHTML =
+      `<svg class="activity-banner-icon" viewBox="0 0 24 24" aria-hidden="true">${BANNER_ICONS[reader]}</svg>` +
+      `<span class="activity-banner-text"></span>` +
+      `<svg class="activity-banner-icon activity-banner-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>`;
+    banner.querySelector(".activity-banner-text").textContent = value;
+    return;
+  }
+  banner.removeAttribute("href");
   banner.textContent = value;
   banner.classList.toggle("is-busy", busy);
   banner.classList.toggle("is-error", error);
+}
+
+const QUEUE_STATES = ["is-waiting", "is-sending", "is-retry", "is-sent", "is-failed"];
+
+function applyQueueStatus(reader) {
+  // Reader → Send → Queue: refresh each row's status line in place. Rows that have left
+  // the queue take their "Sent 14:07" / "Failed: …" line from the recent list.
+  const rows = document.querySelectorAll("[data-queue-status]");
+  if (!rows.length) return;
+  const byId = new Map();
+  for (const item of [...(reader.recent || []), ...(reader.queue || [])]) byId.set(item.task_id, item);
+  rows.forEach((row) => {
+    const item = byId.get(row.dataset.queueStatus);
+    if (!item || !item.status_label) return;
+    row.textContent = item.status_label;
+    row.classList.remove(...QUEUE_STATES);
+    row.classList.add(`is-${item.state}`);
+  });
 }
 
 function applyActivity(data) {
@@ -252,17 +285,23 @@ function applyActivity(data) {
   const reader = data.reader || {};
   const recent = data.recent_sync || null;
   applyIngestStatus(ingest);
+  applyQueueStatus(reader);
 
-  if (ingest.running) {
+  if (ingest.running && ingest.stopping) {
+    setActivityBanner(`${t("Stopping")}…`, { busy: true });
+  } else if (ingest.running) {
     const progress = ingest.progress ? `${t("Refreshing")} ${ingest.progress}…` : `${t("Refreshing")}…`;
     setActivityBanner(progress, { busy: true });
-  } else if (reader.pending > 0) {
+  } else if (reader.pending > 0 && reader.online) {
     const label = reader.active_label || t("reader");
     const copy =
       reader.pending === 1
         ? `${t("Sending")} ${label}…`
         : `${t("Sending")} ${reader.pending} ${t("files")}…`;
-    setActivityBanner(copy, { busy: true });
+    setActivityBanner(copy, { reader: "sending" });
+  } else if (reader.pending > 0) {
+    const copy = `${reader.pending} ${t(reader.pending === 1 ? "item queued" : "items queued")}`;
+    setActivityBanner(copy, { reader: "queued" });
   } else if (ingest.last_error) {
     setActivityBanner(ingest.last_error, { error: true });
   } else {
@@ -297,14 +336,30 @@ function applyActivity(data) {
   }
 }
 
+const ACTIVITY_ACTIVE_MS = 4000;
+const ACTIVITY_IDLE_MS = 60000;
+
+function activityIsBusy(data) {
+  const ingest = data?.ingest || data || {};
+  const reader = data?.reader || {};
+  if (ingest.running || reader.sending) return true;
+  const pending = Number(reader.pending || 0);
+  return pending > 0 && Boolean(reader.online);
+}
+
 async function pollActivity() {
   try {
-    applyActivity(await send("/api/activity"));
+    const data = await send("/api/activity");
+    applyActivity(data);
+    return activityIsBusy(data);
   } catch {
     try {
-      applyIngestStatus(await send("/api/ingest/status"));
+      const ingest = await send("/api/ingest/status");
+      applyIngestStatus(ingest);
+      return Boolean(ingest.running);
     } catch {
       /* stay on last rendered state */
+      return activityState.ingestRunning;
     }
   }
 }
@@ -315,8 +370,43 @@ const activityState = {
   recentKey: "",
 };
 let ingestWasRunning = activityState.ingestRunning;
-window.setInterval(pollActivity, 4000);
-pollActivity();
+let activityTimer = null;
+let activityPollInFlight = false;
+
+function scheduleActivityPoll(delayMs) {
+  if (activityTimer != null) {
+    window.clearTimeout(activityTimer);
+    activityTimer = null;
+  }
+  activityTimer = window.setTimeout(runActivityPoll, delayMs);
+}
+
+async function runActivityPoll() {
+  if (document.hidden || activityPollInFlight) return;
+  activityPollInFlight = true;
+  let busy = activityState.ingestRunning;
+  try {
+    busy = await pollActivity();
+  } finally {
+    activityPollInFlight = false;
+  }
+  if (!document.hidden) {
+    scheduleActivityPoll(busy ? ACTIVITY_ACTIVE_MS : ACTIVITY_IDLE_MS);
+  }
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    if (activityTimer != null) {
+      window.clearTimeout(activityTimer);
+      activityTimer = null;
+    }
+    return;
+  }
+  runActivityPoll();
+});
+
+runActivityPoll();
 
 
 function askConfirm({ title, body, okLabel }) {
@@ -375,6 +465,17 @@ function showFormError(form, message) {
   errorEl.textContent = message || "";
   errorEl.hidden = !message;
 }
+
+// Picking from a dropdown marked data-autosubmit runs its (GET) form straight away.
+document.querySelectorAll("select[data-autosubmit]").forEach((select) => {
+  select.addEventListener("change", () => {
+    const form = select.form;
+    if (!form) return;
+    // requestSubmit is missing on iOS Safari < 16; plain submit() is fine for a GET form.
+    if (typeof form.requestSubmit === "function") form.requestSubmit();
+    else form.submit();
+  });
+});
 
 document.querySelectorAll("form").forEach((form) => {
   if (form.dataset.bound || form.dataset.native != null) return;
@@ -629,7 +730,7 @@ document.querySelectorAll("[data-paper-naming]").forEach((root) => {
   const preview = root.querySelector("[data-paper-preview]");
   const categoryPreview = root.querySelector("[data-paper-category-preview]");
   if (!patternInput || !preview) return;
-  const hostInput = form?.querySelector("[name=device_hostname]");
+  const hostValue = (root.getAttribute("data-paper-hostname") || "").trim();
   const instanceInput = form?.querySelector("[name=instance_name]");
   const defaultPattern = "NewsCast - {hostname} {instance} {date}";
   const defaultCategoryPattern = "NewsCast - {hostname} {instance} {category} {date}";
@@ -651,7 +752,7 @@ document.querySelectorAll("[data-paper-naming]").forEach((root) => {
   function tokenValues(extra = {}) {
     return {
       product: "NewsCast",
-      hostname: (hostInput?.value || "").trim(),
+      hostname: hostValue,
       instance: (instanceInput?.value || "").trim(),
       label: (labelInput?.value || "").trim(),
       category: "Tech",
@@ -864,7 +965,6 @@ document.querySelectorAll("[data-chip-group]").forEach((group) => {
 const settingsRoot = document.querySelector("[data-settings-tabs]");
 if (settingsRoot) {
   const SETTINGS_SAVE_TABS = new Set(["device", "schedule", "publication", "filters", "translation", "llm", "reader", "notifications", "update"]);
-  const DESKTOP_MQ = window.matchMedia("(min-width: 1024px)");
   const settingsForm = settingsRoot.querySelector("[data-settings]");
   const settingsLede = document.querySelector("[data-settings-lede]");
   const settingsTitle = document.querySelector("[data-settings-title]");
@@ -892,21 +992,13 @@ if (settingsRoot) {
   const ledesByTab = readJson("[data-settings-ledes-json]", {});
   const labelsByTab = readJson("[data-settings-labels-json]", {});
 
-  function isDesktopSettings() {
-    return DESKTOP_MQ.matches;
-  }
-
-  function syncDesktopClass() {
-    settingsRoot.classList.toggle("is-desktop-settings", isDesktopSettings());
-  }
-
   function tabHasPanelList(tab) {
     return (panelsByTab[tab] || []).length > 0;
   }
 
   function updateBackControl(mode, tab) {
     if (!settingsBack) return;
-    if (mode === "hub" || isDesktopSettings()) {
+    if (mode === "hub") {
       settingsBack.hidden = true;
       settingsBack.dataset.backTo = "hub";
       settingsBack.textContent = "← Settings";
@@ -952,22 +1044,22 @@ if (settingsRoot) {
   }
 
   function setViewMode({ hub = false, panelListMode = false } = {}) {
-    const onHub = Boolean(hub) && !isDesktopSettings();
-    const onPanelList = Boolean(panelListMode) && !isDesktopSettings() && !onHub;
+    const onHub = Boolean(hub);
+    const onPanelList = Boolean(panelListMode) && !onHub;
     settingsRoot.dataset.settingsHub = onHub ? "true" : "false";
     settingsRoot.dataset.settingsPanelList = onPanelList ? "true" : "false";
     settingsRoot.classList.toggle("is-hub", onHub);
     settingsRoot.classList.toggle("is-panel-list", onPanelList);
     if (hubList) hubList.hidden = !onHub;
     if (panelList) panelList.hidden = !onPanelList;
-    if (sectionEl) sectionEl.hidden = (onHub || onPanelList) && !isDesktopSettings();
+    if (sectionEl) sectionEl.hidden = onHub || onPanelList;
   }
 
   function applySectionPanel(tab, panelId) {
     const panels = panelsByTab[tab] || [];
     const activePanel = panels.find((p) => p.id === panelId) || panels[0] || null;
     const activeCards = new Set(activePanel?.cards || []);
-    const hasPanels = panels.length > 0 && !isDesktopSettings();
+    const hasPanels = panels.length > 0;
 
     if (sectionChips) {
       // Mobile uses the panel list; chips remain for any transitional layout and are hidden in CSS.
@@ -1002,9 +1094,8 @@ if (settingsRoot) {
 
   function showSettingsTab(tab, { panel = null, hub = false, panelListMode = false } = {}) {
     const next = [...settingsChips].some((chip) => chip.dataset.settingsTab === tab) ? tab : "device";
-    const showHub = Boolean(hub) && !isDesktopSettings();
-    const showPanelList =
-      Boolean(panelListMode) && !isDesktopSettings() && !showHub && tabHasPanelList(next);
+    const showHub = Boolean(hub);
+    const showPanelList = Boolean(panelListMode) && !showHub && tabHasPanelList(next);
 
     setViewMode({ hub: showHub, panelListMode: showPanelList });
 
@@ -1032,14 +1123,14 @@ if (settingsRoot) {
     } else if (showPanelList) {
       renderPanelList(next);
       if (settingsTitle) settingsTitle.textContent = labelsByTab[next] || next;
-      if (settingsLede) settingsLede.textContent = "Tap a section to edit it.";
+      if (settingsLede) settingsLede.textContent = "Choose a section.";
       updateBackControl("panelList", next);
     } else {
       if (settingsTitle) {
         const panels = panelsByTab[next] || [];
         const active = panels.find((p) => p.id === panel) || panels[0];
         settingsTitle.textContent =
-          !isDesktopSettings() && active?.label ? active.label : labelsByTab[next] || next;
+          active?.label || labelsByTab[next] || next;
       }
       if (settingsLede) settingsLede.textContent = ledesByTab[next] || "";
       updateBackControl("form", next);
@@ -1053,7 +1144,7 @@ if (settingsRoot) {
     }
     const appliedPanel = showHub || showPanelList ? null : applySectionPanel(next, panelId);
 
-    if (!showHub && !showPanelList && !isDesktopSettings() && tabHasPanelList(next)) {
+    if (!showHub && !showPanelList && tabHasPanelList(next)) {
       settingsRoot.querySelectorAll(`[data-settings-panel="${next}"]`).forEach((panelEl) => {
         const cards = panelEl.querySelectorAll("[data-settings-panel-card]");
         if (!cards.length) return;
@@ -1081,7 +1172,7 @@ if (settingsRoot) {
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       event.preventDefault();
       const tab = chip.dataset.settingsTab;
-      if (!isDesktopSettings() && tabHasPanelList(tab)) {
+      if (tabHasPanelList(tab)) {
         showSettingsTab(tab, { panelListMode: true });
       } else {
         showSettingsTab(tab, { hub: false });
@@ -1094,7 +1185,7 @@ if (settingsRoot) {
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       event.preventDefault();
       const tab = row.dataset.settingsHubRow;
-      if (!isDesktopSettings() && tabHasPanelList(tab)) {
+      if (tabHasPanelList(tab)) {
         showSettingsTab(tab, { panelListMode: true });
       } else {
         showSettingsTab(tab, { hub: false });
@@ -1139,37 +1230,9 @@ if (settingsRoot) {
     });
   }
 
-  function onViewportChange() {
-    syncDesktopClass();
-    const hubAttr = settingsRoot.dataset.settingsHub === "true";
-    const listAttr = settingsRoot.dataset.settingsPanelList === "true";
-    if (isDesktopSettings()) {
-      showSettingsTab(settingsRoot.dataset.settingsActiveTab || "device", {
-        hub: false,
-        panel: settingsRoot.dataset.settingsActivePanel || null,
-      });
-    } else if (hubAttr) {
-      showSettingsTab(settingsRoot.dataset.settingsActiveTab || "device", { hub: true });
-    } else if (listAttr) {
-      showSettingsTab(settingsRoot.dataset.settingsActiveTab || "device", { panelListMode: true });
-    } else {
-      showSettingsTab(settingsRoot.dataset.settingsActiveTab || "device", {
-        hub: false,
-        panel: settingsRoot.dataset.settingsActivePanel || null,
-      });
-    }
-  }
-
-  syncDesktopClass();
   const initialHub = settingsRoot.dataset.settingsHub === "true";
   const urlPanel = new URL(window.location.href).searchParams.get("panel");
-  if (isDesktopSettings()) {
-    showSettingsTab(settingsRoot.dataset.settingsActiveTab || "device", {
-      hub: false,
-      panel: settingsRoot.dataset.settingsActivePanel || null,
-    });
-  } else if (initialHub) {
-    // Hub HTML already visible.
+  if (initialHub) {
     updateBackControl("hub", settingsRoot.dataset.settingsActiveTab || "device");
   } else {
     const tab = settingsRoot.dataset.settingsActiveTab || "device";
@@ -1181,12 +1244,6 @@ if (settingsRoot) {
         panel: settingsRoot.dataset.settingsActivePanel || null,
       });
     }
-  }
-
-  if (typeof DESKTOP_MQ.addEventListener === "function") {
-    DESKTOP_MQ.addEventListener("change", onViewportChange);
-  } else if (typeof DESKTOP_MQ.addListener === "function") {
-    DESKTOP_MQ.addListener(onViewportChange);
   }
 }
 

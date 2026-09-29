@@ -17,15 +17,19 @@ AUTH_PKG = ROOT / "packages" / "stonepi_auth"
 PLATFORM_PKGS = [
     ROOT / "packages" / "stonepi_auth",
     ROOT / "packages" / "stonepi_update",
+    ROOT / "packages" / "stonepi_contracts",
     ROOT / "packages" / "stonepi_display",
+    ROOT / "packages" / "stonepi_notify",
     ROOT / "packages" / "stonepi_watch",
     ROOT / "packages" / "stonepi_vault",
     ROOT / "packages" / "stonepi_automations",
+    ROOT / "packages" / "stonepi_browser",
 ]
 
 APPS = [
     ("auth", ROOT / "apps" / "auth", 8011, "", "python -m app.serve"),
     ("dashboard", ROOT / "apps" / "dashboard", 8010, "", "python -m app.serve"),
+    ("notify", ROOT / "apps" / "notify", 8012, "/notify", "python -m app.serve"),
     ("newscast", ROOT / "apps" / "newscast", 8001, "", "python -m app.serve"),
     ("fileserve", ROOT / "apps" / "fileserve", 8002, "", "python run.py"),
     ("eventtrakr", ROOT / "apps" / "eventtrakr", 8003, "", "python -m app.serve"),
@@ -33,6 +37,7 @@ APPS = [
     ("studio", ROOT / "apps" / "studio", 8005, "", "python -m app.serve"),
     ("pricescout", ROOT / "apps" / "pricescout", 8006, "", "python -m app.serve"),
     ("sportguide", ROOT / "apps" / "sportguide", 8007, "", "python -m app.serve"),
+    ("pricewatch", ROOT / "apps" / "pricewatch", 8008, "", "python -m app.serve"),
 ]
 
 
@@ -154,11 +159,49 @@ def ensure_venv(name: str, app_dir: Path) -> Path:
     if update_pkg.exists():
         _pip(py, "-e", str(update_pkg))
     vault = ROOT / "packages" / "stonepi_vault"
-    if vault.exists() and name in {"auth", "dashboard", "newscast", "fileserve", "eventtrakr", "pinboard", "studio", "pricescout", "sportguide"}:
+    if vault.exists() and name in {
+        "auth",
+        "dashboard",
+        "notify",
+        "newscast",
+        "fileserve",
+        "eventtrakr",
+        "pinboard",
+        "studio",
+        "pricescout",
+        "sportguide",
+        "pricewatch",
+    }:
         _pip(py, "-e", str(vault))
+    contracts = ROOT / "packages" / "stonepi_contracts"
+    if contracts.exists() and name in {
+        "notify",
+        "dashboard",
+        "newscast",
+        "fileserve",
+        "eventtrakr",
+        "pinboard",
+        "sportguide",
+        "pricewatch",
+    }:
+        _pip(py, "-e", str(contracts))
+    browser_pkg = ROOT / "packages" / "stonepi_browser"
+    if browser_pkg.exists() and name in {"eventtrakr", "sportguide"}:
+        _pip(py, "-e", str(browser_pkg))
     if name == "dashboard":
         for pkg in PLATFORM_PKGS:
-            if pkg.exists() and pkg.name not in {"stonepi_auth", "stonepi_vault"}:
+            if pkg.exists() and pkg.name not in {
+                "stonepi_auth",
+                "stonepi_vault",
+                "stonepi_contracts",
+                "stonepi_notify",
+                "stonepi_browser",
+            }:
+                _pip(py, "-e", str(pkg))
+    if name == "notify":
+        for pkg_name in ("stonepi_display", "stonepi_notify", "stonepi_watch"):
+            pkg = ROOT / "packages" / pkg_name
+            if pkg.exists():
                 _pip(py, "-e", str(pkg))
     _mark_deps(app_dir, req)
     return py
@@ -189,6 +232,7 @@ def main() -> None:
                     "AUTH_URL": "http://127.0.0.1:8011",
                     "PUBLIC_ORIGIN": "http://127.0.0.1:8010",
                     "PUBLIC_BASE_URL": f"http://127.0.0.1:{port}",
+                    "STONEPI_NOTIFY_URL": "http://127.0.0.1:8012",
                 }
             )
             args = command.split()
@@ -198,6 +242,7 @@ def main() -> None:
         print("StonePi")
         print("  Dashboard   http://127.0.0.1:8010/")
         print("  Auth        http://127.0.0.1:8011/login")
+        print("  Notify      http://127.0.0.1:8012/")
         print("  NewsCast    http://127.0.0.1:8001/")
         print("  FileServe   http://127.0.0.1:8002/")
         print("  EventTrakr  http://127.0.0.1:8003/")
@@ -205,6 +250,7 @@ def main() -> None:
         print("  Studio      http://127.0.0.1:8005/")
         print("  PriceScout  http://127.0.0.1:8006/")
         print("  SportGuide  http://127.0.0.1:8007/")
+        print("  PriceWatch  http://127.0.0.1:8008/")
         print("  Login       admin / admin")
         print("Ctrl+C to stop.")
         while True:

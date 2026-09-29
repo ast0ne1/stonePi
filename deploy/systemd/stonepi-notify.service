@@ -1,0 +1,21 @@
+[Unit]
+Description=StonePi Notifications
+After=network-online.target stonepi-auth.service
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=stonepi-notify
+Group=stonepi-notify
+EnvironmentFile=/etc/stonepi/stonepi.env
+EnvironmentFile=-/etc/stonepi/notify.env
+WorkingDirectory=/opt/stonepi/apps/notify
+ExecStart=/opt/stonepi/apps/notify/.venv/bin/python -m app.serve
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

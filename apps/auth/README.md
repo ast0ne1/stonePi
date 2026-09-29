@@ -20,7 +20,7 @@ One login for the portal — no duplicate per-app password databases when `STONE
 - **App grants** — which launcher apps each person may open
 - **Capabilities** — per-app flags (e.g. NewsCast ntfy, Studio LLM / publish)
 - Disabled-app list for the portal
-- Catalog contract used by Dashboard People UI (`stonepi_auth.catalog`)
+- Catalog contract used by Dashboard Users UI (`stonepi_auth.catalog`)
 - `GET /api/display` — active session count for Status wall (loopback; nginx denies at the edge)
 
 ## Factory login
@@ -30,7 +30,7 @@ Default **admin** / **admin**. Change the password on Dashboard → Users as soo
 ## Platform notes
 
 - Session secret and related material prefer **Vault** / `/etc/stonepi` env bootstrap.
-- Exposure mode (`lan` / `public`) is read by apps via `stonepi_auth` helpers; toggle under Dashboard → Settings → General.
+- Exposure mode (`lan` / `public`) is read by apps via `stonepi_auth` helpers; toggle under Dashboard → Settings → Network.
 - Solo `run-local.bat` apps can run without this service when the session secret is unset.
 
 ## Related

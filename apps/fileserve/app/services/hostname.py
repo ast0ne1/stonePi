@@ -1,24 +1,31 @@
-import re
-import shutil
 import socket
-import subprocess
 from urllib.parse import urlparse
 
 from sqlalchemy.orm import Session
 
-from app.config import ROOT_DIR, env
+from app.config import env
 from app.services import settings
 
-HOSTNAME_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
-SET_HOSTNAME = ROOT_DIR / "deploy" / "set-hostname.sh"
+try:
+    from stonepi_auth import normalize_hostname, platform_hostname, valid_hostname
+except ImportError:  # pragma: no cover - solo / older overlay
+    import re
+
+    HOSTNAME_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
+
+    def normalize_hostname(raw: str) -> str:
+        return (raw or "").strip().lower().removesuffix(".local").rstrip(".")
+
+    def valid_hostname(name: str) -> bool:
+        return bool(name) and HOSTNAME_RE.fullmatch(name) is not None
+
+    def platform_hostname() -> str:
+        return normalize_hostname(getattr(env, "device_hostname", "") or "stonepi") or "stonepi"
 
 
-def normalize_hostname(raw: str) -> str:
-    return raw.strip().lower().removesuffix(".local").rstrip(".")
-
-
-def valid_hostname(name: str) -> bool:
-    return bool(name) and HOSTNAME_RE.fullmatch(name) is not None
+def device_hostname() -> str:
+    """Appliance LAN short name (Dashboard → Settings → Network)."""
+    return platform_hostname()
 
 
 def get_lan_ip() -> str:
@@ -86,7 +93,7 @@ def get_share_url(db: Session) -> str:
         return configured
     prefix = _stonepi_prefix()
     scheme = _scheme(db)
-    host = normalize_hostname(settings.get_value(db, "device_hostname"))
+    host = device_hostname()
     if host and prefix:
         return f"{scheme}://{host}.local{prefix}"
     if host:
@@ -98,21 +105,7 @@ def homescreen_name(db: Session) -> str:
     instance = settings.get_value(db, "instance_name").strip()
     if instance:
         return f"FileServe {instance}"
-    host = normalize_hostname(settings.get_value(db, "device_hostname"))
+    host = device_hostname()
     if host:
         return f"FileServe {host.replace('-', ' ').title()}"
     return "FileServe"
-
-
-def apply_os_hostname(name: str) -> bool:
-    if not SET_HOSTNAME.is_file() or shutil.which("hostnamectl") is None:
-        return False
-    command = [str(SET_HOSTNAME), name]
-    sudo = shutil.which("sudo")
-    if sudo:
-        command = [sudo, "-n", *command]
-    try:
-        subprocess.run(command, check=True, capture_output=True, text=True, timeout=20)
-    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        return False
-    return True

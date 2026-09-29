@@ -1,0 +1,41 @@
+#!/usr/sbin/nft -f
+# StonePi host firewall baseline
+# Allow: SSH, HTTP/HTTPS, Tailscale, mDNS, recover :8099.
+# Cockpit (9090): not via Tailscale (LAN / local only).
+# App backends stay on 127.0.0.1 and are not exposed here.
+
+flush ruleset
+
+table inet stonepi {
+  chain input {
+    type filter hook input priority 0; policy drop;
+
+    ct state established,related accept
+    iif "lo" accept
+
+    ip protocol icmp accept
+    ip6 nexthdr ipv6-icmp accept
+
+    tcp dport 22 accept
+    tcp dport { 80, 443 } accept
+    tcp dport 8099 accept
+
+    udp dport 41641 accept
+    iifname "tailscale0" accept
+
+    udp dport 5353 accept
+
+    # Cockpit — block Tailscale path; allow other interfaces (typically LAN)
+    tcp dport 9090 iifname != "tailscale0" accept
+
+    counter drop
+  }
+
+  chain forward {
+    type filter hook forward priority 0; policy drop;
+  }
+
+  chain output {
+    type filter hook output priority 0; policy accept;
+  }
+}

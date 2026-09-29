@@ -11,10 +11,11 @@ Shared StonePi sign-in. Access requires a **Pinboard** app grant (admins see it 
 
 ## Why it’s in StonePi
 
-A lightweight shared corkboard — not a full task manager. Pins and reminders show on phones and, when Display is configured, on a **TRMNL** e-ink panel.
+A lightweight shared corkboard — not a full task manager. Pins and reminders show on phones and, when Destinations are configured, on a **TRMNL** e-ink panel.
 
 ## What it does
 
+- **Board** — all notices and reminders as expandable cards (type pill + icon; due date when present)
 - **Notices** — short household messages everyone with access can see
 - **Reminders** — due date and optional assignee
 - Phone-first UI aligned with NewsCast-style chrome (themes / palettes)
@@ -23,7 +24,7 @@ A lightweight shared corkboard — not a full task manager. Pins and reminders s
 
 | Integration | Role |
 |-------------|------|
-| **TRMNL / Display** | `GET …/api/display` supplies the Pinboard block for dashboard → webhook push. Removing a pin can clear it from the next push. Public nginx denies this path at the edge when internet-facing; the dashboard still scrapes via loopback. |
+| **TRMNL / Display** | `GET …/api/display` supplies the Pinboard block for Notify → webhook push. Removing a pin can clear it from the next push. Public nginx denies this path at the edge when internet-facing; collection still runs via loopback. |
 | **PriceScout** | `POST /api/reminder` (JSON, session cookie + CSRF) creates a reminder from a shopping list. |
 
 ## Platform notes

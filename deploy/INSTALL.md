@@ -2,6 +2,8 @@
 
 This is the path from a blank SD card to apps that start on every boot.
 
+**Easiest route:** follow [stonepi-install.vercel.app](https://stonepi-install.vercel.app) — flash Raspberry Pi OS, SSH in, and run `curl -fsSL https://stonepi-install.vercel.app/install.sh | sudo bash`. It downloads the latest release and runs the same `deploy/install.sh` described below. The rest of this page covers installing from a local copy of the repo, and everything after install.
+
 **Prefer a guided checklist?** Open [`walkthrough.html`](walkthrough.html) in your browser (double-click or drag into Chrome/Edge). Progress is saved locally in that browser.
 
 ## What you need
@@ -103,7 +105,8 @@ The installer will:
 - Create Python venvs and install dependencies
 - Install and **enable** systemd units so apps start on boot
 - Configure Nginx path routing (remove stock welcome site; works via `stonepi.local` **and** Pi IP)
-- Enable USB-plug backup udev rule; leave weekly backup timer **disabled**
+- Enable USB-plug backup udev rule; leave weekly **USB** backup timer **disabled**
+- Install local-backup unit/timer (timer stays off until enabled in Settings → Backup)
 - Enable Cockpit
 - Run health checks (units active, loopback apps, edge HTTP)
 
@@ -123,13 +126,17 @@ On another device on the same LAN:
 | http://stonepi.local/pinboard/ | Pinboard |
 | http://stonepi.local/studio/ | Studio |
 | http://stonepi.local/prices/ | PriceScout |
+| http://stonepi.local/sports/ | SportGuide |
+| http://stonepi.local/watch/ | PriceWatch |
+| http://stonepi.local/notify/ | Notify (admin: Displays, TRMNL, ntfy) |
+| http://stonepi.local/recover/ or http://stonepi.local:8099/ | Recovery Console (escape hatch; user `stonepi`) |
 | https://stonepi.local:9090 or https://PI_LAN_IP:9090 | Cockpit (Linux admin; HTTPS) |
 
 Prefer a **router DHCP reservation + local DNS** name (e.g. `stonepi.home` on a F@ST / ISP gateway) when `stonepi.local` (Avahi) is flaky. Login and app **Home** links follow whichever host you open — they no longer force `.local`.
 
 `stonepi urls` prints the same list using the Pi hostname.
 
-Default account: **admin** / **admin** — change it under People immediately.
+Default account: **admin** / **admin** — change it immediately under **Settings → General → Your password** (admins reset other accounts under **Users**).
 
 ## After install
 
@@ -152,21 +159,27 @@ sudo bash deploy/install.sh --hostname stonepi
 
 When the tree already lives in `/opt/stonepi`, run from there; the installer skips the rsync copy.
 
-### Backup USB
+### Backup (USB + local)
 
-Backup starts automatically when you plug in a USB disk labelled `STONEPI-BACKUP` (udev). There is no weekly timer by default.
+**USB:** starts automatically when you plug in a disk labelled `STONEPI-BACKUP` (udev). No USB calendar timer by default.
 
 1. Format a USB disk with label `STONEPI-BACKUP` (see [backup/RESTORE.md](backup/RESTORE.md)).
 2. Plug it into the Pi — apps pause briefly, then resume.
 3. Optional manual run: `sudo systemctl start stonepi-backup`
 
+**Local:** one copy at `/var/backups/stonepi/current`. Enable daily/weekly schedule under **Dashboard → Settings → Backup**, or `sudo systemctl start stonepi-local-backup`.
+
 Check the last run:
 
 ```bash
 sudo journalctl -u stonepi-backup -n 40 --no-pager
-cat /var/lib/stonepi/last-backup.txt
+sudo journalctl -u stonepi-local-backup -n 40 --no-pager
+cat /var/lib/stonepi/last-local-backup.txt
+cat /var/lib/stonepi/last-usb-backup.txt
+sudo stonepi-backup-helper list
 ```
 
+Recovery Console: http://stonepi.local/recover/ — user `stonepi`, password Vault `STONEPI_RECOVER_PASSWORD`.
 ## Fresh OS checklist
 
 - [ ] SSH enabled in Imager
@@ -178,7 +191,7 @@ cat /var/lib/stonepi/last-backup.txt
 
 ## Public internet exposure (optional)
 
-Default is **home network only**. Install leaves `STONEPI_EXPOSURE=lan` and `/var/lib/stonepi/exposure` as `lan`. When you put StonePi behind a tunnel or public HTTPS, open **Dashboard → Settings → General → Network exposure** and choose **Internet-facing**. Apps tighten reader APIs, SSRF guards, and calendar ICS feeds on the next request — no restart and no nginx edit for display scrapes (those are already denied at the edge).
+Default is **home network only**. Install leaves `STONEPI_EXPOSURE=lan` and `/var/lib/stonepi/exposure` as `lan`. When you put StonePi behind a tunnel or public HTTPS, open **Dashboard → Settings → Network → Network exposure** and choose **Internet-facing**. Apps tighten reader APIs, SSRF guards, and calendar ICS feeds on the next request — no restart and no nginx edit for display scrapes (those are already denied at the edge).
 
 Optional HTTPS: include [`nginx/stonepi-tls.conf`](nginx/stonepi-tls.conf) (Let’s Encrypt paths). Full checklist: [`SECURITY.md`](SECURITY.md).
 
@@ -209,3 +222,14 @@ Application units (enabled on boot):
 - `stonepi-pinboard`
 - `stonepi-studio`
 - `stonepi-pricescout`
+- `stonepi-sportguide`
+- `stonepi-pricewatch`
+
+Platform units (enabled on boot):
+
+- `stonepi-notify` — Displays / TRMNL / ntfy
+- `stonepi-recover` — Recovery Console on `:8099`
+- `stonepi-failover-monitor` — points `/` at Recover while Dashboard is down
+- `stonepi.target` — groups every StonePi unit
+
+Backup units: `stonepi-backup` (USB, runs on insert; the optional weekly `stonepi-backup.timer` is off by default) and `stonepi-local-backup` + `stonepi-local-backup.timer` (timer only when enabled in **Settings → Backup**).

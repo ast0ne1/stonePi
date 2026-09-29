@@ -91,6 +91,8 @@ class Feed(Base):
     translate: Mapped[bool] = mapped_column(Boolean, default=False)
     translate_provider: Mapped[str] = mapped_column(String(20), default="global")
     paywall_skip: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Article text extraction: "standard" (default) or "strict" (drops ads / page furniture).
+    text_cleanup: Mapped[str] = mapped_column(String(20), default="standard")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -156,6 +158,13 @@ class SyncTask(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # SHA-256 of the file as uploaded — lets a same-day re-send skip unchanged papers.
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Set once NewsCast deletes this upload from the reader (replace or retention prune).
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Reader push retries: upload attempts so far and when the last one ran.
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Setting(Base):

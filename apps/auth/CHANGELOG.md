@@ -1,5 +1,22 @@
 # Changelog — Auth
 
+## Unreleased
+
+## 0.1.8 — 2026-09-29
+
+_Moves to the platform version (system app)._
+
+### Added
+- Session cookie carries `fac` so sibling apps can show the factory-password Settings banner without calling Auth `/api/me`
+- Password change re-issues the cookie so the banner clears without signing out
+
+### Changed
+- Status page shows the Auth version.
+- Cache-busting is automatic: `?v=` tokens are a hash of `app/static/` (and the shared fonts), so CSS/JS changes no longer need a hand-bumped `__asset_rev__`.
+- systemd unit: MemoryHigh=150M + OOMScoreAdjust=-200 (prefer keep-alive under Pi memory pressure)
+- Disabled-apps lock list includes Notifications and Recovery (SYSTEM services stay available)
+- Catalog service groups: SYSTEM / USER (replaces System / Apps)
+
 ## 0.1.6 — 2026-09-22
 
 ### Changed

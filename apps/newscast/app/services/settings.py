@@ -72,7 +72,7 @@ TRANSLATE_PROVIDER_IDS = {value for value, _label in TRANSLATE_PROVIDERS}
 DEFAULT_TRANSLATE_PROVIDER = "google"
 DEFAULT_TRANSLATE_TARGET_LANG = "en"
 READER_DEVICES = [
-    ("xteink", "Xteink — CrossPoint"),
+    ("xteink", "Xteink — CrossPoint / CrossInk"),
     ("kobo", "Kobo — KOReader"),
 ]
 READER_DEVICE_IDS = {value for value, _label in READER_DEVICES}
@@ -84,6 +84,34 @@ DEFAULT_KOBO_SSH_PORT = 2222
 DEFAULT_KOBO_SSH_USER = "root"
 DEFAULT_READER_TITLE_PATTERN = "NewsCast - {hostname} {instance} {date}"
 DEFAULT_READER_DATE_FORMAT = "iso"
+# Xteink firmware family. Both answer at crosspoint.local with the same File Transfer API;
+# the choice only switches optional CrossInk styling extras on top of the shared layout.
+READER_FIRMWARES = [
+    ("auto", "Auto-detect"),
+    ("crosspoint", "CrossPoint"),
+    ("crossink", "CrossInk"),
+]
+READER_FIRMWARE_IDS = {value for value, _label in READER_FIRMWARES}
+DEFAULT_READER_FIRMWARE = "auto"
+# Days of NewsCast papers kept on the reader; 0 = never delete. Today + yesterday always stay.
+READER_KEEP_DAYS_CHOICES = [
+    (0, "Off — keep every paper"),
+    (2, "2 days"),
+    (3, "3 days"),
+    (7, "7 days"),
+    (14, "14 days"),
+]
+READER_KEEP_DAYS_VALUES = {value for value, _label in READER_KEEP_DAYS_CHOICES}
+MIN_READER_KEEP_DAYS = 2
+EPUB_CONTENTS_DETAILS = [
+    ("full", "Titles and summaries"),
+    ("titles", "Titles only"),
+    ("auto", "Titles only on busy days"),
+    ("sources", "Categories and sources only"),
+]
+EPUB_CONTENTS_DETAIL_IDS = {value for value, _label in EPUB_CONTENTS_DETAILS}
+DEFAULT_EPUB_CONTENTS_DETAIL = "full"
+DEFAULT_EPUB_CONTENTS_LIMIT = 30
 
 
 def format_interval_short(minutes: int | None) -> str:
@@ -324,16 +352,22 @@ def get_source(db: Session, key: str) -> str:
 
 
 def set_value(db: Session, key: str, value: str) -> None:
-    if _vault_key(key) and _write_vault(key, value):
+    if _vault_key(key):
         row = get_setting_row(db, key)
-        if row is not None:
-            db.delete(row)
-            db.commit()
-        return
+        vaulted = _read_vault(key)
+        if vaulted == value and (row is None or row.value == ""):
+            return
+        if _write_vault(key, value):
+            if row is not None:
+                db.delete(row)
+                db.commit()
+            return
     row = get_setting_row(db, key)
     now = datetime.now(timezone.utc)
     if row is None:
         db.add(Setting(key=key, value=value, updated_at=now))
+    elif row.value == value:
+        return
     else:
         row.value = value
         row.updated_at = now
@@ -414,9 +448,41 @@ def epub_toc_outline_numbers(db: Session) -> bool:
     return publication_flag(db, "epub_toc_outline_numbers", default=True)
 
 
-def epub_cover_first(db: Session) -> bool:
-    """Open EPUB on cover/Contents instead of the nav outline."""
-    return publication_flag(db, "epub_cover_first", default=False)
+def normalize_epub_contents_detail(value: str | None) -> str:
+    key = (value or "").strip().lower()
+    return key if key in EPUB_CONTENTS_DETAIL_IDS else DEFAULT_EPUB_CONTENTS_DETAIL
+
+
+def epub_contents_detail(db: Session) -> str:
+    """Cover Contents: full (titles + summaries), titles only, auto (titles only past a
+    limit), or sources (numbered categories and sources, no story titles)."""
+    return normalize_epub_contents_detail(get_value(db, "epub_contents_detail"))
+
+
+def normalize_epub_contents_limit(value: str | int | None) -> int:
+    try:
+        limit = int(str(value or "").strip())
+    except ValueError:
+        return DEFAULT_EPUB_CONTENTS_LIMIT
+    return min(max(limit, 5), 200)
+
+
+def epub_contents_limit(db: Session) -> int:
+    """Story count above which the auto Contents drops summaries."""
+    return normalize_epub_contents_limit(get_value(db, "epub_contents_limit"))
+
+
+def normalize_reader_firmware(value: str | None) -> str:
+    key = (value or "").strip().lower()
+    return key if key in READER_FIRMWARE_IDS else DEFAULT_READER_FIRMWARE
+
+
+def normalize_reader_keep_days(value: str | int | None) -> int:
+    try:
+        days = int(str(value or "").strip() or 0)
+    except ValueError:
+        return 0
+    return days if days in READER_KEEP_DAYS_VALUES else 0
 
 
 def normalize_reader_device(value: str | None) -> str:

@@ -3,21 +3,54 @@
 {% block title %}Settings · PriceScout{% endblock %}
 {% block content %}
 <section class="hero">
-  <h1>Settings</h1>
+  {% if not settings_hub %}
+  <a class="settings-back" href="{% if settings_level == 'panel' and settings_sections %}/settings?tab={{ settings_tab }}{% else %}/settings{% endif %}">&larr; {% if settings_level == 'panel' and settings_sections %}General{% else %}Settings{% endif %}</a>
+  {% endif %}
+  <h1>{{ settings_title }}</h1>
   <p class="lede">{{ settings_lede }}</p>
 </section>
 
-<div class="settings-tabs">
-  <div class="chips settings-chips" role="tablist" aria-label="Settings sections">
-    <a class="chip-btn{% if settings_tab == 'general' %} is-active{% endif %}" href="/settings?tab=general" role="tab" id="settings-tab-general" aria-selected="{{ 'true' if settings_tab == 'general' else 'false' }}" aria-controls="settings-panel-general">
-      {{ icon("general") }}<span>General</span>
-    </a>
-    <a class="chip-btn{% if settings_tab == 'about' %} is-active{% endif %}" href="/settings?tab=about" role="tab" id="settings-tab-about" aria-selected="{{ 'true' if settings_tab == 'about' else 'false' }}" aria-controls="settings-panel-about">
-      {{ icon("about") }}<span>About</span>
-    </a>
+{% if settings_hub %}
+<nav class="settings-hub" aria-label="Settings groups">
+  {% for group_id, group_label, rows in settings_groups %}
+  <div class="settings-hub-group">
+    <h2 class="settings-hub-heading">{{ group_label }}</h2>
+    <div class="settings-hub-card">
+      {% for key, label, subtext, icon_name in rows %}
+      <a class="settings-hub-row" href="/settings?tab={{ key }}">
+        <span class="settings-hub-icon" aria-hidden="true">{{ icon(icon_name) }}</span>
+        <span class="settings-hub-copy">
+          <span class="settings-hub-title">{{ label }}</span>
+          <span class="settings-hub-sub">{{ subtext }}</span>
+        </span>
+        <span class="settings-hub-chevron" aria-hidden="true">&rsaquo;</span>
+      </a>
+      {% endfor %}
+    </div>
   </div>
-
-  {% if settings_tab == 'general' %}
+  {% endfor %}
+</nav>
+{% elif settings_level == 'list' %}
+<nav class="settings-panel-list" aria-label="Settings sections">
+  <div class="settings-hub-group">
+    <h2 class="settings-hub-heading">Sections</h2>
+    <div class="settings-hub-card">
+      {% for panel_id, label, subtext, icon_name in settings_sections %}
+      <a class="settings-hub-row" href="/settings?tab={{ settings_tab }}&amp;panel={{ panel_id }}">
+        <span class="settings-hub-icon" aria-hidden="true">{{ icon(icon_name) }}</span>
+        <span class="settings-hub-copy">
+          <span class="settings-hub-title">{{ label }}</span>
+          <span class="settings-hub-sub">{{ subtext }}</span>
+        </span>
+        <span class="settings-hub-chevron" aria-hidden="true">&rsaquo;</span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+</nav>
+{% else %}
+<div class="settings-tabs">
+  {% if settings_tab == 'general' and settings_panel == 'preferences' %}
   <div class="stack settings-panel" id="settings-panel-general" role="tabpanel" aria-labelledby="settings-tab-general">
   <form method="post" action="/settings/general" class="card stack">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
@@ -38,6 +71,9 @@
     <p class="hint">Used only for the optional Salling food-waste stream when a token is in Vault. Manage supermarket sources on the Sources page.</p>
     <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("check") }} Save</button>
   </form>
+  </div>
+  {% elif settings_tab == 'general' and settings_panel == 'history' %}
+  <div class="stack settings-panel" id="settings-panel-history" role="tabpanel">
   <form method="post" action="/settings/clear-history" class="card stack">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <h2>Search history</h2>
@@ -45,6 +81,20 @@
     <button class="btn btn-ghost btn-with-icon" type="submit" data-confirm="Clear your search history?">{{ icon("trash") }} Clear search history</button>
   </form>
   </div>
+
+  {% elif settings_tab == 'notifications' %}
+  <div class="stack settings-panel" id="settings-panel-notifications" role="tabpanel" aria-labelledby="settings-tab-notifications">
+  {% from "stonepi/alerts.html" import notifications_card %}
+  {% if notifications_card_state %}
+  {{ notifications_card(notifications_card_state) }}
+  {% else %}
+  <div class="card stack">
+    <h2>{{ icon("notifications") }} Leaflet alerts</h2>
+    <p class="hint">Phone alerts need StonePi sign-in. When PriceScout runs on its own, it doesn't send alerts.</p>
+  </div>
+  {% endif %}
+  </div>
+
   {% else %}
   <div class="stack settings-panel" id="settings-panel-about" role="tabpanel" aria-labelledby="settings-tab-about">
   <div class="card stack about-card">
@@ -57,4 +107,5 @@
   </div>
   {% endif %}
 </div>
+{% endif %}
 {% endblock %}

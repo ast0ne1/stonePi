@@ -11,3 +11,6 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["stonepi_auth*"]
+
+[tool.setuptools.package-data]
+stonepi_auth = ["templates/stonepi/*.html"]

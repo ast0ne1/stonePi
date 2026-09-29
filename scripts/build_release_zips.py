@@ -5,6 +5,11 @@ Usage:
   python scripts/build_release_zips.py
   python scripts/build_release_zips.py --out dist/releases --apps newscast,fileserve
   python scripts/build_release_zips.py --all
+  python scripts/build_release_zips.py --versions-table
+
+App ids come from APP_CATALOG (packages/stonepi_auth/stonepi_auth/catalog.py). Apps marked
+``ships_with: platform`` (the system apps: Dashboard, Auth, Notify, Recover) have no zip of
+their own; they ship inside the platform pack.
 
 App assets are named ``stonepi-{app_id}-{version}.zip`` (StonePi portal variants —
 not standalone upstream apps). Platform packs use ``stonepi-platform-{version}.zip``.
@@ -14,6 +19,8 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import hashlib
+import importlib.util
 import re
 import zipfile
 from pathlib import Path
@@ -21,7 +28,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 VERSION_RE = re.compile(r"__version__\s*=\s*['\"]([^'\"]+)['\"]")
 
-APP_IDS = ("auth", "dashboard", "newscast", "fileserve", "eventtrakr", "pinboard", "studio", "pricescout", "sportguide")
+
+
+def _load_catalog() -> list[dict]:
+    # Load catalog.py on its own: it has no imports, while the stonepi_auth package needs its deps.
+    path = ROOT / "packages" / "stonepi_auth" / "stonepi_auth" / "catalog.py"
+    spec = importlib.util.spec_from_file_location("_stonepi_catalog", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.APP_CATALOG
+
+
+APP_CATALOG = _load_catalog()
+APP_IDS = tuple(item["id"] for item in APP_CATALOG if not item.get("ships_with"))
+PLATFORM_APP_IDS = tuple(item["id"] for item in APP_CATALOG if item.get("ships_with") == "platform")
 APP_INCLUDE = (
     "app",
     "requirements.txt",
@@ -33,7 +53,7 @@ APP_INCLUDE = (
     "run-local.bat",
     "deploy",
 )
-PLATFORM_INCLUDE = ("VERSION", "deploy", "packages", "scripts", "README.md", "CHANGELOG.md")
+PLATFORM_INCLUDE = ("VERSION", "deploy", "packages", "scripts", "README.md", "CHANGELOG.md", *(f"apps/{app_id}" for app_id in PLATFORM_APP_IDS))
 PLATFORM_EXCLUDE_PREFIXES = (
     "deploy/packages/",
 )
@@ -42,6 +62,8 @@ PLATFORM_SCRIPT_EXCLUDE_GLOBS = (
     "scripts/push-*-fixes.*",
     "scripts/apply-*-on-pi.sh",
     "scripts/*-ux-overlay*",
+    "scripts/*-bootstrap-on-pi.sh",
+    "scripts/cleanup-pi-tmp.*",
 )
 
 STONEPI_NOTICE = """\
@@ -145,15 +167,38 @@ def build_platform_zip(out_dir: Path) -> Path:
     return dest
 
 
+def versions_table() -> str:
+    """Markdown for the root CHANGELOG "App versions in this cut" section."""
+    lines = [f"Platform: **{read_platform_version()}**", ""]
+    for group, label in (("system", "System (ships with platform)"), ("user", "Apps")):
+        items = [item for item in APP_CATALOG if (item.get("group") or "user") == group]
+        if not items:
+            continue
+        lines += [f"| {label} | Version |", "|-----|---------|"]
+        for item in items:
+            version = read_app_version(ROOT / "apps" / item["id"])
+            lines.append(f"| {item['id']} | {version} |")
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=ROOT / "dist" / "releases")
     parser.add_argument("--apps", default=",".join(APP_IDS), help="Comma-separated app ids")
     parser.add_argument("--platform", action="store_true", help="Also build stonepi-platform-*.zip")
     parser.add_argument("--all", action="store_true", help="Build every app zip and the platform pack")
+    parser.add_argument("--versions-table", action="store_true", help="Print the CHANGELOG app versions table and exit")
+    parser.add_argument("--checksums", action="store_true", help="Only rewrite SHA256SUMS for the assets already in --out")
     args = parser.parse_args()
+    if args.versions_table:
+        print(versions_table(), end="")
+        return
     out_dir = args.out.resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
+    if args.checksums:
+        write_checksums(out_dir)
+        return
     apps = [item.strip() for item in args.apps.split(",") if item.strip()]
     if args.all:
         apps = list(APP_IDS)
@@ -177,6 +222,19 @@ def main() -> None:
             shown = path
         print(f"wrote {shown}")
     print(f"{len(built)} package(s) in {out_dir}")
+    write_checksums(out_dir)
+
+
+def write_checksums(out_dir: Path) -> Path:
+    """SHA256SUMS (sha256sum format) over every release asset in out_dir; the updater checks it."""
+    rows = []
+    for path in sorted(out_dir.iterdir()):
+        if path.is_file() and path.name.startswith("stonepi-") and path.name.endswith((".zip", ".tar.gz")):
+            rows.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}")
+    dest = out_dir / "SHA256SUMS"
+    dest.write_text("\n".join(rows) + "\n", encoding="utf-8", newline="\n")
+    print(f"wrote SHA256SUMS ({len(rows)} files)")
+    return dest
 
 
 if __name__ == "__main__":

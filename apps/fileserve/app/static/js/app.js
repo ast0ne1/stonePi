@@ -97,28 +97,10 @@ function applyTheme(pref, palette) {
   document.documentElement.style.colorScheme = theme;
   const meta = document.querySelector("[data-theme-color]");
   if (meta) meta.setAttribute("content", THEME_COLORS[chosen][theme]);
-  document.querySelectorAll("[data-theme-set]").forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.themeSet === pref);
-  });
-  document.querySelectorAll("[data-palette-set]").forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.paletteSet === chosen);
-  });
 }
 
 const savedTheme = readShared(THEME_KEY, LEGACY_THEME_KEYS, "system");
 applyTheme(savedTheme);
-document.querySelectorAll("[data-theme-set]").forEach((button) => {
-  button.addEventListener("click", () => {
-    persistPref(THEME_KEY, button.dataset.themeSet);
-    applyTheme(button.dataset.themeSet);
-  });
-});
-document.querySelectorAll("[data-palette-set]").forEach((button) => {
-  button.addEventListener("click", () => {
-    persistPref(PALETTE_KEY, button.dataset.paletteSet);
-    applyTheme(readShared(THEME_KEY, LEGACY_THEME_KEYS, "system"), button.dataset.paletteSet);
-  });
-});
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
   if (readShared(THEME_KEY, LEGACY_THEME_KEYS, "system") === "system") applyTheme("system");
 });
@@ -163,8 +145,45 @@ try {
   /* ignore a bad stored toast */
 }
 
+function appPrefix() {
+  const raw = document.documentElement.getAttribute("data-stonepi-prefix") || "";
+  return raw.replace(/\/$/, "");
+}
+
+function withPrefix(path) {
+  if (!path || typeof path !== "string") return path;
+  // form.action is always an absolute URL; unwrap same-origin paths so we can
+  // re-apply /files (etc.) when the HTML action was root-absolute (/admin/...).
+  try {
+    if (/^https?:\/\//i.test(path)) {
+      const absolute = new URL(path);
+      if (absolute.origin === window.location.origin) {
+        path = absolute.pathname + absolute.search + absolute.hash;
+      } else {
+        return path;
+      }
+    }
+  } catch {
+    /* keep original */
+  }
+  if (!path.startsWith("/") || path.startsWith("//")) return path;
+  const prefix = appPrefix();
+  if (!prefix) return path;
+  if (path === prefix || path.startsWith(prefix + "/")) return path;
+  return prefix + path;
+}
+
+function onLoginPath() {
+  const path = window.location.pathname || "";
+  const prefix = appPrefix();
+  if (prefix && (path === prefix + "/login" || path.startsWith(prefix + "/login/"))) return true;
+  return path === "/login" || path.startsWith("/login/");
+}
+
+window.withPrefix = withPrefix;
+
 async function send(url, options = {}) {
-  const response = await fetch(url, {
+  const response = await fetch(withPrefix(url), {
     credentials: "same-origin",
     headers: {
       Accept: "application/json",
@@ -173,8 +192,8 @@ async function send(url, options = {}) {
     },
     ...options,
   });
-  if (response.status === 401 && !window.location.pathname.startsWith("/login")) {
-    window.location.href = "/login";
+  if (response.status === 401 && !onLoginPath()) {
+    window.location.href = withPrefix("/login");
     throw new Error("Signed out");
   }
   const data = await response.json().catch(() => ({ ok: response.ok, message: response.statusText }));
@@ -182,6 +201,33 @@ async function send(url, options = {}) {
     throw new Error(data.message || data.detail || "Request failed");
   }
   return data;
+}
+
+/** Sheets inside scrolling `.main` break `position:fixed` on iOS — hoist to body. */
+function mountSheetsToBody() {
+  document.querySelectorAll(".sheet").forEach((sheet) => {
+    if (sheet.parentElement !== document.body) {
+      document.body.appendChild(sheet);
+    }
+  });
+}
+mountSheetsToBody();
+
+function openSheetEl(sheet) {
+  mountSheetsToBody();
+  sheet.hidden = false;
+  sheet.classList.add("is-open");
+  document.documentElement.classList.add("sheet-open");
+  document.body.classList.add("sheet-open");
+}
+
+function closeSheetEl(sheet) {
+  sheet.hidden = true;
+  sheet.classList.remove("is-open");
+  if (!document.querySelector(".sheet.is-open")) {
+    document.documentElement.classList.remove("sheet-open");
+    document.body.classList.remove("sheet-open");
+  }
 }
 
 function askConfirm({ title, body, okLabel }) {
@@ -199,8 +245,7 @@ function askConfirm({ title, body, okLabel }) {
     }
     if (okBtn) okBtn.textContent = okLabel || "Remove";
     const finish = (value) => {
-      sheet.hidden = true;
-      sheet.classList.remove("is-open");
+      closeSheetEl(sheet);
       sheet.removeEventListener("click", onBackdrop);
       okBtn?.removeEventListener("click", onOk);
       cancelBtn?.removeEventListener("click", onCancel);
@@ -219,8 +264,7 @@ function askConfirm({ title, body, okLabel }) {
     okBtn?.addEventListener("click", onOk);
     cancelBtn?.addEventListener("click", onCancel);
     document.addEventListener("keydown", onKey);
-    sheet.hidden = false;
-    sheet.classList.add("is-open");
+    openSheetEl(sheet);
     okBtn?.focus();
   });
 }
@@ -248,7 +292,7 @@ document.querySelectorAll("form").forEach((form) => {
     }
     const body = new FormData(form);
     const button = form.querySelector("[type=submit]");
-    const originalLabel = button?.textContent;
+    const originalLabel = button?.innerHTML;
     showFormError(form, "");
     if (button) {
       button.disabled = true;
@@ -257,7 +301,7 @@ document.querySelectorAll("form").forEach((form) => {
     try {
       const data = await send(form.action, { method: "POST", body });
       if (data.reauth) {
-        window.location.href = "/login";
+        window.location.href = withPrefix("/login");
         return;
       }
       if (data.reveal) {
@@ -275,7 +319,7 @@ document.querySelectorAll("form").forEach((form) => {
     } finally {
       if (button) {
         button.disabled = false;
-        if (originalLabel) button.textContent = originalLabel;
+        if (originalLabel) button.innerHTML = originalLabel;
       }
     }
   });
@@ -288,25 +332,134 @@ if (settingsRoot) {
   const settingsForm = settingsRoot.querySelector("[data-settings]");
   const settingsTabField = settingsRoot.querySelector("[data-settings-tab-field]");
   const settingsLede = document.querySelector("[data-settings-lede]");
+  const settingsTitle = document.querySelector("[data-settings-title]");
+  const settingsBack = document.querySelector("[data-settings-hub-back]");
+  const hubList = settingsRoot.querySelector("[data-settings-hub-list]");
+  const panelList = settingsRoot.querySelector("[data-settings-panel-list]");
+  const panelListRows = settingsRoot.querySelector("[data-settings-panel-list-rows]");
+  const sectionEl = settingsRoot.querySelector("[data-settings-section]");
+  const hubLede = settingsRoot.dataset.settingsHubLede || "";
 
-  function showSettingsTab(tab) {
-    const next = [...settingsChips].some((chip) => chip.dataset.settingsTab === tab) ? tab : "device";
+  function chipFor(tab) {
+    return [...settingsChips].find((chip) => chip.dataset.settingsTab === tab);
+  }
+
+  function tabLabel(tab) {
+    return chipFor(tab)?.querySelector("span")?.textContent?.trim() || tab;
+  }
+
+  function cardsFor(tab) {
+    const panel = settingsRoot.querySelector(`[data-settings-panel="${tab}"]`);
+    return panel ? [...panel.querySelectorAll("[data-settings-panel-card]")] : [];
+  }
+
+  function setMode({ hub = false, panelListMode = false } = {}) {
+    settingsRoot.classList.toggle("is-hub", hub);
+    settingsRoot.classList.toggle("is-panel-list", panelListMode);
+    settingsRoot.dataset.settingsHub = hub ? "true" : "false";
+    if (hubList) hubList.hidden = !hub;
+    if (panelList) panelList.hidden = !panelListMode;
+    if (sectionEl) sectionEl.hidden = hub || panelListMode;
+    if (settingsBack) {
+      settingsBack.hidden = hub;
+      settingsBack.textContent = settingsBack.dataset.backTo === "panelList"
+        ? `← ${tabLabel(settingsRoot.dataset.settingsActiveTab || "")}`
+        : "← Settings";
+    }
+  }
+
+  function renderPanelList(tab) {
+    if (!panelListRows) return;
+    panelListRows.innerHTML = "";
+    cardsFor(tab).forEach((card) => {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "settings-hub-row";
+      row.dataset.settingsPanelRow = card.dataset.settingsPanelCard;
+      const icon = card.querySelector(".section-heading svg");
+      row.innerHTML =
+        `<span class="settings-hub-icon" aria-hidden="true"></span>` +
+        `<span class="settings-hub-copy">` +
+        `<span class="settings-hub-title"></span>` +
+        `<span class="settings-hub-sub"></span>` +
+        `</span>` +
+        `<span class="settings-hub-chevron" aria-hidden="true">›</span>`;
+      if (icon) row.querySelector(".settings-hub-icon").appendChild(icon.cloneNode(true));
+      row.querySelector(".settings-hub-title").textContent = card.dataset.panelLabel || card.dataset.settingsPanelCard;
+      row.querySelector(".settings-hub-sub").textContent = card.dataset.panelSub || "Open this section";
+      panelListRows.appendChild(row);
+    });
+  }
+
+  function applyCards(tab, panelId) {
+    const cards = cardsFor(tab);
+    if (cards.length < 2) {
+      cards.forEach((card) => card.classList.remove("is-panel-hidden"));
+      return null;
+    }
+    const ids = new Set(cards.map((card) => card.dataset.settingsPanelCard));
+    const active = ids.has(panelId) ? panelId : cards[0].dataset.settingsPanelCard;
+    cards.forEach((card) => {
+      card.classList.toggle("is-panel-hidden", card.dataset.settingsPanelCard !== active);
+    });
+    const panel = settingsRoot.querySelector(`[data-settings-panel="${tab}"]`);
+    panel?.querySelectorAll("[data-settings-with-card]").forEach((el) => {
+      el.classList.toggle("is-panel-hidden", el.dataset.settingsWithCard !== active);
+    });
+    return active;
+  }
+
+  function showSettingsTab(tab, { hub = false, panel = null, panelListMode = false } = {}) {
+    const next = chipFor(tab) ? tab : settingsChips[0]?.dataset.settingsTab || "device";
+    const multi = cardsFor(next).length > 1;
+    const showHub = Boolean(hub);
+    const showList = !showHub && Boolean(panelListMode) && multi;
+    settingsRoot.dataset.settingsActiveTab = next;
+    if (settingsBack) settingsBack.dataset.backTo = !showHub && !showList && multi ? "panelList" : "hub";
+    setMode({ hub: showHub, panelListMode: showList });
+
     settingsChips.forEach((chip) => {
       const on = chip.dataset.settingsTab === next;
       chip.classList.toggle("is-active", on);
       chip.setAttribute("aria-selected", on ? "true" : "false");
     });
-    settingsRoot.querySelectorAll("[data-settings-panel]").forEach((panel) => {
-      panel.hidden = panel.dataset.settingsPanel !== next;
+    settingsRoot.querySelectorAll("[data-settings-panel]").forEach((panelEl) => {
+      panelEl.hidden = showHub || showList || panelEl.dataset.settingsPanel !== next;
     });
-    if (settingsForm) settingsForm.hidden = !SETTINGS_SAVE_TABS.has(next);
+    if (settingsForm) settingsForm.hidden = showHub || showList || !SETTINGS_SAVE_TABS.has(next);
     if (settingsTabField) settingsTabField.value = next;
-    const activeChip = [...settingsChips].find((chip) => chip.dataset.settingsTab === next);
-    if (settingsLede && activeChip?.dataset.settingsLede) {
-      settingsLede.textContent = activeChip.dataset.settingsLede;
+
+    const activeChip = chipFor(next);
+    let applied = null;
+    if (showHub) {
+      if (settingsTitle) settingsTitle.textContent = "Settings";
+      if (settingsLede) settingsLede.textContent = hubLede;
+    } else if (showList) {
+      renderPanelList(next);
+      if (settingsTitle) settingsTitle.textContent = tabLabel(next);
+      if (settingsLede) settingsLede.textContent = "Choose a section.";
+    } else {
+      applied = applyCards(next, panel);
+      const activeCard = cardsFor(next).find((card) => card.dataset.settingsPanelCard === applied);
+      if (settingsTitle) {
+        settingsTitle.textContent = multi && activeCard?.dataset.panelLabel
+          ? activeCard.dataset.panelLabel
+          : tabLabel(next);
+      }
+      if (settingsLede && activeChip?.dataset.settingsLede) {
+        settingsLede.textContent = activeChip.dataset.settingsLede;
+      }
     }
+
     const url = new URL(window.location.href);
-    url.searchParams.set("tab", next);
+    if (showHub) {
+      url.searchParams.delete("tab");
+      url.searchParams.delete("panel");
+    } else {
+      url.searchParams.set("tab", next);
+      if (showList || !applied) url.searchParams.delete("panel");
+      else url.searchParams.set("panel", applied);
+    }
     window.history.replaceState(null, "", url);
   }
 
@@ -314,9 +467,48 @@ if (settingsRoot) {
     chip.addEventListener("click", (event) => {
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       event.preventDefault();
-      showSettingsTab(chip.dataset.settingsTab);
+      const tab = chip.dataset.settingsTab;
+      if (cardsFor(tab).length > 1) showSettingsTab(tab, { panelListMode: true });
+      else showSettingsTab(tab);
     });
   });
+
+  settingsRoot.querySelectorAll("[data-settings-hub-row]").forEach((row) => {
+    row.addEventListener("click", (event) => {
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      const tab = row.dataset.settingsHubRow;
+      if (cardsFor(tab).length > 1) showSettingsTab(tab, { panelListMode: true });
+      else showSettingsTab(tab);
+    });
+  });
+
+  panelList?.addEventListener("click", (event) => {
+    const row = event.target.closest("[data-settings-panel-row]");
+    if (!row || !panelList.contains(row)) return;
+    event.preventDefault();
+    showSettingsTab(settingsRoot.dataset.settingsActiveTab || "device", {
+      panel: row.dataset.settingsPanelRow,
+    });
+  });
+
+  settingsBack?.addEventListener("click", (event) => {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    const tab = settingsRoot.dataset.settingsActiveTab || "device";
+    if (settingsBack.dataset.backTo === "panelList") showSettingsTab(tab, { panelListMode: true });
+    else showSettingsTab(tab, { hub: true });
+  });
+
+  const initialHub = settingsRoot.dataset.settingsHub === "true";
+  const urlPanel = new URL(window.location.href).searchParams.get("panel");
+  if (initialHub) {
+    setMode({ hub: true });
+  } else {
+    const tab = settingsRoot.dataset.settingsActiveTab || "device";
+    if (cardsFor(tab).length > 1 && !urlPanel) showSettingsTab(tab, { panelListMode: true });
+    else showSettingsTab(tab, { panel: urlPanel || settingsRoot.dataset.settingsActivePanel || null });
+  }
 }
 
 const addTabsRoot = document.querySelector("[data-add-tabs]");
@@ -334,7 +526,7 @@ if (addTabsRoot) {
       panel.hidden = panel.dataset.addPanel !== next;
     });
     const path = next === "url" ? "/admin/add/url" : "/admin/add";
-    window.history.replaceState(null, "", path);
+    window.history.replaceState(null, "", withPrefix(path));
   }
 
   addChips.forEach((chip) => {
@@ -424,14 +616,13 @@ const editForm = editSheet?.querySelector("[data-edit-form]");
 
 function closeEditSheet() {
   if (!editSheet) return;
-  editSheet.hidden = true;
-  editSheet.classList.remove("is-open");
+  closeSheetEl(editSheet);
 }
 
 function openEditSheet(button) {
   if (!editSheet || !editForm) return;
   const protectedOn = button.dataset.pageProtected === "1";
-  editForm.action = `/admin/edit/${button.dataset.pageId}`;
+  editForm.action = withPrefix(`/admin/edit/${button.dataset.pageId}`);
   const titleEl = editSheet.querySelector("[data-edit-title]");
   if (titleEl) titleEl.textContent = `Edit ${button.dataset.pageLabel || "page"}`;
   const label = editForm.querySelector("[data-label-field]");
@@ -463,20 +654,34 @@ function openEditSheet(button) {
   showFormError(editForm, "");
   syncProtectFields(editForm);
   syncExpiryFields(editForm);
-  editSheet.hidden = false;
-  editSheet.classList.add("is-open");
+  openSheetEl(editSheet);
   label?.focus();
 }
 
 document.querySelectorAll("[data-edit-page]").forEach((button) => {
-  button.addEventListener("click", () => openEditSheet(button));
+  button.addEventListener("click", () => {
+    button.closest(".hosted-more")?.removeAttribute("open");
+    openEditSheet(button);
+  });
 });
 editSheet?.querySelector("[data-close-edit]")?.addEventListener("click", closeEditSheet);
 editSheet?.addEventListener("click", (event) => {
   if (event.target === editSheet) closeEditSheet();
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && editSheet && !editSheet.hidden) closeEditSheet();
+  if (event.key !== "Escape") return;
+  if (editSheet && !editSheet.hidden) {
+    closeEditSheet();
+    return;
+  }
+  const openShare = document.querySelector("[data-share-sheet]:not([hidden])");
+  if (openShare) {
+    closeSheetEl(openShare);
+    return;
+  }
+  document.querySelectorAll(".hosted-more[open]").forEach((details) => {
+    details.open = false;
+  });
 });
 
 document.querySelectorAll("[data-file-picker]").forEach((input) => {
@@ -524,6 +729,61 @@ async function copyText(value) {
 
 document.querySelectorAll("[data-copy]").forEach((button) => {
   button.addEventListener("click", () => copyText(button.dataset.copy));
+});
+
+const shareSheet = document.querySelector("[data-share-sheet]");
+const shareTitle = shareSheet?.querySelector("[data-share-title]");
+const shareQr = shareSheet?.querySelector("[data-share-qr]");
+const shareUrl = shareSheet?.querySelector("[data-share-url]");
+const shareCopy = shareSheet?.querySelector("[data-share-copy]");
+const shareDownload = shareSheet?.querySelector("[data-share-download]");
+const sharePrint = shareSheet?.querySelector("[data-share-print]");
+
+function closeShareSheet() {
+  if (!shareSheet) return;
+  closeSheetEl(shareSheet);
+}
+
+function openShareSheet(card) {
+  if (!shareSheet || !card) return;
+  const label = card.dataset.shareLabel || "page";
+  const url = card.dataset.shareUrl || "";
+  if (shareTitle) shareTitle.textContent = `Share ${label}`;
+  if (shareQr) {
+    shareQr.src = card.dataset.shareQr || "";
+    shareQr.alt = `QR code for ${label}`;
+  }
+  if (shareUrl) shareUrl.textContent = url;
+  if (shareCopy) shareCopy.dataset.copy = url;
+  if (shareDownload) shareDownload.href = card.dataset.shareDownload || "#";
+  if (sharePrint) sharePrint.href = card.dataset.sharePrint || "#";
+  openSheetEl(shareSheet);
+}
+
+document.querySelectorAll("[data-share-page]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const card = button.closest("[data-page-card]");
+    openShareSheet(card);
+  });
+});
+shareSheet?.querySelector("[data-close-share]")?.addEventListener("click", closeShareSheet);
+shareSheet?.addEventListener("click", (event) => {
+  if (event.target === shareSheet) closeShareSheet();
+});
+shareCopy?.addEventListener("click", () => copyText(shareCopy.dataset.copy || shareUrl?.textContent || ""));
+
+document.querySelectorAll(".hosted-more").forEach((details) => {
+  details.addEventListener("toggle", () => {
+    if (!details.open) return;
+    document.querySelectorAll(".hosted-more[open]").forEach((other) => {
+      if (other !== details) other.open = false;
+    });
+  });
+});
+document.addEventListener("click", (event) => {
+  document.querySelectorAll(".hosted-more[open]").forEach((details) => {
+    if (!details.contains(event.target)) details.open = false;
+  });
 });
 
 const pageList = document.querySelector("[data-page-list]");

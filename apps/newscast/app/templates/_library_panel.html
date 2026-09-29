@@ -1,0 +1,62 @@
+{% from "_icons.html" import icon %}
+{# Reader → Library: your own EPUB/PDF files, offered in the reader's OPDS Library. #}
+<div class="device-panels">
+<form method="post" action="/library" class="card stack panel saved-form device-panel-span" enctype="multipart/form-data" data-busy-label="Adding…">
+  <div class="panel-head">
+    <h2 class="section-heading">{{ icon("plus-file") }} Add a file</h2>
+    <p class="hint">Goes to your OPDS Library, where the reader can browse and download it. Not part of your feeds or today’s paper.</p>
+  </div>
+  <div class="panel-form">
+    <p class="error-text" hidden data-form-error></p>
+    <label>
+      Title
+      <input type="text" name="title" autocomplete="off" placeholder="Optional" />
+    </label>
+    <label class="file-field">
+      File
+      <input type="file" name="file" accept=".epub,.pdf,application/epub+zip,application/pdf" required />
+    </label>
+    <label class="check">
+      <input type="checkbox" name="queue_for_reader" value="1" />
+      <span>Also send to reader</span>
+    </label>
+    <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("plus-file") }} Add to Library</button>
+  </div>
+</form>
+
+<div class="card stack device-panel-span">
+  <h2 class="section-heading">{{ icon("files") }} Your files</h2>
+  {% if library_files %}
+  <p class="hint">Send to reader uploads a file straight away. If the reader is asleep, it waits in <a class="text-link" href="/device?tab=send">Send</a> and goes out when the reader is next on Wi-Fi.</p>
+  <ul class="feed-list file-list">
+    {% for item in library_files %}
+    <li class="feed-row library-row">
+      <div class="feed-copy">
+        <h3>{{ item.title }}</h3>
+        <p class="meta">{{ item.original_name }} · {{ item.size }}{% if item.created_at %} · added {{ item.created_at }} UTC{% endif %}</p>
+        {% if item.sent_label and not item.waiting %}<p class="meta library-on-reader">On reader · sent {{ item.sent_label }}</p>{% endif %}
+      </div>
+      {% if item.waiting %}
+      <a class="chip chip-quiet library-waiting" href="/device?tab=send" title="Waiting in the Send queue for the reader">Waiting to send</a>
+      {% else %}
+      {# Already on the reader: a quieter "Send again" instead of the main action. #}
+      <form method="post" action="/library/{{ item.id }}/push" class="library-push">
+        <button class="btn {{ 'btn-ghost' if item.sent_label else 'btn-secondary' }} btn-with-icon" type="submit">{{ icon("upload") }} <span class="btn-label-full">{{ 'Send again' if item.sent_label else 'Send to reader' }}</span><span class="btn-label-short">{{ 'Again' if item.sent_label else 'Send' }}</span></button>
+      </form>
+      {% endif %}
+      <form method="post" action="/library/{{ item.id }}/delete" data-confirm="Remove this file from Library?" data-confirm-detail="It leaves OPDS Library and will not be offered on the next push." data-confirm-ok="Remove">
+        <button class="icon-btn" type="submit" aria-label="Delete {{ item.title }}" title="Remove file">
+          {{ icon("trash") }}
+        </button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty">
+    <p>No files in your library yet.</p>
+    <p class="hint">Add an EPUB or PDF above. It appears in the reader’s OPDS Library, and you can send it to the reader from here.</p>
+  </div>
+  {% endif %}
+</div>
+</div>

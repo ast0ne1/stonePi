@@ -56,6 +56,36 @@ def test_login_screen_shows_sign_in(client):
     assert "admin / admin" in html
     assert "login-shell" in html
     assert "login-card" in html
+    assert 'data-stonepi-prefix=""' in html
+
+
+def test_html_exposes_stonepi_prefix(tmp_path, monkeypatch):
+    hosted = tmp_path / "hosted"
+    hosted.mkdir()
+    tls = tmp_path / "tls"
+    tls.mkdir()
+    monkeypatch.setattr("app.services.pages.HOSTED_DIR", hosted)
+    monkeypatch.setattr("app.services.backup.HOSTED_DIR", hosted)
+    monkeypatch.setattr("app.services.users.HOSTED_DIR", hosted)
+    monkeypatch.setattr("app.services.tls.TLS_DIR", tls)
+    monkeypatch.setattr("app.services.backup.TLS_DIR", tls)
+    monkeypatch.setattr("app.auth.env.stonepi_session_secret", "")
+    monkeypatch.setattr("app.main.env.stonepi_session_secret", "")
+    monkeypatch.setattr("app.auth.env.stonepi_prefix", "/files")
+    monkeypatch.setattr("app.main.env.stonepi_prefix", "/files")
+    flask_app = create_app(
+        {
+            "TESTING": True,
+            "SECRET_KEY": "test",
+            "DATABASE_URL": f"sqlite:///{(tmp_path / 'prefix.db').as_posix()}",
+        }
+    )
+    prefix_client = flask_app.test_client()
+    login_html = prefix_client.get("/login").get_data(as_text=True)
+    assert 'data-stonepi-prefix="/files"' in login_html
+    _login(prefix_client)
+    admin_html = prefix_client.get("/admin").get_data(as_text=True)
+    assert 'data-stonepi-prefix="/files"' in admin_html
 
 
 def test_add_page_uses_full_width_file_picker(client):
@@ -72,6 +102,14 @@ def test_add_page_uses_full_width_file_picker(client):
     assert "Removed manually" in html
     assert "Custom date" in html
     assert ".zip" in html
+
+
+def test_pages_add_button_links_to_add_page(client):
+    _login(client)
+    html = client.get("/admin").get_data(as_text=True)
+    assert 'data-add-sheet' not in html
+    assert 'href="/admin/add"' in html
+    assert "Add page" in html
 
 
 def test_admin_requires_login(client):
@@ -114,10 +152,12 @@ def test_delete_removes_page(client):
     listed = client.get("/admin")
     html = listed.get_data(as_text=True)
     assert "Travel Planner" in html
+    assert "data-share-page" in html
+    assert "data-share-sheet" in html
     assert "qr-frame" in html
     assert "qr-image" in html
     assert "data:image/png" in html
-    assert "Scan to open this page" in html
+    assert "Scan on a phone or tablet" in html
     assert "/travel-planner" in html
     assert "<svg" in html
     assert "data-edit-page" in html
@@ -241,6 +281,13 @@ def test_page_expiry_and_purge(client):
     assert client.get("/temp-note").status_code == 404
 
 
+
+def test_favicon_served_without_db_session(client):
+    res = client.get("/favicon.ico")
+    assert res.status_code == 200
+    assert res.mimetype == "image/svg+xml"
+    assert b"<svg" in res.data
+
 def test_disable_hides_page_without_deleting(client):
     _login(client)
     html = b"<html><body>Stay</body></html>"
@@ -250,8 +297,8 @@ def test_disable_hides_page_without_deleting(client):
         content_type="multipart/form-data",
     )
     listed = client.get("/admin").get_data(as_text=True)
-    assert "toggle" in listed
-    assert "Enabled" in listed
+    assert "hosted-live" in listed
+    assert "Live" in listed
     off = client.post(
         "/admin/toggle/1",
         headers={"Accept": "application/json", "X-Requested-With": "fetch"},
@@ -478,13 +525,12 @@ def test_description_browse_and_open_count(client):
     listed = client.get("/admin").get_data(as_text=True)
     assert "Kitchen folder" in listed
     assert "data-page-search" in listed
-    assert "Copy URL" in listed
-    assert "Download QR" in listed
-    assert "Print QR" in listed
-    assert "title=\"Copy URL\"" in listed
-    assert "title=\"Download file\"" in listed
-    assert "title=\"Download QR\"" in listed
-    assert "title=\"Print QR\"" in listed
+    assert 'title="Copy URL' in listed
+    assert "data-share-page" in listed
+    assert "Save QR" in listed
+    assert "Print" in listed
+    assert "Download file" in listed
+    assert "data-edit-page" in listed
     db = database.SessionLocal()
     try:
         page = db.query(Page).one()

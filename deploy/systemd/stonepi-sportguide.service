@@ -2,6 +2,8 @@
 Description=StonePi SportGuide
 After=network-online.target stonepi-auth.service
 Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -13,9 +15,13 @@ Environment=HOME=/opt/stonepi
 Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/stonepi/.cache/ms-playwright
 WorkingDirectory=/opt/stonepi/apps/sportguide
 ExecStart=/opt/stonepi/apps/sportguide/.venv/bin/python -m app.serve
-Restart=on-failure
+Restart=always
 RestartSec=5
 NoNewPrivileges=yes
+Nice=10
+CPUWeight=20
+IOWeight=20
+MemoryMax=400M
 
 [Install]
 WantedBy=multi-user.target

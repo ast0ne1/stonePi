@@ -1,0 +1,44 @@
+<script>
+  (function () {
+    function readCookie(name) {
+      var m = document.cookie.match(
+        new RegExp("(?:^|; )" + name.replace(/([.$?*|{}()[\]\\/+^])/g, "\\$1") + "=([^;]*)")
+      );
+      return m ? decodeURIComponent(m[1]) : null;
+    }
+    function writeCookie(name, value) {
+      document.cookie =
+        name + "=" + encodeURIComponent(value) + "; Path=/; SameSite=Lax; Max-Age=31536000";
+    }
+    function readPref(shared, legacy, fallback) {
+      var value = readCookie(shared) || localStorage.getItem(shared);
+      if (!value) {
+        for (var i = 0; i < legacy.length; i++) {
+          value = readCookie(legacy[i]) || localStorage.getItem(legacy[i]);
+          if (value) break;
+        }
+      }
+      if (value) {
+        try {
+          localStorage.setItem(shared, value);
+        } catch (e) {}
+        writeCookie(shared, value);
+        return value;
+      }
+      return fallback;
+    }
+    var pref = readPref("stonepi-theme", ["newscast-theme", "fileserve-theme", "eventtrakr-theme"], "system");
+    var dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    var theme = pref === "system" ? (dark ? "dark" : "light") : pref;
+    var palette = readPref(
+      "stonepi-palette",
+      ["newscast-palette", "fileserve-palette", "eventtrakr-palette"],
+      "default"
+    );
+    if (!/^(default|ocean|forest|slate)$/.test(palette)) palette = "default";
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.dataset.themePref = pref;
+    document.documentElement.dataset.palette = palette;
+    document.documentElement.style.colorScheme = theme;
+  })();
+</script>

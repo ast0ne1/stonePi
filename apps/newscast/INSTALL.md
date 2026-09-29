@@ -96,7 +96,7 @@ Use the first number it prints, for example `http://192.168.1.20:8080`.
 
 HTTPS is **off by default**. Turn it on under **Settings → General → Use HTTPS on the LAN**. NewsCast creates a household certificate and serves HTTPS on the **same port** (usually 8080). The app restarts after you save.
 
-1. Set a **Hostname** first if you want `https://newscast.local:8080` (recommended).
+1. On a StonePi appliance, set the hostname under **Dashboard → Settings → Network** if you want `https://stonepi.local` (or another short name). Solo NewsCast installs can still pass `--hostname` to `deploy/install.sh`.
 2. Enable **Use HTTPS on the LAN** and save. Wait for the restart.
 3. Open `https://newscast.local:8080` (or `https://<pi-ip>:8080`).
 4. Download the **root CA** from Settings → General and trust it once on each phone or PC:
@@ -189,7 +189,7 @@ Then in SSH, the install folder is still `~/Desktop/NewsCast-pi`.
 
 - **Feeds** and **Catalog** add news sources. Non-admins only see Catalog entries the admin approved.
 - **Refresh** in the header pulls stories.
-- **Settings** is split into tabs: General (hostname, instance name, HTTPS, interface language), Publication, Schedule, Filters, Translation, LLM (OpenAI or Ollama), Reader (CrossPoint or Kobo push), Notifications (ntfy), Categories, Catalog approvals, Users, Backup/Restore, Update (GitHub Releases), and About. Non-admins only see the tabs that apply to them.
+- **Settings** is split into tabs: Device (instance name, HTTPS when not under StonePi SSO, interface language), Publication, Schedule, Filters, Translation, LLM (OpenAI or Ollama), Reader (CrossPoint or Kobo push), Notifications (StonePi Destinations), Categories, Catalog approvals, Users, Backup/Restore, Update (GitHub Releases), and About. Non-admins only see the tabs that apply to them. Appliance hostname lives under **Dashboard → Settings → Network**.
 - **Status** shows your personal OPDS URL (`/opds/u/<username>`) for the reader catalog.
 - **Search** finds stories, favourites, and Saved long-reads. Briefing has Today and Yesterday. Feeds can mute a source for 24 hours.
 - NewsCast starts by itself when the Pi is turned on.
@@ -229,4 +229,4 @@ After the project is on GitHub with a Release, you can also update from **Settin
 | `ssh` says connection refused | SSH is off. Enable it in Raspberry Pi Configuration → Interfaces, or in Raspberry Pi Imager before writing the card. |
 | `ssh` cannot find `raspberrypi.local` | Same Wi‑Fi as the Pi. Or use the IP from your router instead of the name. |
 | Sign-in does not work | Use `admin` / `admin` unless you already changed it in Settings. |
-| Want a different name | On the Pi: `sudo /opt/newscast/deploy/set-hostname.sh living-room` or change **Hostname** on the Settings page. |
+| Want a different name | On StonePi: **Dashboard → Settings → Network → Hostname**. Solo install: `sudo hostnamectl set-hostname living-room` (and update Avahi / `.env` as needed). |

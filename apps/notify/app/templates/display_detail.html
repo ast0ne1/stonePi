@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon as svg %}
+{% from "_filter_icon.html" import filter_icon %}
+{% block title %}{{ display.name }} · Displays{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <a class="settings-back" href="/displays">&larr; Displays</a>
+  <h1>{{ display.name }}</h1>
+  <p class="lede">
+    {% if display.builtin %}Built-in household overview.{% else %}Custom Display.{% endif %}
+    {{ display.widgets|length }} widget{{ '' if display.widgets|length == 1 else 's' }} ·
+    {% if display.trmnl.enabled and webhook_set %}pushing to TRMNL every {{ display.trmnl.interval_minutes }} min{% else %}TRMNL push off{% endif %}
+  </p>
+</section>
+
+<section class="card stack builder" data-display-builder aria-labelledby="builder-heading">
+  <div class="builder-head">
+    <h2 class="section-heading" id="builder-heading">{{ filter_icon('widgets') }} Screen</h2>
+    <div class="builder-controls">
+      <label class="builder-device">
+        <span class="sr-only">Device</span>
+        <select data-builder-device aria-label="Device">
+          {% for d in devices %}
+          <option value="{{ d.id }}" {% if display.device == d.id %}selected{% endif %}>{{ d.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="builder-device">
+        <span class="sr-only">Title bar</span>
+        <select data-builder-title-bar aria-label="Title bar">
+          <option value="bottom" {% if display.title_bar == 'bottom' %}selected{% endif %}>Title bar at bottom</option>
+          <option value="top" {% if display.title_bar == 'top' %}selected{% endif %}>Title bar at top</option>
+          <option value="off" {% if display.title_bar == 'off' %}selected{% endif %}>No title bar</option>
+        </select>
+      </label>
+      <label class="builder-device" data-builder-date-wrap {% if display.title_bar == 'off' %}hidden{% endif %}>
+        <span class="sr-only">Date format</span>
+        <select data-builder-date-format aria-label="Title bar date format">
+          {% for key, label in date_formats %}
+          <option value="{{ key }}" {% if display.date_format == key %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="seg" role="group" aria-label="Preview data">
+        <button type="button" class="seg-btn" data-builder-data="sample" aria-pressed="true">Sample data</button>
+        <button type="button" class="seg-btn" data-builder-data="live" aria-pressed="false">Live data</button>
+      </div>
+      <label class="check builder-eink">
+        <input type="checkbox" data-builder-eink checked />
+        <span>E-ink look</span>
+      </label>
+    </div>
+  </div>
+
+  <div class="builder-body">
+    <aside class="builder-tray" aria-label="Widgets">
+      <p class="hint">Drag a widget onto the screen, or tap to add it to the first free space.</p>
+      <ul class="tray-list" data-builder-tray>
+        {% for w in available_widgets %}
+        <li>
+          <button type="button" class="tray-item" data-tray-widget="{{ w.id }}" title="{{ w.blurb }}">
+            <span class="tray-item-label">{{ w.label }}</span>
+            <span class="tray-item-app">{{ w.app }}</span>
+          </button>
+        </li>
+        {% endfor %}
+      </ul>
+      <div class="tray-unplaced" data-builder-unplaced hidden>
+        <p class="hint"><strong>Not on screen</strong> — no free space. Make room, then drag these back in.</p>
+        <ul class="tray-list" data-builder-unplaced-list></ul>
+      </div>
+    </aside>
+
+    <div class="builder-stage" data-builder-stage>
+      <div class="device-frame" data-device-frame>
+        <div class="device-screen" data-device-screen>
+          <div class="device-screen-inner" data-device-inner>
+            <iframe class="device-preview" data-builder-preview sandbox="allow-scripts" title="TRMNL preview of {{ display.name }}" tabindex="-1"></iframe>
+            <div class="grid-overlay" data-builder-overlay aria-label="Screen layout. Use arrow keys on a widget to move it, plus and minus to resize, Delete to remove."></div>
+          </div>
+        </div>
+      </div>
+      <p class="hint builder-status" data-builder-status role="status">Loading preview…</p>
+    </div>
+  </div>
+
+  <div class="builder-inspector" data-builder-inspector hidden>
+    <div class="builder-inspector-name">
+      <strong data-inspector-name></strong>
+      <span class="muted" data-inspector-where></span>
+    </div>
+    <div class="seg" role="group" aria-label="Widget size" data-inspector-sizes></div>
+    <button type="button" class="btn btn-ghost btn-with-icon" data-inspector-remove>{{ svg('trash') }} Remove</button>
+  </div>
+
+  <form method="post" action="/displays/{{ display.id }}/save" class="row-actions builder-actions" data-builder-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="name" value="{{ display.name }}" />
+    <input type="hidden" name="device" value="{{ display.device }}" data-builder-device-field />
+    <input type="hidden" name="title_bar" value="{{ display.title_bar }}" data-builder-title-bar-field />
+    <input type="hidden" name="date_format" value="{{ display.date_format }}" data-builder-date-format-field />
+    <input type="hidden" name="widgets_json" value="" data-builder-widgets-field />
+    <button type="submit" class="btn btn-primary btn-with-icon" data-builder-save>{{ svg('check') }} Save layout</button>
+    <button type="button" class="btn btn-ghost btn-with-icon" data-builder-reset disabled>{{ svg('undo') }} Undo changes</button>
+    <span class="hint" data-builder-dirty hidden>Unsaved changes</span>
+  </form>
+
+  <noscript>
+    <form method="post" action="/displays/{{ display.id }}/save" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="name" value="{{ display.name }}" />
+      <label>
+        Add widget
+        <select name="add_widget">
+          <option value="">— Choose —</option>
+          {% for w in available_widgets %}<option value="{{ w.id }}">{{ w.label }} ({{ w.app }})</option>{% endfor %}
+        </select>
+      </label>
+      <button type="submit" class="btn btn-primary">Add</button>
+    </form>
+  </noscript>
+</section>
+<script type="application/json" id="builder-data">{{ builder|tojson }}</script>
+
+<section class="card stack" id="trmnl" aria-labelledby="trmnl-heading">
+  <h2 class="section-heading" id="trmnl-heading">{{ filter_icon('display') }} TRMNL</h2>
+  <p class="muted">Push this Display to its own TRMNL private plugin. Each Display needs its own plugin and webhook.</p>
+  <form method="post" action="/displays/{{ display.id }}/trmnl" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <label class="check">
+      <input type="checkbox" name="enabled" value="1" {% if display.trmnl.enabled %}checked{% endif %} />
+      <span>Push to TRMNL</span>
+    </label>
+    <label>
+      Webhook URL {% if webhook_set %}<span class="muted">(saved in Vault)</span>{% endif %}
+      <input type="url" name="webhook" value="" autocomplete="off" spellcheck="false"
+        placeholder="{% if webhook_set %}Leave blank to keep the saved webhook{% else %}https://trmnl.com/api/custom_plugins/…{% endif %}" />
+      <span class="hint">From the private plugin's settings on trmnl.com, under Webhook URL.</span>
+    </label>
+    {% if webhook_set %}
+    <label class="check">
+      <input type="checkbox" name="clear_webhook" value="1" />
+      <span>Forget the saved webhook</span>
+    </label>
+    {% endif %}
+    <label>
+      Push every (minutes)
+      <input type="number" name="interval_minutes" min="10" max="120" value="{{ display.trmnl.interval_minutes }}" />
+      <span class="hint">10 to 120. TRMNL allows 12 pushes an hour on the standard plan, shared with manual pushes.</span>
+    </label>
+    <fieldset class="stack">
+      <legend>Plugin markup</legend>
+      <label class="check">
+        <input type="radio" name="template" value="universal" {% if display.trmnl.template != 'legacy' %}checked{% endif %} />
+        <span>StonePi universal template <span class="muted">— recommended; layout changes need no re-paste</span></span>
+      </label>
+      <label class="check">
+        <input type="radio" name="template" value="legacy" {% if display.trmnl.template == 'legacy' %}checked{% endif %} />
+        <span>Older pasted markup <span class="muted">— sends every value, ignores this layout</span></span>
+      </label>
+    </fieldset>
+    {% if display.trmnl.template == 'legacy' %}
+    <p class="banner banner-muted">This plugin still holds markup pasted before StonePi had multiple Displays, so the layout above isn't used yet. Paste the universal template below into the plugin, then switch to it here.</p>
+    {% endif %}
+    {% if display.trmnl.last_push_at %}
+    <p class="hint">Last push {{ display.trmnl.last_push_at[:16]|replace('T', ' ') }} UTC ·
+      {% if display.trmnl.last_push_ok %}OK{% else %}failed{% endif %}{% if display.trmnl.last_push_message %} — {{ display.trmnl.last_push_message }}{% endif %}</p>
+    {% else %}
+    <p class="hint">Never pushed.</p>
+    {% endif %}
+    <div class="row-actions">
+      <button type="submit" name="action" value="save" class="btn btn-primary btn-with-icon">{{ svg('check') }} Save TRMNL settings</button>
+      <button type="submit" name="action" value="push" class="btn btn-ghost btn-with-icon"{% if not webhook_set %} title="Save a webhook first"{% endif %}>{{ svg('send') }} Save and push now</button>
+    </div>
+  </form>
+
+  <details class="template-details">
+    <summary>Universal template for the plugin</summary>
+    <div class="stack">
+      <ol class="hint steps">
+        <li>On trmnl.com, open this Display's private plugin and choose <strong>Edit Markup</strong>.</li>
+        <li>Paste this into the <strong>Full</strong> view and save. You only need to do this once per plugin.</li>
+        <li>Pick <strong>StonePi universal template</strong> above and push.</li>
+      </ol>
+      <textarea class="template-text" readonly rows="10" spellcheck="false" data-template-text aria-label="Universal template markup">{{ universal_template }}</textarea>
+      <div class="row-actions">
+        <button type="button" class="btn btn-ghost btn-with-icon" data-copy-template>{{ svg('copy') }} Copy template</button>
+      </div>
+    </div>
+  </details>
+</section>
+
+<section class="card stack" aria-labelledby="details-heading">
+  <h2 class="section-heading" id="details-heading">{{ filter_icon('sliders') }} Details</h2>
+  <form method="post" action="/displays/{{ display.id }}/save" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="details" value="1" />
+    <label>
+      Name
+      <input type="text" name="name" value="{{ display.name }}" {% if display.builtin %}readonly{% endif %} maxlength="80" />
+    </label>
+    {% if not display.builtin %}
+    <label class="check">
+      <input type="checkbox" name="enabled" value="1" {% if display.enabled %}checked{% endif %} />
+      <span>Enabled <span class="muted">— disabled Displays never push</span></span>
+    </label>
+    {% endif %}
+    <div class="row-actions">
+      <button type="submit" class="btn btn-primary btn-with-icon">{{ svg('check') }} Save details</button>
+    </div>
+  </form>
+  {% if not display.builtin %}
+  <form method="post" action="/displays/{{ display.id }}/delete" class="row-actions"
+    data-confirm="Delete this Display?" data-confirm-detail="Its layout and TRMNL settings are removed. The TRMNL plugin keeps showing the last push." data-confirm-ok="Delete">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <button type="submit" class="btn btn-danger btn-with-icon">{{ svg('trash') }} Delete Display</button>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/builder.js?v={{ app_version }}-{{ asset_rev }}" defer></script>
+{% endblock %}

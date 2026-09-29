@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Logs · Recover{% endblock %}
+{% block body_class %}console-body{% endblock %}
+{% block body %}
+<header class="console-top">
+  <div class="console-brand-block">
+    <p class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="4" y="3.5" width="16" height="17" rx="2"/>
+        <path d="M12 7.5v9"/>
+        <path d="M8 10.5h3M8 13.5h3"/>
+        <path d="M13 10.5h3M13 13.5h3"/>
+      </svg>
+      StonePi
+    </p>
+    <p class="subbrand">Recover · Logs</p>
+  </div>
+  <div class="console-top-actions">
+    <a class="btn btn-ghost btn-with-icon" href="./">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+      <span>Back</span>
+    </a>
+  </div>
+</header>
+<pre>{{ log_text }}</pre>
+{% endblock %}

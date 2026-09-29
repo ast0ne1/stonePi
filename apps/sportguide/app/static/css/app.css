@@ -223,9 +223,15 @@ input, select, textarea { font-size: 16px; }
   flex: 0 0 auto;
 }
 .brand-mark {
-  width: 22px; height: 22px; flex: 0 0 auto;
-  fill: none; stroke: currentColor; stroke-width: 1.6;
-  stroke-linecap: round; stroke-linejoin: round;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .topbar svg {
   fill: none;
@@ -597,6 +603,11 @@ textarea { min-height: 5rem; resize: vertical; }
   background: color-mix(in srgb, var(--error) 10%, var(--card));
 }
 .empty-state { text-align: center; padding: 18px 8px; }
+.watch-list li { padding: 6px 0; }
+.watch-team { display: grid; gap: 2px; min-width: 0; }
+.watch-team-name { font-weight: 600; overflow-wrap: anywhere; }
+.watch-team-hint { color: var(--muted); font-size: 0.8rem; }
+.watch-team-sport { color: var(--muted); font-weight: 400; }
 
 .split {
   display: grid;
@@ -768,8 +779,6 @@ textarea { min-height: 5rem; resize: vertical; }
     --gutter: 12px;
   }
   h1 { font-size: 1.7rem; }
-  .btn-refresh span { display: none; }
-  .btn-refresh { min-width: var(--tap); padding: 0 12px; }
   .filter-bar,
   .search-form {
     flex-direction: column;
@@ -828,6 +837,8 @@ textarea { min-height: 5rem; resize: vertical; }
   .offer-meta {
     font-size: 0.82rem;
   }
+  .btn-refresh span { display: none; }
+  .btn-refresh { min-width: var(--tap); padding: 0 12px; }
 }
 
 /* Desktop: restore side rail + page scroll (do not leave overflow locked) */
@@ -885,9 +896,12 @@ textarea { min-height: 5rem; resize: vertical; }
   .main {
     grid-column: 2;
     grid-row: 2;
-    width: auto; max-width: none;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    justify-self: stretch;
     overflow: visible;
-    padding-bottom: 32px;
+    padding: 0 28px 40px;
   }
 }
 
@@ -1432,11 +1446,85 @@ a.listing-row-inner:focus-visible {
   }
 }
 
-/* Laptop+: fill column beside side rail; multi-column settings cards */
+.settings-top-chips { display: none !important; }
+.settings-back {
+  display: inline-block;
+  margin: 0 0 6px;
+  color: var(--accent);
+  font-size: 0.92rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.settings-back:hover,
+.settings-back:focus-visible { text-decoration: underline; }
+.settings-hub,
+.settings-panel-list {
+  display: grid;
+  gap: 18px;
+  margin: 4px 0 8px;
+}
+.settings-hub-heading {
+  margin: 0 0 8px;
+  padding: 0 2px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.settings-hub-card {
+  display: grid;
+  padding: 0;
+  overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+a.settings-hub-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-height: var(--tap, 44px);
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  color: inherit;
+  text-decoration: none;
+}
+a.settings-hub-row:last-child { border-bottom: 0; }
+a.settings-hub-row:hover,
+a.settings-hub-row:focus-visible {
+  background: color-mix(in srgb, var(--ink) 4%, var(--card));
+}
+.settings-hub-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ink) 5%, var(--paper));
+  color: var(--ink);
+}
+.settings-hub-icon svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.settings-hub-copy { display: grid; gap: 2px; min-width: 0; }
+.settings-hub-title { font-weight: 650; line-height: 1.25; }
+.settings-hub-sub { color: var(--muted); font-size: 0.8rem; line-height: 1.35; }
+.settings-hub-chevron { color: var(--muted); font-size: 1.35rem; line-height: 1; }
+
+/* Laptop+: hub one column; the open panel stays one stack. */
 @media (min-width: 1024px) {
   .now-card.listing-list {
     grid-template-columns: 1fr;
-    max-width: 52rem;
+    max-width: none;
+    width: 100%;
   }
   .listing-list:not(.now-card),
   .offer-list,
@@ -1444,10 +1532,17 @@ a.listing-row-inner:focus-visible {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: start;
   }
+  .settings-hub {
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+  }
+  .settings-section {
+    max-width: 48rem;
+  }
   .settings-panel:not([hidden]),
   .settings-panels {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
     gap: 16px;
     align-items: start;
   }
@@ -1474,9 +1569,10 @@ a.listing-row-inner:focus-visible {
   .source-list {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+  .settings-section { max-width: 56rem; }
   .settings-panel:not([hidden]),
   .settings-panels {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: 1fr;
   }
   .settings-panel:not([hidden]) > .settings-panel-span-2,
   .settings-panels > .settings-panel-span-2 {

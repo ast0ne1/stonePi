@@ -66,18 +66,9 @@
     document.documentElement.style.colorScheme = theme;
     const meta = document.querySelector("[data-theme-color]");
     if (meta) meta.setAttribute("content", THEME_COLORS[chosen][theme]);
-    document.querySelectorAll("[data-theme-set]").forEach((button) => {
-      button.classList.toggle("is-active", button.dataset.themeSet === pref);
-    });
   }
 
   applyTheme(readShared(THEME_KEY, LEGACY_THEME, "system"));
-  document.querySelectorAll("[data-theme-set]").forEach((button) => {
-    button.addEventListener("click", () => {
-      persistPref(THEME_KEY, button.dataset.themeSet);
-      applyTheme(button.dataset.themeSet);
-    });
-  });
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
     if (readShared(THEME_KEY, LEGACY_THEME, "system") === "system") applyTheme("system");
   });

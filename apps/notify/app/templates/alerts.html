@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon as svg %}
+{% block title %}Phone alerts · Notify{% endblock %}
+
+{% macro step(done, number, title, hint, next=false) -%}
+<li class="{% if done %}is-done{% elif next %}is-next{% endif %}">
+  <span class="step-dot">{% if done %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5 10 17l9-10"/></svg>{% else %}{{ number }}{% endif %}</span>
+  <span class="step-copy"><strong>{{ title }}</strong><span class="hint">{{ hint }}</span></span>
+  <span class="step-action">{{ caller() }}</span>
+</li>
+{%- endmacro %}
+
+{% macro test_button(label="Send test") -%}
+<form method="post" action="/alerts/test" class="inline-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+  <button class="btn btn-ghost" type="submit">{{ label }}</button>
+</form>
+{%- endmacro %}
+
+{% block content %}
+{% set o = overview %}
+{% set phone_url = (stonepi_home_url or '') ~ '/notifications' %}
+<section class="hero">
+  {% include "_back_to_settings.html" %}
+  <h1>Phone alerts</h1>
+  <p class="lede">Alerts on people's phones through the free ntfy app. Set it up once here; everyone then picks their own alerts from the bell.</p>
+</section>
+
+{% if not o.enabled %}
+{# ---------------- First run (or switched off) ---------------- #}
+<form method="post" action="/alerts/connect" class="card stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+  <h2 class="section-heading">{{ filter_icon('bell') }} Turn on phone alerts</h2>
+  <p class="muted">Choose where StonePi sends alerts. You can change this later.</p>
+  <div class="choice-list" role="radiogroup" aria-label="ntfy server">
+    <label class="choice">
+      <input type="radio" name="server_choice" value="ntfysh" {% if not o.own_server %}checked{% endif %} />
+      <span><strong>ntfy.sh <span class="tag-rec">Recommended</span></strong>
+        <span class="hint">Free, no account. Each person gets a long random topic, so only they can read their alerts.</span></span>
+    </label>
+    <label class="choice">
+      <input type="radio" name="server_choice" value="own" {% if o.own_server %}checked{% endif %} />
+      <span><strong>Your own ntfy server or account</strong>
+        <span class="hint">Private server address plus an access token (kept in the Vault).</span>
+        <span class="choice-fields stack">
+          <label>Server <input type="url" name="server" value="{{ o.server if o.own_server else '' }}" placeholder="https://ntfy.example.com" autocomplete="off" spellcheck="false" /></label>
+          <label>Access token {% if o.token_set %}<span class="muted">(saved in Vault)</span>{% endif %}
+            <input type="password" name="token" value="" autocomplete="off" placeholder="{{ 'Leave blank to keep the saved token' if o.token_set else 'Optional' }}" /></label>
+        </span>
+      </span>
+    </label>
+  </div>
+  <div class="row-actions">
+    <button class="btn btn-primary btn-with-icon" type="submit">{{ svg('check') }} Turn on phone alerts</button>
+  </div>
+  <p class="hint">Next you'll choose which alerts are allowed and who can use them.</p>
+</form>
+
+{% else %}
+
+{% if o.all_set %}
+{# ---------------- All set: summary first ---------------- #}
+<section class="card stack" id="summary">
+  <h2 class="section-heading">{{ filter_icon('bell') }} Phone alerts are on</h2>
+  <div class="summary-line">
+    <span>{{ 'ntfy.sh' if not o.own_server else o.server }}</span>
+    <span>{{ o.approved }} of {{ o.total }} alerts approved</span>
+    <span>{{ o.people_on }} {{ 'person' if o.people_on == 1 else 'people' }} can use them</span>
+    <span>your phone is set up</span>
+    {% if o.household_topic %}<span>household channel set</span>{% endif %}
+  </div>
+  {% include "_alerts_last.html" %}
+  {% if o.needs_review %}
+  <p class="flash" role="status">{{ o.needs_review }} new alert{{ '' if o.needs_review == 1 else 's' }} need{{ 's' if o.needs_review == 1 else '' }} review. <a class="text-link" href="#choose">Review</a></p>
+  {% endif %}
+  <div class="row-actions">
+    <a class="btn btn-ghost" href="#choose">Change alerts</a>
+    <a class="btn btn-ghost" href="#people">Who can use alerts</a>
+    {{ test_button() }}
+  </div>
+</section>
+
+{% else %}
+{# ---------------- Setting up: checklist ---------------- #}
+<section class="card stack" id="setup">
+  <h2 class="section-heading">{{ filter_icon('prefs') }} Setup · {{ o.steps_done }} of 4 done</h2>
+  <ol class="checklist">
+    {% call step(o.steps.connect, 1, "Connect", ('ntfy.sh' if not o.own_server else o.server)) %}{{ test_button() }}{% endcall %}
+    {% call step(o.steps.choose, 2, "Choose alerts", o.approved ~ " of " ~ o.total ~ " approved" ~ (" · " ~ o.needs_review ~ " need review" if o.needs_review else ""), next=not o.steps.choose) %}
+      {% if o.needs_review %}
+      <form method="post" action="/alerts/approve-recommended" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <button class="btn {{ 'btn-primary' if not o.steps.choose else 'btn-ghost' }}" type="submit">Approve all except admin-only</button>
+      </form>
+      {% endif %}
+      <a class="btn btn-ghost" href="#choose">Review</a>
+    {% endcall %}
+    {% set people_hint = "Couldn't load the household" if o.household is none else (o.members_on ~ " of " ~ o.members ~ " household members" if o.members else "Only admins in this household") %}
+    {% call step(o.steps.people, 3, "Who can use alerts", people_hint, next=o.steps.choose and not o.steps.people) %}<a class="btn btn-ghost" href="#people">Choose people</a>{% endcall %}
+    {% call step(o.steps.phone, 4, "Your phone", "Set up" if o.steps.phone else "Not set up on your phone yet", next=o.steps.choose and o.steps.people and not o.steps.phone) %}
+      <a class="btn btn-ghost btn-with-icon" href="{{ phone_url }}">{{ svg('open') }} {{ 'Open' if o.steps.phone else 'Set up my phone' }}</a>
+    {% endcall %}
+  </ol>
+  {% include "_alerts_last.html" %}
+</section>
+{% endif %}
+
+{# ---------------- Choose alerts ---------------- #}
+<details class="card stack alerts-section" id="choose"{% if not o.all_set %} open{% endif %}>
+  <summary><h2 class="section-heading">{{ filter_icon('prefs') }} Choose alerts <span class="muted section-count">{{ o.approved }} of {{ o.total }} approved</span></h2></summary>
+  <p class="muted">Only approved alerts can be sent; each person then ticks the ones they want. <strong>Admins only</strong> limits an alert to admins; <strong>Urgent</strong> lets an admin alert ring during someone's quiet hours.</p>
+  {% if needs_review_count %}
+  <div class="row-actions review-row">
+    <p class="flash" role="status">{{ needs_review_count }} alert{{ '' if needs_review_count == 1 else 's' }} need{{ 's' if needs_review_count == 1 else '' }} review.</p>
+    <form method="post" action="/alerts/approve-recommended" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <button class="btn btn-ghost" type="submit">Approve all except admin-only</button>
+    </form>
+  </div>
+  {% endif %}
+  <form method="post" action="/alerts/approvals" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <div class="pref-groups">
+      {% if needs_review_other %}
+      <section class="pref-group" aria-labelledby="pref-group-review">
+        <h3 class="pref-group-label" id="pref-group-review">Other alerts seen</h3>
+        <div class="pref-list" role="group" aria-label="Unlisted alerts awaiting review">
+          {% for ev in needs_review_other %}
+          <div class="approval-row">
+            <input type="hidden" name="event_known_{{ ev.id }}" value="1" />
+            <label class="check approval-main">
+              <input type="checkbox" name="approve_{{ ev.id }}" value="1" />
+              <span>
+                <strong>{{ ev.label }}</strong>
+                <span class="approval-tag approval-tag-review">Needs review</span>
+                <span class="hint">{{ ev.source }} &middot; <code>{{ ev.id }}</code> &middot; seen {{ ev.count }}&times; &middot; last {{ ev.last_seen }}</span>
+              </span>
+            </label>
+            <div class="approval-flags">
+              <label class="check approval-flag"><input type="checkbox" name="admin_only_{{ ev.id }}" value="1" /><span>Admins only</span></label>
+              <label class="check approval-flag"><input type="checkbox" name="urgent_{{ ev.id }}" value="1" /><span>Urgent</span></label>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
+      {% for group in approval_groups %}
+      <section class="pref-group" aria-labelledby="pref-group-{{ group.id }}">
+        <h3 class="pref-group-label" id="pref-group-{{ group.id }}">{{ group.label }}</h3>
+        <div class="pref-list" role="group" aria-label="{{ group.label }} alerts">
+          {% for ev in group.events %}
+          <div class="approval-row">
+            <input type="hidden" name="event_known_{{ ev.id }}" value="1" />
+            <label class="check approval-main">
+              <input type="checkbox" name="approve_{{ ev.id }}" value="1" {% if ev.approved %}checked{% endif %} />
+              <span>
+                <strong>{{ ev.label }}</strong>
+                <span class="approval-tag">{{ ev.audience_label }}</span>
+                {% if ev.needs_review %}<span class="approval-tag approval-tag-review">Needs review</span>{% endif %}
+                {% if ev.blurb %}<span class="hint">{{ ev.blurb }}</span>{% endif %}
+              </span>
+            </label>
+            <div class="approval-flags">
+              {% if ev.audience != 'admin' %}
+              <label class="check approval-flag"><input type="checkbox" name="admin_only_{{ ev.id }}" value="1" {% if ev.admin_only %}checked{% endif %} /><span>Admins only</span></label>
+              {% endif %}
+              <label class="check approval-flag"><input type="checkbox" name="urgent_{{ ev.id }}" value="1" {% if ev.urgent %}checked{% endif %} /><span>Urgent</span></label>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </section>
+      {% endfor %}
+    </div>
+    <div class="row-actions"><button type="submit" class="btn btn-primary btn-with-icon">{{ svg('check') }} Save alerts</button></div>
+  </form>
+</details>
+
+{# ---------------- Who can use alerts ---------------- #}
+<details class="card stack alerts-section" id="people"{% if not o.all_set %} open{% endif %}>
+  <summary><h2 class="section-heading">{{ filter_icon('general') }} Who can use alerts <span class="muted section-count">{{ o.people_on }} on</span></h2></summary>
+  <p class="muted">People switched on here see the bell and can set up their own phone. It's the same setting as Phone alerts in Dashboard &rarr; Users.</p>
+  {% if o.household is none %}
+  <p class="flash bad" role="alert">Couldn't load the household from Auth. Manage Phone alerts in Dashboard &rarr; Users for now.</p>
+  {% else %}
+  <div class="people">
+    {% for p in o.household %}
+    <form method="post" action="/alerts/people/{{ p.id }}" class="person">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <span><strong>{{ p.name }}</strong>{% if p.is_admin %}<span class="hint"> &middot; admin, always on</span>{% endif %}</span>
+      <label class="switch" title="{{ 'Admins always have phone alerts' if p.is_admin else 'Phone alerts for ' ~ p.name }}">
+        <input type="checkbox" name="phone_alerts" value="1" {% if p.phone_alerts %}checked{% endif %} {% if p.is_admin %}disabled{% endif %} data-autosubmit aria-label="Phone alerts for {{ p.name }}" />
+        <span aria-hidden="true"></span>
+      </label>
+      <noscript><button class="btn btn-ghost" type="submit">Save</button></noscript>
+    </form>
+    {% endfor %}
+  </div>
+  <p class="hint">Changes save straight away.</p>
+  {% endif %}
+</details>
+
+{# ---------------- Advanced ---------------- #}
+<details class="card stack alerts-section" id="advanced">
+  <summary><h2 class="section-heading">{{ filter_icon('sliders') }} Advanced</h2></summary>
+  <form method="post" action="/alerts/connection" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <label>Server <input type="url" name="server" value="{{ o.server }}" autocomplete="off" spellcheck="false" /></label>
+    <label>Access token {% if o.token_set %}<span class="muted">(saved in Vault)</span>{% else %}<span class="muted">(optional)</span>{% endif %}
+      <input type="password" name="token" value="" autocomplete="off" placeholder="Leave blank to keep" /></label>
+    <label>Household channel <span class="muted">(optional)</span>
+      <input type="text" name="household_topic" value="{{ o.household_topic }}" autocomplete="off" spellcheck="false" placeholder="e.g. a kitchen tablet topic" />
+      <span class="hint">A shared topic for household alerts only, never anyone's personal ones. Use a long, random name on ntfy.sh.</span></label>
+    <label>Default priority (1&ndash;5) <input type="number" name="default_priority" min="1" max="5" value="{{ o.default_priority }}" /></label>
+    <label class="check">
+      <input type="checkbox" name="outputs_required" value="1" {% if outputs_required %}checked{% endif %} />
+      <span>Notify required <span class="hint">Treat Notify being down as critical on Health (apps still run).</span></span>
+    </label>
+    <div class="row-actions">
+      <button class="btn btn-primary btn-with-icon" type="submit" name="action" value="save">{{ svg('check') }} Save</button>
+      <button class="btn btn-ghost" type="submit" name="action" value="off" data-confirm="Turn phone alerts off for everyone?">Turn phone alerts off</button>
+    </div>
+  </form>
+</details>
+
+{% endif %}
+
+<p class="hint about-link"><a class="text-link" href="/about">About Notify</a></p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    // Checklist links (#choose, #people) open the section they point at.
+    function openTarget() {
+      var el = location.hash && document.getElementById(location.hash.slice(1));
+      if (el && el.tagName === "DETAILS") el.open = true;
+    }
+    window.addEventListener("hashchange", openTarget);
+    openTarget();
+    document.querySelectorAll("input[data-autosubmit]").forEach(function (input) {
+      input.addEventListener("change", function () { input.form.submit(); });
+    });
+  })();
+</script>
+{% endblock %}

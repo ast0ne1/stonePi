@@ -2,35 +2,68 @@
 {% from "_icons.html" import icon %}
 {% block title %}Offers · PriceScout{% endblock %}
 {% block content %}
+{% macro category_icon(name) -%}
+  {%- if name == 'All' -%}{{ icon("grid") }}
+  {%- elif name == 'Dairy' -%}{{ icon("dairy") }}
+  {%- elif name == 'Meat & fish' -%}{{ icon("meat") }}
+  {%- elif name == 'Fruit & veg' -%}{{ icon("produce") }}
+  {%- elif name == 'Bread & bakery' -%}{{ icon("bakery") }}
+  {%- elif name == 'Drinks' -%}{{ icon("drinks") }}
+  {%- elif name == 'Pantry' -%}{{ icon("pantry") }}
+  {%- elif name == 'Frozen' -%}{{ icon("frozen") }}
+  {%- elif name == 'Household' -%}{{ icon("household") }}
+  {%- else -%}{{ icon("other") }}
+  {%- endif -%}
+{%- endmacro %}
+{% macro offers_href(store_id='all', cat='All') -%}
+/?store={{ store_id }}&category={{ cat|urlencode }}
+{%- endmacro %}
+
 <section class="hero">
   <h1>Offers</h1>
   <p class="lede">This week’s supermarket deals from the stores you follow.</p>
 </section>
 
-<form class="filter-bar" method="get" action="/">
-  <label>
-    Store
-    <select name="store" onchange="this.form.submit()">
-      <option value="all" {% if store == 'all' %}selected{% endif %}>All stores</option>
-      {% for s in sources %}
-      <option value="{{ s.id }}" {% if store == s.id %}selected{% endif %}>{{ s.name }}</option>
-      {% endfor %}
-    </select>
-  </label>
-  <label>
-    Category
-    <select name="category" onchange="this.form.submit()">
-      {% for c in categories %}
-      <option value="{{ c }}" {% if category == c %}selected{% endif %}>{{ c }}</option>
-      {% endfor %}
-    </select>
-  </label>
-</form>
+<div class="chips-with-action">
+  <div class="chips offer-filter-chips" role="list" aria-label="Store filter">
+    <a class="chip-btn{% if store == 'all' %} is-active{% endif %}" href="{{ offers_href('all', category) }}" role="listitem">
+      {{ icon("grid") }}
+      <span>All</span>
+    </a>
+    {% for s in sources %}
+    <a class="chip-btn{% if store == s.id %} is-active{% endif %}" href="{{ offers_href(s.id, category) }}" role="listitem">
+      {% if favicons.get(s.id) %}
+      <img class="chip-store-icon" src="{{ favicons[s.id] }}" alt="" width="16" height="16" />
+      {% else %}
+      {{ icon("stores") }}
+      {% endif %}
+      <span>{{ s.name }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  <button class="chips-action" type="button" data-open-sheet="store-filters" aria-label="Choose store" title="Choose store">
+    {{ icon("sliders") }}
+  </button>
+</div>
+
+<div class="chips-with-action">
+  <div class="chips offer-filter-chips" role="list" aria-label="Category filter">
+    {% for c in categories %}
+    <a class="chip-btn{% if category == c %} is-active{% endif %}" href="{{ offers_href(store, c) }}" role="listitem">
+      {{ category_icon(c) }}
+      <span>{{ c }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  <button class="chips-action" type="button" data-open-sheet="category-filters" aria-label="Choose category" title="Choose category">
+    {{ icon("sliders") }}
+  </button>
+</div>
 
 {% if not offers %}
 <div class="empty card stack">
   <h2>No offers yet</h2>
-  <p class="hint">Refresh sources to pull the latest eTilbudsavis deals, or wait for the first automatic refresh.</p>
+  <p class="hint">Use the red Refresh button in the header to pull the latest eTilbudsavis deals, or wait for the automatic refresh.</p>
   <a class="btn btn-primary btn-with-icon" href="/sources">{{ icon("sources") }} Open Sources</a>
 </div>
 {% else %}
@@ -57,4 +90,46 @@
   {% endfor %}
 </ul>
 {% endif %}
+
+<div class="sheet" hidden data-sheet="store-filters">
+  <div class="sheet-card card stack">
+    <h2>Store</h2>
+    <div class="filter-picker" role="listbox" aria-label="Store">
+      <a class="filter-picker-option{% if store == 'all' %} is-active{% endif %}" href="{{ offers_href('all', category) }}" role="option" aria-selected="{{ 'true' if store == 'all' else 'false' }}">
+        {{ icon("grid") }}
+        <span>All stores</span>
+      </a>
+      {% for s in sources %}
+      <a class="filter-picker-option{% if store == s.id %} is-active{% endif %}" href="{{ offers_href(s.id, category) }}" role="option" aria-selected="{{ 'true' if store == s.id else 'false' }}">
+        {% if favicons.get(s.id) %}
+        <img class="filter-picker-icon" src="{{ favicons[s.id] }}" alt="" width="20" height="20" />
+        {% else %}
+        {{ icon("stores") }}
+        {% endif %}
+        <span>{{ s.name }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" type="button" data-close-sheet>Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet" hidden data-sheet="category-filters">
+  <div class="sheet-card card stack">
+    <h2>Category</h2>
+    <div class="filter-picker" role="listbox" aria-label="Category">
+      {% for c in categories %}
+      <a class="filter-picker-option{% if category == c %} is-active{% endif %}" href="{{ offers_href(store, c) }}" role="option" aria-selected="{{ 'true' if category == c else 'false' }}">
+        {{ category_icon(c) }}
+        <span>{{ c }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" type="button" data-close-sheet>Cancel</button>
+    </div>
+  </div>
+</div>
 {% endblock %}

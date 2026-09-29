@@ -103,6 +103,13 @@ def set_https_enabled(db: Session, enabled: bool) -> None:
 
 
 def using_factory_admin(db: Session) -> bool:
+    """True only for solo FileServe when local admin still accepts admin/admin.
+
+    Under StonePi SSO the Auth/Dashboard service owns the factory-password warning —
+    FileServe must not keep nagging from a stale local hash.
+    """
+    if env.stonepi_session_secret.strip():
+        return False
     admin = db.query(User).filter(User.role == "admin").order_by(User.id.asc()).first()
     if admin is not None:
         if admin.username != DEFAULT_ADMIN_USERNAME:

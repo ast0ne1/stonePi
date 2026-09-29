@@ -31,7 +31,19 @@
     <h2 class="section-title">Browse by category</h2>
     <div class="chips">
       {% for c in categories %}
-      <a class="chip-btn" href="/search?category={{ c|urlencode }}">{{ c }}</a>
+      <a class="chip-btn" href="/search?category={{ c|urlencode }}">
+        {% if c == 'Dairy' %}{{ icon("dairy") }}
+        {% elif c == 'Meat & fish' %}{{ icon("meat") }}
+        {% elif c == 'Fruit & veg' %}{{ icon("produce") }}
+        {% elif c == 'Bread & bakery' %}{{ icon("bakery") }}
+        {% elif c == 'Drinks' %}{{ icon("drinks") }}
+        {% elif c == 'Pantry' %}{{ icon("pantry") }}
+        {% elif c == 'Frozen' %}{{ icon("frozen") }}
+        {% elif c == 'Household' %}{{ icon("household") }}
+        {% else %}{{ icon("other") }}
+        {% endif %}
+        <span>{{ c }}</span>
+      </a>
       {% endfor %}
     </div>
   </div>

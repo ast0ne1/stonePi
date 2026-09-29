@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}Recover · StonePi{% endblock %}
+{% block body_class %}console-body{% endblock %}
+{% block body %}
+<header class="console-top">
+  <div class="console-brand-block">
+    <p class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="4" y="3.5" width="16" height="17" rx="2"/>
+        <path d="M12 7.5v9"/>
+        <path d="M8 10.5h3M8 13.5h3"/>
+        <path d="M13 10.5h3M13 13.5h3"/>
+      </svg>
+      StonePi
+    </p>
+    <p class="subbrand">Recovery Console · Disk {{ disk_pct }}</p>
+  </div>
+  <div class="console-top-actions">
+    <a class="btn btn-primary btn-refresh" href="./" title="Refresh">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 4v6h-6"/></svg>
+      <span class="btn-label">Refresh</span>
+    </a>
+    <form method="post" action="logout" class="logout-form">
+      <button class="icon-btn sign-out" type="submit" aria-label="Sign out" title="Sign out">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 7V5a2 2 0 0 1 2-2h7v18h-7a2 2 0 0 1-2-2v-2"/><path d="M15 12H3m0 0 3-3m-3 3 3 3"/></svg>
+      </button>
+    </form>
+  </div>
+</header>
+
+{% if msg %}
+<p class="banner banner-ok">{{ msg }}</p>
+{% endif %}
+{% if err %}
+<p class="banner">{{ err }}</p>
+{% endif %}
+
+<section class="card stack console-section">
+  <h2>Restore from backup</h2>
+  {% if snapshots %}
+  <p class="muted">Choose a backup to put StonePi back the way it was. Backups on this Pi and on a USB stick both appear here.</p>
+  <ul class="snap-list">
+    {% for snap in snapshots %}
+    <li class="snap-row">
+      <div class="snap-row-text">
+        <strong>{{ snap.name }}</strong>
+        <span class="chip">{% if (snap.kind or '')|lower == 'local' %}On this Pi{% else %}USB stick{% endif %}</span>
+        {% if snap.status and snap.status not in ['ok', 'complete', 'success'] %}
+        <span class="chip">{{ snap.status }}</span>
+        {% endif %}
+        <p class="muted snap-meta">{{ snap.timestamp or '' }}{% if snap.size %} · {{ snap.size }}{% endif %}</p>
+      </div>
+      <form method="post" action="restore"
+        data-confirm="Restore {{ snap.name }}?"
+        data-confirm-detail="Apps will pause briefly while this backup is applied."
+        data-confirm-ok="Restore">
+        <input type="hidden" name="path" value="{{ snap.path }}" />
+        <button class="btn btn-ghost btn-with-icon btn-restore" type="submit">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+          Restore
+        </button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty-state">
+    <p class="empty-title">No backups yet</p>
+    <p class="muted">There is nothing to restore from — no backup on this Pi, and no backup USB stick plugged in.</p>
+    <p class="muted">In Dashboard → Settings → Backup, turn on local backup (or run one now). For a spare copy off the Pi, plug in a USB stick labelled <code>STONEPI-BACKUP</code>, let a backup finish, then refresh here.</p>
+  </div>
+  {% endif %}
+</section>
+
+<section class="card stack console-section">
+  <div class="console-section-head">
+    <h2>Services</h2>
+    <div class="console-actions" role="toolbar" aria-label="Recover actions">
+      <a class="btn btn-ghost btn-with-icon" href="logs">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>
+        <span>Logs</span>
+      </a>
+      <a class="btn btn-ghost btn-with-icon" href="network">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>
+        <span>Network</span>
+      </a>
+      <form method="post" action="action"
+        data-confirm="Reboot the Pi?"
+        data-confirm-detail="The appliance will restart. Recover will be unavailable briefly."
+        data-confirm-ok="Reboot">
+        <input type="hidden" name="op" value="reboot"/>
+        <button class="btn btn-ghost btn-with-icon" type="submit">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v10"/><path d="M18.4 6.6a8 8 0 1 1-12.8 0"/></svg>
+          <span>Reboot</span>
+        </button>
+      </form>
+      <form method="post" action="action"
+        data-confirm="Clear failover?"
+        data-confirm-detail="Sends visitors back to the Dashboard home page if it is healthy."
+        data-confirm-ok="Clear failover">
+        <input type="hidden" name="op" value="failover-off"/>
+        <button class="btn btn-ghost btn-with-icon" type="submit">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+          <span>Clear failover</span>
+        </button>
+      </form>
+    </div>
+  </div>
+  <ul class="unit-list">
+    {% for r in units %}
+    <li class="unit-row">
+      <div class="unit-row-main">
+        <div class="unit-row-text">
+          <strong class="unit-name">{{ r.unit }}</strong>
+          <span class="status-pill status-{{ r.status_kind or 'muted' }}">
+            <span class="status-dot" aria-hidden="true"></span>
+            {{ r.status }}
+          </span>
+        </div>
+      </div>
+      <div class="unit-row-actions">
+        <form method="post" action="action"
+          data-confirm="Restart {{ r.unit }}?"
+          data-confirm-detail="The unit will stop and start again."
+          data-confirm-ok="Restart">
+          <input type="hidden" name="unit" value="{{ r.unit }}"/>
+          <input type="hidden" name="op" value="restart"/>
+          <button class="icon-btn" type="submit" aria-label="Restart {{ r.unit }}" title="Restart">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 4v6h-6"/></svg>
+          </button>
+        </form>
+        <form method="post" action="action"
+          data-confirm="Stop {{ r.unit }}?"
+          data-confirm-detail="The unit will remain stopped until you restart it."
+          data-confirm-ok="Stop">
+          <input type="hidden" name="unit" value="{{ r.unit }}"/>
+          <input type="hidden" name="op" value="stop"/>
+          <button class="icon-btn icon-btn-danger" type="submit" aria-label="Stop {{ r.unit }}" title="Stop">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+          </button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+<p class="hint console-version">Recover {{ app_version }}</p>
+{% endblock %}

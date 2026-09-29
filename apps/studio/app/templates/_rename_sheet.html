@@ -1,0 +1,23 @@
+{# Rename sheet, shared by the editor header and the Projects cards.
+   Open it with a [data-rename-open] button carrying data-rename-action and data-rename-name. #}
+<dialog class="share-sheet rename-sheet" data-rename-sheet aria-labelledby="rename-title">
+  <form method="post" action="{{ rename_action or '' }}" class="stack" data-rename-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="back" value="{{ rename_back or '' }}" />
+    <div class="share-sheet-head">
+      <span class="share-sheet-emoji" aria-hidden="true">✏️</span>
+      <div>
+        <h2 id="rename-title">Rename project</h2>
+        <p class="hint">Studio keeps your name, even after the next build.</p>
+      </div>
+    </div>
+    <label>
+      Project name
+      <input type="text" name="name" value="{{ rename_value or '' }}" required maxlength="80" autocomplete="off" data-rename-field />
+    </label>
+    <div class="share-sheet-actions">
+      <button class="btn btn-ghost" type="button" data-rename-cancel>Cancel</button>
+      <button class="btn btn-primary" type="submit">Save</button>
+    </div>
+  </form>
+</dialog>

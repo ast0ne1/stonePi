@@ -120,6 +120,9 @@ def _ensure_schema() -> None:
             if "paywall_skip" not in feed_cols:
                 conn.execute(text("ALTER TABLE feeds ADD COLUMN paywall_skip BOOLEAN DEFAULT 0"))
                 conn.execute(text("UPDATE feeds SET paywall_skip = 0 WHERE paywall_skip IS NULL"))
+            if "text_cleanup" not in feed_cols:
+                conn.execute(text("ALTER TABLE feeds ADD COLUMN text_cleanup VARCHAR(20) DEFAULT 'standard'"))
+                conn.execute(text("UPDATE feeds SET text_cleanup = 'standard' WHERE text_cleanup IS NULL"))
             feed_cols = _table_columns(conn, "feeds")
             if "homepage_url" not in feed_cols:
                 conn.execute(text("ALTER TABLE feeds ADD COLUMN homepage_url VARCHAR(1000)"))
@@ -178,6 +181,15 @@ def _ensure_schema() -> None:
                 conn.execute(text("UPDATE sync_tasks SET kind = 'x3' WHERE kind IS NULL OR kind = ''"))
             if "error_message" not in task_cols:
                 conn.execute(text("ALTER TABLE sync_tasks ADD COLUMN error_message TEXT"))
+            if "content_hash" not in task_cols:
+                conn.execute(text("ALTER TABLE sync_tasks ADD COLUMN content_hash VARCHAR(64)"))
+            if "removed_at" not in task_cols:
+                conn.execute(text("ALTER TABLE sync_tasks ADD COLUMN removed_at DATETIME"))
+            if "attempts" not in task_cols:
+                conn.execute(text("ALTER TABLE sync_tasks ADD COLUMN attempts INTEGER DEFAULT 0"))
+                conn.execute(text("UPDATE sync_tasks SET attempts = 0 WHERE attempts IS NULL"))
+            if "last_attempt_at" not in task_cols:
+                conn.execute(text("ALTER TABLE sync_tasks ADD COLUMN last_attempt_at DATETIME"))
 
 
 def get_db() -> Generator[Session, None, None]:

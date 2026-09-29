@@ -52,10 +52,16 @@
 <section class="hero">
   <div class="hero-row hero-row-inline">
     <h1>Sources</h1>
-    <a href="#add-custom-source" class="btn btn-outline btn-with-icon" data-open-sheet="add-custom-source">
-      {{ icon('plus') }}
-      <span>Add</span>
-    </a>
+    <div class="row-actions">
+      <a href="#add-custom-source" class="btn btn-outline btn-with-icon" data-open-sheet="add-custom-source">
+        {{ icon('plus') }}
+        <span>Add</span>
+      </a>
+      <a href="/sources/social" class="btn btn-outline btn-with-icon">
+        {{ icon('search') }}
+        <span>Instagram</span>
+      </a>
+    </div>
   </div>
   <div class="page-status">
     <p class="page-status-text" data-source-sync-status>
@@ -65,6 +71,10 @@
         Tap a source to edit category and schedule. Sync updates that source only.
       {% endif %}
     </p>
+    <button type="button" class="btn btn-outline btn-stop" data-sync-stop-btn title="Stop refresh after the current source"{% if not ingest_state.running %} hidden{% endif %}>
+      {{ icon('stop') }}
+      <span>Stop</span>
+    </button>
   </div>
 </section>
 

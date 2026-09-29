@@ -305,6 +305,12 @@ function askConfirm({ title, body, okLabel }) {
   });
 }
 
+// A control named "action" (hidden input or button) shadows form.action,
+// so read the attribute instead.
+function formUrl(form) {
+  return form.getAttribute("action") || window.location.pathname;
+}
+
 document.querySelectorAll("form[data-confirm]").forEach((form) => {
   form.addEventListener("submit", (event) => {
     if (form.dataset.confirmPassed === "1") {
@@ -328,626 +334,6 @@ document.querySelectorAll("form[data-confirm]").forEach((form) => {
     });
   });
 });
-
-(function initTrmnlDesigner() {
-  const dataEl = document.getElementById("trmnl-designer-data");
-  const root = document.querySelector("[data-trmnl-designer]");
-  if (!dataEl || !root) return;
-
-  let data;
-  try {
-    data = JSON.parse(dataEl.value || dataEl.textContent || "{}");
-  } catch {
-    return;
-  }
-
-  const paletteEl = root.querySelector("[data-trmnl-palette]");
-  const canvasEl = root.querySelector("[data-trmnl-canvas]");
-  const layoutInput = document.querySelector("[data-trmnl-layout]");
-  const markupEl = document.querySelector("[data-trmnl-markup]");
-  const copyBtn = document.querySelector("[data-trmnl-copy]");
-  if (!paletteEl || !canvasEl || !layoutInput) return;
-
-  const catalog = Array.isArray(data.catalog) ? data.catalog : [];
-  const titleBar = data.title_bar || "";
-  const preview = data.preview || {};
-  const byId = Object.fromEntries(catalog.map((item) => [item.id, item]));
-  const snippetsByDevice = data.snippets_by_device || {};
-  const defaultsByDesign = data.defaults_by_design || {};
-  const markupByDeviceDesign = data.markup_by_device_design || {};
-  const deviceSelect = document.querySelector("[data-trmnl-device]");
-  const designSelect = document.querySelector("[data-trmnl-design]");
-  const designBlurb = designSelect?.closest("label")?.nextElementSibling;
-  let device = data.device || "og";
-  let design = data.design || "household";
-  let fixedDesign = Boolean(data.fixed_design);
-  let snippets = { ...(snippetsByDevice[device] || data.snippets || {}) };
-  let layout = {
-    cols: 2,
-    device,
-    design,
-    items: Array.isArray(data.layout?.items) ? data.layout.items.map((item) => ({
-      id: item.id,
-      span: item.span >= 2 ? 2 : 1,
-    })) : [],
-  };
-  let dragId = null;
-  let dragFrom = null;
-  const productBadges = { newscast: "NC", eventtrakr: "ET", fileserve: "FS", pinboard: "PB", studio: "ST", pricescout: "PS", sportguide: "SG" };
-
-  function escapeHtml(value) {
-    return String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  }
-
-  function fixedMarkup() {
-    return String(markupByDeviceDesign[device]?.[design] || data.markup || "");
-  }
-
-  function buildMarkup() {
-    if (fixedDesign) {
-      return fixedMarkup() || data.markup || "";
-    }
-    const parts = ['<div class="layout layout--col gap">'];
-    const items = layout.items;
-    let i = 0;
-    while (i < items.length) {
-      const item = items[i];
-      const snip = snippets[item.id];
-      if (!snip) {
-        i += 1;
-        continue;
-      }
-      if (item.span >= 2) {
-        parts.push(snip);
-        i += 1;
-        continue;
-      }
-      const pair = [snip];
-      if (i + 1 < items.length && items[i + 1].span < 2 && snippets[items[i + 1].id]) {
-        pair.push(snippets[items[i + 1].id]);
-        i += 2;
-      } else {
-        i += 1;
-      }
-      parts.push('  <div class="grid grid--cols-2 gap">');
-      parts.push(...pair);
-      parts.push("  </div>");
-    }
-    parts.push("</div>");
-    parts.push(String(titleBar).trimEnd());
-    return `${parts.join("\n")}\n`;
-  }
-
-  function syncFields() {
-    layout.device = device;
-    layout.design = design;
-    layoutInput.value = JSON.stringify(layout);
-    if (markupEl) markupEl.value = buildMarkup();
-  }
-
-  function setFixedUi(on) {
-    fixedDesign = Boolean(on);
-    root.toggleAttribute("data-fixed-design", fixedDesign);
-    paletteEl.hidden = fixedDesign;
-    canvasEl.classList.toggle("is-fixed", fixedDesign);
-  }
-
-  function applyDevice(next) {
-    device = next || "og";
-    snippets = { ...(snippetsByDevice[device] || snippets) };
-    syncCanvasDevice();
-    syncFields();
-    render();
-  }
-
-  function applyDesign(next) {
-    design = next || "household";
-    const preset = (data.designs || []).find((item) => item.id === design);
-    setFixedUi(Boolean(preset?.fixed));
-    if (designBlurb && preset?.blurb) designBlurb.textContent = preset.blurb;
-    if (defaultsByDesign[design]) {
-      const def = defaultsByDesign[design];
-      layout = {
-        cols: 2,
-        device,
-        design,
-        items: Array.isArray(def.items)
-          ? def.items.map((item) => ({ id: item.id, span: item.span >= 2 ? 2 : 1 }))
-          : [],
-      };
-    }
-    syncFields();
-    render();
-  }
-
-  deviceSelect?.addEventListener("change", () => applyDevice(deviceSelect.value));
-  designSelect?.addEventListener("change", () => applyDesign(designSelect.value));
-  setFixedUi(fixedDesign);
-
-  function previewBody(id) {
-    if (id === "system") {
-      const status = preview.system_ok
-        ? '<span class="trmnl-pill ok">Operational</span>'
-        : '<span class="trmnl-pill">Attention</span>';
-      return `
-        <div class="trmnl-row"><strong>${escapeHtml(preview.hostname || "stonepi")}</strong>${status}</div>
-        <div class="trmnl-metrics">
-          <div class="trmnl-metric"><span class="trmnl-kicker">CPU</span><strong>${escapeHtml(preview.cpu_disp)}</strong></div>
-          <div class="trmnl-metric"><span class="trmnl-kicker">RAM</span><strong>${escapeHtml(preview.mem_disp)}</strong></div>
-          <div class="trmnl-metric"><span class="trmnl-kicker">Temp</span><strong>${escapeHtml(preview.temp_disp)}</strong></div>
-          <div class="trmnl-metric"><span class="trmnl-kicker">Uptime</span><strong>${escapeHtml(preview.uptime)}</strong></div>
-        </div>`;
-    }
-    if (id === "watch") {
-      return `
-        <div class="trmnl-row">
-          <strong>${escapeHtml(preview.watch_level || "Attention")}</strong>
-          <span class="trmnl-pill">${escapeHtml(preview.watch_summary || "—")}</span>
-        </div>`;
-    }
-    if (id === "apps") {
-      const apps = Array.isArray(preview.apps) ? preview.apps : [];
-      const limit = device === "og" ? 4 : 8;
-      const rows = apps.slice(0, limit).map((app) => `
-        <div class="trmnl-row">
-          <span>${escapeHtml(app.n)}</span>
-          <span class="trmnl-pill${app.running ? " ok" : ""}">${app.running ? "Up" : "Down"}</span>
-        </div>`).join("");
-      return rows || '<span class="trmnl-kicker">No apps</span>';
-    }
-    if (id === "newscast") {
-      return `
-        <div class="trmnl-row">
-          <strong>${escapeHtml(preview.nc_feeds)} feeds</strong>
-          <span class="trmnl-pill">${escapeHtml(preview.nc_updated)}</span>
-        </div>`;
-    }
-    if (id === "eventtrakr") {
-      return `
-        <span class="trmnl-kicker">Next</span>
-        <strong>${escapeHtml(preview.et_next)}</strong>`;
-    }
-    if (id === "fileserve") {
-      return `
-        <div class="trmnl-row">
-          <strong>${escapeHtml(preview.fs_pages ?? 0)} pages</strong>
-          <span class="trmnl-pill${preview.fs_ok ? " ok" : ""}">${preview.fs_ok ? "Up" : "Down"}</span>
-        </div>`;
-    }
-    if (id === "pinboard") {
-      const lines = Array.isArray(preview.pinboard_lines) ? preview.pinboard_lines : [];
-      const more = Number(preview.pinboard_more || 0);
-      const limit = device === "og" ? 1 : 2;
-      const rows = lines.slice(0, limit).map((line) => `<div class="trmnl-kicker">${escapeHtml(line)}</div>`).join("");
-      return `${rows || '<span class="trmnl-kicker">No notices</span>'}${more ? `<span class="trmnl-pill">+${more}</span>` : ""}`;
-    }
-    if (id === "storage") {
-      return `
-        <div class="trmnl-row">
-          <div><span class="trmnl-kicker">Disk</span><strong>${escapeHtml(preview.disk_disp)}</strong></div>
-          <div><span class="trmnl-kicker">Backup</span><strong>${escapeHtml(preview.backup_when)}</strong>
-            <span class="trmnl-pill${preview.backup_ok ? " ok" : ""}">${preview.backup_ok ? "OK" : "Check"}</span>
-          </div>
-        </div>`;
-    }
-    return "";
-  }
-
-  function placedIds() {
-    return new Set(layout.items.map((item) => item.id));
-  }
-
-  function renderProductTile(id) {
-    const short = {
-      newscast: device === "og" ? "News" : "NewsCast",
-      eventtrakr: device === "og" ? "Events" : "EventTrakr",
-      fileserve: device === "og" ? "Files" : "FileServe",
-      pinboard: device === "og" ? "Pins" : "Pinboard",
-    };
-    const label = short[id] || (byId[id] || { label: id }).label;
-    const badge = productBadges[id] || "";
-    return `
-      <div class="trmnl-tile trmnl-product">
-        <div class="trmnl-tile-head">
-          <div class="trmnl-tile-title">
-            ${badge ? `<span class="trmnl-badge">${escapeHtml(badge)}</span>` : ""}
-            <strong>${escapeHtml(label)}</strong>
-          </div>
-        </div>
-        <div class="trmnl-preview-body">${previewBody(id)}</div>
-      </div>`;
-  }
-
-  function syncCanvasDevice() {
-    const baseW = device === "v2" ? 1040 : 800;
-    const baseH = device === "v2" ? 780 : 480;
-    canvasEl.dataset.device = device;
-    canvasEl.style.setProperty("--trmnl-w", String(baseW));
-    canvasEl.style.setProperty("--trmnl-h", String(baseH));
-    canvasEl.classList.toggle("is-og", device === "og");
-    canvasEl.classList.toggle("is-v2", device === "v2");
-    canvasEl.classList.add("is-stage");
-    canvasEl.classList.toggle("is-fixed", fixedDesign);
-    // Fit the canvas column. Fixed designs hide the palette — don't leave the
-    // canvas stuck in the 160–220px palette track (≥900px designer grid).
-    const palette = root.querySelector("[data-trmnl-palette]");
-    const split =
-      !fixedDesign &&
-      Boolean(palette) &&
-      !palette.hasAttribute("hidden") &&
-      window.matchMedia("(min-width: 900px)").matches;
-    const paletteW = split ? Math.ceil(palette.getBoundingClientRect().width) : 0;
-    const availW = Math.max(240, (root.clientWidth || 720) - paletteW - (split ? 12 : 0) - 8);
-    const scale = Math.min(1, availW / baseW);
-    canvasEl.style.setProperty("--trmnl-scale", String(Number(scale.toFixed(3))));
-  }
-
-  function titleBarHtml() {
-    return `
-      <div class="trmnl-titlebar">
-        <span class="trmnl-titlebar-brand">StonePi</span>
-        <span class="trmnl-titlebar-instance">${escapeHtml(preview.updated_at || "")}</span>
-      </div>`;
-  }
-
-  function tileChrome(item, { removable }) {
-    const meta = byId[item.id] || { id: item.id, label: item.id };
-    const badge = productBadges[item.id];
-    const actions = removable
-      ? `<button type="button" class="trmnl-tile-x" data-remove aria-label="Remove ${escapeHtml(meta.label)}">×</button>`
-      : "";
-    return `
-      <div class="trmnl-tile-head">
-        <div class="trmnl-tile-title">
-          ${badge ? `<span class="trmnl-badge">${escapeHtml(badge)}</span>` : ""}
-          <strong>${escapeHtml(meta.label)}</strong>
-        </div>
-        ${actions}
-      </div>
-      <div class="trmnl-preview-body">${previewBody(item.id)}</div>`;
-  }
-
-  function bindTileInteractions(tile, item, index) {
-    tile.draggable = true;
-    tile.addEventListener("dragstart", (event) => {
-      dragId = item.id;
-      dragFrom = "canvas";
-      tile.classList.add("is-dragging");
-      event.dataTransfer.setData("text/plain", item.id);
-      event.dataTransfer.effectAllowed = "move";
-    });
-    tile.addEventListener("dragend", () => tile.classList.remove("is-dragging"));
-    tile.addEventListener("dragover", (event) => {
-      event.preventDefault();
-      event.dataTransfer.dropEffect = dragFrom === "palette" ? "copy" : "move";
-    });
-    tile.addEventListener("drop", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      const id = dragId || event.dataTransfer.getData("text/plain");
-      if (!id || !byId[id]) return;
-      placeAt(id, index);
-    });
-    tile.querySelector("[data-remove]")?.addEventListener("click", (event) => {
-      event.stopPropagation();
-      layout.items = layout.items.filter((entry) => entry.id !== item.id);
-      render();
-    });
-  }
-
-  function renderFreeform() {
-    syncCanvasDevice();
-    const used = placedIds();
-    paletteEl.innerHTML = "";
-    catalog.forEach((item) => {
-      if (used.has(item.id)) return;
-      const chip = document.createElement("button");
-      chip.type = "button";
-      chip.className = "trmnl-palette-item";
-      chip.draggable = true;
-      chip.dataset.blockId = item.id;
-      chip.innerHTML = `<strong>${escapeHtml(item.label)}</strong><span class="muted">${escapeHtml(item.blurb || "")}</span>`;
-      chip.addEventListener("dragstart", (event) => {
-        dragId = item.id;
-        dragFrom = "palette";
-        event.dataTransfer.setData("text/plain", item.id);
-        event.dataTransfer.effectAllowed = "copyMove";
-      });
-      chip.addEventListener("click", () => {
-        layout.items.push({ id: item.id, span: 1 });
-        render();
-      });
-      paletteEl.appendChild(chip);
-    });
-
-    // Match Liquid build_markup pairing: full-span alone, else pack half-width into rows of 2.
-    const rows = [];
-    let i = 0;
-    const items = layout.items;
-    while (i < items.length) {
-      const item = items[i];
-      if (item.span >= 2) {
-        rows.push([item]);
-        i += 1;
-        continue;
-      }
-      if (i + 1 < items.length && items[i + 1].span < 2) {
-        rows.push([item, items[i + 1]]);
-        i += 2;
-      } else {
-        rows.push([item]);
-        i += 1;
-      }
-    }
-
-    const stage = document.createElement("div");
-    stage.className = `trmnl-stage${device === "v2" ? " is-v2" : ""}`;
-    const layoutEl = document.createElement("div");
-    layoutEl.className = "trmnl-eink-layout";
-
-    if (!items.length) {
-      const empty = document.createElement("div");
-      empty.className = "trmnl-canvas-empty";
-      empty.textContent = "Drag components here";
-      layoutEl.appendChild(empty);
-    }
-
-    let flatIndex = 0;
-    rows.forEach((row) => {
-      if (row.length === 1 && row[0].span >= 2) {
-        const item = row[0];
-        const tile = document.createElement("div");
-        tile.className = "trmnl-tile is-full";
-        tile.dataset.blockId = item.id;
-        tile.dataset.index = String(flatIndex);
-        tile.innerHTML = tileChrome(item, { removable: true });
-        bindTileInteractions(tile, item, flatIndex);
-        layoutEl.appendChild(tile);
-        flatIndex += 1;
-        return;
-      }
-      const pair = document.createElement("div");
-      pair.className = "trmnl-eink-row";
-      row.forEach((item) => {
-        const tile = document.createElement("div");
-        tile.className = "trmnl-tile";
-        tile.dataset.blockId = item.id;
-        tile.dataset.index = String(flatIndex);
-        tile.innerHTML = tileChrome(item, { removable: true });
-        bindTileInteractions(tile, item, flatIndex);
-        pair.appendChild(tile);
-        flatIndex += 1;
-      });
-      layoutEl.appendChild(pair);
-    });
-
-    stage.appendChild(layoutEl);
-    stage.insertAdjacentHTML("beforeend", titleBarHtml());
-    canvasEl.innerHTML = "";
-    canvasEl.appendChild(stage);
-    syncFields();
-  }
-
-  function renderHousehold() {
-    paletteEl.innerHTML = "";
-    syncCanvasDevice();
-    const v2 = device === "v2";
-    canvasEl.innerHTML = `
-      <div class="trmnl-stage${v2 ? " is-v2" : ""}">
-        <div class="trmnl-household">
-          <div class="trmnl-household-focus">
-            <div class="trmnl-tile">
-              <div class="trmnl-tile-head"><div class="trmnl-tile-title"><strong>Watch</strong></div></div>
-              <div class="trmnl-preview-body">${previewBody("watch")}</div>
-            </div>
-            <div class="trmnl-tile">
-              <div class="trmnl-tile-head"><div class="trmnl-tile-title"><strong>Apps</strong></div></div>
-              <div class="trmnl-preview-body">${previewBody("apps")}</div>
-            </div>
-          </div>
-          <div class="trmnl-household-apps">
-            ${["newscast", "eventtrakr", "fileserve", "pinboard"].map(renderProductTile).join("")}
-          </div>
-          <div class="trmnl-stats-strip">
-            <div><span class="trmnl-kicker">CPU</span><strong>${escapeHtml(preview.cpu_disp)}</strong></div>
-            <div><span class="trmnl-kicker">RAM</span><strong>${escapeHtml(preview.mem_disp)}</strong></div>
-            <div><span class="trmnl-kicker">Disk</span><strong>${escapeHtml(preview.disk_disp)}</strong></div>
-            <div><span class="trmnl-kicker">Backup</span><strong>${escapeHtml(preview.backup_when)}</strong></div>
-          </div>
-        </div>
-        ${titleBarHtml()}
-      </div>`;
-    syncFields();
-    window.requestAnimationFrame(() => syncCanvasDevice());
-  }
-
-  function renderStatusWall() {
-    paletteEl.innerHTML = "";
-    syncCanvasDevice();
-    const v2 = device === "v2";
-    const apps = Array.isArray(preview.apps) ? preview.apps : [];
-    const limit = v2 ? 8 : 6;
-    const up = Number(preview.apps_up ?? apps.filter((a) => a.running).length);
-    const total = Number(preview.apps_total ?? apps.length);
-    const level = String(preview.watch_level || "attention").toLowerCase();
-    let alertPill = '<span class="trmnl-pill">ATTENTION</span>';
-    if (level === "healthy") alertPill = '<span class="trmnl-pill ok">OK</span>';
-    else if (level === "critical") alertPill = '<span class="trmnl-pill solid">CRITICAL</span>';
-    const backupPill = preview.backup_ok
-      ? '<span class="trmnl-pill ok">OK</span>'
-      : '<span class="trmnl-pill solid">FAILED</span>';
-    const serviceRows = apps.slice(0, limit).map((app) => {
-      const detail = escapeHtml(app.d || "—");
-      const meta = app.m ? `<span class="trmnl-svc-meta">${escapeHtml(app.m)}</span>` : "";
-      return `
-        <div class="trmnl-svc-row">
-          <div class="trmnl-svc-main">
-            <strong>${escapeHtml(app.n)}</strong>
-            <span class="trmnl-svc-detail">${detail}</span>
-          </div>
-          <div class="trmnl-svc-end">
-            ${meta}
-            <span class="trmnl-pill${app.running ? "" : " solid"}">${app.running ? "UP" : "DOWN"}</span>
-          </div>
-        </div>`;
-    }).join("");
-    canvasEl.innerHTML = `
-      <div class="trmnl-stage${v2 ? " is-v2" : ""}">
-        <div class="trmnl-statuswall">
-          <div class="trmnl-status-head">
-            <div class="trmnl-status-brand">
-              <strong>${escapeHtml(preview.hostname || "stonepi")}</strong>
-              <span class="trmnl-kicker">SYSTEM</span>
-            </div>
-            <span class="trmnl-pill dither">Refreshed ${escapeHtml(preview.refreshed_ago || "just now")}</span>
-          </div>
-          <div class="trmnl-stats-strip is-five">
-            <div><span class="trmnl-kicker">CPU</span><strong>${escapeHtml(preview.cpu_disp)}</strong></div>
-            <div><span class="trmnl-kicker">RAM</span><strong>${escapeHtml(preview.mem_disp)}</strong></div>
-            <div><span class="trmnl-kicker">DISK</span><strong>${escapeHtml(preview.disk_disp)}</strong></div>
-            <div><span class="trmnl-kicker">TEMP</span><strong>${escapeHtml(preview.temp_disp)}</strong></div>
-            <div><span class="trmnl-kicker">UPTIME</span><strong>${escapeHtml(preview.uptime)}</strong></div>
-          </div>
-          <div class="trmnl-status-body">
-            <div class="trmnl-tile trmnl-services">
-              <div class="trmnl-tile-head">
-                <div class="trmnl-tile-title"><strong>SERVICES</strong></div>
-                <span class="trmnl-kicker">${up} of ${total} up</span>
-              </div>
-              <div class="trmnl-preview-body">${serviceRows || '<span class="trmnl-kicker">No apps</span>'}</div>
-            </div>
-            <div class="trmnl-status-side">
-              <div class="trmnl-tile">
-                <div class="trmnl-tile-head"><div class="trmnl-tile-title"><strong>ALERTS</strong></div></div>
-                <div class="trmnl-preview-body">
-                  <div class="trmnl-row">${alertPill}<span>${escapeHtml(preview.watch_summary || "—")}</span></div>
-                </div>
-              </div>
-              <div class="trmnl-tile">
-                <div class="trmnl-tile-head"><div class="trmnl-tile-title"><strong>STORAGE &amp; BACKUP</strong></div></div>
-                <div class="trmnl-preview-body">
-                  <div class="trmnl-storage-grid">
-                    <div><span class="trmnl-kicker">DISK USED</span><strong>${escapeHtml(preview.disk_disp)}</strong></div>
-                    <div>
-                      <span class="trmnl-kicker">LAST BACKUP</span>
-                      <div class="trmnl-row"><strong>${escapeHtml(preview.backup_when)}</strong>${backupPill}</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>`;
-    syncFields();
-    // Remeasure after the fixed-design grid collapses to one column.
-    window.requestAnimationFrame(() => syncCanvasDevice());
-  }
-
-  function render() {
-    if (fixedDesign) {
-      if (design === "status") renderStatusWall();
-      else renderHousehold();
-      return;
-    }
-    renderFreeform();
-  }
-
-  function placeAt(id, index) {
-    const existing = layout.items.findIndex((item) => item.id === id);
-    let span = 1;
-    if (existing >= 0) {
-      span = layout.items[existing].span;
-      layout.items.splice(existing, 1);
-      if (existing < index) index -= 1;
-    }
-    layout.items.splice(Math.max(0, Math.min(index, layout.items.length)), 0, { id, span });
-    dragId = null;
-    dragFrom = null;
-    render();
-  }
-
-  canvasEl.addEventListener("dragover", (event) => {
-    if (fixedDesign) return;
-    event.preventDefault();
-    canvasEl.classList.add("is-dragover");
-  });
-  canvasEl.addEventListener("dragleave", () => canvasEl.classList.remove("is-dragover"));
-  canvasEl.addEventListener("drop", (event) => {
-    if (fixedDesign) return;
-    event.preventDefault();
-    canvasEl.classList.remove("is-dragover");
-    const id = dragId || event.dataTransfer.getData("text/plain");
-    if (!id || !byId[id]) return;
-    if (layout.items.some((item) => item.id === id)) {
-      placeAt(id, layout.items.length);
-      return;
-    }
-    layout.items.push({ id, span: 1 });
-    dragId = null;
-    dragFrom = null;
-    render();
-  });
-
-  copyBtn?.addEventListener("click", async () => {
-    const text = markupEl?.value || buildMarkup();
-    const label = copyBtn.querySelector("span");
-    async function writeClipboard(value) {
-      if (navigator.clipboard?.writeText) {
-        try {
-          await navigator.clipboard.writeText(value);
-          return true;
-        } catch {
-          /* insecure context / permission — fall through */
-        }
-      }
-      const area = document.createElement("textarea");
-      area.value = value;
-      area.setAttribute("readonly", "");
-      area.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0;";
-      document.body.appendChild(area);
-      area.focus();
-      area.select();
-      area.setSelectionRange(0, area.value.length);
-      let ok = false;
-      try {
-        ok = document.execCommand("copy");
-      } catch {
-        ok = false;
-      }
-      area.remove();
-      return ok;
-    }
-    const ok = await writeClipboard(text);
-    if (ok) {
-      if (label) label.textContent = "Copied";
-      setTimeout(() => {
-        if (label) label.textContent = "Copy markup";
-      }, 1600);
-      return;
-    }
-    if (markupEl) {
-      markupEl.focus();
-      markupEl.select();
-    }
-    if (label) label.textContent = "Select + Ctrl+C";
-    setTimeout(() => {
-      if (label) label.textContent = "Copy markup";
-    }, 2400);
-  });
-
-  let resizeTimer = 0;
-  window.addEventListener("resize", () => {
-    window.clearTimeout(resizeTimer);
-    resizeTimer = window.setTimeout(() => render(), 120);
-  });
-
-  render();
-})();
 
 (function vaultForm() {
   const form = document.querySelector("[data-vault-form]");
@@ -981,6 +367,7 @@ document.querySelectorAll("form[data-confirm]").forEach((form) => {
   const flash = document.querySelector("[data-flash]");
   if (!flash) return;
   flash.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  document.querySelectorAll("[data-flash]").forEach(autoDismissFlash);
   try {
     const url = new URL(window.location.href);
     if (url.searchParams.has("msg") || url.searchParams.has("err")) {
@@ -993,55 +380,450 @@ document.querySelectorAll("form[data-confirm]").forEach((form) => {
   }
 })();
 
-(function addUserPanel() {
-  const panel = document.getElementById("add-user");
-  if (!(panel instanceof HTMLDetailsElement)) return;
+(function usersAdmin() {
+  const shell = document.querySelector("[data-users-shell]");
+  if (!shell) return;
 
-  function openPanel() {
-    panel.open = true;
-    panel.scrollIntoView({ behavior: "smooth", block: "start" });
-    const first = panel.querySelector('input[name="username"]');
-    if (first instanceof HTMLElement) {
-      window.setTimeout(() => first.focus(), 50);
+  const addSheet = document.querySelector("[data-add-user-sheet]");
+  const resetSheet = document.querySelector("[data-reset-password-sheet]");
+  const resetForm = document.querySelector("[data-reset-password-form]");
+  let selectedId = shell.querySelector(".users-row.is-selected")?.getAttribute("data-user-select") || "";
+  let resetUserId = "";
+  let saveTimer = 0;
+
+  function isDesktop() {
+    return window.matchMedia("(min-width: 1024px)").matches;
+  }
+
+  function hoistSheet(sheet) {
+    if (sheet && sheet.parentElement !== document.body) {
+      document.body.appendChild(sheet);
+    }
+  }
+  hoistSheet(addSheet);
+  hoistSheet(resetSheet);
+
+  function openSheet(sheet) {
+    if (!sheet) return;
+    hoistSheet(sheet);
+    sheet.hidden = false;
+    sheet.classList.add("is-open");
+    document.documentElement.classList.add("sheet-open");
+    document.body.classList.add("sheet-open");
+  }
+
+  function closeSheet(sheet) {
+    if (!sheet) return;
+    sheet.hidden = true;
+    sheet.classList.remove("is-open");
+    if (!document.querySelector(".sheet.is-open")) {
+      document.documentElement.classList.remove("sheet-open");
+      document.body.classList.remove("sheet-open");
     }
   }
 
-  document.querySelectorAll("[data-open-add-user]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      openPanel();
-    });
-  });
+  function setView(view) {
+    shell.dataset.view = view;
+  }
 
-  panel.querySelectorAll("[data-close-add-user]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      panel.open = false;
+  function selectUser(id, { mobileDetail = true } = {}) {
+    if (!id) return;
+    selectedId = id;
+    shell.querySelectorAll("[data-user-select]").forEach((row) => {
+      const on = row.getAttribute("data-user-select") === id;
+      row.classList.toggle("is-selected", on);
+      row.setAttribute("aria-pressed", on ? "true" : "false");
     });
-  });
-})();
+    shell.querySelectorAll("[data-user-detail]").forEach((panel) => {
+      const on = panel.getAttribute("data-user-detail") === id;
+      panel.classList.toggle("is-active", on);
+      panel.hidden = !on;
+    });
+    if (!isDesktop() && mobileDetail) setView("detail");
+    closeMoreMenus();
+  }
 
-(function wireStudioPublishImpliesFileServe() {
-  function sync(form) {
-    if (!(form instanceof HTMLFormElement)) return;
+  function syncStudioFileserve(form) {
     const publish = form.querySelector("[data-studio-can-publish]");
     const fileserve = form.querySelector("[data-app-fileserve]");
     if (!(publish instanceof HTMLInputElement) || !(fileserve instanceof HTMLInputElement)) return;
-    if (publish.checked && !fileserve.disabled) {
-      fileserve.checked = true;
+    if (publish.checked && !fileserve.disabled) fileserve.checked = true;
+  }
+
+  function syncCapsVisibility(form) {
+    form.querySelectorAll("[data-ua-app]").forEach((row) => {
+      const toggle = row.querySelector('input[name="apps"]');
+      const caps = row.querySelector("[data-ua-caps]");
+      if (!caps) return;
+      const on = row.classList.contains("is-locked") || (toggle instanceof HTMLInputElement && toggle.checked);
+      caps.classList.toggle("is-hidden", !on);
+    });
+  }
+
+  function syncAdminLock(form) {
+    const admin = form.querySelector('input[name="is_admin"][value="1"]');
+    const isAdmin = admin instanceof HTMLInputElement && admin.checked;
+    form.querySelectorAll('input[name="apps"]').forEach((input) => {
+      if (!(input instanceof HTMLInputElement) || input.type === "hidden") return;
+      const label = input.closest(".ua-toggle");
+      if (isAdmin) {
+        input.checked = true;
+        input.setAttribute("data-admin-locked", "");
+        label?.classList.add("is-locked");
+      } else {
+        input.removeAttribute("data-admin-locked");
+        if (!input.disabled) label?.classList.remove("is-locked");
+      }
+    });
+    form.querySelectorAll(".ua-cap").forEach((cap) => {
+      const input = cap.querySelector('input[type="checkbox"]');
+      cap.classList.toggle("is-locked", isAdmin);
+      if (isAdmin && input instanceof HTMLInputElement) input.checked = true;
+    });
+    // Platform permissions admins always hold (e.g. Phone alerts).
+    form.querySelectorAll("input[data-admin-on]").forEach((input) => {
+      if (!(input instanceof HTMLInputElement)) return;
+      if (isAdmin) input.checked = true;
+      input.closest(".ua-toggle")?.classList.toggle("is-locked", isAdmin);
+    });
+    syncCapsVisibility(form);
+    updateGrantCount(form);
+  }
+
+  function updateGrantCount(form) {
+    const hint = form.closest("[data-user-detail]")?.querySelector("[data-grant-count]");
+    if (!hint) return;
+    const admin = form.querySelector('input[name="is_admin"][value="1"]');
+    const isAdmin = admin instanceof HTMLInputElement && admin.checked;
+    const total = form.querySelectorAll("[data-ua-app]").length;
+    if (isAdmin) {
+      hint.textContent = String(total);
+      return;
+    }
+    let count = 0;
+    form.querySelectorAll("[data-ua-app]").forEach((row) => {
+      if (row.classList.contains("is-locked")) {
+        count += 1;
+        return;
+      }
+      const toggle = row.querySelector('input[name="apps"]');
+      if (toggle instanceof HTMLInputElement && toggle.checked) count += 1;
+    });
+    hint.textContent = String(count);
+  }
+
+  function setSaveHint(form, state, text) {
+    const el = form.closest("[data-user-detail]")?.querySelector("[data-save-hint]");
+    if (!el) return;
+    el.classList.remove("is-saving", "is-error");
+    if (state === "saving") el.classList.add("is-saving");
+    if (state === "error") el.classList.add("is-error");
+    el.textContent = text;
+  }
+
+  async function saveForm(form, { reloadOnOk = false } = {}) {
+    if (!(form instanceof HTMLFormElement)) return false;
+    syncStudioFileserve(form);
+    setSaveHint(form, "saving", "Saving…");
+    const fd = new FormData(form);
+    try {
+      const res = await fetch(formUrl(form), {
+        method: "POST",
+        body: fd,
+        headers: { Accept: "application/json", "X-Requested-With": "fetch" },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        setSaveHint(form, "error", data.error || "Could not save");
+        showFlash("error", data.error || "Could not save");
+        return false;
+      }
+      setSaveHint(form, "ok", "Saves automatically");
+      if (reloadOnOk) {
+        window.location.reload();
+        return true;
+      }
+      refreshListRow(form);
+      return true;
+    } catch {
+      setSaveHint(form, "error", "Could not save");
+      showFlash("error", "Could not save");
+      return false;
     }
   }
 
-  document.querySelectorAll("form.people-form").forEach((form) => {
-    form.addEventListener("change", (event) => {
-      const target = event.target;
-      if (target instanceof HTMLInputElement && target.matches("[data-studio-can-publish]")) {
-        sync(form);
+  function refreshListRow(form) {
+    const id = form.getAttribute("data-user-form");
+    const row = shell.querySelector(`[data-user-select="${id}"]`);
+    if (!row) return;
+    const admin = form.querySelector('input[name="is_admin"][value="1"]');
+    const isAdmin = admin instanceof HTMLInputElement && admin.checked;
+    const role = row.querySelector(".users-col-role");
+    const apps = row.querySelector(".users-col-apps");
+    const sub = row.querySelector(".users-row-sub");
+    const badge = row.querySelector(".users-row-badge");
+    const countEl = form.closest("[data-user-detail]")?.querySelector("[data-grant-count]");
+    const n = Number(countEl?.textContent || "0");
+    const appsLabel = isAdmin ? "All apps" : n === 1 ? "1 app" : `${n} apps`;
+    if (role) {
+      role.innerHTML = isAdmin
+        ? '<span class="chip chip-role">Admin</span>'
+        : '<span class="chip chip-quiet">User</span>';
+    }
+    if (apps) apps.textContent = appsLabel;
+    if (sub) sub.textContent = appsLabel;
+    if (isAdmin && !badge) {
+      const title = row.querySelector(".users-row-title");
+      if (title) {
+        const el = document.createElement("span");
+        el.className = "chip chip-role users-row-badge";
+        el.textContent = "Admin";
+        title.appendChild(el);
+      }
+    } else if (!isAdmin && badge) {
+      badge.remove();
+    }
+  }
+
+  function closeMoreMenus() {
+    shell.querySelectorAll("[data-users-more]").forEach((wrap) => {
+      const menu = wrap.querySelector(".users-more-menu");
+      const btn = wrap.querySelector("[data-users-more-toggle]");
+      if (menu) menu.hidden = true;
+      if (btn instanceof HTMLElement) {
+        btn.setAttribute("aria-expanded", "false");
+        btn.blur();
       }
     });
-    sync(form);
+  }
+
+  function activeForm() {
+    return shell.querySelector(`[data-user-form="${selectedId}"]`);
+  }
+
+  shell.querySelectorAll("[data-user-select]").forEach((row) => {
+    row.addEventListener("click", () => {
+      selectUser(row.getAttribute("data-user-select") || "", { mobileDetail: true });
+    });
   });
+
+  shell.querySelectorAll("[data-users-back]").forEach((btn) => {
+    btn.addEventListener("click", () => setView("list"));
+  });
+
+  document.querySelectorAll("[data-open-add-user]").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      openSheet(addSheet);
+      const first = addSheet?.querySelector('input[name="display_name"], input[name="username"]');
+      if (first instanceof HTMLElement) window.setTimeout(() => first.focus(), 40);
+    });
+  });
+
+  document.querySelectorAll("[data-close-add-user]").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      closeSheet(addSheet);
+    });
+  });
+
+  addSheet?.addEventListener("click", (event) => {
+    if (event.target === addSheet) closeSheet(addSheet);
+  });
+
+  document.querySelectorAll("[data-close-reset-password]").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      closeSheet(resetSheet);
+    });
+  });
+
+  resetSheet?.addEventListener("click", (event) => {
+    if (event.target === resetSheet) closeSheet(resetSheet);
+  });
+
+  document.querySelectorAll("[data-toggle-password]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const wrap = btn.closest(".users-password-wrap");
+      const input = wrap?.querySelector("[data-password-input]");
+      if (!(input instanceof HTMLInputElement)) return;
+      const show = input.type === "password";
+      input.type = show ? "text" : "password";
+      btn.setAttribute("aria-label", show ? "Hide password" : "Show password");
+    });
+  });
+
+  shell.querySelectorAll("[data-reset-password]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      resetUserId = btn.getAttribute("data-reset-password") || "";
+      const detail = shell.querySelector(`[data-user-detail="${resetUserId}"]`);
+      const name = detail?.querySelector("h2")?.textContent?.trim() || "this account";
+      const label = resetSheet?.querySelector("[data-reset-password-for]");
+      if (label) label.textContent = `Set a new password for ${name}.`;
+      if (resetForm instanceof HTMLFormElement) {
+        resetForm.action = `${shell.dataset.formBase || "/users"}/${resetUserId}`;
+        const pw = resetForm.querySelector('input[name="password"]');
+        if (pw instanceof HTMLInputElement) {
+          pw.value = "";
+          pw.type = "password";
+        }
+      }
+      openSheet(resetSheet);
+    });
+  });
+
+  resetForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = activeForm() || shell.querySelector(`[data-user-form="${resetUserId}"]`);
+    if (!(form instanceof HTMLFormElement) || !(resetForm instanceof HTMLFormElement)) return;
+    const pw = resetForm.querySelector('input[name="password"]');
+    if (!(pw instanceof HTMLInputElement) || pw.value.length < 8) {
+      showFlash("error", "Password must be at least 8 characters.");
+      return;
+    }
+    const fd = new FormData(form);
+    fd.set("password", pw.value);
+    fd.set("action", "save");
+    try {
+      const res = await fetch(formUrl(form), {
+        method: "POST",
+        body: fd,
+        headers: { Accept: "application/json", "X-Requested-With": "fetch" },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        showFlash("error", data.error || "Could not update password.");
+        return;
+      }
+      closeSheet(resetSheet);
+      showFlash("ok", data.message || "Password updated");
+    } catch {
+      showFlash("error", "Could not update password.");
+    }
+  });
+
+  shell.querySelectorAll("[data-users-more-toggle]").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const wrap = btn.closest("[data-users-more]");
+      const menu = wrap?.querySelector(".users-more-menu");
+      const open = menu && menu.hidden;
+      closeMoreMenus();
+      if (menu && open) {
+        menu.hidden = false;
+        btn.setAttribute("aria-expanded", "true");
+      }
+    });
+  });
+
+  document.addEventListener("click", () => closeMoreMenus());
+
+  shell.querySelectorAll("[data-toggle-enabled]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-toggle-enabled") || "";
+      const form = shell.querySelector(`[data-user-form="${id}"]`);
+      const field = form?.querySelector("[data-enabled-field]");
+      if (!(form instanceof HTMLFormElement) || !(field instanceof HTMLInputElement)) return;
+      const currentlyOn = field.value === "1";
+      const ok = await askConfirm({
+        title: currentlyOn ? "Disable account?" : "Enable account?",
+        body: currentlyOn
+          ? "They won’t be able to sign in until you enable the account again."
+          : "They will be able to sign in with their password.",
+        okLabel: currentlyOn ? "Disable" : "Enable",
+      });
+      if (!ok) return;
+      field.value = currentlyOn ? "0" : "1";
+      const saved = await saveForm(form, { reloadOnOk: true });
+      if (!saved) field.value = currentlyOn ? "1" : "0";
+    });
+  });
+
+  shell.querySelectorAll("[data-delete-user]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-delete-user") || "";
+      const username = btn.getAttribute("data-username") || "this account";
+      const ok = await askConfirm({
+        title: `Delete ${username}?`,
+        body: "This cannot be undone.",
+        okLabel: "Delete",
+      });
+      if (!ok) return;
+      const form = shell.querySelector(`[data-user-form="${id}"]`);
+      if (!(form instanceof HTMLFormElement)) return;
+      const fd = new FormData(form);
+      fd.set("action", "delete");
+      try {
+        const res = await fetch(formUrl(form), {
+          method: "POST",
+          body: fd,
+          headers: { Accept: "application/json", "X-Requested-With": "fetch" },
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+          showFlash("error", data.error || "Could not delete account.");
+          return;
+        }
+        window.location.href = "/users?msg=Saved";
+      } catch {
+        showFlash("error", "Could not delete account.");
+      }
+    });
+  });
+
+  shell.querySelectorAll("[data-user-form]").forEach((form) => {
+    if (!(form instanceof HTMLFormElement)) return;
+    syncAdminLock(form);
+    syncStudioFileserve(form);
+    form.addEventListener("change", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement)) return;
+      if (target.matches('input[name="is_admin"]')) syncAdminLock(form);
+      if (target.matches('input[name="apps"]')) {
+        syncCapsVisibility(form);
+        updateGrantCount(form);
+      }
+      if (target.matches("[data-studio-can-publish]")) syncStudioFileserve(form);
+      window.clearTimeout(saveTimer);
+      saveTimer = window.setTimeout(() => saveForm(form), 280);
+    });
+  });
+
+  const createForm = document.querySelector("[data-create-form]");
+  if (createForm instanceof HTMLFormElement) {
+    createForm.addEventListener("change", (event) => {
+      const target = event.target;
+      if (target instanceof HTMLInputElement && target.matches('input[name="is_admin"]')) {
+        syncAdminLock(createForm);
+      }
+      if (target instanceof HTMLInputElement && target.matches("[data-studio-can-publish]")) {
+        syncStudioFileserve(createForm);
+      }
+      if (target instanceof HTMLInputElement && target.matches('input[name="apps"]')) {
+        syncCapsVisibility(createForm);
+      }
+    });
+    syncAdminLock(createForm);
+  }
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    if (addSheet?.classList.contains("is-open")) closeSheet(addSheet);
+    if (resetSheet?.classList.contains("is-open")) closeSheet(resetSheet);
+  });
+
+  if (selectedId) selectUser(selectedId, { mobileDetail: false });
+  setView("list");
 })();
+
+// Success banners fade out on their own; errors stay until the next page.
+function autoDismissFlash(el) {
+  if (!(el instanceof HTMLElement) || !el.classList.contains("flash-ok")) return;
+  window.setTimeout(() => {
+    el.classList.add("is-leaving");
+    window.setTimeout(() => el.remove(), 300);
+  }, 4000);
+}
 
 function showFlash(kind, text) {
   const main = document.querySelector("main");
@@ -1063,6 +845,7 @@ function showFlash(kind, text) {
   el.append(svg, span);
   main.insertBefore(el, main.firstChild);
   el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  autoDismissFlash(el);
 }
 
 (function availabilityToggles() {
@@ -1088,7 +871,7 @@ function showFlash(kind, text) {
       fd.set("enabled", enabled ? "1" : "0");
       input.disabled = true;
       try {
-        const res = await fetch(form.action, {
+        const res = await fetch(formUrl(form), {
           method: "POST",
           body: fd,
           headers: { Accept: "application/json", "X-Requested-With": "fetch" },
@@ -1193,7 +976,7 @@ function showFlash(kind, text) {
     saving = true;
     const fd = new FormData(form);
     fd.set("order", ids.join(","));
-    fetch(form.action, {
+    fetch(formUrl(form), {
       method: "POST",
       body: fd,
       headers: { Accept: "application/json", "X-Requested-With": "fetch" },
@@ -1363,8 +1146,9 @@ function showFlash(kind, text) {
     return data || {};
   }
 
-  async function fetchStatus() {
-    const res = await fetch("/api/network/status", {
+  async function fetchStatus({ fresh = false } = {}) {
+    const url = fresh ? "/api/network/status?fresh=1" : "/api/network/status";
+    const res = await fetch(url, {
       headers: headers(),
       credentials: "same-origin",
     });
@@ -1466,9 +1250,20 @@ function showFlash(kind, text) {
     if (ts.connected) {
       connecting = false;
       stopPoll();
+      const access = panel.querySelector("[data-ts-access]");
       const dns = panel.querySelector("[data-ts-dns]");
       const dnsDot = panel.querySelector("[data-ts-dns-dot]");
       const ipv4 = panel.querySelector("[data-ts-ipv4]");
+      if (access && ts.access_url) {
+        access.innerHTML =
+          '<a class="network-auth-link" href="' +
+          ts.access_url +
+          '" target="_blank" rel="noopener noreferrer">' +
+          ts.access_url +
+          "</a>";
+      } else if (access) {
+        access.textContent = "—";
+      }
       if (dnsDot) {
         dnsDot.classList.toggle("ok", Boolean(ts.magicdns_name || ts.magicdns));
         dnsDot.classList.toggle("bad", !(ts.magicdns_name || ts.magicdns));
@@ -1486,7 +1281,28 @@ function showFlash(kind, text) {
           name +
           "</span>";
       }
-      if (ipv4 && ts.ipv4) ipv4.innerHTML = "<code>" + ts.ipv4 + "</code>";
+      if (ipv4 && ts.ipv4) {
+        ipv4.innerHTML =
+          '<a class="network-auth-link" href="http://' +
+          ts.ipv4 +
+          '/" target="_blank" rel="noopener noreferrer"><code>http://' +
+          ts.ipv4 +
+          "/</code></a>";
+      }
+      const serveRow = panel.querySelector("[data-ts-serve-enable-row]");
+      const serveEl = panel.querySelector("[data-ts-serve-enable]");
+      if (!ts.serve_http && ts.serve_enable_url) {
+        if (serveEl) {
+          serveEl.innerHTML =
+            '<a class="network-auth-link" href="' +
+            ts.serve_enable_url +
+            '" target="_blank" rel="noopener noreferrer">Enable HTTPS for this tailnet</a>';
+        } else if (serveRow) {
+          serveRow.hidden = false;
+        }
+      } else if (serveRow) {
+        serveRow.hidden = true;
+      }
       if (!panel.querySelector("[data-ts-disconnect-form]")) {
         window.location.reload();
       }
@@ -1499,7 +1315,7 @@ function showFlash(kind, text) {
     if (pollTimer) return;
     pollTimer = setInterval(() => {
       if (document.hidden) return;
-      fetchStatus().then(applyStatus).catch(() => {});
+      fetchStatus({ fresh: true }).then(applyStatus).catch(() => {});
     }, 2000);
   }
 
@@ -1601,7 +1417,6 @@ function showFlash(kind, text) {
 
 const settingsShell = document.querySelector("[data-settings-shell]");
 if (settingsShell) {
-  const DESKTOP_MQ = window.matchMedia("(min-width: 1024px)");
   const hubList = settingsShell.querySelector("[data-settings-hub-list]");
   const panelList = settingsShell.querySelector("[data-settings-panel-list]");
   const panelListRows = settingsShell.querySelector("[data-settings-panel-list-rows]");
@@ -1625,21 +1440,13 @@ if (settingsShell) {
   const ledesByTab = readJson("[data-settings-ledes-json]", {});
   const labelsByTab = readJson("[data-settings-labels-json]", {});
 
-  function isDesktop() {
-    return DESKTOP_MQ.matches;
-  }
-
   function tabHasPanels(tab) {
     return (panelsByTab[tab] || []).length > 1;
   }
 
-  function syncDesktopClass() {
-    settingsShell.classList.toggle("is-desktop-settings", isDesktop());
-  }
-
   function updateBack(mode, tab) {
     if (!settingsBack) return;
-    if (mode === "hub" || isDesktop()) {
+    if (mode === "hub") {
       settingsBack.hidden = true;
       settingsBack.dataset.backTo = "hub";
       settingsBack.textContent = "← Settings";
@@ -1688,7 +1495,7 @@ if (settingsShell) {
     const panels = panelsByTab[tab] || [];
     const active = panels.find((p) => p.id === panelId) || panels[0] || null;
     const cards = new Set(active?.cards || []);
-    const filterCards = panels.length > 1 && !isDesktop();
+    const filterCards = panels.length > 1;
     settingsShell.querySelectorAll("[data-settings-panel-card]").forEach((card) => {
       const inTab = card.closest("[data-settings-panel]")?.dataset.settingsPanel === tab;
       const hide = filterCards && inTab && cards.size > 0 && !cards.has(card.dataset.settingsPanelCard);
@@ -1699,21 +1506,21 @@ if (settingsShell) {
   }
 
   function setMode({ hub = false, panelListMode = false } = {}) {
-    const onHub = Boolean(hub) && !isDesktop();
-    const onList = Boolean(panelListMode) && !isDesktop() && !onHub;
+    const onHub = Boolean(hub);
+    const onList = Boolean(panelListMode) && !onHub;
     settingsShell.dataset.settingsHub = onHub ? "true" : "false";
     settingsShell.dataset.settingsPanelList = onList ? "true" : "false";
     settingsShell.classList.toggle("is-hub", onHub);
     settingsShell.classList.toggle("is-panel-list", onList);
     if (hubList) hubList.hidden = !onHub;
     if (panelList) panelList.hidden = !onList;
-    if (sectionEl) sectionEl.hidden = (onHub || onList) && !isDesktop();
+    if (sectionEl) sectionEl.hidden = onHub || onList;
   }
 
   function showSettings(tab, { hub = false, panel = null, panelListMode = false } = {}) {
     const next = labelsByTab[tab] ? tab : "general";
-    const showHub = Boolean(hub) && !isDesktop();
-    const showList = Boolean(panelListMode) && !isDesktop() && !showHub && tabHasPanels(next);
+    const showHub = Boolean(hub);
+    const showList = Boolean(panelListMode) && !showHub && tabHasPanels(next);
     setMode({ hub: showHub, panelListMode: showList });
     settingsShell.dataset.settingsActiveTab = next;
 
@@ -1724,14 +1531,14 @@ if (settingsShell) {
     } else if (showList) {
       renderPanelList(next);
       if (settingsTitle) settingsTitle.textContent = labelsByTab[next] || next;
-      if (settingsLede) settingsLede.textContent = "Tap a section to edit it.";
+      if (settingsLede) settingsLede.textContent = "Choose a section.";
       updateBack("panelList", next);
     } else {
       const panels = panelsByTab[next] || [];
       const active = panels.find((p) => p.id === panel) || panels[0];
       if (settingsTitle) {
         settingsTitle.textContent =
-          !isDesktop() && active?.label ? active.label : labelsByTab[next] || next;
+          active?.label || labelsByTab[next] || next;
       }
       if (settingsLede) settingsLede.textContent = ledesByTab[next] || "";
       updateBack("form", next);
@@ -1788,7 +1595,6 @@ if (settingsShell) {
     });
   }
 
-  syncDesktopClass();
   const initialHub = settingsShell.dataset.settingsHub === "true";
   const url = new URL(window.location.href);
   const urlPanel = url.searchParams.get("panel");
@@ -1798,18 +1604,7 @@ if (settingsShell) {
       ? { "account-password": "password", "view-options": "view", appearance: "appearance", "app-colours": "app-colours", "remote-access": "remote" }[hash]
       : null;
 
-  if (isDesktop()) {
-    if (initialHub) {
-      window.location.replace("/settings?tab=general");
-      // keep page usable until navigate
-      setMode({ hub: false });
-      applyPanelCards("general", null);
-    } else {
-      setMode({ hub: false });
-      applyPanelCards(settingsShell.dataset.settingsActiveTab || "general", urlPanel);
-      updateBack("form", settingsShell.dataset.settingsActiveTab || "general");
-    }
-  } else if (initialHub) {
+  if (initialHub) {
     updateBack("hub", "general");
   } else {
     const tab = settingsShell.dataset.settingsActiveTab || "general";
@@ -1821,18 +1616,11 @@ if (settingsShell) {
       setMode({ hub: false });
       applyPanelCards(tab, panel);
       updateBack("form", tab);
-      if (!isDesktop() && tabHasPanels(tab)) {
+      if (tabHasPanels(tab)) {
         const panels = panelsByTab[tab] || [];
         const active = panels.find((p) => p.id === panel) || panels[0];
         if (settingsTitle && active?.label) settingsTitle.textContent = active.label;
       }
     }
-  }
-
-  if (typeof DESKTOP_MQ.addEventListener === "function") {
-    DESKTOP_MQ.addEventListener("change", () => {
-      syncDesktopClass();
-      window.location.reload();
-    });
   }
 }

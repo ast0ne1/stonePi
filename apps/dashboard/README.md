@@ -18,43 +18,30 @@ One place for people and apps — separate from **Cockpit** (Linux host admin on
 | Area | Role |
 |------|------|
 | **Home** | Launcher tiles for apps the signed-in user may access; **Edit order** = drag-to-place (autosave) |
-| **Health** | Admin monitor: alerts, disk, backup, remote access (internet / Tailscale / MagicDNS), whether each app is responding (URLs use the host you opened) |
-| **Services** | Manage apps: Route + Port, enable/disable for the household; open a service to start/stop/restart |
+| **Health** | Admin monitor: Watch/alerts, host metrics, disk thresholds, backup + restore drill, remote access, listening ports, recent journal errors, whether each app is responding (and its version), grouped **SYSTEM** / **USER** |
+| **Services** | Manage apps: Route + Port, enable/disable for the household; open a service to start/stop/restart. Grouped **SYSTEM** (Dashboard, Auth, Notify, Recover — always available) / **USER** (launcher apps) |
 | **Users** | Household accounts, app grants, capability flags (Studio Publish also needs FileServe); denser expandable cards |
-| **Settings** | General, **Network** (exposure + Tailscale), Display, Vault, Automations, Updates, Backup, About |
+| **Settings** | General, **Network** (hostname, exposure, Tailscale, optional ACL), Vault, Automations, Updates, Backup/Restore, About |
 
 ## Platform Settings tabs
 
 | Tab | Role |
 |-----|------|
 | **General** | Appearance, password, view options |
-| **Network** | LAN vs internet-facing exposure; Tailscale remote access (Enable → Connect → auth link). Tailscale is preinstalled on the Pi. |
-| **Display** | TRMNL webhook (or Vault `DISPLAY_WEBHOOK_URL`), panel size (OG 800×480 / V2 1040×780), design presets, landscape preview scaled to the Settings column, **Copy markup** + Push now / schedule |
-| **Vault** | Encrypted secrets (session, LLM, Bright Data, Google, webhook, ntfy, …) |
-| **Automations** | USB→backup; Health/backup→Display push |
-| **Updates** | Install GitHub Release zips |
-| **Backup** | USB `STONEPI-BACKUP` status / trigger |
+| **Network** | Appliance hostname (`NAME.local`); LAN vs internet-facing exposure; Tailscale remote access (Enable → Connect → auth link); optional Tailscale ACL apply from Vault API keys |
+| **Vault** | Encrypted secrets (session, LLM, Bright Data, Google, webhook, ntfy, …). TRMNL webhooks are also editable on each Display in **Notify → Displays**; ntfy under **Notify → Destinations** |
+| **Automations** | USB→backup; Health/backup→Display push (Notify `POST /api/push-trmnl`) |
+| **Updates** | StonePi GitHub Release zips for the platform and every app in `APP_CATALOG`, grouped System / Apps; the system apps (Dashboard, Auth, Notify, Recover) update with the platform zip, user apps one by one. Apps' own updaters are hidden under StonePi. OS security is separate (unattended-upgrades) |
+| **Backup** | Local schedule (one on-disk copy) + USB `STONEPI-BACKUP`; restore drill; failover; restore local or USB snapshots. When Dashboard is down, the **Recovery Console** ([Recover](../recover/README.md)) takes over `/` |
 | **About** | What StonePi is |
 
-### Display designs
-
-| Design | Behaviour |
-|--------|-----------|
-| **Status wall** | Fixed ops board: hostname + SYSTEM, five-metric strip, wide Services list (name · detail · count · UP), Alerts, Storage & Backup. B/W-first Framework tokens. |
-| **Household focus** | Fixed: Health alerts + Apps, then product cards (2×2 on OG), thin stats strip, title bar. |
-| **Custom** | Freeform drag blocks from the palette; half / full width; × to remove. |
-
-StonePi pushes **`merge_variables` only**. After changing design or markup, use **Copy markup** and paste into the TRMNL Private Plugin Markup editor, then Force Refresh on the device.
-
-Custom editor layouts can use the nested contract also pushed alongside flat Status/Household keys:
-
-`system`, `services` (`name` / `status` / `detail`), `alerts`, `backup`, `events`, `reminders`.
-
-Preview matches the panel landscape frame and scales to fit the desktop Settings column (≤1×). Fixed designs use the full column width (palette hidden).
+Display / TRMNL setup (one Display per screen, screen builder, webhooks) and Destinations live in **[Notify](../notify/README.md)**. Old Dashboard URLs (`/settings?tab=display`, `/settings/display`) redirect there.
 
 ## Related
 
 - Auth: [apps/auth/README.md](../auth/README.md)
+- Notify: [apps/notify/README.md](../notify/README.md)
+- Recover (Recovery Console): [apps/recover/README.md](../recover/README.md)
 - Security: [deploy/SECURITY.md](../../deploy/SECURITY.md)
 - Install: [deploy/INSTALL.md](../../deploy/INSTALL.md)
 - Changelog: [CHANGELOG.md](CHANGELOG.md)

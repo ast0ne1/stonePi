@@ -9,7 +9,6 @@ from threading import Lock, Thread
 
 import feedparser
 import httpx
-import trafilatura
 from sqlalchemy.orm import Session
 
 from app.config import env
@@ -53,9 +52,30 @@ class IngestState:
     last_new_stories: int = 0
     last_message: str = "Idle"
     last_feed_stats: list[dict] = []
+    # Global refresh started from the Refresh button: the only kind the UI can stop.
+    manual: bool = False
+    stop_requested: bool = False
 
 
 state = IngestState()
+
+
+class IngestStopped(Exception):
+    """Raised at a checkpoint once the user asks a manual global refresh to stop."""
+
+
+def _check_stop() -> None:
+    # Cooperative: an in-flight fetch / LLM call finishes, then the run halts here.
+    if state.stop_requested:
+        raise IngestStopped()
+
+
+def request_stop() -> dict:
+    """Ask the running manual global refresh to stop at its next checkpoint."""
+    if not state.running or not state.manual:
+        return {"ok": False, "message": "No refresh to stop.", "stopping": False}
+    state.stop_requested = True
+    return {"ok": True, "message": "Stopping refresh…", "stopping": True}
 
 
 def _parse_date(value) -> datetime | None:
@@ -152,15 +172,26 @@ def _plain_text(value: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def _extract_article(url: str, fallback: str, db: Session | None = None) -> str:
+def _extract_article(
+    url: str,
+    fallback: str,
+    db: Session | None = None,
+    *,
+    strict: bool = False,
+    stats: dict | None = None,
+) -> str:
+    from app.services.text_cleanup import extract_text, tidy_lines
+
     fallback = _plain_text(fallback)
+    if strict:
+        fallback = tidy_lines(fallback)
     if len(fallback) >= MIN_EXCERPT_CHARS:
         return fallback
     if db is not None:
         from app.services import source_cache
 
         try:
-            _title, excerpt = source_cache.get_or_fetch_article(db, url)
+            _title, excerpt = source_cache.get_or_fetch_article(db, url, strict=strict, stats=stats)
             if excerpt and len(excerpt.strip()) >= MIN_EXCERPT_CHARS:
                 return excerpt.strip()
             if excerpt:
@@ -169,7 +200,9 @@ def _extract_article(url: str, fallback: str, db: Session | None = None) -> str:
             logger.debug("cached extract failed for %s: %s", url, exc)
     try:
         html = _http_get_html(url, db=db)
-        text = trafilatura.extract(html, include_comments=False, include_tables=False)
+        text, fell_back = extract_text(html, strict=strict)
+        if fell_back and stats is not None:
+            stats["strict_fallback"] = stats.get("strict_fallback", 0) + 1
         if text:
             return text.strip()
     except Exception as exc:  # noqa: BLE001
@@ -362,6 +395,7 @@ def _backfill_translations(db: Session, source_names: list[str] | None = None) -
     for story in stories:
         if not needs_translation(story, target):
             continue
+        _check_stop()
         feed = by_name.get(story.source_name)
         provider = resolve_provider(db, feed, global_provider=global_provider)
         if not provider:
@@ -403,11 +437,13 @@ def _backfill_translations(db: Session, source_names: list[str] | None = None) -
     return updated
 
 
-def run_ingest(db: Session, force: bool = True, feed_id: int | None = None) -> dict:
+def run_ingest(db: Session, force: bool = True, feed_id: int | None = None, *, manual: bool = False) -> dict:
     if not _lock.acquire(blocking=False):
         return {"ok": False, "message": "A refresh is already running."}
 
     state.running = True
+    state.manual = bool(manual and feed_id is None)
+    state.stop_requested = False
     state.progress = "Starting"
     state.last_started_at = utcnow()
     state.last_error = None
@@ -463,6 +499,7 @@ def run_ingest(db: Session, force: bool = True, feed_id: int | None = None) -> d
         candidates: list[dict] = []
         feed_stats: list[dict] = []
         for feed in feeds:
+            _check_stop()
             state.progress = feed.name
             uid = int(getattr(feed, "user_id", None) or 1)
             urls, hashes, titles = _lookup_for(uid)
@@ -494,6 +531,7 @@ def run_ingest(db: Session, force: bool = True, feed_id: int | None = None) -> d
                 extracts = 0
                 summarize_feed = bool(getattr(feed, "summarize", True))
                 translate_feed = bool(getattr(feed, "translate", False))
+                strict_feed = (getattr(feed, "text_cleanup", None) or "standard") == "strict"
                 include, exclude = feed_keyword_lists(feed, global_include, global_exclude)
                 before = len(candidates)
                 for item in items:
@@ -506,11 +544,15 @@ def run_ingest(db: Session, force: bool = True, feed_id: int | None = None) -> d
                     if _is_known(item["title"], item["published_at"], item["url"], digest, urls, hashes, titles):
                         stats["duplicates"] += 1
                         continue
+                    # Article extraction and translation are the slow steps per item.
+                    _check_stop()
                     should_extract = (not summarize_feed) or (
                         extracts < MAX_EXTRACTS_PER_FEED and len(item["excerpt"]) < MIN_EXCERPT_CHARS
                     )
                     if should_extract:
-                        item["excerpt"] = _extract_article(item["url"], item["excerpt"], db=db)
+                        item["excerpt"] = _extract_article(
+                            item["url"], item["excerpt"], db=db, strict=strict_feed, stats=stats
+                        )
                         if summarize_feed:
                             extracts += 1
                     if translate_feed:
@@ -559,6 +601,8 @@ def run_ingest(db: Session, force: bool = True, feed_id: int | None = None) -> d
                     stats["reason"] = "filtered by keywords"
                 elif stats["new"] == 0:
                     stats["reason"] = "no new stories"
+            except IngestStopped:
+                raise
             except httpx.HTTPStatusError as exc:
                 feed.last_error = str(exc)[:500]
                 stats["error"] = feed.last_error
@@ -600,6 +644,7 @@ def run_ingest(db: Session, force: bool = True, feed_id: int | None = None) -> d
 
         feed_by_name = {feed.name: feed for feed in feeds}
         for item in clusters.values():
+            _check_stop()
             excerpt = item.get("excerpt") or ""
             if item.get("summarize", True):
                 try:
@@ -670,6 +715,11 @@ def run_ingest(db: Session, force: bool = True, feed_id: int | None = None) -> d
                     note = f"{stats['new']} new"
                 elif note and stats.get("undated") and "undated" not in note:
                     note = f"{note}; {stats['undated']} undated (All only)"
+                fallback = int(stats.get("strict_fallback") or 0)
+                if fallback:
+                    # Strict cleanup found no article text on some pages and used Standard.
+                    extra = f"strict: {fallback} page{'' if fallback == 1 else 's'} used standard"
+                    note = extra if stats.get("new") else (f"{note}; {extra}" if note else extra)
                 feed_row.last_ingest_note = (note or None) and str(note)[:240]
         db.commit()
         if feed_id is not None and feed_stats:
@@ -720,6 +770,18 @@ def run_ingest(db: Session, force: bool = True, feed_id: int | None = None) -> d
             "llm_ready": llm.ready,
             "feed_stats": feed_stats,
         }
+    except IngestStopped:
+        # Keep stories already summarised and saved-in-session; otherwise change nothing.
+        if created:
+            db.commit()
+            message = f"Refresh stopped. Kept {created} new stor{'y' if created == 1 else 'ies'}."
+        else:
+            db.rollback()
+            message = "Refresh stopped. No changes were saved."
+        state.last_new_stories = created
+        state.last_message = message
+        state.last_error = None
+        return {"ok": True, "stopped": True, "created": created, "message": message}
     except Exception as exc:  # noqa: BLE001
         db.rollback()
         state.last_error = str(exc)
@@ -728,12 +790,14 @@ def run_ingest(db: Session, force: bool = True, feed_id: int | None = None) -> d
         return {"ok": False, "message": str(exc)}
     finally:
         state.running = False
+        state.manual = False
+        state.stop_requested = False
         state.progress = ""
         state.last_finished_at = utcnow()
         _lock.release()
 
 
-def start_ingest(force: bool = True, feed_id: int | None = None) -> dict:
+def start_ingest(force: bool = True, feed_id: int | None = None, *, manual: bool = False) -> dict:
     if state.running:
         return {"ok": True, "message": "A refresh is already running.", "running": True}
 
@@ -751,7 +815,7 @@ def start_ingest(force: bool = True, feed_id: int | None = None) -> dict:
     def _worker() -> None:
         db = SessionLocal()
         try:
-            run_ingest(db, force=force, feed_id=feed_id)
+            run_ingest(db, force=force, feed_id=feed_id, manual=manual)
         finally:
             db.close()
 
@@ -762,9 +826,13 @@ def start_ingest(force: bool = True, feed_id: int | None = None) -> dict:
 def snapshot() -> dict:
     return {
         "running": state.running,
+        "stoppable": bool(state.running and state.manual),
+        "stopping": bool(state.running and state.stop_requested),
         "progress": state.progress,
         "last_started_at": state.last_started_at.isoformat() if state.last_started_at else None,
         "last_finished_at": state.last_finished_at.isoformat() if state.last_finished_at else None,
+        # Stored in UTC; show the household clock (Pi system timezone, Europe/Copenhagen by default).
+        "last_finished_label": state.last_finished_at.astimezone().strftime("%H:%M") if state.last_finished_at else "",
         "last_error": state.last_error,
         "last_new_stories": state.last_new_stories,
         "last_message": state.last_message,

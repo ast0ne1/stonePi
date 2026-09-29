@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+
+{% block content %}
+<section class="hero">
+  <h1>Notices</h1>
+  <p class="lede">Short household messages for Display.</p>
+</section>
+
+<section class="card stack" id="add-notice">
+  <h2>Add notice</h2>
+  <form method="post" action="/notice" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <label>
+      Notice
+      <input id="notice-text" name="text" placeholder="Bins out tonight" required autocomplete="off" {% if focus_new %}autofocus{% endif %} />
+    </label>
+    <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("pin") }} Pin notice</button>
+  </form>
+</section>
+
+<section class="card stack" id="notices">
+  <h2>Pinned</h2>
+  {% for item in items.notices %}
+  <div class="list-row">
+    <span class="list-text">
+      <span class="kind-pill kind-notice">Notice</span>
+      {{ item.text }}
+    </span>
+    {% if user and user.is_admin %}
+    <form
+      method="post"
+      action="/delete/notice/{{ item.id }}"
+      data-confirm="Remove this notice?"
+      data-confirm-detail="It will no longer appear on Display."
+      data-confirm-ok="Remove"
+    >
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="next" value="/notices" />
+      <button class="btn btn-ghost btn-with-icon" type="submit">{{ icon("trash") }} Remove</button>
+    </form>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <h3>No notices yet</h3>
+    <p class="hint">Pin a short household note for Display.</p>
+  </div>
+  {% endfor %}
+</section>
+{% endblock %}

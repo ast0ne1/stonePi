@@ -19,7 +19,8 @@ port `8006`, prefix `/prices/`).
 | Env file | `/etc/stonepi/pricescout.env` |
 
 Pick a free port; keep `packages/stonepi_auth/.../session.py` `allowed_ports`
-in sync (dev + cookie trust). Taken: 8001–8007, 8010–8011 (SportGuide = 8007 `/sports/`).
+in sync (dev + cookie trust). Taken: 8001–8008, 8010–8012 (SportGuide = 8007 `/sports/`;
+PriceWatch = 8008 `/watch/`; Notify = 8012 `/notify/`).
 
 ## Files to touch
 
@@ -70,6 +71,50 @@ Honor prefix in redirects and TemplateResponse context (`app_prefix`,
   shape consistent with siblings; ensure public nginx deny still applies to
   `/api/display` at the edge.
 
+## Notifications (phone alerts)
+
+Every app ships the shared bell; apps that emit events also ship the shared
+Settings card and send an audience on every event. Reference: PriceWatch
+(`apps/pricewatch`: `app/services/ntfy.py`, `app/routes.py`, `base.html`,
+`settings.html`, `tests/test_personal_alerts.py`). Design:
+`notify-personal-alerts-plan.md` §4.6.
+
+1. **Register events** in `packages/stonepi_contracts/stonepi_contracts/catalog.py`
+   (`EventType(id, app, label, audience, blurb)`, id `"{app_id}.{event}"`).
+   `audience`: `personal` (one person's own thing), `household` (news for
+   everyone), `admin` (system health). New events start **not approved** in
+   Notify; no per-app on/off switches.
+2. **Emit with audience + owner** via `stonepi_contracts.EventEnvelope` /
+   `emit_event`:
+   - `audience=` always; personal events also `user=` the owner's **Auth user
+     id**, normalised with `stonepi_auth.alerts.auth_user_id(...)`.
+     Apps with a local user table map `users.auth_user_id`; apps without one use
+     the signed-in id (`session_user_id(cookies, secret)`) or the id they already
+     key data by.
+   - Never send local ids or `"local"` (rejected by `validate_event`). No owner →
+     don't send; never fall back to household for a personal event.
+   - Only emit under the platform (session secret set). Titles short; the link
+     opens StonePi.
+3. **Shared templates**: `add_shared_templates(templates.env)` (Starlette) or
+   `add_shared_templates(app.jinja_env)` (Flask).
+4. **Bell** in the topbar just before Sign out, only when signed in:
+   `{% from "stonepi/alerts.html" import alerts_bell %}{{ alerts_bell(alerts_bell_state) }}`
+   with `alerts_bell_state = bell_context(user, session_cookie=cookies[COOKIE_NAME],
+   home_url=stonepi_home_url, enabled=bool(session_secret))` on every page.
+5. **Settings → Notifications** tab (apps that emit events) with
+   `{{ notifications_card(notifications_card_state) }}` and
+   `notifications_card_state = notifications_card_context(app_id, user if
+   session_secret else None, home_url=...)`. App-specific *timing* settings
+   (lead time, reminder time) go below the card; nothing else.
+6. **Context keys** are exactly `alerts_bell_state` / `notifications_card_state` —
+   importing a macro shadows a context variable with the same name.
+7. **Tests** (`tests/test_personal_alerts.py`): emitter `audience` (+ correct
+   Auth `user`, no local ids); bell before Sign out; card on the Notifications
+   tab; standalone shows neither. Monkeypatch `bell_context` so tests don't call
+   Notify.
+
+Standalone (no session secret): no bell, no card, no events.
+
 ## Auth capabilities
 
 Declare only real gates in catalog `capabilities`. Enforce with
@@ -106,6 +151,6 @@ Interactive CMD is required for scp/ssh/sudo passwords on Windows.
 
 1. `run-dev.bat` — app URL + Home launcher tile.
 2. SSO login → app → Home returns to same host.
-3. Theme/palette match dashboard without Save in the app.
+3. Light/dark mode and colour palette match the dashboard (shared cookies); no Save in the app; no per-app light/dark toggle.
 4. Phone width: bottom nav usable; Settings chips show icons.
 5. On Pi: `systemctl is-active stonepi-{id}`; `curl -s localhost:PORT/healthz`.

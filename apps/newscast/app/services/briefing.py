@@ -58,22 +58,38 @@ def _scope_feeds(query, user_id: int | None):
     return query
 
 
+# Chapter-menu and footer name for the first spine file (front image, briefing, Contents).
+COVER_CHAPTER_TITLE = "Front page"
+
+
 @dataclass(frozen=True)
 class EpubLayout:
     omit_article_links: bool = True
     chapters_by_source: bool = True
     x3_screen: bool = True
     toc_outline_numbers: bool = True
-    cover_first: bool = False
+    # Cover Contents: "full" (titles + summaries), "titles", "auto" (titles past
+    # contents_limit), or "sources" (numbered categories and sources, no stories).
+    contents_detail: str = "full"
+    contents_limit: int = 30
+    # Optional CrossInk-only styling layered on the shared baseline (ignored by CrossPoint).
+    crossink_extras: bool = False
 
     @classmethod
-    def from_db(cls, db: Session) -> "EpubLayout":
+    def from_db(cls, db: Session, user_id: int | None = None) -> "EpubLayout":
+        crossink = False
+        if user_id is not None:
+            from app.services import reader_config
+
+            crossink = reader_config.effective_reader_firmware(db, int(user_id)) == "crossink"
         return cls(
             omit_article_links=settings.epub_omit_article_links(db),
             chapters_by_source=settings.epub_chapters_by_source(db),
             x3_screen=settings.epub_x3_screen(db),
             toc_outline_numbers=settings.epub_toc_outline_numbers(db),
-            cover_first=settings.epub_cover_first(db),
+            contents_detail=settings.epub_contents_detail(db),
+            contents_limit=settings.epub_contents_limit(db),
+            crossink_extras=crossink,
         )
 
     @classmethod
@@ -84,10 +100,27 @@ class EpubLayout:
             chapters_by_source=False,
             x3_screen=False,
             toc_outline_numbers=False,
-            cover_first=False,
         )
 
+    def contents_stories(self) -> bool:
+        """False when Contents lists only the numbered categories and sources."""
+        return self.contents_detail != "sources"
 
+    def contents_summaries(self, story_count: int) -> bool:
+        if self.contents_detail in ("titles", "sources"):
+            return False
+        if self.contents_detail == "auto":
+            return story_count <= self.contents_limit
+        return True
+
+
+# Stylesheets use only selectors every Xteink firmware reads: `tag`, `.class`, or
+# `tag.class`, one per rule. CrossPoint drops anything with a space, `>` or `:`, and
+# CrossInk ranks two-part descendant rules *below* plain classes, so overrides that
+# lean on nesting silently fail. Page breaks come from starting a new spine file
+# (cover, section page, source), never from CSS — CrossPoint ignores page-break.
+
+# Classic paper for full-CSS readers (KOReader, desktop apps).
 EINK_CSS = """
 body {
   font-family: Georgia, "Times New Roman", serif;
@@ -100,309 +133,161 @@ body {
   word-spacing: normal;
   letter-spacing: normal;
 }
-h1 {
-  font-size: 1.55em;
-  line-height: 1.25;
-  margin: 0 0 0.35em;
-  font-weight: bold;
-}
-h2 {
-  font-size: 1.2em;
-  line-height: 1.3;
-  margin: 1.4em 0 0.55em;
-  font-weight: bold;
-}
-h3 {
-  font-size: 1.05em;
-  line-height: 1.3;
-  margin: 1.25em 0 0.45em;
-  font-weight: bold;
-}
-h4 {
-  font-size: 0.98em;
-  line-height: 1.3;
-  margin: 0.95em 0 0.35em;
-  font-weight: normal;
-  font-style: italic;
-}
+h1 { font-size: 1.55em; line-height: 1.25; margin: 0 0 0.35em; font-weight: bold; text-align: left; }
+h2 { font-size: 1.2em; line-height: 1.3; margin: 1.4em 0 0.55em; font-weight: bold; text-align: left; }
+h3 { font-size: 1.05em; line-height: 1.3; margin: 1.25em 0 0.45em; font-weight: bold; text-align: left; }
+h4 { font-size: 0.98em; line-height: 1.3; margin: 0.95em 0 0.35em; font-weight: normal; font-style: italic; text-align: left; }
 p { margin: 0 0 0.75em; text-align: left; word-spacing: normal; letter-spacing: normal; }
 a { color: #111; text-decoration: underline; }
 .meta { font-style: italic; color: #333; margin: 0 0 0.35em; }
 .byline { font-style: italic; color: #333; margin: 0 0 1em; }
+.masthead { margin: 0 0 0.75em; font-style: italic; color: #333; }
 .cover-image { margin: 0 0 1em; text-align: center; }
-.cover-image img { width: 100%; height: auto; }
-.cover-rule {
-  border: 0;
-  border-top: 1px solid #111;
-  margin: 0.9em 0 1.1em;
-}
-.contents h2 { margin-top: 0.4em; }
-.contents .toc-category { margin: 0 0 1.1em; }
-.contents .toc-category h3 {
-  margin: 0 0 0.55em;
-  padding-bottom: 0.25em;
-  border-bottom: 1px solid #111;
-}
-.contents .toc-source { margin: 0 0 0.85em 0.75em; }
-.contents .toc-source h4 { margin: 0.7em 0 0.4em; }
-.contents ol.toc-stories {
-  list-style: none;
-  padding: 0 0 0 0.35em;
-  margin: 0;
-}
-.contents ol.toc-stories li {
-  margin: 0 0 0.85em;
-  padding: 0;
-  line-height: 1.4;
-}
-.contents ol.toc-stories li .toc-title {
-  display: block;
-  font-weight: bold;
-  margin: 0 0 0.2em;
-}
-.contents ol.toc-stories li .toc-digest {
-  display: block;
-  font-size: 0.92em;
-  font-weight: normal;
-  font-style: normal;
-  color: #333;
-  line-height: 1.35;
-}
-.masthead {
-  margin: 0 0 0.75em;
-  font-style: italic;
-  color: #333;
-}
-.story { page-break-before: always; }
-.story h1 { margin-bottom: 0.45em; }
-.story .body p { margin-bottom: 0.85em; text-align: left; word-spacing: normal; letter-spacing: normal; }
-.story .original { margin-top: 1.2em; }
-.source-chapter { page-break-before: always; }
-.source-chapter > h1 {
-  font-size: 1.35em;
-  margin: 0 0 0.75em;
-  padding-bottom: 0.35em;
-  border-bottom: 1px solid #111;
-}
-.source-chapter .story {
-  page-break-before: auto;
-  margin: 0 0 1.4em;
-  padding-bottom: 1em;
-  border-bottom: 1px solid #ccc;
-}
-.source-chapter .story:last-child {
-  border-bottom: 0;
-  margin-bottom: 0;
-  padding-bottom: 0;
-}
-.source-chapter .story h2 {
-  font-size: 1.15em;
-  margin: 0 0 0.35em;
-}
-.category-plate {
-  page-break-before: always;
-  text-align: center;
-  padding: 2.5em 0.5em 1.5em;
-}
-.category-plate .category-icon {
-  display: block;
-  margin: 0 auto 1.2em;
-  width: 96px;
-  height: 96px;
-}
-.category-plate h1 {
-  margin: 0 0 0.75em;
-  border-bottom: 0;
-  font-size: 1.45em;
-}
-.category-plate .hint {
-  font-style: italic;
-  color: #333;
-  font-size: 0.95em;
-  margin: 1.5em 0 0;
-}
-img { display: none; }
-.cover-image img,
-.category-plate img { display: block; }
+.cover-img { width: 100%; height: auto; }
+.paper-title { margin: 0 0 0.25em; }
+.cover-rule { border: 0; border-top: 1px solid #111; margin: 0.9em 0 1.1em; }
+.contents-title { margin: 0.4em 0 0.55em; }
+.toc-category { margin: 0 0 1.1em; }
+.toc-category-title { margin: 0 0 0.55em; padding-bottom: 0.25em; border-bottom: 1px solid #111; }
+.toc-source { margin: 0 0 0.85em 0.75em; }
+.toc-source-title { margin: 0.7em 0 0.4em; }
+.toc-stories { margin: 0 0 0 0.35em; }
+.toc-story { margin: 0 0 0.85em; line-height: 1.4; }
+.toc-title { font-weight: bold; margin: 0 0 0.2em; }
+.toc-digest { font-size: 0.92em; color: #333; line-height: 1.35; margin: 0; }
+.category-plate { text-align: center; padding: 2.5em 0.5em 1.5em; }
+.category-icon { width: 160px; height: 160px; margin: 0 0 1.2em; }
+.plate-title { font-size: 1.45em; text-align: center; margin: 0 0 0.75em; }
+.plate-sources { text-align: center; font-style: italic; color: #333; margin: 1.5em 0 0.35em; }
+.plate-count { text-align: center; color: #333; margin: 0; }
+.source-title { font-size: 1.35em; margin: 0 0 0.75em; padding-bottom: 0.35em; border-bottom: 1px solid #111; }
+.story-block { margin: 0 0 0.6em; }
+.story-position { font-style: italic; color: #333; font-size: 0.9em; margin: 0 0 0.2em; }
+.story-title { margin: 0 0 0.35em; }
+.story-body { margin: 0; }
+.story-rule { border: 0; border-top: 1px solid #ccc; margin: 1.2em 0; }
+.story { margin: 0; }
+.original { margin-top: 1.2em; }
 """
 
-# Tuned for Xteink X3: 3.7" / 528×792, button page-turns, no touch.
+# Shared Xteink baseline (X3, 528×792, buttons only) — identical on CrossPoint and
+# CrossInk. Neither firmware applies font-size, line-height, color, or borders, so
+# hierarchy is bold / italic / spacing only.
 X3_EINK_CSS = """
-body {
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 1em;
-  line-height: 1.35;
-  color: #000;
-  background: #fff;
-  margin: 0.45em 0.55em 0.75em;
-  text-align: left;
-  word-spacing: normal;
-  letter-spacing: normal;
-}
-h1 {
-  font-size: 1.28em;
-  line-height: 1.2;
-  margin: 0 0 0.3em;
-  font-weight: bold;
-}
-h2 {
-  font-size: 1.08em;
-  line-height: 1.25;
-  margin: 0.95em 0 0.4em;
-  font-weight: bold;
-}
-h3 {
-  font-size: 1em;
-  line-height: 1.25;
-  margin: 0.85em 0 0.35em;
-  font-weight: bold;
-}
-h4 {
-  font-size: 0.95em;
-  line-height: 1.25;
-  margin: 0.7em 0 0.25em;
-  font-weight: normal;
-  font-style: italic;
-}
-p { margin: 0 0 0.55em; text-align: left; word-spacing: normal; letter-spacing: normal; }
-a { color: #000; text-decoration: none; }
-.meta { font-style: italic; color: #222; margin: 0 0 0.3em; font-size: 0.92em; }
-.byline { font-style: italic; color: #222; margin: 0 0 0.65em; font-size: 0.9em; }
+body { margin: 0.45em 0.55em 0.75em; text-align: left; }
+h1 { margin: 0 0 0.35em; font-weight: bold; text-align: left; }
+h2 { margin: 0.9em 0 0.35em; font-weight: bold; text-align: left; }
+h3 { margin: 0.8em 0 0.3em; font-weight: bold; text-align: left; }
+h4 { margin: 0.6em 0 0.25em; font-weight: normal; font-style: italic; text-align: left; }
+p { margin: 0 0 0.55em; text-align: left; }
+a { text-decoration: none; }
+.meta { font-style: italic; margin: 0 0 0.3em; }
+.byline { font-style: italic; margin: 0 0 0.6em; }
+.masthead { font-style: italic; margin: 0 0 0.45em; }
 .cover-image { margin: 0 0 0.55em; text-align: center; }
-.cover-image img { width: 100%; max-width: 528px; height: auto; }
-.cover-rule {
-  border: 0;
-  border-top: 1px solid #000;
-  margin: 0.55em 0 0.7em;
-}
-.contents h2 { margin-top: 0.25em; font-size: 1.05em; }
-.contents .toc-category { margin: 0 0 0.7em; }
-.contents .toc-category h3 {
-  margin: 0 0 0.35em;
-  padding-bottom: 0.15em;
-  border-bottom: 1px solid #000;
-  font-size: 1em;
-}
-.contents .toc-source { margin: 0 0 0.55em 0.65em; }
-.contents .toc-source h4 { margin: 0.45em 0 0.25em; font-size: 0.95em; }
-.contents ol.toc-stories {
-  list-style: none;
-  padding: 0 0 0 0.25em;
-  margin: 0;
-}
-.contents ol.toc-stories li {
-  margin: 0 0 0.45em;
-  padding: 0;
-  line-height: 1.3;
-}
-.contents ol.toc-stories li .toc-title {
-  display: block;
-  font-weight: bold;
-  margin: 0 0 0.1em;
-  font-size: 0.98em;
-}
-.contents ol.toc-stories li .toc-digest {
-  display: block;
-  font-size: 0.86em;
-  font-weight: normal;
-  font-style: normal;
-  color: #222;
-  line-height: 1.3;
-}
-.masthead {
-  margin: 0 0 0.45em;
-  font-style: italic;
-  color: #222;
-  font-size: 0.9em;
-}
-.story { page-break-before: always; }
-.story h1 { margin-bottom: 0.35em; font-size: 1.2em; }
-.story .body p { margin-bottom: 0.55em; text-align: left; word-spacing: normal; letter-spacing: normal; }
-.story .original { display: none; }
-.source-chapter { page-break-before: always; }
-.source-chapter > h1 {
-  font-size: 1.18em;
-  margin: 0 0 0.55em;
-  padding-bottom: 0.25em;
-  border-bottom: 1px solid #000;
-}
-.source-chapter .story {
-  page-break-before: auto;
-  margin: 0 0 0.95em;
-  padding-bottom: 0.7em;
-  border-bottom: 1px solid #666;
-}
-.source-chapter .story:last-child {
-  border-bottom: 0;
-  margin-bottom: 0;
-  padding-bottom: 0;
-}
-.source-chapter .story h2 {
-  font-size: 1.05em;
-  margin: 0 0 0.25em;
-}
-.category-plate {
-  page-break-before: always;
-  text-align: center;
-  padding: 1.8em 0.35em 1em;
-}
-.category-plate .category-icon {
-  display: block;
-  margin: 0 auto 0.85em;
-  width: 72px;
-  height: 72px;
-}
-.category-plate h1 {
-  margin: 0 0 0.55em;
-  border-bottom: 0;
-  font-size: 1.22em;
-}
-.category-plate .hint {
-  font-style: italic;
-  color: #222;
-  font-size: 0.88em;
-  margin: 1.1em 0 0;
-}
-img { display: none; }
-.cover-image img,
-.category-plate img { display: block; }
+.cover-img { width: 100%; }
+.paper-title { margin: 0 0 0.2em; }
+.cover-rule { margin: 0.55em 0 0.7em; }
+.contents-title { margin: 0.25em 0 0.4em; }
+.toc-category { margin: 0 0 0.7em; }
+.toc-category-title { margin: 0 0 0.35em; }
+.toc-source { margin: 0 0 0.55em 0.65em; }
+.toc-source-title { margin: 0.45em 0 0.25em; }
+.toc-stories { margin: 0 0 0 0.25em; }
+.toc-story { margin: 0 0 0.45em; }
+.toc-title { font-weight: bold; margin: 0 0 0.1em; }
+.toc-digest { margin: 0; }
+.category-plate { text-align: center; padding: 1.8em 0.35em 1em; }
+.category-icon { width: 150px; height: 150px; margin: 0 0 0.85em; }
+.plate-title { text-align: center; margin: 0 0 0.55em; }
+.plate-sources { text-align: center; font-style: italic; margin: 1em 0 0.3em; }
+.plate-count { text-align: center; margin: 0; }
+.source-title { margin: 0 0 0.55em; }
+.story-block { margin: 0 0 0.6em; }
+.story-position { font-style: italic; margin: 0 0 0.15em; }
+.story-title { margin: 0 0 0.25em; }
+.story-body { margin: 0; }
+.story-rule { margin: 0.9em 0; }
+.story { margin: 0; }
+.original { display: none; }
 """
+
+# CrossInk-only extras: an inverted band behind section titles (shown when the
+# reader honours publisher styling) and small-caps source names. CrossPoint
+# ignores both properties, so a wrong firmware choice only looks plainer.
+CROSSINK_EXTRA_CSS = """
+.plate-title { background-color: #000; padding: 0.25em 0; }
+.source-title { font-variant-caps: small-caps; }
+.toc-source-title { font-variant-caps: small-caps; }
+"""
+
+
+def epub_stylesheet(opts: "EpubLayout") -> str:
+    css = X3_EINK_CSS if opts.x3_screen else EINK_CSS
+    if opts.crossink_extras:
+        css += CROSSINK_EXTRA_CSS
+    return css
+
+
 _ALLOWED_TAGS = {"p", "br", "em", "strong", "b", "i", "u", "a", "ul", "ol", "li", "blockquote", "h3", "h4", "h5", "h6"}
 _SKIP_TAGS = {"script", "style"}
 _DROP_TAGS = {"img", "video", "audio", "source", "iframe", "object", "embed"}
 _WS_RE = re.compile(r"[ \t\f\v]+")
-CATEGORY_TURN_HINT = "Turn the page for stories in this section."
 
 
-def _category_plate_html(label: str, icon_href: str) -> str:
+def _story_count_label(count: int) -> str:
+    return f"{count} stor{'y' if count == 1 else 'ies'}"
+
+
+def _category_plate_html(label: str, icon_href: str, sources: list[tuple[str, list[dict]]]) -> str:
+    """Section page: icon, title, and what is inside (sources + story count)."""
+    count = sum(len(items) for _source, items in sources)
+    names = " · ".join(source for source, _items in sources)
     return (
         '<div class="category-plate">'
         f'<img class="category-icon" alt="" src="{html.escape(icon_href, quote=True)}"/>'
-        f"<h1>{html.escape(label)}</h1>"
-        f'<p class="hint">{html.escape(CATEGORY_TURN_HINT)}</p>'
+        f'<h1 class="plate-title">{html.escape(label)}</h1>'
+        f'<p class="plate-sources">{html.escape(names)}</p>'
+        f'<p class="plate-count">{html.escape(_story_count_label(count))}</p>'
         "</div>"
     )
 
 
-def _cover_contents_html(groups: list[tuple[str, str, list[dict]]], *, opts: EpubLayout) -> list[str]:
+def _outline_titles(label: str, sources: list[str], cat_index: int, *, numbered: bool) -> tuple[str, list[str]]:
+    """Category / source titles for the Contents page and the reader's chapter menu.
+
+    Numbers live in the title text itself: the reader's nested menu restarts every
+    level at 1, so "1.1" only survives when it is part of the entry name.
+    """
+    if not numbered:
+        return label, list(sources)
+    return f"{cat_index}. {label}", [f"{cat_index}.{i} {source}" for i, source in enumerate(sources, start=1)]
+
+
+def _cover_contents_html(groups: list[tuple[str, str, list[dict]]], *, opts: EpubLayout, summaries: bool) -> list[str]:
     blurb_limit = 90 if opts.x3_screen else 160
-    bits = ['<div class="contents"><h2>Contents</h2>']
+    bits = ['<div class="contents"><h2 class="contents-title">Contents</h2>']
     for cat_index, (_key, label, group) in enumerate(groups, start=1):
-        cat_heading = f"{cat_index}. {label}" if opts.toc_outline_numbers else label
-        bits.append(f'<div class="toc-category"><h3>{html.escape(cat_heading)}</h3>')
-        for src_index, (source, source_stories) in enumerate(group_stories_by_source(group), start=1):
-            src_heading = f"{cat_index}.{src_index} {source}" if opts.toc_outline_numbers else source
-            bits.append(f'<div class="toc-source"><h4>{html.escape(src_heading)}</h4>')
-            bits.append('<ol class="toc-stories">')
+        by_source = group_stories_by_source(group)
+        cat_heading, src_headings = _outline_titles(
+            label, [source for source, _ in by_source], cat_index, numbered=opts.toc_outline_numbers
+        )
+        bits.append(f'<div class="toc-category"><h3 class="toc-category-title">{html.escape(cat_heading)}</h3>')
+        for src_heading, (_source, source_stories) in zip(src_headings, by_source):
+            bits.append(f'<div class="toc-source"><h4 class="toc-source-title">{html.escape(src_heading)}</h4>')
+            if not opts.contents_stories():
+                bits.append("</div>")
+                continue
+            bits.append('<div class="toc-stories">')
             for story in source_stories:
                 title = story.get("title") or "Untitled"
-                blurb = digest_blurb(story.get("summary") or "", limit=blurb_limit)
-                bits.append("<li>")
-                bits.append(f'<span class="toc-title">{html.escape(title)}</span>')
+                bits.append('<div class="toc-story">')
+                bits.append(f'<div class="toc-title">{html.escape(title)}</div>')
+                blurb = digest_blurb(story.get("summary") or "", limit=blurb_limit) if summaries else ""
                 if blurb:
-                    bits.append(f'<span class="toc-digest">{html.escape(blurb)}</span>')
-                bits.append("</li>")
-            bits.append("</ol></div>")
+                    bits.append(f'<div class="toc-digest">{html.escape(blurb)}</div>')
+                bits.append("</div>")
+            bits.append("</div></div>")
         bits.append("</div>")
     bits.append("</div>")
     return bits
@@ -429,29 +314,31 @@ def write_epub(payload: dict, dest: Path, *, layout: EpubLayout | None = None) -
     )
     book.set_cover("cover.jpg", cover_bytes, create_page=False)
 
-    css_text = X3_EINK_CSS if opts.x3_screen else EINK_CSS
-    style = epub.EpubItem(uid="style", file_name="style/eink.css", media_type="text/css", content=css_text.encode())
+    style = epub.EpubItem(
+        uid="style", file_name="style/eink.css", media_type="text/css", content=epub_stylesheet(opts).encode()
+    )
     book.add_item(style)
+
+    def _chapter(title: str, file_name: str, content: str) -> epub.EpubHtml:
+        chapter = epub.EpubHtml(title=title[:120], file_name=file_name, lang="en")
+        chapter.content = content
+        chapter.add_link(href="style/eink.css", rel="stylesheet", type="text/css")
+        book.add_item(chapter)
+        return chapter
 
     groups = group_stories(stories)
     cover_bits = [
-        '<div class="cover-image"><img alt="Front page" src="cover.jpg"/></div>',
-        f"<h1>{html.escape(heading)}</h1>",
+        '<div class="cover-image"><img class="cover-img" alt="Front page" src="cover.jpg"/></div>',
+        f'<h1 class="paper-title">{html.escape(heading)}</h1>',
         f'<p class="meta">{html.escape(date_label)}</p>',
+        f'<p class="masthead">{html.escape(masthead_line(stories))}</p>',
     ]
     if stories:
-        cover_bits.append(f'<p class="masthead">{html.escape(masthead_line(stories))}</p>')
         cover_bits.append('<hr class="cover-rule"/>')
-        cover_bits.extend(_cover_contents_html(groups, opts=opts))
+        cover_bits.extend(_cover_contents_html(groups, opts=opts, summaries=opts.contents_summaries(len(stories))))
     else:
-        cover_bits.append(f'<p class="masthead">{html.escape(masthead_line(stories))}</p>')
         cover_bits.append("<p>No stories yet.</p>")
-
-    cover = epub.EpubHtml(title="Cover", file_name="cover.xhtml", lang="en")
-    cover.content = "".join(cover_bits)
-    cover.add_item(style)
-    cover.add_link(href="style/eink.css", rel="stylesheet", type="text/css")
-    book.add_item(cover)
+    cover = _chapter(COVER_CHAPTER_TITLE, "cover.xhtml", "".join(cover_bits))
 
     body_chapters: list = []
     toc: list = []
@@ -463,87 +350,70 @@ def write_epub(payload: dict, dest: Path, *, layout: EpubLayout | None = None) -
         file_name = f"images/cat-{slug}.png"
         uid = f"cat-icon-{slug}"
         if uid not in icon_uids:
-            icon_item = epub.EpubItem(
-                uid=uid,
-                file_name=file_name,
-                media_type="image/png",
-                content=render_category_icon(category_key),
+            book.add_item(
+                epub.EpubItem(
+                    uid=uid,
+                    file_name=file_name,
+                    media_type="image/png",
+                    content=render_category_icon(category_key),
+                )
             )
-            book.add_item(icon_item)
             icon_uids.add(uid)
         return file_name
 
-    if opts.chapters_by_source:
-        for key, label, group in groups:
-            cat_file = f"category-{index}.xhtml"
-            cat_chapter = epub.EpubHtml(title=label[:120], file_name=cat_file, lang="en")
-            icon_href = _ensure_category_icon(key)
-            cat_chapter.content = _category_plate_html(label, icon_href)
-            cat_chapter.add_item(style)
-            cat_chapter.add_link(href="style/eink.css", rel="stylesheet", type="text/css")
-            book.add_item(cat_chapter)
-            body_chapters.append(cat_chapter)
-            index += 1
-            source_sections = [cat_chapter]
-            for source, source_stories in group_stories_by_source(group):
-                chapter = epub.EpubHtml(
-                    title=source[:120],
-                    file_name=f"source-{index}.xhtml",
-                    lang="en",
-                )
-                parts = [f'<div class="source-chapter"><h1>{html.escape(source)}</h1>']
-                for story in source_stories:
-                    parts.append(_story_block_html(story, heading="h2", opts=opts))
+    for cat_index, (key, label, group) in enumerate(groups, start=1):
+        by_source = group_stories_by_source(group)
+        cat_title, src_titles = _outline_titles(
+            label, [source for source, _ in by_source], cat_index, numbered=opts.toc_outline_numbers
+        )
+        # Every section and source is its own spine file, so each starts on a fresh page
+        # on every firmware without relying on CSS page-break support.
+        cat_chapter = _chapter(
+            cat_title, f"category-{index}.xhtml", _category_plate_html(label, _ensure_category_icon(key), by_source)
+        )
+        body_chapters.append(cat_chapter)
+        index += 1
+        # The reader's chapter menu stops at source level: category -> sources.
+        source_links: list = []
+        for src_title, (source, source_stories) in zip(src_titles, by_source):
+            total = len(source_stories)
+            if opts.chapters_by_source:
+                parts = [f'<div class="source-chapter"><h1 class="source-title">{html.escape(source)}</h1>']
+                for position, story in enumerate(source_stories, start=1):
+                    if position > 1:
+                        parts.append('<hr class="story-rule"/>')
+                    parts.append(_story_block_html(story, heading="h2", opts=opts, position=position, total=total))
                 parts.append("</div>")
-                chapter.content = "".join(parts)
-                chapter.add_item(style)
-                chapter.add_link(href="style/eink.css", rel="stylesheet", type="text/css")
-                book.add_item(chapter)
+                chapter = _chapter(src_title, f"source-{index}.xhtml", "".join(parts))
                 body_chapters.append(chapter)
-                source_sections.append(chapter)
+                source_links.append(chapter)
                 index += 1
-            if len(source_sections) > 1:
-                toc.append((cat_chapter, tuple(source_sections[1:])))
-            else:
-                toc.append(cat_chapter)
-    else:
-        for key, label, group in groups:
-            cat_file = f"category-{index}.xhtml"
-            cat_chapter = epub.EpubHtml(title=label[:120], file_name=cat_file, lang="en")
-            icon_href = _ensure_category_icon(key)
-            cat_chapter.content = _category_plate_html(label, icon_href)
-            cat_chapter.add_item(style)
-            cat_chapter.add_link(href="style/eink.css", rel="stylesheet", type="text/css")
-            book.add_item(cat_chapter)
-            body_chapters.append(cat_chapter)
-            index += 1
-            source_sections = []
-            for source, source_stories in group_stories_by_source(group):
-                source_chapters = []
-                for story in source_stories:
-                    title = story.get("title") or "Untitled"
-                    chapter = epub.EpubHtml(title=title[:120], file_name=f"story-{index}.xhtml", lang="en")
-                    chapter.content = _story_block_html(story, heading="h1", opts=opts)
-                    chapter.add_item(style)
-                    chapter.add_link(href="style/eink.css", rel="stylesheet", type="text/css")
-                    book.add_item(chapter)
-                    body_chapters.append(chapter)
-                    source_chapters.append(chapter)
-                    index += 1
-                if source_chapters:
-                    source_sections.append((epub.Section(source), tuple(source_chapters)))
-            if source_sections:
-                toc.append((cat_chapter, tuple(source_sections)))
-            else:
-                toc.append(cat_chapter)
+                continue
+            first_story_file = ""
+            for position, story in enumerate(source_stories, start=1):
+                title = story.get("title") or "Untitled"
+                chapter = _chapter(
+                    title,
+                    f"story-{index}.xhtml",
+                    _story_block_html(story, heading="h1", opts=opts, position=position, total=total),
+                )
+                body_chapters.append(chapter)
+                first_story_file = first_story_file or chapter.file_name
+                index += 1
+            if first_story_file:
+                link_uid = f"src-{cat_index}-{len(source_links) + 1}"
+                source_links.append(epub.Link(first_story_file, src_title[:120], link_uid))
+        toc.append((cat_chapter, tuple(source_links)) if source_links else cat_chapter)
 
-    book.toc = toc or [cover]
+    # The reader's footer shows the TOC entry for the current spine file; a spine file
+    # with no entry inherits the previous one, and the first has none to inherit, so
+    # the cover (front image, briefing, Contents) needs its own entry or it reads "Unnamed".
+    book.toc = [cover, *toc]
     book.add_item(epub.EpubNcx())
+    # The nav document stays in the manifest for the reader's chapter menu but out of
+    # the spine, so the paper opens on the front cover instead of a bare outline.
     book.add_item(epub.EpubNav())
-    if opts.cover_first:
-        book.spine = [cover, "nav", *body_chapters]
-    else:
-        book.spine = ["nav", cover, *body_chapters]
+    book.spine = [cover, *body_chapters]
     dest.parent.mkdir(parents=True, exist_ok=True)
     epub.write_epub(str(dest), book)
 
@@ -574,9 +444,58 @@ def briefing_path(day: str | None = "today") -> str:
     key = normalize_briefing_day(day)
     if key == "today":
         return "/"
-    if key in BRIEFING_DAYS:
+    if key in BRIEFING_DAYS or ISO_DAY_RE.fullmatch(key):
         return f"/?day={key}"
     return "/"
+
+
+def canonical_briefing_day(value: str | None, now: datetime | None = None) -> str:
+    """Day filter key for the Briefing page: a specific date maps onto Today / Yesterday
+    when it is one of those, and dates outside the retention window fall back to Today."""
+    key = normalize_briefing_day(value)
+    if not ISO_DAY_RE.fullmatch(key):
+        return key
+    target = paper_day_for(key, now=now)
+    today = _local_today(now)
+    if target is None or target > today or target <= today - timedelta(days=env.story_retention_days):
+        return "today"
+    if target == today:
+        return "today"
+    if target == today - timedelta(days=1):
+        return "yesterday"
+    return key
+
+
+def briefing_day_label(key: str) -> str:
+    """Short label for a specific-date segment ("24 Sep"); empty for Today/Yesterday/All."""
+    if not ISO_DAY_RE.fullmatch(key or ""):
+        return ""
+    return date.fromisoformat(key).strftime("%d %b").lstrip("0")
+
+
+def briefing_day_options(db: Session, user_id: int | None = None, now: datetime | None = None) -> list[dict]:
+    """Every day in the retention window for the Briefing day picker, newest first."""
+    today = _local_today(now)
+    tz = _local_tz()
+    with_stories: set[date] = set()
+    for story in current_stories(db, day="all", user_id=user_id, now=now):
+        when = _aware(story.published_at)
+        if when is not None and not story.saved:
+            with_stories.add(when.astimezone(tz).date())
+    options = []
+    for offset in range(max(1, env.story_retention_days)):
+        day = today - timedelta(days=offset)
+        key = "today" if offset == 0 else "yesterday" if offset == 1 else day.isoformat()
+        options.append(
+            {
+                "key": key,
+                "href": briefing_path(key),
+                "name": "Today" if offset == 0 else "Yesterday" if offset == 1 else day.strftime("%A"),
+                "date_label": day.strftime("%d %b").lstrip("0"),
+                "has_stories": day in with_stories,
+            }
+        )
+    return options
 
 
 def _aware(value: datetime | None) -> datetime | None:
@@ -756,6 +675,14 @@ def current_stories(
         .filter(or_(Story.favourited.is_(False), Story.favourited.is_(None)))
         .filter(age >= cutoff)
     )
+    if window is not None:
+        # Narrow to the chosen day (a day's margin either side for timezone storage)
+        # before taking the newest pool, so an older day isn't crowded out by newer
+        # stories. _in_day below still applies the exact local-day boundary.
+        start, end = window
+        low = (start.astimezone(timezone.utc) - timedelta(days=1)).replace(tzinfo=None)
+        high = (end.astimezone(timezone.utc) + timedelta(days=1)).replace(tzinfo=None)
+        recent_q = recent_q.filter(Story.published_at >= low).filter(Story.published_at < high)
     recent_query = _scope_stories(recent_q, user_id).order_by(age.desc())
     if day_key == "all":
         recent = recent_query.all()
@@ -893,16 +820,49 @@ def _pick_by_category_mix(
     return picked[:limit]
 
 
-def search_stories(db: Session, query: str, limit: int = 50, user_id: int | None = None) -> list[Story]:
-    term = (query or "").strip()
-    if not term:
-        return []
-    pattern = f"%{term}%"
-    cutoff = retention_cutoff()
+def _searchable_stories(db: Session, user_id: int | None):
+    """Stories Search can return: within retention, plus favourites and Saved long-reads."""
     age = _story_age()
-    rows_q = (
-        db.query(Story)
-        .filter(
+    query = db.query(Story).filter(
+        or_(
+            Story.favourited.is_(True),
+            Story.saved.is_(True),
+            age >= retention_cutoff(),
+        )
+    )
+    return _scope_stories(query, user_id)
+
+
+def _drop_expired_saved(stories: list[Story]) -> list[Story]:
+    now = utcnow()
+    kept: list[Story] = []
+    for story in stories:
+        if story.saved and story.expires_at is not None:
+            expires = story.expires_at if story.expires_at.tzinfo else story.expires_at.replace(tzinfo=timezone.utc)
+            if expires < now and not story.favourited:
+                continue
+        kept.append(story)
+    return kept
+
+
+def search_stories(
+    db: Session,
+    query: str,
+    limit: int = 50,
+    user_id: int | None = None,
+    source: str | None = None,
+) -> list[Story]:
+    """Keyword and/or outlet search. Either one is enough; both narrow together."""
+    term = (query or "").strip()
+    outlet = (source or "").strip()
+    if not term and not outlet:
+        return []
+    rows_q = _searchable_stories(db, user_id)
+    if outlet:
+        rows_q = rows_q.filter(Story.source_name == outlet)
+    if term:
+        pattern = f"%{term}%"
+        rows_q = rows_q.filter(
             or_(
                 Story.title.ilike(pattern),
                 Story.summary.ilike(pattern),
@@ -910,24 +870,56 @@ def search_stories(db: Session, query: str, limit: int = 50, user_id: int | None
                 Story.raw_excerpt.ilike(pattern),
             )
         )
-        .filter(
-            or_(
-                Story.favourited.is_(True),
-                Story.saved.is_(True),
-                age >= cutoff,
-            )
-        )
-    )
-    rows = _scope_stories(rows_q, user_id).order_by(age.desc()).limit(limit).all()
-    kept: list[Story] = []
-    now = utcnow()
+    rows = rows_q.order_by(_story_age().desc()).limit(limit).all()
+    return _drop_expired_saved(rows)
+
+
+def search_outlets(db: Session, user_id: int | None = None) -> list[tuple[str, int]]:
+    """(outlet, story count) for the Search outlet picker, alphabetical."""
+    counts: dict[str, int] = {}
+    for story in _drop_expired_saved(_searchable_stories(db, user_id).all()):
+        name = (story.source_name or "").strip()
+        if name:
+            counts[name] = counts.get(name, 0) + 1
+    return sorted(counts.items(), key=lambda item: item[0].lower())
+
+
+def story_breakdown(db: Session, user_id: int | None = None) -> dict:
+    """Where every stored story sits, for Reader → Status. Buckets add up to ``total``.
+
+    on_briefing: what Briefing → All shows (starred included, counted in ``starred``).
+    saved: Saved long-reads (Saved tab, not Briefing).
+    below_importance / keyword_filtered: stored but hidden by those Briefing filters.
+    awaiting_cleanup: past the retention window; deleted when the next refresh completes.
+    """
+    rows = _scope_stories(db.query(Story), user_id).all()
+    on_briefing = {story.id for story in current_stories(db, day="all", user_id=user_id) if not story.saved}
+    cutoff = retention_cutoff()
+    counts = {
+        "total": len(rows),
+        "on_briefing": 0,
+        "starred": 0,
+        "saved": 0,
+        "keyword_filtered": 0,
+        "below_importance": 0,
+        "awaiting_cleanup": 0,
+    }
+    remaining: list[Story] = []
     for story in rows:
-        if story.saved and story.expires_at is not None:
-            expires = story.expires_at if story.expires_at.tzinfo else story.expires_at.replace(tzinfo=timezone.utc)
-            if expires < now and not story.favourited:
-                continue
-        kept.append(story)
-    return kept
+        if story.id in on_briefing:
+            counts["on_briefing"] += 1
+            counts["starred"] += 1 if story.favourited else 0
+        elif story.saved:
+            counts["saved"] += 1
+        elif (_aware(story.published_at or story.created_at) or cutoff) < cutoff:
+            counts["awaiting_cleanup"] += 1
+        else:
+            remaining.append(story)
+    keyword_kept = _apply_keyword_filters(db, remaining)
+    counts["keyword_filtered"] = len(remaining) - len(keyword_kept)
+    # Anything else that passed the keyword filter was left off by the importance filter.
+    counts["below_importance"] = len(keyword_kept)
+    return counts
 
 
 def purge_expired_stories(db: Session) -> int:
@@ -1483,8 +1475,17 @@ def render_txt(payload: dict, *, layout: EpubLayout | None = None) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def _story_block_html(story: dict, *, heading: str, opts: EpubLayout) -> str:
+def _story_block_html(
+    story: dict,
+    *,
+    heading: str,
+    opts: EpubLayout,
+    position: int = 1,
+    total: int = 1,
+) -> str:
     title = story.get("title") or "Untitled"
+    # "3 of 8" — your place within the source; menu entries stop at source level.
+    position_line = f'<p class="story-position">{position} of {total}</p>' if total > 1 else ""
     byline_bits = [bit for bit in (story.get("source"), story.get("published_label")) if bit]
     # When chapter is already the source, skip repeating source in the byline.
     if opts.chapters_by_source:
@@ -1495,9 +1496,11 @@ def _story_block_html(story: dict, *, heading: str, opts: EpubLayout) -> str:
     if url and not opts.omit_article_links:
         link = f'<p class="original"><a href="{html.escape(url, quote=True)}">Original article</a></p>'
     body = _story_body(story.get("summary") or "", strip_links=opts.omit_article_links)
+    block_class = "story-block" if opts.chapters_by_source else "story"
     return (
-        f'<div class="story"><{heading}>{html.escape(title)}</{heading}>{byline}'
-        f'<div class="body">{body}</div>{link}</div>'
+        f'<div class="{block_class}">{position_line}'
+        f'<{heading} class="story-title">{html.escape(title)}</{heading}>{byline}'
+        f'<div class="story-body">{body}</div>{link}</div>'
     )
 
 
@@ -1511,7 +1514,7 @@ def write_briefing_files(
 ) -> dict[str, Path]:
     opts = layout
     if opts is None and db is not None:
-        opts = EpubLayout.from_db(db)
+        opts = EpubLayout.from_db(db, user_id=user_id)
     opts = opts if opts is not None else EpubLayout.classic()
     safe = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "-" for ch in stem).strip("-") or "news"
     root = briefing_dir_for(user_id)
