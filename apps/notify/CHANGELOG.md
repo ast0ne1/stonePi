@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Fixed
+- Saving the ntfy access token no longer fails silently: the Vault is now writable by Notify, and a failed save shows an error on Phone alerts.
+
 ## 0.1.8 — 2026-09-29
 
 _First release as Notify (was Notifications); the local 0.1.0 is folded in. Carries the platform version (system app)._

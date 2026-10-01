@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import time
 from pathlib import Path
+
+try:  # POSIX (the Pi); Windows dev has a single writer.
+    import fcntl
+except ImportError:  # pragma: no cover - Windows
+    fcntl = None
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -23,9 +29,10 @@ class Vault:
         self._cache_at: float = 0.0
 
     def _secure_file(self, path: Path) -> None:
-        """Group-readable (640) so stonepi-vault members can read; owner writes."""
+        """Group read/write (660): every stonepi-vault member (each app's service user) can
+        read and save secrets; the installer makes the folder setgid stonepi-vault (2770)."""
         try:
-            os.chmod(path, 0o640)
+            os.chmod(path, 0o660)
         except OSError:
             pass
         if not hasattr(os, "chown"):
@@ -58,7 +65,9 @@ class Vault:
         self._cache_at = now
         return dict(data)
 
-    def _load_disk(self) -> dict[str, str]:
+    def _load_disk(self, *, strict: bool = False) -> dict[str, str]:
+        """Secrets on disk. strict (used before a save) raises instead of returning {} for an
+        existing store it cannot read, so a save never replaces every secret with one."""
         if not self._store_path.exists():
             return {}
         try:
@@ -66,13 +75,36 @@ class Vault:
             data = json.loads(raw.decode("utf-8"))
             return {str(k): str(v) for k, v in data.items()} if isinstance(data, dict) else {}
         except (OSError, InvalidToken, json.JSONDecodeError, ValueError):
+            if strict:
+                raise
             return {}
+
+    @contextlib.contextmanager
+    def _write_lock(self):
+        """Several apps save secrets; serialise read-modify-write across processes."""
+        if fcntl is None:
+            yield
+            return
+        lock_path = self.root / ".lock"
+        handle = open(lock_path, "a+")
+        try:
+            self._secure_file(lock_path)
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            yield
+        finally:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_UN)
+            finally:
+                handle.close()
 
     def _save(self, data: dict[str, str]) -> None:
         payload = self._fernet().encrypt(json.dumps(data, indent=2).encode("utf-8"))
-        self._store_path.write_bytes(payload)
-        self._secure_file(self._store_path)
-        # Keep the key at the same mode in case an older install left it 600.
+        # Write a new file and swap it in, so readers never see a half-written store.
+        tmp = self._store_path.with_name(f".{self._store_path.name}.{os.getpid()}.tmp")
+        tmp.write_bytes(payload)
+        self._secure_file(tmp)
+        os.replace(tmp, self._store_path)
+        # Keep the key at the same mode in case an older install left it 600/640.
         if self._key_path.exists():
             self._secure_file(self._key_path)
         self._invalidate_cache()
@@ -84,17 +116,20 @@ class Vault:
         return self._load().get(key, default)
 
     def set(self, key: str, value: str) -> None:
-        data = self._load()
-        data[str(key)] = str(value)
-        self._save(data)
+        # Fresh from disk under the lock: the read cache may predate another app's save.
+        with self._write_lock():
+            data = self._load_disk(strict=True)
+            data[str(key)] = str(value)
+            self._save(data)
 
     def delete(self, key: str) -> bool:
-        data = self._load()
-        if key not in data:
-            return False
-        del data[key]
-        self._save(data)
-        return True
+        with self._write_lock():
+            data = self._load_disk(strict=True)
+            if key not in data:
+                return False
+            del data[key]
+            self._save(data)
+            return True
 
     def get_or_env(self, key: str, env_name: str | None = None, default: str = "") -> str:
         stored = self.get(key)

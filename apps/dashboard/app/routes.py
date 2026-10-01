@@ -1485,7 +1485,15 @@ def settings_exposure_save(request: Request, form: FormData = Depends(_form_body
             "/settings?tab=network&err=Choose+home+network+or+internet-facing",
             status_code=303,
         )
-    set_exposure_mode(mode)
+    try:
+        set_exposure_mode(mode)
+    except OSError:
+        # Installer creates /var/lib/stonepi/exposure; older installs left it root-owned.
+        return RedirectResponse(
+            "/settings?tab=network&err="
+            + quote("Couldn't save the exposure setting (permission denied). Re-run the installer to fix permissions.", safe=""),
+            status_code=303,
+        )
     if mode == "public":
         msg = "Internet-facing mode on. Apps pick this up immediately — no restart."
     else:

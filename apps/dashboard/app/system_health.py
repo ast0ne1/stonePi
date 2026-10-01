@@ -50,15 +50,17 @@ def destinations_status() -> dict[str, Any]:
     path = NOTIFY_DATA / "destinations.json"
     ntfy_enabled = False
     ntfy_topic = False
-    if path.is_file():
-        try:
+    # is_file() itself raises PermissionError when Notify's data folder is unreadable, so it
+    # sits inside the try: an unreadable status file must not take the Health page down.
+    try:
+        if path.is_file():
             data = json.loads(path.read_text(encoding="utf-8"))
             ntfy = data.get("ntfy") if isinstance(data, dict) else {}
             if isinstance(ntfy, dict):
                 ntfy_enabled = bool(ntfy.get("enabled"))
                 ntfy_topic = bool(str(ntfy.get("topic") or "").strip())
-        except (OSError, json.JSONDecodeError):
-            pass
+    except (OSError, json.JSONDecodeError):
+        pass
 
     # TRMNL push is per Display (Notify displays.json); webhooks live in the vault.
     trmnl_ids: list[str] = []

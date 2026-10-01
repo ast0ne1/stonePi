@@ -4,6 +4,25 @@ Platform version lives in [`VERSION`](VERSION). App zips use each app’s `__ver
 
 ## Unreleased
 
+### Fixed (fresh installs)
+- **Health:** returned an internal error. The installer locked Notify's data folder (`chmod 700`) and Dashboard reads Notify's status files from it; `/var/lib/stonepi/notify` is now group-readable by `stonepi-dash`, and Health shows the Notify line as not configured instead of failing if a status file can't be read.
+- **Settings → Network → exposure** could not be saved: the installer created `/var/lib/stonepi/exposure` as root. It is now owned by `stonepi-dash`, and a failed save shows a message instead of an error page.
+- **Vault:** only Dashboard could write it, so Notify's ntfy token was silently not saved and NewsCast, EventTrakr and PriceWatch kept their keys in their own databases instead. The Vault is now group-writable for every service user (`2770`, files `660`). Saves re-read the store under a file lock and swap it in atomically, so two apps saving close together no longer drop each other's secrets, and a store that can't be read is never overwritten. Notify reports a failed token save.
+- **Data ownership:** the user and secrets migrations run as root after the services have started, and SQLite could leave root-owned `-wal`/`-shm` files behind. The installer now restores every owner afterwards (`fix_data_ownership`).
+
+### Changed
+- **Installer:** one pip run per app (requirements plus the shared packages together) instead of up to eight, skipped entirely when nothing changed since the last run; pip upgrades itself only for a new virtualenv. Re-running the installer no longer uninstalls and reinstalls every package.
+- **Installer:** Chromium for EventTrakr and SportGuide is one shared copy owned by root and readable by both, instead of being handed to whichever app installed last.
+- **Installer:** installs `tesseract-ocr`, so EventTrakr's poster reading works out of the box.
+- **Installer:** ends with a ready check run as each service user (data folders writable and owned, Vault read/save, Notify status readable, exposure flag writable, sudo for services/logs/backups/updates, tesseract, Chromium). The result is saved to `/var/lib/stonepi/ready-check` and the install site reports it.
+- **Release builds:** built from an LF export of the tag (`git -c core.autocrlf=false archive …`); the Windows-built 0.1.8 tarball had CRLF scripts and the installer stopped at line 2. See `deploy/RELEASE.md`.
+
+### App versions in this cut
+
+| Apps | Version |
+|-----|---------|
+| library | 0.0.6 (new, unreleased) |
+
 ## 0.1.8 — 2026-09-29
 
 ### Versions (single source)

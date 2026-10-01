@@ -51,11 +51,11 @@ fi
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get install -y python3 python3-venv python3-pip rsync nginx avahi-daemon avahi-utils sqlite3 cockpit \
-  libnss-mdns fonts-liberation curl \
+  libnss-mdns fonts-liberation curl tesseract-ocr \
   libnss3 libnspr4 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libdrm2 \
   libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64 \
   libpangocairo-1.0-0 libpango-1.0-0 || apt-get install -y python3 python3-venv python3-pip rsync nginx \
-  avahi-daemon avahi-utils sqlite3 cockpit libnss-mdns fonts-liberation curl \
+  avahi-daemon avahi-utils sqlite3 cockpit libnss-mdns fonts-liberation curl tesseract-ocr \
   libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
   libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 libpangocairo-1.0-0 libpango-1.0-0
 
@@ -90,6 +90,7 @@ mkdir -p "$DEST" "$DATA/auth" "$DATA/newscast" "$DATA/fileserve/hosted" "$DATA/e
 if [[ ! -f "$DATA/exposure" ]]; then
   printf 'lan\n' > "$DATA/exposure"
   chmod 644 "$DATA/exposure"
+  chown stonepi-dash:stonepi-dash "$DATA/exposure" 2>/dev/null || true
 fi
 mkdir -p "$DATA/dashboard"
 if [[ ! -f "$DATA/dashboard/tailscale_wanted" ]]; then
@@ -172,6 +173,7 @@ fi
 if [[ ! -f "$DATA/exposure" ]]; then
   printf 'lan\n' > "$DATA/exposure"
   chmod 644 "$DATA/exposure"
+  chown stonepi-dash:stonepi-dash "$DATA/exposure" 2>/dev/null || true
 fi
 if [[ ! -f "$DATA/hostname" ]]; then
   printf '%s\n' "$HOSTNAME_VALUE" > "$DATA/hostname"
@@ -321,75 +323,89 @@ ensure_env_key "$CONF/pricescout.env" PINBOARD_URL http://127.0.0.1:8004
 ensure_env_key "$CONF/sportguide.env" STONEPI_PREFIX /sports
 ensure_env_key "$CONF/pricewatch.env" STONEPI_PREFIX /watch
 
+# One pip run per app: its requirements plus the shared StonePi packages it imports
+# (editable). Skipped when nothing pip would install has changed (requirements, package
+# pyproject.toml, Python), so re-running the installer doesn't rebuild every venv.
+pip_sync() {
+  local name="$1"
+  shift
+  local dir="$DEST/apps/$name"
+  local fresh=0
+  if [[ ! -x "$dir/.venv/bin/python" ]]; then
+    python3 -m venv "$dir/.venv"
+    fresh=1
+  fi
+  local args=(-r "$dir/requirements.txt")
+  local inputs=("$dir/requirements.txt")
+  local pkg
+  for pkg in "$@"; do
+    if [[ -d "$DEST/packages/$pkg" ]]; then
+      args+=(-e "$DEST/packages/$pkg")
+      inputs+=("$DEST/packages/$pkg/pyproject.toml")
+    fi
+  done
+  local stamp="$dir/.venv/.stonepi-deps"
+  local want
+  want="$({ "$dir/.venv/bin/python" --version; printf '%s\n' "${args[@]}"; cat "${inputs[@]}"; } 2>&1 | sha256sum | cut -d' ' -f1)"
+  if [[ "$fresh" -eq 0 && -f "$stamp" && "$(cat "$stamp")" == "$want" ]]; then
+    echo "  $name: Python packages up to date"
+    return 0
+  fi
+  echo "  $name: installing Python packages"
+  if [[ "$fresh" -eq 1 ]]; then
+    "$dir/.venv/bin/pip" install --quiet --disable-pip-version-check --upgrade pip
+  fi
+  "$dir/.venv/bin/pip" install --quiet --disable-pip-version-check "${args[@]}"
+  printf '%s\n' "$want" > "$stamp"
+}
+
+# Chromium for Playwright (EventTrakr, SportGuide): one shared copy, installed by root and
+# readable by every service user. Their HOME is /opt/stonepi, so Playwright's default
+# browser path ($HOME/.cache/ms-playwright) is this folder.
+PW_BROWSERS=/opt/stonepi/.cache/ms-playwright
+install_chromium() {
+  local dir="$1"
+  # Shared Chromium launch lock across scraper apps.
+  mkdir -p /run/stonepi
+  chmod 1777 /run/stonepi
+  mkdir -p "$PW_BROWSERS"
+  if ! PLAYWRIGHT_BROWSERS_PATH="$PW_BROWSERS" "$dir/.venv/bin/python" -m playwright install chromium; then
+    echo "WARN: playwright install chromium failed — scrape sources need: sudo PLAYWRIGHT_BROWSERS_PATH=$PW_BROWSERS $dir/.venv/bin/python -m playwright install chromium"
+  fi
+  "$dir/.venv/bin/python" -m playwright install-deps chromium >/dev/null 2>&1 || true
+  chown -R root:root /opt/stonepi/.cache
+  chmod 755 /opt/stonepi/.cache
+  chmod -R a+rX "$PW_BROWSERS"
+}
+
 install_app() {
   local name="$1"
   local user="$2"
   local extra="${3:-}"
   local dir="$DEST/apps/$name"
-  if [[ ! -d "$dir/.venv" ]]; then
-    python3 -m venv "$dir/.venv"
-  fi
-  "$dir/.venv/bin/pip" install --upgrade pip
-  "$dir/.venv/bin/pip" install -r "$dir/requirements.txt"
-  "$dir/.venv/bin/pip" install -e "$DEST/packages/stonepi_auth"
-  if [[ -d "$DEST/packages/stonepi_contracts" ]]; then
-    "$dir/.venv/bin/pip" install -e "$DEST/packages/stonepi_contracts"
-  fi
-  if [[ -d "$DEST/packages/stonepi_update" ]]; then
-    "$dir/.venv/bin/pip" install -e "$DEST/packages/stonepi_update"
-  fi
-  if [[ -d "$DEST/packages/stonepi_vault" ]]; then
-    "$dir/.venv/bin/pip" install -e "$DEST/packages/stonepi_vault"
-  fi
-  if [[ "$name" == "dashboard" ]]; then
-    for pkg in stonepi_display stonepi_watch stonepi_automations; do
-      if [[ -d "$DEST/packages/$pkg" ]]; then
-        "$dir/.venv/bin/pip" install -e "$DEST/packages/$pkg"
-      fi
-    done
-  fi
-  if [[ "$name" == "notify" ]]; then
-    for pkg in stonepi_display stonepi_notify stonepi_watch; do
-      if [[ -d "$DEST/packages/$pkg" ]]; then
-        "$dir/.venv/bin/pip" install -e "$DEST/packages/$pkg"
-      fi
-    done
-  fi
+  local pkgs=(stonepi_auth stonepi_contracts stonepi_update stonepi_vault)
+  case "$name" in
+    dashboard) pkgs+=(stonepi_display stonepi_watch stonepi_automations) ;;
+    notify) pkgs+=(stonepi_display stonepi_notify stonepi_watch) ;;
+  esac
   if [[ "$extra" == "playwright" ]]; then
-    if [[ -d "$DEST/packages/stonepi_browser" ]]; then
-      "$dir/.venv/bin/pip" install -e "$DEST/packages/stonepi_browser"
-    fi
-    # Shared Chromium launch lock across scraper apps.
-    mkdir -p /run/stonepi
-    chmod 1777 /run/stonepi
-    # Browsers must live under the service user's home (/opt/stonepi), not root's cache.
-    mkdir -p /opt/stonepi/.cache/ms-playwright
-    chown -R "$user:$user" /opt/stonepi/.cache
-    if ! sudo -u "$user" env HOME=/opt/stonepi \
-      "$dir/.venv/bin/python" -m playwright install chromium; then
-      echo "WARN: playwright install chromium failed — scrape sources need: sudo -u $user HOME=/opt/stonepi $dir/.venv/bin/python -m playwright install chromium"
-    fi
-    "$dir/.venv/bin/python" -m playwright install-deps chromium >/dev/null 2>&1 || true
+    pkgs+=(stonepi_browser)
+  fi
+  pip_sync "$name" "${pkgs[@]}"
+  if [[ "$extra" == "playwright" ]]; then
+    install_chromium "$dir"
   fi
   chown -R "$user:$user" "$dir/.venv"
 }
 
+echo
+echo "Python packages"
 install_app auth stonepi-auth
 install_app dashboard stonepi-dash
 install_app notify stonepi-notify
 # Recover is a tiny root-owned escape hatch (HTTP Basic + optional SSO cookie).
 if [[ -d "$DEST/apps/recover" ]]; then
-  if [[ ! -d "$DEST/apps/recover/.venv" ]]; then
-    python3 -m venv "$DEST/apps/recover/.venv"
-  fi
-  "$DEST/apps/recover/.venv/bin/pip" install --upgrade pip
-  "$DEST/apps/recover/.venv/bin/pip" install -r "$DEST/apps/recover/requirements.txt"
-  if [[ -d "$DEST/packages/stonepi_vault" ]]; then
-    "$DEST/apps/recover/.venv/bin/pip" install -e "$DEST/packages/stonepi_vault"
-  fi
-  if [[ -d "$DEST/packages/stonepi_auth" ]]; then
-    "$DEST/apps/recover/.venv/bin/pip" install -e "$DEST/packages/stonepi_auth"
-  fi
+  pip_sync recover stonepi_vault stonepi_auth
 fi
 install_app newscast stonepi-news
 install_app fileserve stonepi-files
@@ -408,6 +424,35 @@ ensure_writable_data() {
   local app_data="$3"
   mkdir -p "$var_dir" "$app_data"
   chown -R "$user:$user" "$var_dir" "$app_data"
+}
+# Who owns what under /var/lib/stonepi. fix_data_ownership runs before the services start
+# and again after anything else wrote there as root (migrations), and the ready check
+# below verifies it as each service user.
+APP_DATA_OWNERS=(auth:stonepi-auth dashboard:stonepi-dash notify:stonepi-notify newscast:stonepi-news
+  fileserve:stonepi-files eventtrakr:stonepi-events pinboard:stonepi-pin studio:stonepi-studio
+  pricescout:stonepi-prices sportguide:stonepi-sport pricewatch:stonepi-watch)
+fix_data_ownership() {
+  local pair dir user
+  for pair in "${APP_DATA_OWNERS[@]}"; do
+    dir="${pair%%:*}"
+    user="${pair#*:}"
+    [[ -d "$DATA/$dir" ]] || continue
+    chown -R "$user:$user" "$DATA/$dir"
+    chmod 700 "$DATA/$dir"
+  done
+  # Dashboard's Health page reads Notify's status files (destinations.json, displays.json,
+  # prefs.json; secrets stay in the Vault): group-readable by stonepi-dash.
+  chmod 750 "$DATA/notify"
+  find "$DATA/notify" -maxdepth 1 -type f -name '*.json' -exec chmod 640 {} \; 2>/dev/null || true
+  # Every service user reads and saves secrets (group stonepi-vault, setgid folder).
+  chown -R stonepi-dash:stonepi-vault "$DATA/vault"
+  chmod 2770 "$DATA/vault"
+  find "$DATA/vault" -type f -exec chmod 660 {} \;
+  # Settings → Network (Dashboard) writes the exposure flag; every app reads it.
+  if [[ -f "$DATA/exposure" ]]; then
+    chown stonepi-dash:stonepi-dash "$DATA/exposure"
+    chmod 644 "$DATA/exposure"
+  fi
 }
 ensure_writable_data stonepi-auth "$DATA/auth" "$DEST/apps/auth/data"
 ensure_writable_data stonepi-dash "$DATA/dashboard" "$DEST/apps/dashboard/data"
@@ -432,14 +477,13 @@ groupadd --system stonepi-vault 2>/dev/null || true
 for u in stonepi-dash stonepi-auth stonepi-notify stonepi-news stonepi-files stonepi-events stonepi-pin stonepi-studio stonepi-prices stonepi-sport stonepi-watch; do
   id -u "$u" >/dev/null 2>&1 && usermod -aG stonepi-vault "$u" || true
 done
+# Apps save their own keys (ntfy token, Bright Data, Google OAuth), so the group writes too;
+# setgid keeps new files in stonepi-vault.
 chown -R stonepi-dash:stonepi-vault "$DATA/vault" 2>/dev/null || true
-chmod 750 "$DATA/vault" 2>/dev/null || true
-# New vault files inherit stonepi-vault group.
-chmod g+s "$DATA/vault" 2>/dev/null || true
-find "$DATA/vault" -type f -exec chmod 640 {} \; 2>/dev/null || true
-chmod 700 "$DATA/auth" "$DATA/newscast" "$DATA/fileserve" "$DATA/eventtrakr" "$DATA/pinboard" "$DATA/studio" "$DATA/pricescout" "$DATA/sportguide" "$DATA/pricewatch" "$DATA/dashboard" "$DATA/notify"
-chmod 750 "$DATA/vault" 2>/dev/null || true
-chmod g+s "$DATA/vault" 2>/dev/null || true
+chmod 2770 "$DATA/vault" 2>/dev/null || true
+find "$DATA/vault" -type f -exec chmod 660 {} \; 2>/dev/null || true
+usermod -aG stonepi-notify stonepi-dash 2>/dev/null || true
+fix_data_ownership
 
 hostnamectl set-hostname "$HOSTNAME_VALUE" || true
 # Publish IPv4 mDNS so stonepi.local works for browsers (not only fe80:: link-local).
@@ -655,11 +699,9 @@ PY
   echo "Recover login: user stonepi — password in Vault key STONEPI_RECOVER_PASSWORD (also /etc/stonepi/recover.passwd)"
 fi
 
-# Migrator may create files as root; restore group-readable vault ownership.
-chown -R stonepi-dash:stonepi-vault "$DATA/vault" 2>/dev/null || true
-chmod 750 "$DATA/vault" 2>/dev/null || true
-chmod g+s "$DATA/vault" 2>/dev/null || true
-find "$DATA/vault" -type f -exec chmod 640 {} \; 2>/dev/null || true
+# The migrations above ran as root after the services had started and opened their
+# databases (SQLite can leave root-owned -wal/-shm files), so put every owner back.
+fix_data_ownership
 
 # Pick up stonepi-vault supplementary group + any new env keys.
 systemctl restart stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch >/dev/null 2>&1 || true
@@ -704,6 +746,48 @@ else
   echo "  WARN http://127.0.0.1/ (HTTP $edge_code)"
 fi
 rm -f /tmp/stonepi-edge-check.html
+
+# Can each service do what it needs, as its own user? Catches the permission problems a
+# fresh install can hit, before someone finds them as an error page.
+echo
+echo "Ready check"
+ready_fail=0
+rc() {
+  local desc="$1"
+  shift
+  if "$@" >/dev/null 2>&1; then
+    echo "  ok   $desc"
+  else
+    echo "  FAIL $desc"
+    ready_fail=$((ready_fail + 1))
+  fi
+}
+for pair in "${APP_DATA_OWNERS[@]}"; do
+  dir="${pair%%:*}"
+  user="${pair#*:}"
+  rc "$user can write its data ($DATA/$dir)" sudo -u "$user" test -w "$DATA/$dir"
+  rc "$DATA/$dir is all owned by $user" test -z "$(find "$DATA/$dir" ! -user "$user" -print -quit 2>/dev/null)"
+  rc "$user can read and save the Vault" sudo -u "$user" sh -c "test -w '$DATA/vault' && { test ! -e '$DATA/vault/secrets.enc' || { test -r '$DATA/vault/secrets.enc' && test -w '$DATA/vault/secrets.enc'; }; }"
+done
+rc "Dashboard can read Notify's status files" sudo -u stonepi-dash test -x "$DATA/notify"
+rc "Dashboard can save the network exposure setting" sudo -u stonepi-dash test -w "$DATA/exposure"
+rc "Dashboard can control services" sudo -u stonepi-dash sudo -n systemctl is-active stonepi-auth
+rc "Dashboard can read service logs" sudo -u stonepi-dash sudo -n journalctl -u stonepi-auth -n 1 --no-pager
+rc "Dashboard can run backups" sudo -u stonepi-dash sudo -n /usr/local/sbin/stonepi-backup-helper list
+rc "Dashboard can install app updates" sudo -u stonepi-dash sudo -n /usr/local/sbin/stonepi-update-helper status pinboard
+rc "EventTrakr poster reading (tesseract) is installed" command -v tesseract
+for user in stonepi-events stonepi-sport; do
+  rc "$user can start Chromium" sudo -u "$user" sh -c 'for f in /opt/stonepi/.cache/ms-playwright/chromium*/chrome-linux*/chrome /opt/stonepi/.cache/ms-playwright/chromium_headless_shell*/chrome-linux*/headless_shell; do test -x "$f" && exit 0; done; exit 1'
+done
+if [[ "$ready_fail" -eq 0 ]]; then
+  echo "  All checks passed."
+  printf 'ok\n' > "$DATA/ready-check"
+else
+  echo "  $ready_fail check(s) failed — re-run the installer, or see $DEST/deploy/INSTALL.md (Troubleshooting)."
+  printf 'failed %s\n' "$ready_fail" > "$DATA/ready-check"
+  failed_units=$((failed_units + ready_fail))
+fi
+chmod 644 "$DATA/ready-check"
 if [[ "$failed_units" -gt 0 ]]; then
   echo
   echo "Install finished with warnings — run: stonepi status"

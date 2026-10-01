@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+- Health no longer returns an internal error when Notify's data folder is unreadable (`Path.is_file()` raised `PermissionError` outside the try); the Notify line shows as not configured instead.
+- Settings → Network → exposure shows a message instead of an error page if the flag can't be saved.
+
 ## 0.1.8 — 2026-09-29
 
 ### Fixed

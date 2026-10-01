@@ -60,4 +60,12 @@ Do **not** ship ad-hoc Pi overlay helpers (`scripts/push-*-fixes.*`, `scripts/ap
 
 Tag the platform `v<VERSION>` (the value in [`VERSION`](../VERSION)), attach the `stonepi-*.zip` assets, the source tarball and `SHA256SUMS`, summarize from root `CHANGELOG.md`. Tag every cut you publish.
 
+**Build from an LF export, never the Windows working tree.** With `core.autocrlf=true`, both the working tree and a plain `git archive` have CRLF line endings, and a CRLF `install.sh` fails on the Pi at line 2 (`set: pipefail: invalid option`). Export the tag with conversion off, then build the zips from that export (this also keeps `.pytest_cache` / `*.egg-info` out):
+
+```bash
+git -c core.autocrlf=false -c core.eol=lf archive --format=tar --prefix=stonePi-<VERSION>/ v<VERSION> | gzip -n -9 > <folder>/stonepi-source-<VERSION>.tar.gz
+tar xzf <folder>/stonepi-source-<VERSION>.tar.gz -C <tmp> && (cd <tmp>/stonePi-<VERSION> && python scripts/build_release_zips.py --all --out <folder>)
+python scripts/build_release_zips.py --out <folder> --checksums
+```
+
 `SHA256SUMS` is required: Pis refuse app updates from a release without it, or whose zip doesn't match it. `build_release_zips.py` writes it; after adding the source tarball to the folder, refresh it with `python scripts/build_release_zips.py --out <folder> --checksums`.

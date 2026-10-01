@@ -7,6 +7,7 @@ what's done; once everything is, the page leads with a summary instead.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote
@@ -20,6 +21,7 @@ from stonepi_auth.csrf import csrf_from_request, csrf_ok_request, set_csrf_cooki
 from stonepi_auth.http import request_is_https
 
 router = APIRouter()
+logger = logging.getLogger("notify.alerts")
 
 ON = {"1", "on", "true"}
 NTFY_SH = "https://ntfy.sh"
@@ -215,8 +217,8 @@ async def alerts_connect(request: Request):
     if own and not server.startswith(("https://", "http://")):
         return _back(err="Enter your ntfy server address, e.g. https://ntfy.example.com.")
     token = str(form.get("token") or "").strip()
-    if own and token:
-        _save_token(token)
+    if own and token and not _save_token(token):
+        return _back(err=TOKEN_NOT_SAVED)
     stonepi_notify.save_destinations({"ntfy": {"enabled": True, "server": server}})
     return _back(msg="Phone alerts are on. Next, choose which alerts are allowed.", anchor="choose")
 
@@ -232,8 +234,8 @@ async def alerts_connection(request: Request):
         stonepi_notify.save_destinations({"ntfy": {"enabled": False}})
         return _back(msg="Phone alerts are off for the household.")
     token = str(form.get("token") or "").strip()
-    if token:
-        _save_token(token)
+    if token and not _save_token(token):
+        return _back(err=TOKEN_NOT_SAVED, anchor="advanced")
     stonepi_notify.save_destinations(
         {
             "ntfy": {
@@ -247,13 +249,19 @@ async def alerts_connection(request: Request):
     return _back(msg="Saved.", anchor="advanced")
 
 
-def _save_token(token: str) -> None:
+TOKEN_NOT_SAVED = "The ntfy access token could not be saved to the Vault; check the Vault in Dashboard → Settings."
+
+
+def _save_token(token: str) -> bool:
+    """Store the ntfy token in the Vault. False (and logged) if it could not be written."""
     try:
         from stonepi_vault import set_secret
 
         set_secret("STONEPI_NTFY_TOKEN", token)
+        return True
     except Exception:  # noqa: BLE001
-        pass
+        logger.warning("could not save STONEPI_NTFY_TOKEN to the vault", exc_info=True)
+        return False
 
 
 @router.post("/alerts/approvals")
