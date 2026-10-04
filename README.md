@@ -46,7 +46,7 @@ Always on; not Home tiles.
 | **[Notify](apps/notify/README.md)** | `/notify/` | Where apps' updates go: TRMNL wall displays, the Car Thing panel, and ntfy phone alerts. |
 | **[Car Thing](apps/carthing/README.md)** | (USB) | A Spotify Car Thing plugged into the Pi becomes a touch-and-dial panel: pages of widgets (System, clock and weather, sport, events, news, Pinboard) that turn on a timer or by button, a clock when idle, and service restarts behind an admin PIN. Set up under Notify → Displays → Car Thing. Ships with the platform. |
 | **[Recover](apps/recover/README.md)** | `/recover/`, `:8099` | Recovery Console for when the portal itself is down: restart services, restore a backup. |
-| **[Cockpit](https://cockpit-project.org/)** | `:9090` | The Linux host itself. |
+| **[Cockpit](https://cockpit-project.org/)** | `:9090` | Web console for the Raspberry Pi's operating system, separate from StonePi: system updates, storage, networking, logs and a terminal in the browser. Installed by the installer; sign in with your Pi's Linux user, not your StonePi account. |
 
 **Displays and alerts.** Apps own their data and only emit when something useful happens; Notify decides where it goes.
 
