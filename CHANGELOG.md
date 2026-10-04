@@ -2,6 +2,11 @@
 
 Platform version lives in [`VERSION`](VERSION). App zips use each app’s `__version__` (see `scripts/build_release_zips.py`).
 
+## Unreleased
+
+### Fixed
+- **Upgrades restart Recover and the failover monitor.** The installer only ran `enable --now`, which leaves a running unit on its old code, so after an update Recover kept showing the old version and its new Dashboard button and Sign out didn't work until a reboot.
+
 ## 0.1.9 — 2026-10-04
 
 Fresh-install fixes, the new **Library** app, **PriceWatch** retailer trust scores, a **Jungle** source for EventTrakr, football channels from two guides in **SportGuide**, and a security review of all of it. 

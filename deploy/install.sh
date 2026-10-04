@@ -909,6 +909,9 @@ systemctl daemon-reload
 systemctl enable --now stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library
 systemctl enable --now stonepi-recover >/dev/null 2>&1 || true
 systemctl enable --now stonepi-failover-monitor >/dev/null 2>&1 || true
+# enable --now leaves an already-running unit on its old code: restart so an upgrade applies.
+systemctl restart stonepi-recover >/dev/null 2>&1 || true
+systemctl try-restart stonepi-failover-monitor >/dev/null 2>&1 || true
 systemctl enable stonepi.target >/dev/null 2>&1 || true
 # Backup: USB on insert (udev); local schedule only when enabled in Settings.
 systemctl disable --now stonepi-backup.timer >/dev/null 2>&1 || true

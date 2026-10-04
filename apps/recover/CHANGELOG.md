@@ -1,5 +1,11 @@
 # Changelog — Recover
 
+## Unreleased
+
+### Fixed
+- Phone overscroll no longer shows a mismatched band: the page background covers the whole root and rubber-band scrolling is off.
+- Upgrades restart Recover (installer fix), so the new version, Dashboard button and Sign out take effect without a reboot.
+
 ## 0.1.9 — 2026-10-04
 
 _Platform 0.1.9._

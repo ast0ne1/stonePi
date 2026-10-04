@@ -95,7 +95,13 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; }
-html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+/* Paper behind the page too, and no rubber-band: a phone's overscroll showed a mismatched band. */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  background: var(--paper);
+  overscroll-behavior-y: none;
+}
 body {
   font-family: var(--chrome);
   background: var(--paper);
