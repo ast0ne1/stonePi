@@ -114,6 +114,13 @@ def _resolve_next(value: str | None, request: Request) -> str:
             resolved = nxt
     if _is_auth_root_next(resolved):
         return portal_home_url(request, env.public_origin)
+    # Behind the /auth prefix, PrefixMiddleware rewrites a relative Location into Auth
+    # (/notifications -> /auth/notifications, a 404). An absolute URL on the browser's
+    # own host is left alone, so Dashboard pages survive the sign-in redirect.
+    if resolved.startswith("/") and not resolved.startswith("//"):
+        origin = _request_origin(request)
+        if origin:
+            return origin + resolved
     return resolved
 
 

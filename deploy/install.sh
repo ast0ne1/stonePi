@@ -433,14 +433,17 @@ pip_sync() {
     return 0
   fi
   echo "  $name: installing Python packages"
+  # piwheels lists pytz's 2011-2013 wheels under old-style names, and pip 25.1+
+  # prints a DEPRECATION block for each one it reads (harmless, not ours to fix).
+  local quiet_pip=(env PYTHONWARNINGS=ignore:DEPRECATION "$dir/.venv/bin/pip")
   # The shared StonePi packages install editable without a throwaway build
   # environment each (that cost a setuptools install per package per app), so
   # the venv needs setuptools itself (70.1+ builds wheels without the `wheel`
   # package); Python 3.12+ venvs ship without it.
   if ! "$dir/.venv/bin/python" -c 'import setuptools, sys; sys.exit(tuple(int(x) for x in setuptools.__version__.split(".")[:2]) < (70, 1))' 2>/dev/null; then
-    "$dir/.venv/bin/pip" install --quiet --disable-pip-version-check "setuptools>=70.1"
+    "${quiet_pip[@]}" install --quiet --disable-pip-version-check "setuptools>=70.1"
   fi
-  "$dir/.venv/bin/pip" install --quiet --disable-pip-version-check --no-build-isolation "${args[@]}"
+  "${quiet_pip[@]}" install --quiet --disable-pip-version-check --no-build-isolation "${args[@]}"
   printf '%s\n' "$want" > "$stamp"
 }
 
@@ -963,7 +966,7 @@ RECOVER_FROM_VAULT=""
 sed -i '/^STONEPI_RECOVERY\{0,1\}_PASSWORD=/d' "$CONF/stonepi.env"
 if [[ ! -s "$RECOVER_PASSWD" ]]; then
   (umask 077; python3 -c 'import secrets; print("stonepi:" + secrets.token_urlsafe(12))' > "$RECOVER_PASSWD")
-  echo "Recover login: user stonepi — password in $RECOVER_PASSWD (sudo cat it; change it in Dashboard → Settings)"
+  echo "Recover login: user stonepi — password in $RECOVER_PASSWD (shown in the summary on a first install)"
 fi
 chown root:root "$RECOVER_PASSWD"
 chmod 600 "$RECOVER_PASSWD"
@@ -1128,7 +1131,15 @@ else
   echo "  Sign in with your StonePi account (first password: sudo cat $INITIAL_ADMIN, if present)."
 fi
 echo "  Recover    http://${HOSTNAME_VALUE}.local/recover/  (or http://<pi-ip>:8099/ if the dashboard is down)"
-echo "             User stonepi; password: sudo cut -d: -f2- $RECOVER_PASSWD  — change it in Dashboard → Settings → Vault."
+# Like the admin password, shown only on a first install (upgrade logs stay free of it).
+RECOVER_PASS=""
+[[ -n "$NEW_ADMIN_PASSWORD" ]] && RECOVER_PASS="$(cut -d: -f2- "$RECOVER_PASSWD" 2>/dev/null | head -n1 || true)"
+if [[ -n "$RECOVER_PASS" ]]; then
+  echo "             Sign in:  stonepi / $RECOVER_PASS  — separate from the admin login; change it in Dashboard → Settings → Vault."
+  echo "             Saved for root only in $RECOVER_PASSWD (sudo cut -d: -f2- $RECOVER_PASSWD)."
+else
+  echo "             User stonepi; password: sudo cut -d: -f2- $RECOVER_PASSWD  — change it in Dashboard → Settings → Vault."
+fi
 echo "  Helper:    stonepi status | stonepi urls | stonepi restart | stonepi logs"
 echo "  Backup:    plug in USB labelled STONEPI-BACKUP, or enable local schedule in Settings → Backup"
 echo "  Docs:      $DEST/deploy/INSTALL.md"

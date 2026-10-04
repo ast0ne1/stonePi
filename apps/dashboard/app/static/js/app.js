@@ -1255,6 +1255,56 @@ function showFlash(kind, text) {
   const wantedInput = panel.querySelector("[data-ts-wanted]");
   const wantedLabel = panel.querySelector("[data-ts-wanted-label]");
   const connectBtn = panel.querySelector("[data-ts-connect-btn]");
+  const qrBtn = panel.querySelector("[data-ts-qr-btn]");
+  const qrLabel = panel.querySelector("[data-ts-qr-label]");
+  const qrBox = panel.querySelector("[data-ts-qr]");
+  const qrHint = panel.querySelector("[data-ts-qr-hint]");
+  let qrFor = "";
+
+  // Tailscale is usually already signed in on the phone, so scanning the
+  // login link there is quicker than opening it on the desktop.
+  function hideQr() {
+    if (qrBox) qrBox.hidden = true;
+    if (qrHint) qrHint.hidden = true;
+    if (qrLabel) qrLabel.textContent = "Show QR code";
+    if (qrBtn) qrBtn.setAttribute("aria-expanded", "false");
+  }
+
+  async function toggleQr() {
+    if (!qrBox) return;
+    if (!qrBox.hidden) {
+      hideQr();
+      return;
+    }
+    const want = authLink ? authLink.getAttribute("href") : "";
+    if (qrFor !== want || !qrBox.innerHTML) {
+      if (qrBtn) qrBtn.disabled = true;
+      try {
+        const res = await fetch("/api/network/tailscale/qr", { headers: headers(), credentials: "same-origin" });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok || !body.svg) throw new Error(body.error || "No Tailscale login link right now.");
+        qrBox.innerHTML = body.svg;
+        qrFor = body.url || want;
+      } catch (err) {
+        if (qrHint) {
+          qrHint.textContent = err.message || "Couldn't make the QR code.";
+          qrHint.hidden = false;
+        }
+        return;
+      } finally {
+        if (qrBtn) qrBtn.disabled = false;
+      }
+    }
+    if (qrHint) {
+      qrHint.textContent = "Scan with your phone's camera. The Tailscale app opens and asks you to approve this Pi.";
+      qrHint.hidden = false;
+    }
+    qrBox.hidden = false;
+    if (qrLabel) qrLabel.textContent = "Hide QR code";
+    if (qrBtn) qrBtn.setAttribute("aria-expanded", "true");
+  }
+
+  if (qrBtn) qrBtn.addEventListener("click", toggleQr);
 
   let pollTimer = null;
   let connecting = false;
@@ -1319,6 +1369,11 @@ function showFlash(kind, text) {
       }
     }
     if (authLink && ts.auth_url) {
+      if (qrFor && qrFor !== ts.auth_url) {
+        qrFor = "";
+        if (qrBox) qrBox.innerHTML = "";
+        hideQr();
+      }
       authLink.href = ts.auth_url;
       authLink.textContent = ts.auth_url;
       if (authWrap) authWrap.hidden = false;

@@ -8,6 +8,7 @@ _Platform 0.1.9._
 - Signed `POST /api/internal/units/restart` (service-to-service; the Car Thing panel's System screen). Only catalog `stonepi-*` units; Dashboard restarts itself after replying. Logged with the caller.
 - Platform updates also overlay `apps/carthing` (`PLATFORM_SERVICE_APP_IDS`).
 - **Library** tile with live status ("Installing Wikipedia · 71%") through a new catalog flag, `live_status`; Backup summary shows partial runs (Library content that didn't fit).
+- Settings → Network: **Show QR code** under the Tailscale login link, so the device can be approved from a phone that already has the Tailscale app signed in. The code is made on the Pi from its own pending link (`GET /api/network/tailscale/qr`, admin only).
 
 ### Changed
 - Users → new person form starts each app permission from its catalog default.

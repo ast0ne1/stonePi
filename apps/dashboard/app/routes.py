@@ -1839,6 +1839,26 @@ def api_network_status(request: Request, fresh: int = 0):
     return JSONResponse(network_svc.network_snapshot(fresh=bool(fresh)))
 
 
+@router.get("/api/network/tailscale/qr")
+def api_tailscale_login_qr(request: Request):
+    """QR code (inline SVG) for the pending Tailscale login link, to approve from a phone.
+
+    Encodes the Pi's own current link, never one sent by the browser.
+    """
+    user, redirected = _user_or_login(request, admin=True)
+    if redirected:
+        return redirected
+    from app import network as network_svc
+    from app.notifications import _qr_svg
+
+    ts = network_svc.network_snapshot(fresh=False).get("tailscale") or {}
+    url = str(ts.get("auth_url") or "")
+    svg = _qr_svg(url) if url.startswith("https://") and not ts.get("connected") else ""
+    if not svg:
+        return JSONResponse({"ok": False, "error": "No Tailscale login link right now."}, status_code=404)
+    return JSONResponse({"ok": True, "url": url, "svg": svg})
+
+
 @router.post("/settings/network/tailscale/wanted")
 def settings_tailscale_wanted(request: Request, form: FormData = Depends(_form_body)):
     user, redirected = _user_or_login(request, admin=True)

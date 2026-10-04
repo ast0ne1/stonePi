@@ -30,6 +30,7 @@ Fresh-install fixes, the new **Library** app, **PriceWatch** retailer trust scor
 - **Bright Data monthly limit, shared by all apps** (`stonepi_vault.quota`, default **5,000 records**: the free tier): EventTrakr (Facebook, Instagram) and PriceWatch (Trustpilot) count against one allowance kept in the Vault folder (`quota-brightdata.json`, group-writable like the Vault; no installer change). Each call books its maximum first and settles the real record count after, so the limit can't be passed; scheduled jobs also spread it evenly across the period, while manual buttons can use what's left. The period resets on a chosen **day of the month** (default 1; matches the Bright Data billing date; a day past a short month's end uses its last day). When the limit is reached, calls are skipped and sources keep what they have until the reset. Set the limit and reset day in EventTrakr → Settings → Data Providers or PriceWatch → Settings → Trust scores; both show this period's usage per app. A feature can have its own **allowance inside the limit** (EventTrakr's Instagram polling: default 2,000). Replaces PriceWatch's own 500-record cap.
 - **Dashboard → Settings → Vault:** a **Data providers** group: `BRIGHTDATA_API_KEY` (EventTrakr, moved from NewsCast) and `PRICEWATCH_BRIGHTDATA_API_KEY`. `scripts/migrate_secrets_to_vault.py` also moves a PriceWatch key out of its database.
 - **Installer ready check:** the install ends by checking, as each service user, that data folders are writable and owned, the Vault reads and saves, Notify's status is readable, the exposure flag is writable, sudo works for services/logs/backups/updates, and tesseract and Chromium are present. Saved to `/var/lib/stonepi/ready-check`; the install site reports it.
+- **Dashboard:** QR code for the Tailscale login link (Settings → Network).
 
 ### Changed
 - **SportGuide 0.0.7:** football reads **timezone.football** (channels in the Pi's own country) and **WheresTheMatch** (UK channels, marked "(UK)" outside the UK) and merges them per match, from each site's HTML structure over plain HTTP (browser as fallback). Matches show the channel, "Club's official stream", "Channel TBC" or "Not on TV in <country>" instead of "Check guide", and open the match's own page. Adds `beautifulsoup4`.
@@ -46,6 +47,8 @@ Fresh-install fixes, the new **Library** app, **PriceWatch** retailer trust scor
   - NewsCast remembers which icon belongs to which feed until the icon folder changes, instead of searching it and reading files for every feed and story on each page.
   - Apps no longer write an access-log line per request to the journal (nginx already logs requests); Library downloads use idle disk priority; the reader's per-asset access check runs without a thread hop.
 - **Release builds** come from an LF export of the tag (`git -c core.autocrlf=false archive …`); see `deploy/RELEASE.md`.
+- **Install summary** shows the Recover console login (user `stonepi` and its password) next to the first admin password, and says it is a separate login. The web bootstrap's final box shows it too.
+- **Installer:** pip runs with `PYTHONWARNINGS=ignore:DEPRECATION`, hiding the wall of piwheels `pytz` "Wheel filename is not correctly normalised" warnings on fresh installs.
 
 ### Fixed
 - **Upgrades restart Recover and the failover monitor.** The installer only ran `enable --now`, which leaves a running unit on its old code, so after an update Recover kept showing the old version and its new Dashboard button and Sign out didn't work until a reboot.
@@ -70,6 +73,7 @@ Fresh-install fixes, the new **Library** app, **PriceWatch** retailer trust scor
 - **Restore** rewrites the Library drive's exFAT `uid`/`gid` for this Pi's `stonepi-library`, and folders it creates for restored content belong to the Library.
 - **Installer:** restarts the Kiwix reader if it's running so a changed unit applies, and the ready check covers it (group membership, can read Library data, running when enabled).
 - `backup.conf` written by the local-schedule save pinned `APPS` without newer apps and dropped other keys; it keeps `INCLUDE_LIBRARY_CONTENT`, and backups add `stonepi-library` to an older pinned list.
+- **Auth:** after signing in you land on the Dashboard page you asked for (e.g. Notifications) instead of a 404 at `/auth/notifications`.
 
 ### Security
 - **Recover login lockout** can no longer be dodged by a local process forging X-Real-IP: the installer writes a root-only token (`/etc/stonepi/recover-proxy.token`) into a root-only nginx snippet that nginx sends on `/recover/`, and Recover trusts proxy headers only alongside it. The Recover password set from Settings → Vault must be at least 12 characters.

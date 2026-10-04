@@ -2726,6 +2726,16 @@ html[data-view-home="icons"] .launcher-form.is-editing .launcher-tile-link {
   display: inline-block;
   font-size: 0.95rem;
 }
+.network-qr {
+  justify-self: start;
+  width: min(220px, 64vw);
+  padding: 10px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  line-height: 0;
+}
+.network-qr svg { width: 100%; height: auto; display: block; }
 .network-detail-list {
   display: grid;
   gap: 6px;

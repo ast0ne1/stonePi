@@ -181,3 +181,30 @@ def test_apply_hostname_file_only_without_helper(monkeypatch, tmp_path):
     assert ok is True
     assert detail == "living-room"
     assert host_file.read_text(encoding="utf-8").strip() == "living-room"
+
+
+def _qr_client(monkeypatch, tailscale):
+    from fastapi.testclient import TestClient
+    from stonepi_auth.session import PlatformUser
+
+    from app import routes
+    from app.main import app
+
+    admin = PlatformUser(user_id="1", username="admin", display_name="Admin", is_admin=True, apps=[])
+    monkeypatch.setattr(routes, "_user_or_login", lambda request, **kw: (admin, None))
+    monkeypatch.setattr(network, "network_snapshot", lambda fresh=False: {"appliance": True, "tailscale": tailscale})
+    return TestClient(app)
+
+
+def test_login_qr_encodes_the_pis_own_link(monkeypatch):
+    link = "https://login.tailscale.com/a/example"
+    resp = _qr_client(monkeypatch, {"auth_url": link, "connected": False}).get("/api/network/tailscale/qr?url=https://evil.example")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["url"] == link
+    assert body["svg"].startswith("<svg")
+
+
+def test_login_qr_404_without_a_pending_link(monkeypatch):
+    assert _qr_client(monkeypatch, {"auth_url": None, "connected": False}).get("/api/network/tailscale/qr").status_code == 404
+    assert _qr_client(monkeypatch, {"auth_url": "https://login.tailscale.com/a/x", "connected": True}).get("/api/network/tailscale/qr").status_code == 404

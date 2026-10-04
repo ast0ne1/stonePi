@@ -357,9 +357,14 @@
         Waiting for authentication… Open the link below on your phone or computer, then approve this device.
         {% endif %}
       </p>
-      <p data-ts-auth-link-wrap {% if not ts.auth_url %}hidden{% endif %}>
-        <a class="network-auth-link" href="{{ ts.auth_url or '#' }}" target="_blank" rel="noopener noreferrer" data-ts-auth-link>{{ ts.auth_url or '' }}</a>
-      </p>
+      <div class="stack" data-ts-auth-link-wrap {% if not ts.auth_url %}hidden{% endif %}>
+        <p><a class="network-auth-link" href="{{ ts.auth_url or '#' }}" target="_blank" rel="noopener noreferrer" data-ts-auth-link>{{ ts.auth_url or '' }}</a></p>
+        <div class="row-actions">
+          <button type="button" class="btn btn-ghost btn-with-icon" data-ts-qr-btn aria-expanded="false">{{ svg('view') }} <span data-ts-qr-label>Show QR code</span></button>
+        </div>
+        <p class="muted" data-ts-qr-hint hidden>Scan with your phone's camera. The Tailscale app opens and asks you to approve this Pi.</p>
+        <div class="network-qr" data-ts-qr hidden aria-label="QR code for the Tailscale login link" role="img"></div>
+      </div>
       <p class="muted" data-ts-no-link {% if ts.auth_url or not ts.needs_login %}hidden{% endif %}>
         Still no link? Tap <strong>Connect Tailscale</strong> again.
         {% if ts.error %}<br /><span data-ts-error>{{ ts.error }}</span>{% endif %}

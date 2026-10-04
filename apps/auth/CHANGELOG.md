@@ -10,6 +10,9 @@ _Platform 0.1.9. Picks up `stonepi_auth` 0.1.1._
 - App permissions can declare a catalog `default`, applied to grants saved before the permission existed and to new people; the internal roster carries per-app permissions (no names) so background jobs honour revokes.
 - The Library app in the catalog (`/library/`, capability *Manage content*), so it appears in Users → app access.
 
+### Fixed
+- Signing in now returns you to the Dashboard page you asked for. A relative `next` such as `/notifications` was rewritten by the `/auth` prefix into `/auth/notifications` (404); it is now sent as an absolute URL on the host you used.
+
 ### Security
 - Login banner no longer says `admin / admin`: fresh installs get a random first admin password (root-only `/etc/stonepi/initial-admin.txt`).
 
