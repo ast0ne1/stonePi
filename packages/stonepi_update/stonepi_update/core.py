@@ -631,13 +631,37 @@ class Updater:
         for name in self.service_names:
             unit = Path(f"/etc/systemd/system/{name}.service")
             if unit.exists():
-                subprocess.Popen(["sudo", "systemctl", "restart", name], close_fds=True)
-                return
+                # Only stonepi-dash may use the service helper. An app restarting itself
+                # exits instead and lets systemd (Restart=always) bring it back on the new
+                # code; Dashboard restarting another app must not exit itself on failure.
+                try:
+                    subprocess.run(
+                        ["sudo", "-n", "/usr/local/sbin/stonepi-service-helper", "restart", name],
+                        capture_output=True,
+                        timeout=30,
+                        check=True,
+                    )
+                    return
+                except (OSError, subprocess.SubprocessError):
+                    if name == _own_unit():
+                        os._exit(0)
+                    logger.warning("Could not restart %s after its update; restart it from Services.", name)
+                    return
         bat = self.root_dir / "run-local.bat"
         if os.name == "nt" and bat.exists():
             subprocess.Popen(["cmd", "/c", str(bat)], cwd=str(self.root_dir), close_fds=True)
             return
         os._exit(0)
+
+
+def _own_unit() -> str:
+    """systemd unit this process runs in (``stonepi-dashboard``), or "" outside systemd."""
+    try:
+        cgroup = Path("/proc/self/cgroup").read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    match = re.search(r"/([^/\s]+)\.service\s*$", cgroup, re.M)
+    return match.group(1) if match else ""
 
 
 def file_store(path: Path) -> tuple[Callable[[], dict], Callable[[dict], dict], Callable[[], str], Callable[[str], None]]:

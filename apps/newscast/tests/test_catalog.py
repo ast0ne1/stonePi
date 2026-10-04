@@ -128,7 +128,12 @@ def test_remove_recommended_deletes_enabled_feed():
     db = Session(engine)
     add_catalog_feed(db, "techcrunch")
     assert any(item["id"] == "techcrunch" and item["added"] for item in catalog_with_status(db))
-    assert remove_recommended("techcrunch", db) == {"ok": True, "removed": True}
+    from types import SimpleNamespace
+
+    from app.auth import SessionUser
+
+    request = SimpleNamespace(state=SimpleNamespace(newscast_session=SessionUser("admin", 1, "admin")))
+    assert remove_recommended("techcrunch", request, db) == {"ok": True, "removed": True}
     assert db.query(Feed).filter(Feed.catalog_id == "techcrunch").one_or_none() is None
     assert any(item["id"] == "techcrunch" and not item["added"] for item in catalog_with_status(db))
 

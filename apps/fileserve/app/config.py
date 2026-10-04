@@ -33,7 +33,7 @@ class EnvSettings:
     github_repo: str
 
     def __init__(self) -> None:
-        self.host = _env("HOST", "0.0.0.0")
+        self.host = _env("HOST", "127.0.0.1")
         self.port = int(_env("PORT", "8081") or "8081")
         self.database_url = _env("DATABASE_URL", "sqlite:///./data/fileserve.db")
         self.public_base_url = _env("PUBLIC_BASE_URL", "http://127.0.0.1:8081")

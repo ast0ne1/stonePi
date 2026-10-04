@@ -5,12 +5,16 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import os
 import secrets
 import shutil
+import socket
 import subprocess
 import time
+from collections import defaultdict
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -28,6 +32,25 @@ LEGACY_VAULT_KEY = "STONEPI_RECOVERY_PASSWORD"
 HELPER = "/usr/local/sbin/stonepi-backup-helper"
 SESSION_COOKIE = "stonepi_recover"
 SESSION_MAX_AGE = 60 * 60 * 12  # 12 hours
+CSRF_COOKIE = "stonepi_recover_csrf"
+# Shared secret nginx adds as X-StonePi-Proxy on /recover/ (install.sh writes both, root 0600).
+# Proxy headers are trusted only alongside it, so other local processes can't forge X-Real-IP.
+PROXY_TOKEN_FILE = Path(os.environ.get("STONEPI_RECOVER_PROXY_TOKEN", "/etc/stonepi/recover-proxy.token"))
+PROXY_TOKEN_HEADER = "x-stonepi-proxy"
+# Platform SSO cookies (stonepi_auth.session.COOKIE_NAME / CSRF_COOKIE), named here so
+# Recover can sign a browser out even when the shared packages fail to import.
+PLATFORM_COOKIES = ("stonepi", "stonepi_csrf")
+# Fixed login-page notices (?msg=<code>) so the query string can't inject arbitrary text.
+LOGIN_NOTICES = {"signed-out": "Signed out."}
+AUTH_ADDR = ("127.0.0.1", 8011)  # nginx upstream stonepi_auth
+LOGIN_WINDOW_SECONDS = 15 * 60
+LOGIN_MAX_FAILURES_PER_IP = 5
+# Ceiling across every client so a spoofed or rotating source can't brute-force the password.
+LOGIN_MAX_FAILURES_GLOBAL = 30
+_login_failures: dict[str, list[float]] = defaultdict(list)
+VAULT_PASSWORD_KEYS = ("STONEPI_RECOVER_PASSWORD", LEGACY_VAULT_KEY)
+LOCAL_BACKUP_DIR = Path("/var/backups/stonepi/current")
+USB_BACKUP_ROOT = Path("/mnt/stonepi-backup/RaspberryPi-Backup")
 UNITS = [
     "nginx",
     "stonepi-auth",
@@ -41,24 +64,162 @@ UNITS = [
     "stonepi-pricescout",
     "stonepi-sportguide",
     "stonepi-pricewatch",
+    "stonepi-library",
 ]
 
 APP_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
 
+log = logging.getLogger("stonepi.recover")
+
 app = FastAPI(title="StonePi Recover", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 
 
+def _dev_mode() -> bool:
+    """Windows run-dev or an explicit opt-in; never true on a normal Pi install."""
+    return os.name == "nt" or (os.environ.get("RECOVER_DEV") or "").strip() == "1"
+
+
+def _csrf_token(request: Request) -> str:
+    current = (request.cookies.get(CSRF_COOKIE) or "").strip()
+    return current or secrets.token_urlsafe(32)
+
+
+def _set_csrf_cookie(response, token: str) -> None:
+    response.set_cookie(CSRF_COOKIE, token, max_age=SESSION_MAX_AGE, httponly=True, samesite="strict", path="/")
+
+
+def _csrf_valid(request: Request, form_token: str | None) -> bool:
+    """Double-submit check: the hidden form field must match Recover's own CSRF cookie."""
+    cookie = (request.cookies.get(CSRF_COOKIE) or "").strip()
+    supplied = (form_token or "").strip()
+    if not cookie or not supplied:
+        return False
+    return hmac.compare_digest(cookie.encode(), supplied.encode())
+
+
+def _csrf_reject() -> RedirectResponse:
+    return RedirectResponse("./?err=That+form+expired.+Refresh+and+try+again.", status_code=303)
+
+
+_LOOPBACK = {"127.0.0.1", "::1"}
+# (path, mtime_ns, token); re-read when the file changes. The missing-file warning logs once.
+_proxy_token_cache: tuple[str, int, str] | None = None
+_proxy_token_warned = False
+
+
+def _proxy_token() -> str:
+    """nginx's shared secret from PROXY_TOKEN_FILE, or "" when missing/unreadable."""
+    global _proxy_token_cache, _proxy_token_warned
+    path = PROXY_TOKEN_FILE
+    try:
+        mtime = path.stat().st_mtime_ns
+        cached = _proxy_token_cache
+        if cached and cached[0] == str(path) and cached[1] == mtime:
+            return cached[2]
+        token = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        token, mtime = "", -1
+    _proxy_token_cache = (str(path), mtime, token)
+    if not token and not _proxy_token_warned:
+        _proxy_token_warned = True
+        log.warning(
+            "Recover proxy token %s missing or unreadable: treating every request as direct "
+            "(nginx traffic shares the loopback login bucket). Re-run deploy/install.sh.",
+            path,
+        )
+    return token
+
+
+def _behind_proxy(request: Request) -> bool:
+    """True when nginx proxied this request (served under /recover/), False on direct :8099.
+
+    nginx connects from loopback and adds X-StonePi-Proxy with the root-only token from
+    PROXY_TOKEN_FILE. Any other local process (or a :8099 client) lacks it, so its
+    X-Real-IP / X-Forwarded-Host are ignored. No token file means nothing counts as proxied.
+    """
+    peer = request.client.host if request.client else ""
+    if peer not in _LOOPBACK:
+        return False
+    supplied = (request.headers.get(PROXY_TOKEN_HEADER) or "").strip()
+    if not supplied:
+        return False
+    expected = _proxy_token()
+    if not expected:
+        return False
+    return hmac.compare_digest(supplied.encode(), expected.encode())
+
+
+def _auth_up() -> bool:
+    try:
+        with socket.create_connection(AUTH_ADDR, timeout=0.5):
+            return True
+    except OSError:
+        return False
+
+
+def _portal_home(request: Request) -> str:
+    """Portal Home: "/" through nginx; the same host on port 80 when reached on :8099 directly."""
+    if _behind_proxy(request):
+        return "/"
+    host = request.url.hostname or ""
+    if not host:
+        return "/"
+    if ":" in host:  # IPv6 literal
+        host = f"[{host}]"
+    return f"http://{host}/"
+
+
 def _page(request: Request, name: str, ctx: dict | None = None, status_code: int = 200):
+    token = _csrf_token(request)
     data = {
         "app_version": __version__,
         "asset_rev": __asset_rev__,
         "fonts_rev": __fonts_rev__,
+        "csrf_token": token,
+        "portal_home": _portal_home(request),
     }
     if ctx:
         data.update(ctx)
-    return templates.TemplateResponse(request, name, data, status_code=status_code)
+    response = templates.TemplateResponse(request, name, data, status_code=status_code)
+    _set_csrf_cookie(response, token)
+    return response
+
+
+def _client_ip(request: Request) -> str:
+    """Socket peer, or nginx's X-Real-IP when the request came through the local proxy.
+
+    X-Real-IP counts only with nginx's X-StonePi-Proxy token (see _behind_proxy); any other
+    loopback caller is keyed on its peer address, so they all share one "127.0.0.1" bucket.
+    """
+    peer = request.client.host if request.client else ""
+    if _behind_proxy(request):
+        real = (request.headers.get("x-real-ip") or "").strip()
+        if real:
+            return real
+    return peer or "unknown"
+
+
+def _rate_limited(request: Request) -> bool:
+    now = time.time()
+    limits = ((f"ip:{_client_ip(request)}", LOGIN_MAX_FAILURES_PER_IP), ("global", LOGIN_MAX_FAILURES_GLOBAL))
+    for key, limit in limits:
+        stamps = [t for t in _login_failures[key] if now - t < LOGIN_WINDOW_SECONDS]
+        _login_failures[key] = stamps
+        if len(stamps) >= limit:
+            return True
+    return False
+
+
+def _record_failure(request: Request) -> None:
+    now = time.time()
+    _login_failures[f"ip:{_client_ip(request)}"].append(now)
+    _login_failures["global"].append(now)
+
+
+def _clear_failures(request: Request) -> None:
+    _login_failures.pop(f"ip:{_client_ip(request)}", None)
 
 
 def _run(cmd: list[str], timeout: float = 30) -> tuple[int, str]:
@@ -102,20 +263,15 @@ def _unit_rows() -> list[dict]:
 
 
 def _load_passwd() -> tuple[str, str] | None:
-    """Prefer Vault (Settings source of truth), then env, then recover.passwd."""
-    try:
-        from stonepi_vault import get_secret
+    """recover.passwd (root 0600) is the only source on the Pi.
 
-        pw = (get_secret("STONEPI_RECOVER_PASSWORD", env_name="STONEPI_RECOVER_PASSWORD", default="") or "").strip()
-        if not pw:
-            pw = (get_secret(LEGACY_VAULT_KEY, env_name=LEGACY_VAULT_KEY, default="") or "").strip()
-        if pw:
-            return ("stonepi", pw)
-    except Exception:
-        pass
-    env_pw = (os.environ.get("STONEPI_RECOVER_PASSWORD") or os.environ.get(LEGACY_VAULT_KEY) or "").strip()
-    if env_pw:
-        return ("stonepi", env_pw)
+    The Vault is readable by every app user, so the Recover password never lives there.
+    An env override is honoured only in dev (Windows run-dev or RECOVER_DEV=1).
+    """
+    if _dev_mode():
+        env_pw = (os.environ.get("STONEPI_RECOVER_PASSWORD") or os.environ.get(LEGACY_VAULT_KEY) or "").strip()
+        if env_pw:
+            return ("stonepi", env_pw)
     for passwd_file in (PASSWD_FILE, LEGACY_PASSWD_FILE):
         if not passwd_file.is_file():
             continue
@@ -219,8 +375,27 @@ def _list_snapshots() -> list[dict]:
         return []
 
 
+def _write_passwd_file(password: str) -> None:
+    """Write recover.passwd atomically, created 0600 so it is never briefly world-readable."""
+    PASSWD_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = PASSWD_FILE.with_name(PASSWD_FILE.name + ".tmp")
+    fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(f"stonepi:{password}\n")
+    try:
+        tmp.chmod(0o600)
+    except Exception:
+        pass
+    tmp.replace(PASSWD_FILE)
+
+
 def migrate_legacy_password() -> None:
-    """Carry the pre-rename Recovery password forward (file + Vault key)."""
+    """Carry the pre-rename Recovery file forward and move any Vault copy into recover.passwd.
+
+    Older builds kept the password in the Vault and preferred it over the file, so a Vault
+    value is the one that was actually in use: write it to recover.passwd, then delete the
+    Vault key(s) so app users can no longer read it.
+    """
     if not PASSWD_FILE.is_file() and LEGACY_PASSWD_FILE.is_file():
         try:
             PASSWD_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -232,13 +407,23 @@ def migrate_legacy_password() -> None:
         from stonepi_vault import get_vault
 
         vault = get_vault()
-        legacy = (vault.get(LEGACY_VAULT_KEY, "") or "").strip()
-        if legacy:
-            if not (vault.get("STONEPI_RECOVER_PASSWORD", "") or "").strip():
-                vault.set("STONEPI_RECOVER_PASSWORD", legacy)
-            vault.delete(LEGACY_VAULT_KEY)
+        values = {key: (vault.get(key, "") or "").strip() for key in VAULT_PASSWORD_KEYS}
     except Exception:
-        pass
+        return
+    if not any(values.values()):
+        return
+    password = values.get("STONEPI_RECOVER_PASSWORD") or values.get(LEGACY_VAULT_KEY) or ""
+    try:
+        _write_passwd_file(password)
+    except Exception:
+        # Keep the Vault copy until the file write succeeds, or nobody could sign in.
+        return
+    for key, value in values.items():
+        if value:
+            try:
+                vault.delete(key)
+            except Exception:
+                pass
 
 
 def ensure_recover_password() -> str | None:
@@ -246,18 +431,7 @@ def ensure_recover_password() -> str | None:
     if PASSWD_FILE.is_file():
         return None
     password = secrets.token_urlsafe(12)
-    PASSWD_FILE.parent.mkdir(parents=True, exist_ok=True)
-    PASSWD_FILE.write_text(f"stonepi:{password}\n", encoding="utf-8")
-    try:
-        PASSWD_FILE.chmod(0o600)
-    except Exception:
-        pass
-    try:
-        from stonepi_vault import set_secret
-
-        set_secret("STONEPI_RECOVER_PASSWORD", password)
-    except Exception:
-        pass
+    _write_passwd_file(password)
     return password
 
 
@@ -279,7 +453,11 @@ def login_get(request: Request):
     return _page(
         request,
         "login.html",
-        {"username": "stonepi", "error": request.query_params.get("err") or ""},
+        {
+            "username": "stonepi",
+            "error": request.query_params.get("err") or "",
+            "notice": LOGIN_NOTICES.get(request.query_params.get("msg") or "", ""),
+        },
     )
 
 
@@ -288,7 +466,22 @@ def login_post(
     request: Request,
     username: str = Form(""),
     password: str = Form(""),
+    csrf_token: str = Form(""),
 ):
+    if not _csrf_valid(request, csrf_token):
+        return _page(
+            request,
+            "login.html",
+            {"username": username or "stonepi", "error": "That form expired. Try again."},
+            status_code=400,
+        )
+    if _rate_limited(request):
+        return _page(
+            request,
+            "login.html",
+            {"username": username or "stonepi", "error": "Too many failed attempts. Wait a few minutes and try again."},
+            status_code=429,
+        )
     creds = _load_passwd()
     if creds is None:
         return _page(
@@ -301,12 +494,14 @@ def login_post(
     user_ok = hmac.compare_digest((username or "").encode(), expect_user.encode())
     pass_ok = hmac.compare_digest((password or "").encode(), expect_pw.encode())
     if not (user_ok and pass_ok):
+        _record_failure(request)
         return _page(
             request,
             "login.html",
             {"username": username or "stonepi", "error": "Invalid credentials"},
             status_code=401,
         )
+    _clear_failures(request)
     resp = RedirectResponse("./", status_code=303)
     resp.set_cookie(
         SESSION_COOKIE,
@@ -320,8 +515,22 @@ def login_post(
 
 
 @app.post("/logout")
-def logout():
-    resp = RedirectResponse("login", status_code=303)
+def logout(request: Request, csrf_token: str = Form("")):
+    if not _csrf_valid(request, csrf_token):
+        return _csrf_reject()
+    # An admin signed in through the platform SSO cookie skips the Recover form, so only
+    # clearing stonepi_recover would bounce straight back to the console. Sign the
+    # platform session out too: through Auth (revokes it server-side) when nginx and Auth
+    # are up, otherwise by clearing the platform cookies here (direct :8099, Auth down).
+    via_platform = _session_admin(request)
+    if via_platform and _behind_proxy(request) and _auth_up():
+        target = "/auth/logout?next=" + quote("/recover/login?msg=signed-out", safe="")
+        resp = RedirectResponse(target, status_code=303)
+    else:
+        resp = RedirectResponse("login?msg=signed-out", status_code=303)
+        if via_platform:
+            for name in PLATFORM_COOKIES:
+                resp.delete_cookie(name, path="/")
     resp.delete_cookie(SESSION_COOKIE, path="/")
     return resp
 
@@ -345,10 +554,14 @@ def home(request: Request, _auth: None = Depends(require_recover_auth)):
 
 @app.post("/action")
 def action(
+    request: Request,
     op: str = Form(...),
     unit: str = Form(""),
+    csrf_token: str = Form(""),
     _auth: None = Depends(require_recover_auth),
 ):
+    if not _csrf_valid(request, csrf_token):
+        return _csrf_reject()
     op = (op or "").strip().lower()
     unit = (unit or "").strip()
     if op == "reboot":
@@ -372,17 +585,39 @@ def action(
     return RedirectResponse("./?msg=" + msg.replace(" ", "+"), status_code=303)
 
 
+def _resolve_backup_path(raw: str) -> Path | None:
+    """Resolve symlinks and '..', then accept only the local current copy or a USB snapshot dir."""
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        resolved = Path(raw).resolve(strict=True)
+        local = LOCAL_BACKUP_DIR.resolve()
+        usb_root = USB_BACKUP_ROOT.resolve()
+    except (OSError, RuntimeError):
+        return None
+    if not resolved.is_dir():
+        return None
+    if resolved == local:
+        return resolved
+    if resolved != usb_root and resolved.is_relative_to(usb_root):
+        return resolved
+    return None
+
+
 @app.post("/restore")
 def restore(
+    request: Request,
     path: str = Form(""),
+    csrf_token: str = Form(""),
     _auth: None = Depends(require_recover_auth),
 ):
-    path = (path or "").strip()
-    local_ok = path in {"/var/backups/stonepi/current", "/var/backups/stonepi/current/"}
-    usb_ok = path.startswith("/mnt/stonepi-backup/RaspberryPi-Backup/")
-    if not (local_ok or usb_ok) or not Path(path).is_dir():
+    if not _csrf_valid(request, csrf_token):
+        return _csrf_reject()
+    target = _resolve_backup_path(path)
+    if target is None:
         return RedirectResponse("./?err=Invalid+backup+path", status_code=303)
-    code, out = _run([HELPER, "restore", path], timeout=600)
+    code, out = _run([HELPER, "restore", str(target)], timeout=600)
     if code == 0:
         return RedirectResponse("./?msg=Restore+complete.+Check+Destinations.", status_code=303)
     detail = (out or "Restore failed")[:280].replace(" ", "+")

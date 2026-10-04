@@ -144,6 +144,21 @@ def init_db() -> None:
                 """,
                 (store_id, name),
             )
+        # Food-waste postcode is one household value; adopt the solo-mode postcode once.
+        has_household = conn.execute(
+            "SELECT 1 FROM prefs WHERE user_key = ? AND key = ?",
+            (HOUSEHOLD_KEY, HOUSEHOLD_ZIP_KEY),
+        ).fetchone()
+        if not has_household:
+            legacy = conn.execute(
+                "SELECT value FROM prefs WHERE user_key = ? AND key = 'zip'",
+                (HOUSEHOLD_KEY,),
+            ).fetchone()
+            if legacy and str(legacy["value"]).strip():
+                conn.execute(
+                    "INSERT INTO prefs (user_key, key, value) VALUES (?, ?, ?)",
+                    (HOUSEHOLD_KEY, HOUSEHOLD_ZIP_KEY, str(legacy["value"]).strip()),
+                )
 
 
 def seed_mock_if_empty() -> None:
@@ -496,6 +511,29 @@ def set_pref(user_key: str, key: str, value: str) -> None:
             """,
             (user_key, key, value),
         )
+
+
+# App-wide prefs live under the "local" user key (also the solo-mode user).
+HOUSEHOLD_KEY = "local"
+HOUSEHOLD_ZIP_KEY = "foodwaste_zip"
+
+
+def household_zip() -> str:
+    """Postcode used for the shared Salling food-waste (madspild) offers."""
+    return get_pref(HOUSEHOLD_KEY, HOUSEHOLD_ZIP_KEY, "").strip()
+
+
+def household_zip_is_set() -> bool:
+    with db() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM prefs WHERE user_key = ? AND key = ?",
+            (HOUSEHOLD_KEY, HOUSEHOLD_ZIP_KEY),
+        ).fetchone()
+    return row is not None
+
+
+def set_household_zip(value: str) -> None:
+    set_pref(HOUSEHOLD_KEY, HOUSEHOLD_ZIP_KEY, (value or "").strip())
 
 
 def push_search(user_key: str, query: str) -> None:

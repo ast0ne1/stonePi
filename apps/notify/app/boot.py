@@ -163,6 +163,9 @@ def configure_all() -> None:
     from app.people import load_people
 
     stonepi_display.configure_displays(data_dir)
+    from stonepi_display import carthing
+
+    carthing.configure_carthing(data_dir)
     # Ensure displays.json exists (triggers legacy migration)
     stonepi_display.load_displays()
 
@@ -185,6 +188,7 @@ def configure_all() -> None:
                 "events": {
                     "pricewatch.target_reached": True,
                     "pricewatch.price_drop": True,
+                    "pricewatch.low_rated_offer": True,
                     "newscast.publication_available": True,
                     "newscast.push_available": True,
                     "fileserve.publication_created": True,

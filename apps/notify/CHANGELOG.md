@@ -1,9 +1,27 @@
 # Changelog — Notify
 
-## Unreleased
+## 0.1.9 — 2026-10-04
+
+_Platform 0.1.9._
+
+### Added
+- Car Thing editor: Pages tab (add, remove, reorder, rename, per-page widgets and sizes with a space count, rotation and "Try turning"); the preview follows the selected page; the System feed sends raw stats for the large widget.
+- **Displays → Car Thing:** device on/off (root helper `stonepi-carthing-helper`), re-pair, admin PIN; saved configs (activate, copy, rename, delete, export/import, last 10 versions); editor (Home, Controls, Actions, Idle, Clock, Look) with a drawing of the Car Thing and the live panel showing the unsaved draft through an admin-only proxy (`/carthing/panel/*`). Background upload (cropped to 800×480; adds Pillow) and weather location search (Open-Meteo).
+- Signed internal API for the panel service: `/api/internal/carthing/state|pair|system|asset/<id>`.
+- `pricewatch.low_rated_offer` ("Cheaper offer from low-rated shop", personal, warning) is pre-approved on fresh installs. Existing installs approve it once in Events; as with every personal event, each person also ticks it in Dashboard → Notifications to receive it. Catalog entry in `stonepi_contracts` (version bump deferred until the staging smoke test passes).
+- Library's new events (`library.content_installed`, `library.download_failed`, `library.update_available`, `library.storage_missing`, `library.backup_capacity`) come from the same catalog with no Notify code change; they start unapproved, so approve them in Events alongside the PriceWatch one.
 
 ### Fixed
+- Car Thing editor: button and dial labels no longer sit on the device drawing or overrun at desktop widths; they're clickable labels around it.
 - Saving the ntfy access token no longer fails silently: the Vault is now writable by Notify, and a failed save shows an error on Phone alerts.
+
+### Security
+- Car Thing editor and APIs fail closed when the session secret is missing outside dev; the unit now allows sudo so the Car Thing switch works from the running service.
+- On a platform install with no session secret every page returns 503 instead of opening up.
+
+### Changed
+- Displays page lists TRMNL first and the Car Thing panel below it.
+- Displays page intro tells the two kinds of screen apart: TRMNL e-ink displays (read-only, refresh on a timer, for the wall) and the Car Thing touch panel (for a desk or dash), with a line per section on what it's for and where to set it up.
 
 ## 0.1.8 — 2026-09-29
 

@@ -195,6 +195,33 @@ def display_payload() -> dict:
     }
 
 
+def panel_feed(limit: int) -> dict:
+    """Car Thing panel extras for ``/api/display?items=N``: a card + notices and reminders."""
+    cards = board_cards()
+    items: list[dict] = []
+    for card in cards[: max(1, min(50, limit))]:
+        text = card["text"].strip()
+        title = text.splitlines()[0][:80] if text else "—"
+        sub, badge = "Notice", ""
+        if card["kind"] == "reminder":
+            label = card["due_label"]
+            parts = [f"Due {label}" if label else "Reminder"]
+            if card["assignee"]:
+                parts.append(card["assignee"])
+            sub = " · ".join(parts)
+            if label in {"today", "yesterday"} or label.endswith("ago"):
+                badge = "Due"
+        items.append({"id": card["id"], "title": title, "sub": sub, "badge": badge, "detail": text[:1200]})
+    due_now = next((i for i in items if i["badge"]), None)
+    lead = due_now or (items[0] if items else None)
+    card = {
+        "headline": lead["title"] if lead else "No notices",
+        "sub": f"{len(cards)} on the board" if cards else "",
+        "badge": "Due" if due_now else "",
+    }
+    return {"card": card, "items": items, "refresh_s": 60}
+
+
 def _due_relative(due_raw: str, today: date | None = None) -> str:
     """Human due label for Display: 'today', 'in 2 days', '3 days ago', or raw."""
     today = today or date.today()

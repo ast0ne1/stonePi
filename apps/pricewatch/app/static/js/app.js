@@ -173,16 +173,21 @@ function setBusy(form) {
 // and mark slow checks busy so a second tap can't double-submit.
 document.querySelectorAll("form").forEach((form) => {
   form.addEventListener("submit", (event) => {
-    if (form.dataset.confirm && form.dataset.confirmPassed !== "1") {
+    // A button may carry its own confirm (e.g. Remove inside a larger form).
+    const submitter = event.submitter || null;
+    const ask = submitter && submitter.dataset.confirm ? submitter.dataset : form.dataset;
+    if (ask.confirm && form.dataset.confirmPassed !== "1") {
       event.preventDefault();
       askConfirm({
-        title: form.dataset.confirm,
-        body: form.dataset.confirmDetail || "",
-        okLabel: form.dataset.confirmOk || "Remove",
+        title: ask.confirm,
+        body: ask.confirmDetail || "",
+        okLabel: ask.confirmOk || "Remove",
       }).then((ok) => {
         if (!ok) return;
         form.dataset.confirmPassed = "1";
-        form.requestSubmit ? form.requestSubmit() : form.submit();
+        // Resubmit with the same button so its name/value (and formaction) are kept.
+        if (form.requestSubmit) form.requestSubmit(submitter || undefined);
+        else form.submit();
       });
       return;
     }
@@ -193,6 +198,18 @@ document.querySelectorAll("form").forEach((form) => {
     }
   });
 });
+// Watch forms: "Require a rating" and the low-rated choice only apply once a minimum is set.
+document.querySelectorAll("[data-min-score]").forEach((select) => {
+  const scope = select.closest("form");
+  const extra = scope && scope.querySelector("[data-trust-when-min]");
+  if (!extra) return;
+  const sync = () => {
+    extra.hidden = !select.value;
+  };
+  select.addEventListener("change", sync);
+  sync();
+});
+
 window.addEventListener("pageshow", (event) => {
   if (!event.persisted) return;
   document.querySelectorAll("[data-busy-form] [type=submit]").forEach((button) => {

@@ -97,7 +97,9 @@ def _usb_backup_present() -> bool:
     for base in (Path("/media"), Path("/mnt"), Path("/run/media")):
         if not base.exists():
             continue
-        for path in base.rglob("*"):
+        # Mount points sit at most two levels down (/media/<user>/<label>);
+        # walking every file on a multi-GB drive each minute was costly.
+        for path in (*base.glob("*"), *base.glob("*/*")):
             if path.is_dir() and path.name.upper() == "STONEPI-BACKUP":
                 return True
     # Also check lsblk LABEL if available
@@ -121,7 +123,7 @@ def _start_backup() -> tuple[bool, str]:
         return False, "Backup start is available on the Pi via systemd."
     try:
         result = subprocess.run(
-            ["sudo", "-n", "systemctl", "start", "stonepi-backup"],
+            ["sudo", "-n", "/usr/local/sbin/stonepi-service-helper", "start", "stonepi-backup"],
             capture_output=True,
             text=True,
             check=False,

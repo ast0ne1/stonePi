@@ -36,6 +36,7 @@ from app.services.scrapers.kultunaut import is_listing_url as is_kultunaut_listi
 from app.services.scrapers.kultunaut import with_date_window as with_kultunaut_date_window
 from app.services.scrapers.madbillet import MadbilletExtractor
 from app.services.scrapers.meetup import MeetupExtractor
+from app.services.scrapers.jungle import JungleExtractor, data_url as jungle_data_url, is_jungle_url
 from app.services.scrapers.migogkbh import MigogKbhExtractor
 from app.services.scrapers.residentadvisor import ResidentAdvisorExtractor
 from app.services.scrapers.residentadvisor import is_listing_url as is_ra_listing_url
@@ -99,6 +100,8 @@ def get_scraper_for_source(source: EventSource):
         return KultunautExtractor()
     if "migogkbh.dk" in url_lower:
         return MigogKbhExtractor()
+    if is_jungle_url(source.url):
+        return JungleExtractor()
     if "cphpost.dk" in url_lower:
         return CphPostExtractor()
     if "ra.co" in url_lower:
@@ -167,12 +170,22 @@ def fetch_and_extract_source(
     is_bandsintown_listing = "bandsintown.com" in url_lower and is_bandsintown_listing_url(url)
     is_brugbyen_listing = "brugbyen.kk.dk" in url_lower and is_brugbyen_listing_url(url)
     is_facebook = "facebook.com" in url_lower
+    is_jungle = is_jungle_url(url)
 
     # Facebook's own event search requires a login our browser-based scraper
     # can't provide (an unauthenticated fetch gets an empty page shell), so
     # it's routed through Bright Data's hosted scraper instead of the normal
     # browser-render/HTTP paths below -- see brightdata_facebook.py.
     if is_facebook:
+        from app.models import User
+        from app.services import capabilities
+
+        if not capabilities.user_can(db.get(User, source.user_id), capabilities.USE_SOCIAL):
+            # Paid Bright Data: only for people allowed "Instagram & Facebook".
+            source.last_error = capabilities.denied_message(capabilities.USE_SOCIAL)
+            source.last_fetched_at = utcnow()
+            db.commit()
+            return 0, 0
         api_key = settings_service.get_brightdata_api_key(db)
         if not api_key:
             source.last_error = "Bright Data API key not configured (Settings > Data Providers)"
@@ -190,6 +203,28 @@ def fetch_and_extract_source(
         source.last_status_code = 200
         source.last_fetched_at = utcnow()
         return _apply_scraped_events(db, source, scraped_events, effective_lookahead_days)
+
+    # Jungle is a SvelteKit app: its events come straight from the page's
+    # __data.json over plain HTTP (see scrapers/jungle.py), no browser needed.
+    if is_jungle:
+        fetch_url = jungle_data_url(url)
+        try:
+            with httpx.Client(timeout=HTTP_TIMEOUT, follow_redirects=True) as client:
+                resp = client.get(fetch_url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
+        except Exception as e:
+            source.last_error = str(e)
+            source.last_fetched_at = utcnow()
+            db.commit()
+            logger.warning("Failed fetching %s: %s", fetch_url, e)
+            return 0, 0
+        source.last_status_code = resp.status_code
+        source.last_fetched_at = utcnow()
+        if resp.status_code != 200:
+            source.last_error = f"HTTP {resp.status_code}"
+            db.commit()
+            return 0, 0
+        scraped_events = JungleExtractor().extract(resp.text, url)
+        return _apply_scraped_events(db, source, scraped_events, effective_lookahead_days, resp.status_code)
 
     # Every scraped web source is rendered with a real headless browser rather
     # than a plain HTTP GET -- several sites hand a plain HTTP client

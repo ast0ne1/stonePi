@@ -7,17 +7,17 @@ import json
 import secrets
 import time
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import wraps
 from typing import Any, Callable
 
-from flask import Request, Response, abort, g, redirect, request, url_for
+from flask import Request, Response, abort, flash, g, jsonify, redirect, request, url_for
 from stonepi_auth.http import request_is_https
 
 from app.config import DATA_DIR, env
 from app.db import SessionLocal
 from app.models import User
-from app.services import hostname, passwords
+from app.services import capabilities, hostname, passwords
 
 COOKIE_NAME = "eventtrakr_session"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 14
@@ -71,6 +71,15 @@ class SessionUser:
     role: str = "user"
     is_public: bool = False
     default_location: str = "Copenhagen, Denmark"
+    # StonePi capabilities for EventTrakr (see services/capabilities.py).
+    capabilities: dict[str, bool] = field(default_factory=dict)
+
+    def can(self, cap: str) -> bool:
+        if self.role == "admin":
+            return True
+        if cap in self.capabilities:
+            return bool(self.capabilities[cap])
+        return bool(capabilities.defaults().get(cap, False))
 
 
 _login_failures: dict[str, list[float]] = defaultdict(list)
@@ -150,6 +159,7 @@ def parse_session_token(token: str | None) -> SessionUser | None:
             role=user.role,
             is_public=user.is_public,
             default_location=user.default_location,
+            capabilities=capabilities.for_user(user),
         )
 
 
@@ -186,6 +196,7 @@ def get_current_user() -> SessionUser | None:
             role=local.role,
             is_public=local.is_public,
             default_location=local.default_location,
+            capabilities=capabilities.from_platform(platform),
         )
         return g.current_user
     token = request.cookies.get(COOKIE_NAME)
@@ -227,6 +238,36 @@ def admin_required(f: Callable) -> Callable:
             abort(403)
         return f(*args, **kwargs)
     return decorated_function
+
+
+def capability_required(cap: str, *, redirect_endpoint: str, **redirect_args: Any) -> Callable:
+    """Refuse members without an EventTrakr capability (use under ``login_required``).
+
+    Pages and forms flash "Ask an admin to allow …" and go back to
+    ``redirect_endpoint``; JSON endpoints get a 403 with the same message.
+    """
+
+    def decorator(f: Callable) -> Callable:
+        @wraps(f)
+        def decorated_function(*args: Any, **kwargs: Any) -> Any:
+            user = get_current_user()
+            if user is not None and not user.can(cap):
+                message = capabilities.denied_message(cap)
+                if _wants_json():
+                    return jsonify({"error": message, "capability": cap}), 403
+                flash(message, "error")
+                return redirect(url_for(redirect_endpoint, **redirect_args))
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+
+def _wants_json() -> bool:
+    path = request.path or ""
+    pfx = (env.stonepi_prefix or "").rstrip("/")
+    if pfx and path.startswith(pfx):
+        path = path[len(pfx):]
+    return path.startswith("/api/") or request.is_json
 
 
 def set_auth_cookie(response: Response, token: str) -> None:

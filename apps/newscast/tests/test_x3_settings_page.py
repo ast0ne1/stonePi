@@ -118,3 +118,17 @@ def test_saving_reader_and_contents_settings(ctx):
     assert response.status_code in {200, 303}, response.text[:400]
     db.expire_all()
     assert settings.epub_contents_detail(db) == "sources"
+
+
+def test_settings_page_has_unsaved_changes_hooks(ctx):
+    """JS warns before leaving a tab with edits; it relies on these markers."""
+    client, _db, _user = ctx
+    html = client.get("/settings?tab=reader").text
+    assert "data-settings-dirty-track" in html
+    assert "data-settings-unsaved-sheet" in html
+    for marker in ("data-settings-unsaved-save", "data-settings-unsaved-discard", "data-settings-unsaved-stay"):
+        assert marker in html
+    # Every save tab keeps its panel key and chip so dirty state can be mapped to a tab label.
+    for tab in ("device", "publication", "schedule", "reader"):
+        assert f'data-settings-panel="{tab}"' in html
+        assert f'data-settings-tab="{tab}"' in html

@@ -8,6 +8,9 @@
   <p class="lede">Upload a file from this device, or pack a live page URL into a Site zip.</p>
 </section>
 
+{% if not can_publish_pages %}
+<p class="banner" data-publish-locked>{{ publish_ask_hint }}</p>
+{% endif %}
 <div data-add-tabs>
   <div class="chips add-chips" role="tablist" aria-label="Add options">
     <a class="chip-btn{% if add_tab != 'url' %} is-active{% endif %}" href="{{ url_for('add_page') }}" role="tab" id="add-tab-file" data-add-tab="file" aria-selected="{{ 'false' if add_tab == 'url' else 'true' }}" aria-controls="add-panel-file">{{ filter_icon("file") }}<span>Add file</span></a>
@@ -21,6 +24,7 @@
     <p class="error-text" hidden data-form-error></p>
     <form method="post" action="{{ url_for('add_page') }}" class="stack" enctype="multipart/form-data" data-page-setup>
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <fieldset class="stack publish-fieldset"{% if not can_publish_pages %} disabled{% endif %}>
       {% include "_page_setup_fields.html" %}
       <label class="file-picker">
         File
@@ -33,6 +37,7 @@
         </span>
       </label>
       <button class="btn btn-primary btn-block btn-with-icon" type="submit">{{ icon("upload") }}<span>Host Page</span></button>
+      </fieldset>
     </form>
   </div>
 
@@ -47,7 +52,7 @@
     </label>
     <p class="hint">FileServe fetches on the server. Only same-site scripts, styles, and media are included.</p>
     <div class="btn-row">
-      <button class="btn btn-primary btn-with-icon" type="button" id="pack-go">{{ icon("download") }}<span>Download zip</span></button>
+      <button class="btn btn-primary btn-with-icon" type="button" id="pack-go"{% if not can_publish_pages %} disabled{% endif %}>{{ icon("download") }}<span>Download zip</span></button>
       <button class="btn btn-ghost btn-with-icon" type="button" id="pack-clear">{{ icon("clear") }}<span>Clear log</span></button>
     </div>
     <pre class="pack-log" id="pack-log" aria-live="polite"><span class="muted">Ready.</span></pre>

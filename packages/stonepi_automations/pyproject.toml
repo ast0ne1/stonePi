@@ -1,6 +1,6 @@
 [project]
 name = "stonepi-automations"
-version = "0.1.0"
+version = "0.1.1"
 description = "StonePi Automations: thin when→then jobs for the household Pi"
 requires-python = ">=3.11"
 dependencies = []

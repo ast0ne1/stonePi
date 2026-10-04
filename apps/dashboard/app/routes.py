@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -17,7 +19,7 @@ from stonepi_auth import APP_CATALOG, APP_IDS, SYSTEM_APP_IDS, login_url, logout
 from stonepi_auth.config import PlatformSettings
 from stonepi_auth.csrf import csrf_from_request, csrf_ok, csrf_ok_request, set_csrf_cookie
 from stonepi_auth.alerts import add_shared_templates
-from stonepi_auth.session import CSRF_COOKIE
+from stonepi_auth.session import COOKIE_NAME, CSRF_COOKIE
 
 templates = Jinja2Templates(directory=str(ROOT_DIR / "app" / "templates"))
 templates.env.globals.update(asset_rev=__asset_rev__, fonts_rev=fonts_rev())
@@ -162,6 +164,77 @@ def _wants_json(request: Request) -> bool:
     return "application/json" in accept or request.headers.get("x-requested-with") == "fetch"
 
 
+def _login_redirect(request: Request, next_path: str | None = None) -> RedirectResponse:
+    """Send the browser to platform sign-in and drop the dead session cookie.
+
+    Auth's login page checks its own session table, so a cookie that still
+    verifies here but was revoked there gets the sign-in form (no redirect loop).
+    """
+    if next_path is None:
+        nxt = _login_next(request)
+        if request.url.query:
+            nxt = f"{nxt}?{request.url.query}"
+    else:
+        origin = (env.public_origin or "").rstrip("/")
+        nxt = f"{origin}{next_path}" if origin and "127.0.0.1" in origin else next_path
+    response = RedirectResponse(login_url(_settings(), nxt), status_code=303)
+    response.delete_cookie(COOKIE_NAME, path="/")
+    return response
+
+
+def _auth_wait_page(request: Request, user, *, retry_url: str | None = None):
+    """Auth is restarting: say so and retry on our own instead of showing an error."""
+    here = request.url.path + (f"?{request.url.query}" if request.url.query else "")
+    section = (retry_url or here).split("?", 1)[0].strip("/").split("/", 1)[0]
+    active = {"": "home", "users": "users", "overview": "overview", "applications": "applications",
+              "settings": "settings"}.get(section, "")
+    return _html(
+        request,
+        "auth_wait.html",
+        user,
+        {"active": active, "retry_url": retry_url or here},
+        status_code=503,
+    )
+
+
+def _auth_error_text(exc: Exception) -> str:
+    return str(exc) or "Auth did not answer. Try again."
+
+
+def _auth_failure(request: Request, user, exc: Exception, *, next_path: str | None = None, wait_page: bool = True):
+    """One answer for an Auth call made on the person's behalf that failed.
+
+    - Auth 401 (session revoked: signed out elsewhere, password changed, account
+      disabled, restore) -> platform sign-in with ``next`` back here, instead of
+      a page showing Auth's "Not signed in" as an error.
+    - Auth unreachable / 502-504 (restarting) -> a self-retrying "Auth is
+      restarting" page (503 JSON for fetch callers).
+    Anything else returns None so the caller keeps its own error handling.
+    ``next_path`` is the page to come back to (for POSTs); ``wait_page=False``
+    lets a form POST fall through to its own error banner rather than re-posting.
+    """
+    if not isinstance(exc, services.AuthAPIError):
+        return None
+    if exc.signed_out:
+        if _wants_json(request):
+            target = _login_redirect(request, next_path).headers["location"]
+            response = JSONResponse(
+                {"ok": False, "error": "You were signed out. Sign in again.", "signed_out": True, "login_url": target},
+                status_code=401,
+            )
+            response.delete_cookie(COOKIE_NAME, path="/")
+            return response
+        return _login_redirect(request, next_path)
+    if exc.unavailable:
+        if _wants_json(request):
+            return JSONResponse(
+                {"ok": False, "error": services.AUTH_RESTARTING_MESSAGE, "retry": True}, status_code=503
+            )
+        if wait_page:
+            return _auth_wait_page(request, user, retry_url=next_path)
+    return None
+
+
 async def _form_body(request: Request) -> FormData:
     """Parse form body for sync handlers (awaited on the loop; handler runs in threadpool)."""
     return await request.form()
@@ -279,6 +352,14 @@ def _one_backup_summary(backup: dict, *, kind_label: str) -> dict:
             "ok": False,
         }
     ago = _backup_days_ago(stamp) or stamp_label
+    if status == "partial":
+        # Platform data backed up; the opt-in Library content copy didn't fit or failed.
+        return {
+            "label": stamp_label or "Partial",
+            "ago": ago,
+            "detail": detail(kind_label, "Library content not copied — see Library → Settings → Backup"),
+            "ok": True,
+        }
     if status in {"ok", "complete", "success"} or (stamp and status not in {"none", "unknown", ""}):
         if stamp_label:
             return {"label": stamp_label, "ago": ago, "detail": detail(kind_label, "Last recorded backup"), "ok": True}
@@ -327,7 +408,11 @@ def home(request: Request):
     user, redirected = _user_or_login(request, require_dashboard=False)
     if redirected:
         return redirected
-    tiles = services.launcher_tiles(user, dict(request.cookies))
+    launcher_status: dict = {}
+    try:
+        tiles = services.launcher_tiles(user, dict(request.cookies), status=launcher_status)
+    except services.AuthAPIError as exc:
+        return _auth_failure(request, user, exc) or _login_redirect(request)
     return _html(
         request,
         "home.html",
@@ -335,6 +420,8 @@ def home(request: Request):
         {
             "active": "home",
             "tiles": tiles,
+            # Auth restarting: tiles show in catalog order; don't offer to save over the real one.
+            "launcher_order_live": bool(launcher_status.get("order_live")),
             "using_factory_admin": _factory_admin(dict(request.cookies), user),
             "message": request.query_params.get("msg"),
             "error": request.query_params.get("err"),
@@ -344,31 +431,148 @@ def home(request: Request):
 
 @router.post("/launcher-order")
 def launcher_order(request: Request, form: FormData = Depends(_form_body)):
+    """Save Home's tile order.
+
+    Home's drag-to-reorder posts with fetch and gets JSON back — failures as
+    4xx/5xx ``{"ok": false, "error"}`` — so a failed save can never look saved
+    (a 303 to ``/?err=`` was followed silently by fetch). A plain form post
+    still gets the redirect + banner.
+    """
+    wants_json = _wants_json(request)
+    if wants_json and services.current_user(request.cookies) is None:
+        return JSONResponse(
+            {"ok": False, "error": "You were signed out. Sign in again.", "signed_out": True,
+             "login_url": _login_redirect(request, "/").headers["location"]},
+            status_code=401,
+        )
     user, redirected = _user_or_login(request, require_dashboard=False)
     if redirected:
         return redirected
+
+    def fail(message: str, status_code: int = 400):
+        if wants_json:
+            return JSONResponse({"ok": False, "error": message}, status_code=status_code)
+        return RedirectResponse("/?err=" + quote(message), status_code=303)
+
     if not _require_csrf(request, form):
-        return RedirectResponse("/?err=" + quote("Form expired"), status_code=303)
+        return fail("This page expired. Refresh and try again.", 403)
     raw = str(form.get("order") or "").strip()
     if raw.startswith("["):
         try:
             order = json.loads(raw)
         except json.JSONDecodeError:
-            return RedirectResponse("/?err=" + quote("Invalid order"), status_code=303)
+            return fail("Invalid order")
     else:
         order = [part.strip() for part in raw.split(",") if part.strip()]
     if not isinstance(order, list) or not order:
-        return RedirectResponse("/?err=" + quote("Pick at least one app"), status_code=303)
+        return fail("Pick at least one app")
     try:
-        services.save_launcher_order(dict(request.cookies), [str(item) for item in order])
+        saved = services.save_launcher_order(dict(request.cookies), [str(item) for item in order])
     except Exception as exc:
-        return RedirectResponse("/?err=" + quote(str(exc)), status_code=303)
-    wants_json = "application/json" in (request.headers.get("accept") or "")
-    if wants_json or request.headers.get("x-requested-with") == "fetch":
-        from fastapi.responses import JSONResponse
-
-        return JSONResponse({"ok": True, "order": order})
+        handled = _auth_failure(request, user, exc, next_path="/", wait_page=False)
+        if handled is not None:
+            return handled
+        status = int(getattr(exc, "status_code", 502) or 502)
+        return fail(_auth_error_text(exc), status if 400 <= status < 600 else 502)
+    if wants_json:
+        return JSONResponse({"ok": True, "order": saved, "message": "App order saved"})
     return RedirectResponse("/?msg=" + quote("App order saved"), status_code=303)
+
+
+# Household-wide "hidden apps" list from Auth, remembered briefly so the Health
+# page poller doesn't add an Auth round trip every few seconds.
+_DISABLED_TTL = 30.0
+_disabled_cache: dict = {"at": -1e9, "ids": frozenset()}
+
+
+def _remember_disabled(ids) -> None:
+    _disabled_cache.update(at=time.monotonic(), ids=frozenset(str(item) for item in ids))
+
+
+def _disabled_for_poll(cookies: dict[str, str]) -> set[str]:
+    """Hidden apps for the Health poller: cached copy, refreshed from Auth at most every 30 s.
+
+    Raises AuthAPIError when Auth says the session is gone (so the poller can send
+    the person to sign in); any other failure keeps the last known list.
+    """
+    if time.monotonic() - float(_disabled_cache["at"]) < _DISABLED_TTL:
+        return set(_disabled_cache["ids"])
+    try:
+        payload = services.auth_request("GET", "/api/apps", cookies)
+        _remember_disabled(payload.get("disabled") or [])
+    except services.AuthAPIError as exc:
+        if exc.signed_out:
+            raise
+    except Exception:  # noqa: BLE001
+        pass
+    return set(_disabled_cache["ids"])
+
+
+def overview_watch_payload(snap: dict, disabled: set[str]) -> dict:
+    """What the Health page needs to repaint its banner and per-app states in place."""
+    import stonepi_watch
+    from app import collector
+
+    watch = snap.get("watch") or {}
+    if disabled and isinstance(watch, dict) and watch:
+        watch = services.apply_disabled_to_watch(watch, disabled)
+    cards = []
+    healthy = 0
+    for card in snap.get("cards") or []:
+        enabled = card.get("enabled", True) is not False and card["id"] not in disabled
+        ok = bool((card.get("health") or {}).get("ok"))
+        healthy += 1 if ok else 0
+        cards.append({"id": card["id"], "enabled": enabled, "health_ok": ok, "unit_status": card.get("unit_status") or ""})
+    level = str(watch.get("level") or stonepi_watch.LEVEL_HEALTHY).lower()
+    ready = bool(snap.get("ready"))
+    transitional = collector.watch_in_transition(watch)
+    return {
+        "ok": True,
+        "ready": ready,
+        "level": level,
+        "summary": watch.get("summary") or "",
+        "summary_detail": watch.get("summary_detail") or "",
+        "checked_at": watch.get("checked_at") or snap.get("checked_at") or "",
+        "healthy_count": healthy,
+        "total": len(cards),
+        "transitional": transitional,
+        # Nothing to wait for: the page can slow its polling right down.
+        "settled": ready and level == stonepi_watch.LEVEL_HEALTHY and not transitional,
+        "cards": cards,
+    }
+
+
+@router.get("/api/overview/watch")
+def overview_watch(request: Request):
+    """Health page poller: banner summary + per-app state from the collector snapshot.
+
+    Never probes anything itself. While something isn't healthy it nudges the
+    collector to re-check early (collector rate-limits that to one pass per
+    FAST_CARDS_INTERVAL no matter how many tabs poll).
+    """
+    if services.current_user(request.cookies) is None:
+        return JSONResponse(
+            {"ok": False, "signed_out": True, "login_url": _login_redirect(request, "/overview").headers["location"]},
+            status_code=401,
+        )
+    user, redirected = _user_or_login(request, admin=True)
+    if redirected:
+        return JSONResponse({"ok": False, "error": "Administrator only"}, status_code=403)
+    from app import collector
+
+    try:
+        disabled = _disabled_for_poll(dict(request.cookies))
+    except services.AuthAPIError:
+        return JSONResponse(
+            {"ok": False, "signed_out": True, "login_url": _login_redirect(request, "/overview").headers["location"]},
+            status_code=401,
+        )
+    payload = overview_watch_payload(collector.get_snapshot(), disabled)
+    if not payload["settled"]:
+        collector.request_refresh()
+    response = JSONResponse(payload)
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @router.get("/overview", response_class=HTMLResponse)
@@ -401,9 +605,13 @@ def overview(request: Request):
     try:
         payload = services.auth_request("GET", "/api/apps", cookies)
         disabled = set(payload.get("disabled") or [])
+        _remember_disabled(disabled)
         for card in cards:
             if card["id"] in disabled:
                 card["enabled"] = False
+    except services.AuthAPIError as exc:
+        if exc.signed_out:
+            return _login_redirect(request)
     except Exception:
         pass
 
@@ -425,7 +633,11 @@ def overview(request: Request):
     try:
         users = services.auth_request("GET", "/api/users", cookies).get("users", [])
     except Exception as exc:
-        error = str(exc)
+        if isinstance(exc, services.AuthAPIError) and exc.signed_out:
+            return _login_redirect(request)
+        # Auth down is itself a health finding (its card shows Down): no error banner.
+        if not (isinstance(exc, services.AuthAPIError) and exc.unavailable):
+            error = str(exc)
 
     users_ok = error is None
     enabled_count = sum(1 for card in cards if card.get("enabled", True) is not False)
@@ -475,12 +687,38 @@ def services_platform_version() -> str:
     return update_service.platform_version()
 
 
+def _service_cards(request: Request) -> list[dict]:
+    """Service cards from the background collector (refreshed every 20 s) with
+    Auth's live enabled/disabled list on top, instead of probing every service
+    and unit on each page load."""
+    from app import collector
+
+    snap = collector.get_snapshot()
+    if not snap.get("ready") or not snap.get("cards"):
+        return services.application_cards(dict(request.cookies))
+    cards = [dict(card) for card in snap["cards"]]
+    try:
+        disabled = set(services.auth_request("GET", "/api/apps", dict(request.cookies)).get("disabled") or [])
+    except services.AuthAPIError as exc:
+        if exc.signed_out:
+            raise
+        disabled = set()
+    except Exception:
+        disabled = set()
+    for card in cards:
+        card["enabled"] = card["id"] not in disabled and card.get("enabled", True) is not False
+    return cards
+
+
 @router.get("/applications", response_class=HTMLResponse)
 def applications(request: Request):
     user, redirected = _user_or_login(request, admin=True)
     if redirected:
         return redirected
-    cards = services.application_cards(dict(request.cookies))
+    try:
+        cards = _service_cards(request)
+    except services.AuthAPIError:
+        return _login_redirect(request)
     return _html(
         request,
         "applications.html",
@@ -500,7 +738,10 @@ def application_detail(app_id: str, request: Request):
     user, redirected = _user_or_login(request, admin=True)
     if redirected:
         return redirected
-    cards = {item["id"]: item for item in services.application_cards(dict(request.cookies))}
+    try:
+        cards = {item["id"]: item for item in _service_cards(request)}
+    except services.AuthAPIError:
+        return _login_redirect(request)
     card = cards.get(app_id)
     if card is None:
         raise HTTPException(status_code=404, detail="Unknown service")
@@ -515,6 +756,56 @@ def application_detail(app_id: str, request: Request):
             "message": request.query_params.get("msg") or None,
         },
     )
+
+
+RESTART_PATH = "/api/internal/units/restart"
+
+
+def _collector_settle(window: float = 30.0) -> None:
+    try:
+        from app import collector
+
+        collector.request_refresh(window=window)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+@router.post(RESTART_PATH)
+async def internal_unit_restart(request: Request):
+    """Signed service-to-service restart (the Car Thing panel's System screen).
+
+    Dashboard stays the only place that controls services; callers only name a catalog unit.
+    """
+    import asyncio
+    import logging
+    import threading
+
+    from stonepi_auth.internal import verify_internal
+
+    if not verify_internal(services.session_secret(), "POST", RESTART_PATH, request.headers):
+        return JSONResponse({"ok": False, "message": "Not allowed."}, status_code=403)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    unit = str(body.get("unit") or "")
+    source = str(body.get("source") or "internal")[:24]
+    names = {item["unit"]: item["name"] for item in APP_CATALOG if item.get("unit")}
+    if unit not in names:
+        return JSONResponse({"ok": False, "message": "Unknown service."}, status_code=400)
+    logger = logging.getLogger("dashboard.services")
+    logger.warning("Restart %s requested via %s", unit, source)
+    if unit == "stonepi-dashboard":
+        # Restarting ourselves: answer first, then restart.
+        threading.Timer(1.0, services.control_unit, args=(unit, "restart")).start()
+        return {"ok": True, "message": f"Restarting {names[unit]}…"}
+    ok, message = await asyncio.to_thread(services.control_unit, unit, "restart")
+    _collector_settle()
+    if not ok:
+        logger.warning("Restart %s via %s failed: %s", unit, source, message)
+        return {"ok": False, "message": message[:160]}
+    return {"ok": True, "message": f"Restarted {names[unit]}."}
 
 
 @router.post("/applications/{app_id}/{action}")
@@ -540,6 +831,9 @@ def application_action(app_id: str, action: str, request: Request, form: FormDat
             status_code=400,
         )
     ok, message = services.control_unit(card["unit"], action)
+    # Health/Services read the collector snapshot: re-check now and keep checking
+    # quickly while the unit comes up (or goes down), so they don't lag 20 s behind.
+    _collector_settle()
     extra = {"active": "applications", "card": card, "logs": services.unit_logs(card["unit"])}
     if not ok:
         extra["error"] = message
@@ -560,6 +854,9 @@ def users_page(request: Request):
     try:
         people = services.auth_request("GET", "/api/users", dict(request.cookies)).get("users", [])
     except Exception as exc:
+        handled = _auth_failure(request, user, exc)
+        if handled is not None:
+            return handled
         error = error or str(exc)
     return _html(
         request,
@@ -630,7 +927,10 @@ def users_create(request: Request, form: FormData = Depends(_form_body)):
             },
         )
     except Exception as exc:
-        return _fail(str(exc))
+        handled = _auth_failure(request, user, exc, next_path="/users", wait_page=False)
+        if handled is not None:
+            return handled
+        return _fail(_auth_error_text(exc))
     if wants_json:
         return JSONResponse({"ok": True, "message": "Account created"})
     return RedirectResponse("/users?msg=Saved", status_code=303)
@@ -693,7 +993,10 @@ def users_update(user_id: str, request: Request, form: FormData = Depends(_form_
             services.auth_request("PATCH", f"/api/users/{user_id}", dict(request.cookies), payload)
             message = "Password updated" if password else "Saved"
     except Exception as exc:
-        return _fail(str(exc))
+        handled = _auth_failure(request, user, exc, next_path="/users", wait_page=False)
+        if handled is not None:
+            return handled
+        return _fail(_auth_error_text(exc))
     if wants_json:
         return JSONResponse(
             {
@@ -731,8 +1034,10 @@ def settings_password_change(request: Request, form: FormData = Depends(_form_bo
             {"current_password": current, "new_password": new},
         )
     except Exception as exc:
+        if isinstance(exc, services.AuthAPIError) and exc.signed_out:
+            return _login_redirect(request, "/settings?tab=general")
         return RedirectResponse(
-            f"/settings?tab=general&err={quote(str(exc), safe='')}#account-password",
+            f"/settings?tab=general&err={quote(_auth_error_text(exc), safe='')}#account-password",
             status_code=303,
         )
     redirect = RedirectResponse("/settings?tab=general&msg=Password+updated#account-password", status_code=303)
@@ -813,8 +1118,12 @@ def applications_availability(request: Request, form: FormData = Depends(_form_b
             disabled.add(app_id)
         disabled -= LOCKED_APP_IDS
         services.auth_request("PATCH", "/api/apps", cookies, {"disabled": sorted(disabled)})
+        _remember_disabled(disabled)
     except Exception as exc:
-        return fail(str(exc))
+        handled = _auth_failure(request, user, exc, next_path="/applications", wait_page=False)
+        if handled is not None:
+            return handled
+        return fail(_auth_error_text(exc))
     name = names.get(app_id, app_id)
     message = f"{name} {'enabled' if enabled else 'hidden'}"
     if wants_json:
@@ -1013,7 +1322,7 @@ VAULT_KEY_CATALOG = [
             {"id": "STONEPI_SESSION_SECRET", "label": "Session secret", "blurb": "Shared sign-in cookie secret across apps.", "required_hint": True},
             {"id": "STONEPI_NTFY_TOKEN", "label": "Household ntfy token", "blurb": "Shared ntfy access token — configure topic under Notify → Destinations.", "required_hint": False},
             {"id": "DISPLAY_WEBHOOK_URL", "label": "TRMNL webhook (Dashboard Display)", "blurb": "Webhook for the built-in Dashboard Display. Other Displays use DISPLAY_WEBHOOK_URL_<ID>; set them on each Display in Notify.", "required_hint": False},
-            {"id": "STONEPI_RECOVER_PASSWORD", "label": "Recover password", "blurb": "Password for /recover/ console (username stonepi). Not your portal login.", "required_hint": False},
+            {"id": "STONEPI_RECOVER_PASSWORD", "label": "Recover password", "blurb": "Password for /recover/ console (username stonepi), at least 12 characters. Not your portal login. Saved root-only to /etc/stonepi/recover.passwd, never the Vault.", "required_hint": False},
             {"id": "TAILSCALE_API_KEY", "label": "Tailscale API key", "blurb": "Cloud API key to apply ACL from Settings → Network.", "required_hint": False},
             {"id": "TAILSCALE_TAILNET", "label": "Tailscale tailnet", "blurb": "Tailnet name or id for ACL API (e.g. example.com).", "required_hint": False},
         ],
@@ -1031,7 +1340,13 @@ VAULT_KEY_CATALOG = [
         "items": [
             {"id": "X3_SYNC_TOKEN", "label": "Reader sync token", "blurb": "CrossPoint / OPDS catalog token when internet-facing."},
             {"id": "NEWSCAST_READER_SSH_PASSWORD", "label": "Reader SSH password", "blurb": "Optional password for reader device setup."},
-            {"id": "BRIGHTDATA_API_KEY", "label": "Bright Data API key", "blurb": "Optional fetch proxy for stubborn sites."},
+        ],
+    },
+    {
+        "group": "Data providers",
+        "items": [
+            {"id": "BRIGHTDATA_API_KEY", "label": "Bright Data API key (EventTrakr)", "blurb": "Facebook events and social accounts in EventTrakr."},
+            {"id": "PRICEWATCH_BRIGHTDATA_API_KEY", "label": "Bright Data API key (PriceWatch)", "blurb": "Trustpilot trust scores for PriceWatch retailers."},
         ],
     },
     {
@@ -1049,6 +1364,21 @@ VAULT_KEY_CATALOG = [
         ],
     },
 ]
+
+
+# The Recover console runs as root; its password must not sit in the group-readable Vault.
+# Settings writes it straight to recover.passwd through the root backup helper instead.
+RECOVER_PASSWORD_KEY = "STONEPI_RECOVER_PASSWORD"
+RECOVER_PASSWD_FILE = Path(os.environ.get("STONEPI_RECOVER_PASSWD", "/etc/stonepi/recover.passwd"))
+RECOVER_PASSWORD_MIN_LENGTH = 12
+
+
+def _recover_password_set() -> bool:
+    """Existence only — the file is root 0600 and the Dashboard never reads it."""
+    try:
+        return RECOVER_PASSWD_FILE.is_file()
+    except OSError:
+        return False
 
 
 def _vault_label_map() -> dict[str, str]:
@@ -1182,11 +1512,19 @@ def settings_page(request: Request, tab: str | None = None, panel: str | None = 
             stored = vault.list_keys()
             stored_ids = {str(k) for k in stored}
             extra["vault_keys"] = [
-                {"id": key, "label": labels.get(key, key), "known": key in labels} for key in stored
+                {"id": key, "label": labels.get(key, key), "known": key in labels}
+                for key in stored
+                if key != RECOVER_PASSWORD_KEY
             ]
         except Exception as exc:
             extra["vault_keys"] = []
             extra["error"] = extra.get("error") or f"Vault unavailable: {exc}"
+        stored_ids.discard(RECOVER_PASSWORD_KEY)
+        if _recover_password_set():
+            stored_ids.add(RECOVER_PASSWORD_KEY)
+            extra["vault_keys"].append(
+                {"id": RECOVER_PASSWORD_KEY, "label": labels.get(RECOVER_PASSWORD_KEY, RECOVER_PASSWORD_KEY), "known": True}
+            )
         matrix: list[dict] = []
         for group in VAULT_KEY_CATALOG:
             if str(group.get("group") or "").startswith("Legacy"):
@@ -1243,36 +1581,25 @@ def _backup_tab_extras() -> dict:
 
 
 def _tailscale_acl_status() -> dict:
-    import subprocess
-    from pathlib import Path
+    """Whether the Tailscale API key + tailnet are in the Vault.
 
+    Read in-process (Dashboard can read the Vault): the old path ran a root
+    helper that started Python twice, ~1-2 s on a Pi, on every Network visit.
+    """
     now = time.monotonic()
     cached = _acl_status_cache.get("data")
     if cached is not None and (now - float(_acl_status_cache.get("at") or 0)) < _SETTINGS_CACHE_TTL:
         return dict(cached)
-
-    helper = Path("/usr/local/sbin/stonepi-tailscale-acl")
-    if not helper.exists():
-        info = {"configured": False}
-        _acl_status_cache["data"] = info
-        _acl_status_cache["at"] = now
-        return dict(info)
+    info: dict = {"configured": False}
     try:
-        result = subprocess.run(
-            ["sudo", "-n", str(helper), "status"],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=15,
-        )
-        info: dict = {"configured": False}
-        for line in (result.stdout or "").splitlines():
-            if line.startswith("configured="):
-                info["configured"] = line.split("=", 1)[1].strip() == "yes"
-            elif line.startswith("tailnet="):
-                info["tailnet"] = line.split("=", 1)[1].strip()
+        from stonepi_vault import get_secret
+
+        api_key = get_secret("TAILSCALE_API_KEY", env_name="TAILSCALE_API_KEY", default="")
+        tailnet = get_secret("TAILSCALE_TAILNET", env_name="TAILSCALE_TAILNET", default="")
+        if api_key and tailnet:
+            info = {"configured": True, "tailnet": tailnet}
     except Exception:
-        info = {"configured": False}
+        pass
     _acl_status_cache["data"] = info
     _acl_status_cache["at"] = now
     return dict(info)
@@ -1645,8 +1972,10 @@ def settings_vault_save(request: Request, form: FormData = Depends(_form_body)):
             "/settings?tab=vault&err=Keys+cannot+contain+spaces+or+slashes.",
             status_code=303,
         )
-    vault = get_vault()
     label = _vault_label_map().get(key, key)
+    if key == RECOVER_PASSWORD_KEY:
+        return _save_recover_password(action, value, label)
+    vault = get_vault()
     if action == "delete":
         try:
             removed = vault.delete(key)
@@ -1660,8 +1989,6 @@ def settings_vault_save(request: Request, form: FormData = Depends(_form_body)):
                 f"/settings?tab=vault&err={quote(f'{label} was not in the vault.', safe='')}",
                 status_code=303,
             )
-        if key == "STONEPI_RECOVER_PASSWORD":
-            services._helper_run(["recover-passwd-clear"], timeout=15)
         return RedirectResponse(
             f"/settings?tab=vault&msg={quote(f'{label} removed from the vault.', safe='')}",
             status_code=303,
@@ -1675,10 +2002,41 @@ def settings_vault_save(request: Request, form: FormData = Depends(_form_body)):
             f"/settings?tab=vault&err={quote(f'Could not save {label}: {exc}', safe='')}",
             status_code=303,
         )
-    if key == "STONEPI_RECOVER_PASSWORD":
-        services._helper_run(["recover-passwd-set", value.strip()], timeout=15)
     return RedirectResponse(
         f"/settings?tab=vault&msg={quote(f'{label} saved to the vault.', safe='')}",
+        status_code=303,
+    )
+
+
+def _save_recover_password(action: str, value: str, label: str) -> RedirectResponse:
+    """Set or clear recover.passwd via the root helper; the value never touches the Vault."""
+    if action == "delete":
+        code, out = services._helper_run(["recover-passwd-clear"], timeout=15)
+        verb = "cleared"
+    else:
+        if not value.strip() or any(c in value.strip() for c in "\r\n"):
+            return RedirectResponse("/settings?tab=vault&err=Enter+a+single-line+value+to+save.", status_code=303)
+        if len(value.strip()) < RECOVER_PASSWORD_MIN_LENGTH:
+            # A root console on the LAN: the per-IP lockout slows guessing, length stops it.
+            msg = f"{label} must be at least {RECOVER_PASSWORD_MIN_LENGTH} characters."
+            return RedirectResponse(f"/settings?tab=vault&err={quote(msg, safe='')}", status_code=303)
+        code, out = services._helper_run(["recover-passwd-set"], timeout=15, stdin=value.strip() + "\n")
+        verb = "saved"
+    if code != 0:
+        detail = (out or "backup helper failed").strip()[:200]
+        return RedirectResponse(
+            f"/settings?tab=vault&err={quote(f'Could not update {label}: {detail}', safe='')}",
+            status_code=303,
+        )
+    # Older builds also kept a Vault copy; drop it so app users can't read it.
+    try:
+        from stonepi_vault import get_vault
+
+        get_vault().delete(RECOVER_PASSWORD_KEY)
+    except Exception:
+        pass
+    return RedirectResponse(
+        f"/settings?tab=vault&msg={quote(f'{label} {verb} (root-only file, not the Vault).', safe='')}",
         status_code=303,
     )
 

@@ -1,0 +1,30 @@
+{% from "_icons.html" import icon %}
+<section class="screen restart" data-screen="restart">
+  <header class="bar">
+    <span class="bar-title">Restart {{ target.title }}</span>
+    <span class="bar-meta"></span>
+    <span class="bar-time" data-clock-small></span>
+  </header>
+  {% if needs_pin %}
+  <div class="pin" data-pin data-unit="{{ target.unit }}" data-length="{{ pin_length }}">
+    <div class="pin-side">
+      <div class="pin-dots">{% for _ in range(pin_length) %}<span></span>{% endfor %}</div>
+      <p class="pin-msg" data-pin-msg>{% if locked_for %}Too many wrong PINs. Try again in {{ locked_for }}s.{% else %}Enter the admin PIN{% endif %}</p>
+    </div>
+    <div class="keys">
+      {% for k in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "del", "0", "ok"] %}
+      <button class="key key-{{ k }}" data-focus data-key="{{ k }}">{% if k == "del" %}&#9003;{% elif k == "ok" %}OK{% else %}{{ k }}{% endif %}</button>
+      {% endfor %}
+    </div>
+  </div>
+  {% else %}
+  <div class="confirm">
+    <p class="confirm-q">Restart {{ target.title }}?</p>
+    <p class="meta">It's unavailable for a few seconds while it starts again.</p>
+    <div class="confirm-btns">
+      <button class="btn btn-primary" data-focus data-act="restart-now" data-unit="{{ target.unit }}">{{ icon("restart") }} Restart</button>
+      <button class="btn" data-focus data-act="back">Cancel</button>
+    </div>
+  </div>
+  {% endif %}
+</section>

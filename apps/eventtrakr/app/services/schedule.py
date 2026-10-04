@@ -98,6 +98,15 @@ def _scheduled_tick() -> None:
             except Exception:
                 logger.exception("Approaching-favourites check failed")
 
+            # Pick up capability changes for people who haven't opened EventTrakr
+            # since (cached; a no-op without StonePi SSO or when Auth is down).
+            try:
+                from app.services import capabilities
+
+                capabilities.refresh_from_auth(db)
+            except Exception:
+                logger.debug("Capability roster refresh failed", exc_info=True)
+
             # Social poll runs even when no URL sources are due; isolate errors
             # so a Bright Data failure cannot break source sync.
             try:

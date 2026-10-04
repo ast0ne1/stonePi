@@ -50,6 +50,8 @@ def _ensure_schema() -> None:
         if "auth_user_id" not in user_cols:
             conn.execute(text("ALTER TABLE users ADD COLUMN auth_user_id VARCHAR(36)"))
             conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_users_auth_user_id ON users(auth_user_id)"))
+        if "capabilities" not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN capabilities TEXT"))
 
         # Check events table
         event_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(events)")).fetchall()}

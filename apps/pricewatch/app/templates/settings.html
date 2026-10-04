@@ -56,6 +56,7 @@
   <form method="post" action="/settings/general" class="card stack">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <h2 class="section-heading">{{ filter_icon("sliders") }} New watch defaults</h2>
+    <fieldset class="stack plain-fieldset"{% if not is_admin %} disabled{% endif %}>
     <label>
       Check
       <select name="default_schedule_minutes">
@@ -80,8 +81,13 @@
       Keep price history (days)
       <input type="number" name="retention_days" min="7" max="730" value="{{ settings.retention_days or 90 }}" />
     </label>
+    </fieldset>
     <p class="hint">Market: Denmark · Currency: DKK</p>
+    {% if is_admin %}
     <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("check") }} Save</button>
+    {% else %}
+    <p class="hint">Household defaults and history retention are set by a StonePi admin.</p>
+    {% endif %}
   </form>
 </div>
 
@@ -89,6 +95,7 @@
   <form method="post" action="/settings/sources" class="card stack">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <h2 class="section-heading">{{ filter_icon("sources") }} Price sources</h2>
+    <fieldset class="plain-fieldset"{% if not can_manage_sources %} disabled{% endif %}>
     <div class="source-list">
       {% for src in sources %}
       <div class="source-row-wrap">
@@ -121,14 +128,168 @@
       <p class="hint">No sources registered.</p>
       {% endfor %}
     </div>
+    </fieldset>
     <p class="hint">Scheduler {% if scheduler.running %}running{% else %}stopped{% endif %} · looks for due watches every {{ scheduler.tick_minutes }} min. Mock source only appears when <code>PRICEWATCH_MOCK=1</code>.</p>
+    {% if can_manage_sources %}
     <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("check") }} Save</button>
+    {% else %}
+    <p class="hint">Changing sources needs “Manage sources” from a StonePi admin.</p>
+    {% endif %}
   </form>
+</div>
+
+<div class="stack settings-panel" id="settings-panel-trust" role="tabpanel" data-settings-panel="trust" aria-labelledby="settings-tab-trust"{% if settings_tab != 'trust' %} hidden{% endif %}>
+  <form method="post" action="/settings/trust" class="card stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <h2 class="section-heading">{{ filter_icon("trust") }} Trust scores</h2>
+    <fieldset class="stack plain-fieldset"{% if not can_manage_sources %} disabled{% endif %}>
+    {% if is_admin %}
+    <label class="check">
+      <input type="checkbox" name="brightdata_enabled" value="1" {% if trust_settings.brightdata_enabled %}checked{% endif %} />
+      Trust scores via Bright Data (Trustpilot)
+    </label>
+    {% else %}
+    <p class="hint">Trust scores via Bright Data (Trustpilot): {{ "on" if trust_settings.brightdata_enabled else "off" }} · refreshed every {{ trust_settings.refresh_days }} days. Lookups use paid Bright Data records, so a StonePi admin turns them on and schedules them.</p>
+    {% endif %}
+    <label class="check">
+      <input type="checkbox" name="pricerunner_fallback" value="1" {% if trust_settings.pricerunner_fallback %}checked{% endif %} />
+      Use PriceRunner ratings when Trustpilot has none
+    </label>
+    <p class="hint">PriceRunner ratings show in a muted, outlined badge. They’re often based on very few reviews.</p>
+    <label>
+      Minimum reviews for a score to count
+      <input type="number" name="min_reviews" min="0" max="100000" value="{{ trust_settings.min_reviews }}" />
+    </label>
+    {% if is_admin %}
+    <label>
+      Refresh scores every (days)
+      <input type="number" name="refresh_days" min="1" max="90" value="{{ trust_settings.refresh_days }}" />
+    </label>
+    {% endif %}
+    </fieldset>
+    {% if trust_usage %}
+    {% if can_admin_brightdata %}
+    <label>
+      Bright Data monthly limit (records, all apps)
+      <input type="number" name="brightdata_limit" min="0" max="10000000" value="{{ trust_usage.limit }}" />
+    </label>
+    <label>
+      Resets on day of the month
+      <input type="number" name="brightdata_reset_day" min="1" max="31" value="{{ trust_usage.reset_day }}" />
+    </label>
+    {% else %}
+    <p class="hint">The shared Bright Data limit and reset day are set by a StonePi admin.</p>
+    {% endif %}
+    <p class="hint">
+      Used since {{ trust_usage.period_start }} (resets {{ trust_usage.resets_on }}): {{ trust_usage.used }} / {{ trust_usage.limit }} records{% if trust_usage.by_app %} ({% for app, n in trust_usage.by_app.items() %}{{ app|capitalize }} {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}){% endif %}.
+      Shared with EventTrakr on the same Bright Data account; set it to your allowance (free tier: 5,000) and its reset day to your billing date (default 1; a day past a short month's end uses its last day).
+      Scheduled lookups spread the limit across the period (up to {{ trust_usage.pace_allowance }} by today); Refresh scores can use what's left.
+      {% if trust_usage.remaining == 0 %}<strong>Limit reached — scores stay as they are until {{ trust_usage.resets_on }}.</strong>{% endif %}
+    </p>
+    {% else %}
+    <p class="hint">Bright Data usage can't be read from the StonePi Vault folder, so lookups are paused.</p>
+    {% endif %}
+    <p class="hint">
+      {% if trust_status.running %}Lookup running…{% elif trust_status.note %}Last run: {{ trust_status.note }}.{% endif %}
+    </p>
+    {% if can_manage_sources %}
+    <div class="btn-row">
+      <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("check") }} Save</button>
+      {% if is_admin %}
+      <button class="btn btn-secondary btn-with-icon" type="submit" formaction="/settings/trust/refresh">{{ icon("refresh") }} Refresh scores</button>
+      {% endif %}
+    </div>
+    {% endif %}
+  </form>
+
+  {% if not can_admin_brightdata %}
+  <section class="card stack">
+    <h2 class="section-heading">{{ filter_icon("network") }} Bright Data key</h2>
+    <p class="hint">
+      {% if trust_key_set %}<span class="watch-health watch-health-watching"><span class="watch-health-dot" aria-hidden="true"></span>Key set in vault</span>
+      {% elif trust_mock %}Mock mode: scores come from the fixture, no key needed.
+      {% else %}<span class="watch-health"><span class="watch-health-dot" aria-hidden="true"></span>No key</span>{% endif %}
+    </p>
+    <p class="hint">A StonePi admin adds or changes the Bright Data key.</p>
+  </section>
+  {% else %}
+  <form method="post" action="/settings/trust/key" class="card stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <h2 class="section-heading">{{ filter_icon("network") }} Bright Data key</h2>
+    <p class="hint">
+      {% if trust_key_set %}<span class="watch-health watch-health-watching"><span class="watch-health-dot" aria-hidden="true"></span>Key set in vault</span>
+      {% elif trust_mock %}Mock mode: scores come from the fixture, no key needed.
+      {% else %}<span class="watch-health"><span class="watch-health-dot" aria-hidden="true"></span>No key</span>{% endif %}
+    </p>
+    {% if trust_eventtrakr_key and not trust_key_set %}
+    <button class="btn btn-primary btn-with-icon" type="submit" name="action" value="copy">{{ icon("check") }} Copy from EventTrakr</button>
+    {% endif %}
+    <label>
+      Bright Data API key
+      <input type="password" name="api_key" autocomplete="off" placeholder="{% if trust_key_set %}Leave blank to keep the existing key{% else %}Paste a Bright Data API key{% endif %}" />
+    </label>
+    <div class="btn-row">
+      <button class="btn btn-secondary btn-with-icon" type="submit" name="action" value="save">{{ icon("check") }} Save key</button>
+      {% if trust_key_set %}
+      <button class="btn btn-ghost btn-with-icon" type="submit" name="action" value="remove" data-confirm="Remove PriceWatch’s Bright Data key?" data-confirm-detail="EventTrakr’s key is not affected. Scores stay as they are until a key is added again." data-confirm-ok="Remove">{{ icon("trash") }} Remove</button>
+      {% endif %}
+    </div>
+    <p class="hint">Stored in the StonePi vault as <code>PRICEWATCH_BRIGHTDATA_API_KEY</code>. Copy from EventTrakr reuses the same Bright Data key; paste a different one to use a separate key or account.</p>
+  </form>
+  {% endif %}
+
+  <section class="card stack">
+    <h2 class="section-heading">{{ filter_icon("offers") }} Retailers</h2>
+    {% if trust_merchants %}
+    <ul class="retailer-list">
+      {% for m in trust_merchants %}
+      <li class="retailer-row">
+        <div class="retailer-copy">
+          <span class="retailer-name">{{ m.name }}</span>
+          <span class="hint">
+            Trustpilot:
+            {% if m.tp_score is not none %}★ {{ "%.1f"|format(m.tp_score) }}{% if m.tp_review_count is not none %} · {{ "{:,}".format(m.tp_review_count) }} reviews{% endif %}
+            {% elif m.tp_status == 'not_found' %}not on Trustpilot
+            {% elif m.tp_status == 'error' %}lookup failed
+            {% else %}not looked up yet{% endif %}
+            · PriceRunner: {% if m.pr_rating is not none %}★ {{ "%.1f"|format(m.pr_rating) }} · {{ m.pr_rating_count }} reviews{% else %}none{% endif %}
+            {% if m.tp_fetched_at %}· updated {{ m.tp_fetched_at[:10] }}{% endif %}
+          </span>
+          {% if m.tp_status == 'error' and m.tp_last_error %}<span class="watch-health watch-health-error"><span class="watch-health-dot" aria-hidden="true"></span>{{ m.tp_last_error }}</span>{% endif %}
+          {% if m.website_mismatch %}<span class="watch-health watch-health-error"><span class="watch-health-dot" aria-hidden="true"></span>Trustpilot’s page is for {{ m.tp_website }} — check the address</span>{% endif %}
+        </div>
+        {% if is_admin %}
+        <form method="post" action="/settings/trust/retailers/{{ m.source_id|urlencode }}/{{ m.merchant_id|urlencode }}" class="retailer-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <label class="retailer-domain">
+            <span class="visually-hidden">Web address for {{ m.name }}</span>
+            <input type="text" name="domain" value="{{ m.domain_override or m.domain or '' }}" placeholder="shop.dk" autocomplete="off" inputmode="url" />
+          </label>
+          <button class="btn btn-secondary" type="submit" name="action" value="save">Save</button>
+          <button class="btn btn-ghost" type="submit" name="action" value="refetch" title="Look this shop up again on the next run">{{ icon("refresh") }}</button>
+          {% if m.trustpilot_link %}<a class="text-link" href="{{ m.trustpilot_link }}" target="_blank" rel="noopener noreferrer">Trustpilot</a>{% endif %}
+        </form>
+        {% elif m.trustpilot_link %}
+        <a class="text-link" href="{{ m.trustpilot_link }}" target="_blank" rel="noopener noreferrer">Trustpilot</a>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="hint">Shops appear here as PriceWatch sees them in offers. {% if is_admin %}Correct an address if a shop matched the wrong Trustpilot page{% if trust_merchants|selectattr('domain_override')|list %}; corrected addresses are kept when PriceRunner reports a different one{% endif %}.{% else %}A StonePi admin can correct an address or look a shop up again.{% endif %}</p>
+    {% else %}
+    <p class="hint">No shops yet. They appear after the first check or comparison.</p>
+    {% endif %}
+  </section>
 </div>
 
 <div class="stack settings-panel" id="settings-panel-notifications" role="tabpanel" data-settings-panel="notifications" aria-labelledby="settings-tab-notifications"{% if settings_tab != 'notifications' %} hidden{% endif %}>
   {% from "stonepi/alerts.html" import notifications_card %}
-  {% if notifications_card_state %}
+  {% if notifications_card_state and not can_use_alerts %}
+  <div class="card stack">
+    <h2 class="section-heading">{{ filter_icon("notifications") }} Strike alerts</h2>
+    <p class="lede">Strike alerts are off for your account. Ask a StonePi admin for “Strike alerts” in PriceWatch.</p>
+  </div>
+  {% elif notifications_card_state %}
   {{ notifications_card(notifications_card_state) }}
   {% else %}
   <div class="card stack">

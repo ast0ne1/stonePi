@@ -74,9 +74,11 @@
     <a class="btn btn-primary btn-with-icon sheet-choice" href="/reminders?new=1">
       {{ icon("reminder") }} Add reminder
     </a>
+    {% if can_post_notices %}
     <a class="btn btn-secondary btn-with-icon sheet-choice" href="/notices?new=1">
       {{ icon("pin") }} Add notice
     </a>
+    {% endif %}
     <button type="button" class="btn btn-ghost" data-close-sheet>Cancel</button>
   </div>
 </div>

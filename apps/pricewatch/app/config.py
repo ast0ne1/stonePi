@@ -29,6 +29,16 @@ DEFAULT_CONDITION = "new"
 DEFAULT_RETENTION_DAYS = 90
 SCAN_CACHE_TTL_SECONDS = 15 * 60
 
+# Trust scores (Trustpilot via Bright Data, PriceRunner shop rating as fallback).
+DEFAULT_TRUST_MIN_REVIEWS = 50
+DEFAULT_TRUST_REFRESH_DAYS = 7
+MIN_SCORE_OPTIONS: tuple[dict[str, str | float | None], ...] = (
+    {"id": "", "label": "Any", "value": None},
+    {"id": "3.5", "label": "3.5+", "value": 3.5},
+    {"id": "4.0", "label": "4.0+", "value": 4.0},
+    {"id": "4.5", "label": "4.5+", "value": 4.5},
+)
+
 
 class EnvSettings(BaseSettings):
     model_config = SettingsConfigDict(

@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_filter_icon.html" import filter_icon %}
+{% from "_trust.html" import trust_badge %}
+{% block title %}{{ product.name }} · Compare · PriceWatch{% endblock %}
+{% block content %}
+<section class="hero">
+  <a class="settings-back" href="/watches/new{% if q %}?q={{ q|urlencode }}{% endif %}">&larr; Results</a>
+  <div class="watch-hero">
+    {% if product.image_url %}
+    <img class="watch-hero-img" src="{{ product.image_url }}" alt="" width="72" height="72" />
+    {% endif %}
+    <div class="watch-hero-copy">
+      <h1>{{ product.name }}</h1>
+      {% if product.variant or product.manufacturer %}
+      <p class="lede">{{ product.manufacturer or '' }}{% if product.manufacturer and product.variant %} · {% endif %}{{ product.variant or '' }}</p>
+      {% endif %}
+    </div>
+  </div>
+  <div class="page-status">
+    <p class="page-status-text">{% if offers %}{{ offers|length }} offer{{ 's' if offers|length != 1 }} from {{ offers|map(attribute='retailer')|unique|list|length }} retailer{{ 's' if offers|map(attribute='retailer')|unique|list|length != 1 }}{% else %}No offers right now{% endif %}</p>
+  </div>
+</section>
+
+<div class="btn-row watch-actions">
+  <a class="btn btn-primary btn-with-icon" href="{{ watch_url }}">{{ icon("plus") }} Watch this</a>
+  {% if product.product_url %}
+  <a class="btn btn-secondary btn-with-icon" href="{{ product.product_url }}" target="_blank" rel="noopener noreferrer">{{ icon("external") }} PriceRunner</a>
+  {% endif %}
+</div>
+
+{% if error %}<p class="banner">{{ error }}</p>{% endif %}
+
+<section class="card stack">
+  <div class="compare-head">
+    <h2 class="section-heading">{{ filter_icon("offers") }} Retailers</h2>
+    {% if offers|length > 1 %}
+    <div class="chips compare-sort" role="group" aria-label="Sort by">
+      {% for key, label in compare_sorts.items() %}
+      <a class="chip-btn{% if sort == key %} is-active{% endif %}" href="{{ compare_base }}{{ key }}"{% if sort == key %} aria-current="true"{% endif %}><span>{{ label }}</span></a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% if offers %}
+  <ul class="offer-list">
+    {% for o in offers %}
+    {% set total = o.total_price if o.total_price is not none else o.product_price %}
+    <li class="offer-row{% if o.availability == 'out_of_stock' %} is-off{% endif %}">
+      <div class="offer-copy">
+        <span class="offer-line">
+          {% if o.product_url %}
+          <a class="offer-retailer" href="{{ o.product_url }}" target="_blank" rel="noopener noreferrer">{{ o.retailer }}</a>
+          {% else %}
+          <span class="offer-retailer">{{ o.retailer }}</span>
+          {% endif %}
+          {{ trust_badge(o.trust) }}
+        </span>
+        <span class="hint">
+          {% if o.delivery_cost is not none %}{{ format_price(o.product_price, o.currency) }} + {{ format_price(o.delivery_cost, o.currency) }} delivery{% else %}{{ format_price(o.product_price, o.currency) }} · delivery not listed{% endif %}
+          · {{ (o.availability or 'stock unknown')|replace('_', ' ') }}{% if o.condition == 'used' %} · used{% endif %}
+        </span>
+      </div>
+      <strong class="offer-total">{{ format_price(total, o.currency) }}</strong>
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="hint">Totals include delivery where the retailer lists it. Scores: <a class="text-link" href="/settings?tab=trust">Settings → Trust scores</a>.</p>
+  {% else %}
+  <p class="hint">PriceRunner has no offers for this product right now. You can still watch it.</p>
+  {% endif %}
+</section>
+{% endblock %}

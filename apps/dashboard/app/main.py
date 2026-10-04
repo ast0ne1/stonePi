@@ -41,7 +41,9 @@ async def lifespan(_app: FastAPI):
         data_dir=DATA_DIR,
         push_display=_push_display,
         backup_info=services.backup_info,
-        watch_evaluate=lambda: display.watch_snapshot(None),
+        # The collector already evaluates Watch every 20 s; reuse it instead of
+        # probing every service again each minute.
+        watch_evaluate=lambda: collector.get_snapshot().get("watch") or display.watch_snapshot(None),
     )
     automations.start_scheduler()
     yield

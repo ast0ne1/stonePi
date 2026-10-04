@@ -916,6 +916,8 @@ select:focus-visible {
 }
 .provider-panel { display: grid; gap: 14px; }
 fieldset { border: 0; margin: 0; min-width: 0; }
+.plain-fieldset { padding: 0; }
+.plain-fieldset[disabled] { opacity: 0.7; }
 legend { font-family: var(--serif); font-size: 1.25rem; margin-bottom: 8px; padding: 0; }
 label { display: grid; gap: 6px; font-size: 0.92rem; }
 label.check { grid-template-columns: auto 1fr; align-items: center; }
@@ -1813,3 +1815,129 @@ label.check input[type="checkbox"] { width: 18px; height: 18px; accent-color: va
 }
 .source-row-wrap .source-row { flex: 1 1 12rem; }
 .source-remove { flex: 0 0 auto; }
+
+/* Trust badges: Trustpilot solid, PriceRunner fallback muted + outlined. */
+.trust-badge {
+  /* inline-block, not flex: flex items drop the leading space in " · Trustpilot" */
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-family: var(--chrome);
+  font-size: 0.75rem;
+  font-weight: 650;
+  line-height: 1.5;
+  white-space: nowrap;
+  vertical-align: middle;
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 12%, var(--card));
+}
+.trust-src { font-weight: 450; }
+.trust-badge.trust-pricerunner {
+  color: var(--muted);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-weight: 500;
+}
+.trust-badge.is-few { opacity: 0.72; }
+.trust-few { font-weight: 400; }
+.trust-badge.is-none,
+.trust-badge.is-pending {
+  color: var(--muted);
+  background: var(--wash);
+  font-weight: 450;
+}
+.strike-price .trust-badge { font-size: 0.8rem; }
+
+.offer-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+}
+.offer-row.is-off { opacity: 0.6; }
+.offer-row.is-below-min .offer-total { color: var(--muted); text-decoration: line-through; }
+.offer-row.is-below-min strong { font-weight: 600; }
+.watch-row-shop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+}
+
+.low-rated-card {
+  background: var(--wash);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.low-rated-card .strike-price { font-size: 1.35rem; color: var(--muted); }
+
+.compare-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+.compare-head .section-heading { margin: 0; }
+.compare-sort { flex: 0 1 auto; }
+
+/* Watch edit (inside the Target card) */
+.edit-watch { margin: 0; }
+.edit-watch > summary {
+  list-style: none;
+  cursor: pointer;
+  width: max-content;
+}
+.edit-watch > summary::-webkit-details-marker { display: none; }
+.edit-watch[open] > summary { margin-bottom: 14px; }
+.edit-watch-form { padding-top: 14px; border-top: 1px solid var(--line); }
+.radio-group {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.radio-group legend {
+  padding: 0;
+  margin-bottom: 6px;
+  font: inherit;
+  font-family: var(--chrome);
+  font-size: 0.9rem;
+  font-weight: 500;
+  letter-spacing: normal;
+}
+label.check input[type="radio"] { width: 18px; height: 18px; accent-color: var(--accent); }
+.trust-when-min[hidden] { display: none; }
+
+/* Settings → Trust scores: retailers */
+.retailer-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+.retailer-row {
+  display: grid;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.retailer-row:first-child { padding-top: 0; }
+.retailer-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.retailer-copy { display: grid; gap: 2px; min-width: 0; }
+.retailer-copy .hint { font-size: 0.82rem; }
+.retailer-name { font-weight: 600; overflow-wrap: anywhere; }
+.retailer-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+.retailer-domain { flex: 1 1 10rem; min-width: 0; margin: 0; }
+.retailer-domain input { width: 100%; }
+@media (min-width: 768px) {
+  .retailer-row { grid-template-columns: minmax(0, 1fr) minmax(0, 22rem); align-items: center; }
+}

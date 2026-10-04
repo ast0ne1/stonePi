@@ -174,9 +174,9 @@ def test_names_endpoint_is_signed_and_separate(client):
     rows = {r["id"]: r for r in client.get(path, headers=sign_internal("test-secret", "GET", path)).json()["people"]}
     assert rows[person_id] == {"id": person_id, "name": "Jo Bloggs"}
     assert gone_id not in rows
-    # The Notify roster stays three fields: no names there.
+    # The platform roster carries no names (permissions let EventTrakr revoke paid polling).
     roster_path = "/api/internal/people"
     roster = client.get(roster_path, headers=sign_internal("test-secret", "GET", roster_path)).json()["people"]
-    assert all(set(r) == {"id", "is_admin", "phone_alerts"} for r in roster)
+    assert all(set(r) == {"id", "is_admin", "phone_alerts", "permissions"} for r in roster)
     # A signature for the roster path doesn't open the names path.
     assert client.get(path, headers=sign_internal("test-secret", "GET", roster_path)).status_code == 404

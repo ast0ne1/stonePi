@@ -72,6 +72,22 @@ else
   else
     fail "destinations.json missing (Destinations may be empty after restore)"
   fi
+  # Library: verify the opt-in content store by manifest + sizes (never copy 100 GB here).
+  if grep -q '^LIBRARY_CONTENT=ok$' "$SRC/backup-info.txt" 2>/dev/null; then
+    STORE="$(dirname "$SRC")/library-content"
+    if [[ -f "$STORE/manifest.json" ]] && python3 - "$STORE" <<'PY'
+import json, os, sys
+store = sys.argv[1]
+files = json.load(open(os.path.join(store, "manifest.json")))["files"]
+bad = [f["file_name"] for f in files if not os.path.isfile(os.path.join(store, f["file_name"])) or os.path.getsize(os.path.join(store, f["file_name"])) != int(f["size"])]
+sys.exit(1 if bad else 0)
+PY
+    then
+      ok "library content store matches its manifest"
+    else
+      fail "library content store incomplete (sizes don't match manifest)"
+    fi
+  fi
 fi
 
 # Live stack checks

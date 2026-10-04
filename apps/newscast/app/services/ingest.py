@@ -17,6 +17,7 @@ from app.models import Feed, Story, utcnow
 from app.services import briefing, settings
 from app.services.dedupe import canonicalize_url, cluster_key, content_hash, is_duplicate_title
 from app.services.filters import feed_keyword_lists, story_passes_filters
+from app.services import net_guard
 from app.services.health import record_fetch
 from app.services.schedule import feed_is_due, feed_is_muted
 from app.services.scrape import (
@@ -55,6 +56,8 @@ class IngestState:
     # Global refresh started from the Refresh button: the only kind the UI can stop.
     manual: bool = False
     stop_requested: bool = False
+    # Local user id that started the manual refresh (None: scheduler / per-feed).
+    started_by: int | None = None
 
 
 state = IngestState()
@@ -70,10 +73,15 @@ def _check_stop() -> None:
         raise IngestStopped()
 
 
-def request_stop() -> dict:
-    """Ask the running manual global refresh to stop at its next checkpoint."""
+def request_stop(user_id: int | None = None, *, is_admin: bool = True) -> dict:
+    """Ask the running manual global refresh to stop at its next checkpoint.
+
+    Members may only stop a refresh they started; admins may stop any manual one.
+    """
     if not state.running or not state.manual:
         return {"ok": False, "message": "No refresh to stop.", "stopping": False}
+    if not is_admin and (user_id is None or state.started_by != int(user_id)):
+        return {"ok": False, "message": "Only the person who started this refresh can stop it.", "stopping": False}
     state.stop_requested = True
     return {"ok": True, "message": "Stopping refresh…", "stopping": True}
 
@@ -139,6 +147,7 @@ def _http_get(
         timeout=timeout or HTTP_TIMEOUT,
         follow_redirects=True,
         headers=_http_headers(accept or RSS_ACCEPT),
+        event_hooks=net_guard.EVENT_HOOKS,
     ) as client:
         response = client.get(url)
         if status_out is not None:
@@ -437,12 +446,61 @@ def _backfill_translations(db: Session, source_names: list[str] | None = None) -
     return updated
 
 
-def run_ingest(db: Session, force: bool = True, feed_id: int | None = None, *, manual: bool = False) -> dict:
+def _roster():
+    from stonepi_auth.roster import get_roster
+
+    from app.auth import _platform_session_secret
+
+    return get_roster("newscast", auth_url=env.stonepi_auth_url or None, secret_getter=_platform_session_secret)
+
+
+def revoked_custom_feed_owners(db: Session, feeds: list[Feed]) -> set[int]:
+    """Local user ids whose custom (non-catalog) feeds must not be fetched any more.
+
+    Asks Auth's roster live, since the scheduler has no session cookie. An owner
+    is listed only when the roster positively says they lost NewsCast or
+    can_add_custom_sources; unknown (no SSO, Auth down) keeps fetching.
+    """
+    from app.models import User
+
+    owner_ids = {int(feed.user_id or 1) for feed in feeds if not feed.catalog_id}
+    if not owner_ids:
+        return set()
+    owners = db.query(User).filter(User.id.in_(owner_ids)).all()
+    linked = {int(user.id): str(user.auth_user_id) for user in owners if user.auth_user_id}
+    if not linked:
+        return set()
+    try:
+        access = _roster().access_many(linked.values())
+    except Exception:  # noqa: BLE001
+        logger.exception("roster check failed; keeping custom feeds")
+        return set()
+    if access is None:
+        return set()
+    revoked: set[int] = set()
+    for uid, auth_id in linked.items():
+        member = access.get(auth_id)
+        if member is not None and not member.can("can_add_custom_sources"):
+            revoked.add(uid)
+    return revoked
+
+
+def run_ingest(
+    db: Session,
+    force: bool = True,
+    feed_id: int | None = None,
+    *,
+    manual: bool = False,
+    user_id: int | None = None,
+    started_by: int | None = None,
+) -> dict:
+    """Refresh one feed, one account's feeds (``user_id``), or every enabled feed."""
     if not _lock.acquire(blocking=False):
         return {"ok": False, "message": "A refresh is already running."}
 
     state.running = True
     state.manual = bool(manual and feed_id is None)
+    state.started_by = int(started_by) if started_by is not None and state.manual else None
     state.stop_requested = False
     state.progress = "Starting"
     state.last_started_at = utcnow()
@@ -475,8 +533,16 @@ def run_ingest(db: Session, force: bool = True, feed_id: int | None = None, *, m
                 return {"ok": False, "created": 0, "message": state.last_message}
             feeds = [feed]
         else:
-            feeds = db.query(Feed).filter(Feed.enabled.is_(True)).all()
-            feeds = [feed for feed in feeds if not feed_is_muted(feed)]
+            query = db.query(Feed).filter(Feed.enabled.is_(True))
+            if user_id is not None:
+                query = query.filter(Feed.user_id == int(user_id))
+            feeds = [feed for feed in query.all() if not feed_is_muted(feed)]
+            revoked = revoked_custom_feed_owners(db, feeds)
+            if revoked:
+                skipped = [feed for feed in feeds if not feed.catalog_id and int(feed.user_id or 1) in revoked]
+                if skipped:
+                    logger.info("Skipping %d custom feed(s) of accounts without custom-source access", len(skipped))
+                feeds = [feed for feed in feeds if feed.catalog_id or int(feed.user_id or 1) not in revoked]
             if not force:
                 feeds = [
                     feed
@@ -791,13 +857,21 @@ def run_ingest(db: Session, force: bool = True, feed_id: int | None = None, *, m
     finally:
         state.running = False
         state.manual = False
+        state.started_by = None
         state.stop_requested = False
         state.progress = ""
         state.last_finished_at = utcnow()
         _lock.release()
 
 
-def start_ingest(force: bool = True, feed_id: int | None = None, *, manual: bool = False) -> dict:
+def start_ingest(
+    force: bool = True,
+    feed_id: int | None = None,
+    *,
+    manual: bool = False,
+    user_id: int | None = None,
+    started_by: int | None = None,
+) -> dict:
     if state.running:
         return {"ok": True, "message": "A refresh is already running.", "running": True}
 
@@ -815,7 +889,7 @@ def start_ingest(force: bool = True, feed_id: int | None = None, *, manual: bool
     def _worker() -> None:
         db = SessionLocal()
         try:
-            run_ingest(db, force=force, feed_id=feed_id, manual=manual)
+            run_ingest(db, force=force, feed_id=feed_id, manual=manual, user_id=user_id, started_by=started_by)
         finally:
             db.close()
 
@@ -828,6 +902,7 @@ def snapshot() -> dict:
         "running": state.running,
         "stoppable": bool(state.running and state.manual),
         "stopping": bool(state.running and state.stop_requested),
+        "started_by": state.started_by if state.running else None,
         "progress": state.progress,
         "last_started_at": state.last_started_at.isoformat() if state.last_started_at else None,
         "last_finished_at": state.last_finished_at.isoformat() if state.last_finished_at else None,

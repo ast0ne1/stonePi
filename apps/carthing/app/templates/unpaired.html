@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=800, height=480, initial-scale=1">
+  <title>StonePi</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #0b0d10; color: #F5F1E8; overflow: hidden;
+      font-family: "DejaVu Sans", Arial, Helvetica, sans-serif; }
+    .box { position: absolute; left: 60px; right: 60px; top: 50%; transform: translateY(-50%); }
+    h1 { font-size: 34px; margin: 0 0 16px; }
+    p { font-size: 20px; line-height: 1.4; color: #b9b4a8; margin: 0; }
+  </style>
+  <meta http-equiv="refresh" content="20">
+</head>
+<body>
+  <div class="box">
+    {% if caller.kind == "off" %}
+    <h1>Panel switched off</h1>
+    <p>Switch it on in StonePi: Notify → Displays → Car Thing.</p>
+    {% else %}
+    <h1>Not paired with StonePi</h1>
+    <p>Plug the Car Thing into the StonePi and switch it on under Notify → Displays → Car Thing. It pairs by itself.</p>
+    {% endif %}
+  </div>
+</body>
+</html>

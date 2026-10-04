@@ -13,7 +13,7 @@ from stonepi_auth.brand import add_brand_fonts_route, asset_rev, fonts_rev
 from stonepi_auth.http import portal_home_url
 from stonepi_auth.session import COOKIE_NAME as PLATFORM_COOKIE_NAME
 
-__version__ = "0.0.6"
+__version__ = "0.0.7"
 __asset_rev__ = asset_rev(Path(__file__).resolve().parent / "static")  # cache-bust token; changes with static/
 __github_user__ = "ast0ne1"
 __github__ = "https://github.com/ast0ne1"
@@ -24,7 +24,7 @@ def create_app() -> Flask:
     add_brand_fonts_route(app)  # /assets/fonts when reached directly (run-dev); nginx serves it on the Pi
     app.config["SECRET_KEY"] = auth.session_secret()
     add_shared_templates(app.jinja_env)
-    app.jinja_env.globals.update(asset_rev=__asset_rev__, fonts_rev=fonts_rev())
+    app.jinja_env.globals.update(asset_rev=__asset_rev__, fonts_rev=fonts_rev(), favicon_src=favicon.cached_src)
 
     # Initialize SQLite database and seed defaults
     init_db()
@@ -66,7 +66,16 @@ def create_app() -> Flask:
 
     @app.route("/favicon-cache/<path:filename>")
     def favicon_cache(filename):
-        return send_from_directory(favicon.FAVICON_DIR, filename, max_age=60 * 60 * 24 * 30)
+        # Explicit image type: minimal Debian has no /etc/mime.types, and an .ico guessed as
+        # application/octet-stream alongside nosniff can render as a broken image.
+        ext = filename.rsplit(".", 1)[-1].lower()
+        mimetype = favicon.MIMETYPES.get(ext) or ("image/svg+xml" if ext == "svg" else None)
+        response = send_from_directory(favicon.FAVICON_DIR, filename, mimetype=mimetype, max_age=60 * 60 * 24 * 30)
+        # Cached icons come from source sites and are served without sign-in; older caches may
+        # hold SVGs, so never let one run script on the StonePi origin if opened directly.
+        response.headers["Content-Security-Policy"] = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
 
     @app.before_request
     def load_user():

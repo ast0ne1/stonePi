@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_filter_icon.html" import filter_icon %}
+{% block title %}Browse · Library{% endblock %}
+
+{% macro variant_rows(rows) %}
+{% for v in rows %}
+<div class="variant-row{% if not v.fits and not v.installed_row %} is-off{% endif %}">
+  <div class="variant-copy">
+    <span class="variant-title">{{ v.flavour_label }}</span>
+    <span class="hint">
+      {{ v.size|gb }} · {{ v.issued[:7] }}
+      {% if v.installed_row %} · <span class="fit is-ok">Installed</span>
+      {% elif v.fits %} · <span class="fit is-ok">Fits{% if v.doubled %} (with backup copy){% endif %}</span>
+      {% else %} · <span class="fit is-error">Doesn’t fit{% if v.doubled %} with its backup copy{% endif %}</span>{% endif %}
+    </span>
+  </div>
+  {% if v.job %}
+  <a class="btn btn-ghost" href="/">Downloading</a>
+  {% elif v.installed_row %}
+  <a class="btn btn-secondary btn-with-icon" href="{{ reader_url }}content/{{ v.installed_row.file_name[:-4] }}">{{ icon("open") }} Open</a>
+  {% elif can_manage and kiwix_installed %}
+  <form method="post" action="/install" data-confirm="Install {{ v.title }} ({{ v.flavour_label|lower }})?" data-confirm-detail="Downloads {{ v.size|gb }}{% if v.doubled %}, plus the same again for the backup copy on this drive{% endif %}. {{ usage.free|gb }} free. It keeps downloading if you close this page." data-confirm-ok="Install">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="name" value="{{ v.name }}" />
+    <input type="hidden" name="flavour" value="{{ v.flavour }}" />
+    <input type="hidden" name="back" value="/browse{% if q %}?q={{ q|urlencode }}{% endif %}" />
+    <button class="btn btn-primary btn-with-icon" type="submit" {% if not v.fits %}disabled title="Not enough free space"{% endif %}>{{ icon("download") }} Install</button>
+  </form>
+  {% endif %}
+</div>
+{% endfor %}
+{% endmacro %}
+
+{% block content %}
+<section class="hero">
+  <h1>Browse</h1>
+  <div class="page-status">
+    <p class="page-status-text">From the Kiwix catalogue · {{ language_label }} · {{ usage.free|gb }} free</p>
+  </div>
+</section>
+
+{% if not kiwix_installed %}
+<p class="banner banner-muted">Set up the Library first, then install from here. <a class="text-link" href="/">Set up</a></p>
+{% endif %}
+
+<div class="featured-grid">
+  {% for f in featured %}
+  <section class="card stack featured-card">
+    <h2 class="section-heading">{{ filter_icon(f.icon) }} {{ f.label }}</h2>
+    <p class="hint">{{ f.blurb }}</p>
+    {% if f.variants %}
+    <div class="variant-list">{{ variant_rows(f.variants) }}</div>
+    {% elif fetched_at %}
+    <p class="hint">Not available in {{ language_label }}.</p>
+    {% else %}
+    <p class="hint">Loading the catalogue… reload in a moment.</p>
+    {% endif %}
+  </section>
+  {% endfor %}
+</div>
+
+<section class="card stack">
+  <h2 class="section-heading">{{ filter_icon("search") }} Something else</h2>
+  <p class="hint">Search the whole Kiwix catalogue — thousands of titles: Stack Exchange, TED, DevDocs, Project Gutenberg and more. Or browse <a class="text-link" href="https://browse.library.kiwix.org" target="_blank" rel="noopener noreferrer">browse.library.kiwix.org</a> and paste a title’s link here.</p>
+  <form method="get" action="/browse" class="inline-form">
+    <label class="grow">
+      <span class="visually-hidden">Search words, Kiwix name or link</span>
+      <input type="text" name="q" value="{{ q }}" placeholder="e.g. cooking, python, or a link" autocomplete="off" />
+    </label>
+    <button class="btn btn-secondary btn-with-icon" type="submit">{{ icon("search") }} Search</button>
+  </form>
+  {% if lookup_error %}<p class="hint fit is-error">{{ lookup_error }}</p>{% endif %}
+  {% for r in search_results %}
+  <div class="search-result stack">
+    <h3 class="lookup-title">{{ r.title }}</h3>
+    <p class="hint">{{ r.summary }}</p>
+    <div class="variant-list">{{ variant_rows(r.variants) }}</div>
+  </div>
+  {% endfor %}
+  {% if lookup_rows %}
+  <h3 class="lookup-title">{{ lookup_rows[0].title }}</h3>
+  <p class="hint">{{ lookup_rows[0].summary }}</p>
+  <div class="variant-list">{{ variant_rows(lookup_rows) }}</div>
+  {% endif %}
+</section>
+
+<form method="post" action="/catalog/refresh" class="catalog-foot" data-busy-form>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+  <input type="hidden" name="back" value="/browse" />
+  <p class="hint">Catalogue {% if fetched_at %}updated {{ fetched_at }} UTC{% else %}not loaded yet{% endif %} · <a class="text-link" href="/settings?tab=content">Language</a></p>
+  <button class="btn btn-ghost btn-with-icon" type="submit">{{ icon("refresh") }} Refresh</button>
+</form>
+{% endblock %}

@@ -1,0 +1,30 @@
+{# Shared stroke icons for action buttons. Usage: {% from "_icons.html" import icon %}{{ icon("search") }} #}
+{% macro icon(name) -%}
+{%- if name == "search" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+{%- elif name == "check" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5L20 7"/></svg>
+{%- elif name == "plus" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+{%- elif name == "trash" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M9 7V5h6v2M7 7l1 13h8l1-13"/></svg>
+{%- elif name == "refresh" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 4v6h-6"/></svg>
+{%- elif name == "clear" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+{%- elif name == "pause" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6v12M15 6v12"/></svg>
+{%- elif name == "play" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5z"/></svg>
+{%- elif name == "rearm" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 0 1 13.5-5.8L20 4v6h-6"/><path d="M20 12a8 8 0 0 1-13.5 5.8L4 20v-6h6"/></svg>
+{%- elif name == "external" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4 12 12"/><path d="M10 5H7a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/></svg>
+{%- elif name == "download" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4"/><path d="M5 19h14"/></svg>
+{%- elif name == "open" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5c2.8-.8 5.5-.5 8 1.2 2.5-1.7 5.2-2 8-1.2V18c-2.8-.8-5.5-.5-8 1.2-2.5-1.7-5.2-2-8-1.2z"/><path d="M12 6.7v12.5"/></svg>
+{%- elif name == "move" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h14m0 0-4-4m4 4-4 4"/><path d="M20 5v14"/></svg>
+{%- endif -%}
+{%- endmacro %}

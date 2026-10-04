@@ -18,7 +18,8 @@ def refresh_status() -> dict[str, Any]:
     return dict(_state)
 
 
-def refresh_all(*, zip_code: str = "", force_mock: bool | None = None) -> dict[str, Any]:
+def refresh_all(*, force_mock: bool | None = None) -> dict[str, Any]:
+    """Refresh every enabled source; madspild always uses the household postcode."""
     if not _refresh_lock.acquire(blocking=False):
         return {"ok": False, "error": "Refresh already running"}
     _state["running"] = True
@@ -58,7 +59,7 @@ def refresh_all(*, zip_code: str = "", force_mock: bool | None = None) -> dict[s
                 # Keep going; seed mock only if DB still empty after all
                 results["ok"] = False
 
-        for collector in registry.foodwaste_collectors(zip_code):
+        for collector in registry.foodwaste_collectors(db.household_zip()):
             src = sources.get(collector.id) or {}
             if not src.get("enabled", 0):
                 continue

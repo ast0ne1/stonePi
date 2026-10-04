@@ -16,6 +16,18 @@ from app.services import briefing, reader_push
 from app.services.ingest import run_ingest
 
 SCHEDULER_TICK_MINUTES = 5
+# /favicons holds icons fetched from feed hosts and is served unauthenticated on the
+# shared platform origin. Lock it down so a hostile image can never run script here.
+FAVICON_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox"
+
+
+class FaviconFiles(StaticFiles):
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Content-Security-Policy"] = FAVICON_CSP
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
+
 
 logging.basicConfig(level=logging.INFO)
 scheduler = BackgroundScheduler()
@@ -96,7 +108,7 @@ if env.stonepi_prefix:
     app.add_middleware(PrefixMiddleware, prefix=env.stonepi_prefix)
 app.mount("/static", StaticFiles(directory=str(ROOT_DIR / "app" / "static")), name="static")
 mount_brand_fonts(app)  # /assets/fonts when reached directly (run-dev); nginx serves it on the Pi
-app.mount("/favicons", StaticFiles(directory=str(FAVICON_DIR)), name="favicons")
+app.mount("/favicons", FaviconFiles(directory=str(FAVICON_DIR)), name="favicons")
 app.include_router(ui.public)
 app.include_router(ui.router)
 app.include_router(feeds.router)

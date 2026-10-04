@@ -1,0 +1,360 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon as svg %}
+{% from "_filter_icon.html" import filter_icon %}
+{% block title %}Car Thing · Displays{% endblock %}
+
+{% set cfg = editing %}
+{% set cat = editor.catalog %}
+{% macro opt(value, current, label) %}<option value="{{ value }}" {% if current == value %}selected{% endif %}>{{ label }}</option>{% endmacro %}
+
+{% block content %}
+<section class="hero">
+  <a class="settings-back" href="/displays">&larr; Displays</a>
+  <h1>Car Thing</h1>
+  <p class="lede">
+    A touchscreen panel with a dial and buttons, plugged into the Pi by USB. Its own firmware stays untouched:
+    StonePi borrows the screen while it's connected (method from <a class="text-link" href="https://github.com/trwy7/pything" rel="noopener" target="_blank">pything</a>).
+  </p>
+</section>
+
+<section class="card stack" id="device" aria-labelledby="device-heading">
+  <h2 class="section-heading" id="device-heading">{{ filter_icon('display') }} Device</h2>
+  <p class="ct-status" data-ct-status>
+    <span class="ct-dot {{ 'on' if device.enabled else 'off' }}"></span>
+    Panel {{ 'on' if device.enabled else 'off' }} · <span data-ct-status-detail>checking the device…</span>
+  </p>
+  <div class="row-actions">
+    <form method="post" action="/displays/carthing/device">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      {% if device.enabled %}
+      <button class="btn btn-ghost" name="action" value="disable">Switch panel off</button>
+      {% else %}
+      <button class="btn btn-primary" name="action" value="enable">{{ svg('check') }} Switch panel on</button>
+      {% endif %}
+    </form>
+    {% if device.enabled %}
+    <form method="post" action="/displays/carthing/device"
+      data-confirm="Re-pair the Car Thing?" data-confirm-detail="It gets a fresh token and reloads the panel. The old token stops working." data-confirm-ok="Re-pair">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <button class="btn btn-ghost" name="action" value="repair">Re-pair</button>
+    </form>
+    {% endif %}
+  </div>
+  <p class="hint">Plug the Car Thing (with its ADB-enabled firmware) into the Pi. It pairs by itself, and switching the panel off, unplugging or rebooting it gives the device its own app back.</p>
+
+  <form method="post" action="/displays/carthing/device" class="stack ct-pin">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="action" value="pin" />
+    <h3>Admin PIN for restarts</h3>
+    <label class="check">
+      <input type="checkbox" name="pin_enabled" value="1" {% if device.pin.enabled %}checked{% endif %} />
+      <span>Ask for the PIN before restarting a service {% if not device.pin.hash %}<span class="muted">(set one below first)</span>{% endif %}</span>
+    </label>
+    <label>
+      {{ 'New PIN' if device.pin.hash else 'PIN' }} <span class="muted">({{ pin_length }} digits)</span>
+      <input type="password" name="pin" inputmode="numeric" pattern="[0-9]{{ '{' }}{{ pin_length }}{{ '}' }}" maxlength="{{ pin_length }}" autocomplete="new-password"
+        placeholder="{{ 'Leave blank to keep the current PIN' if device.pin.hash else '' }}" />
+      <span class="hint">With the PIN off, Restart still works on the panel, after a one-tap confirm. {{ device.pin.max_attempts }} wrong tries lock it for {{ (device.pin.lockout_s / 60)|round|int }} min.</span>
+    </label>
+    <div class="row-actions"><button class="btn btn-primary btn-with-icon">{{ svg('check') }} Save PIN settings</button></div>
+  </form>
+</section>
+
+<section class="card stack" id="configs" aria-labelledby="configs-heading">
+  <h2 class="section-heading" id="configs-heading">{{ filter_icon('catalog') }} Saved configs</h2>
+  <p class="muted">The panel shows one config. Keep others as backups or alternatives, and switch in one tap.</p>
+  <ul class="ct-configs">
+    {% for row in configs %}
+    <li class="{{ 'is-editing' if row.id == editing.id }}">
+      <div class="ct-config-name">
+        <strong>{{ row.name }}</strong>
+        {% if row.active %}<span class="ct-badge">On the Car Thing</span>{% endif %}
+        {% if row.id == editing.id %}<span class="ct-badge ghost">Editing</span>{% endif %}
+        <span class="muted">{% if row.updated %}saved {{ row.updated[:16]|replace('T', ' ') }} UTC{% endif %}</span>
+      </div>
+      <div class="row-actions">
+        {% if row.id != editing.id %}<a class="btn btn-ghost" href="/displays/carthing?config={{ row.id }}#editor">Edit</a>{% endif %}
+        {% if not row.active %}
+        <form method="post" action="/displays/carthing/configs">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><input type="hidden" name="config_id" value="{{ row.id }}" />
+          <button class="btn btn-ghost" name="action" value="activate">Use on Car Thing</button>
+        </form>
+        {% endif %}
+        <a class="btn btn-ghost" href="/displays/carthing/configs/{{ row.id }}/export">Export</a>
+        {% if not row.active %}
+        <form method="post" action="/displays/carthing/configs" data-confirm="Delete “{{ row.name }}”?" data-confirm-detail="Its saved versions go too. Export it first if you might want it back." data-confirm-ok="Delete">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><input type="hidden" name="config_id" value="{{ row.id }}" />
+          <button class="btn btn-danger btn-with-icon" name="action" value="delete">{{ svg('trash') }} Delete</button>
+        </form>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  <div class="ct-config-tools">
+    <form method="post" action="/displays/carthing/configs" class="create-row">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><input type="hidden" name="config_id" value="{{ editing.id }}" />
+      <input type="text" name="name" placeholder="Name for a copy of “{{ editing.name }}”" maxlength="60" aria-label="Name for the copy" />
+      <button class="btn btn-ghost btn-with-icon" name="action" value="copy">{{ svg('copy') }} Save a copy</button>
+    </form>
+    <form method="post" action="/displays/carthing/configs" class="create-row">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><input type="hidden" name="config_id" value="{{ editing.id }}" />
+      <input type="text" name="name" value="{{ editing.name }}" maxlength="60" aria-label="Rename “{{ editing.name }}”" required />
+      <button class="btn btn-ghost" name="action" value="rename">Rename</button>
+    </form>
+    <form method="post" action="/displays/carthing/configs" enctype="multipart/form-data" class="create-row">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="file" name="file" accept="application/json,.json" aria-label="Config file to import" required />
+      <button class="btn btn-ghost" name="action" value="import">Import</button>
+    </form>
+  </div>
+  {% if snapshots %}
+  <details class="template-details">
+    <summary>Earlier versions of “{{ editing.name }}” ({{ snapshots|length }})</summary>
+    <ul class="ct-snapshots">
+      {% for snap in snapshots %}
+      <li>
+        <span>{{ snap.updated[:16]|replace('T', ' ') if snap.updated else snap.id }} UTC</span>
+        <form method="post" action="/displays/carthing/configs" data-confirm="Restore this version?" data-confirm-detail="The current version is kept as an earlier version too." data-confirm-ok="Restore">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" /><input type="hidden" name="config_id" value="{{ editing.id }}" />
+          <input type="hidden" name="snapshot" value="{{ snap.id }}" />
+          <button class="btn btn-ghost" name="action" value="restore">{{ svg('undo') }} Restore</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+</section>
+
+<section class="card stack ct-editor" id="editor" data-ct-editor aria-labelledby="editor-heading">
+  <div class="ct-editor-head">
+    <h2 class="section-heading" id="editor-heading">{{ filter_icon('sliders') }} Editing “{{ editing.name }}”</h2>
+    <div class="row-actions">
+      <span class="hint" data-ct-dirty hidden>Unsaved changes</span>
+      <button type="button" class="btn btn-ghost btn-with-icon" data-ct-reset disabled>{{ svg('undo') }} Undo changes</button>
+      <button type="button" class="btn btn-primary btn-with-icon" data-ct-save>{{ svg('check') }} Save</button>
+    </div>
+  </div>
+  {% if editing.id != editor.active %}<p class="banner banner-muted">This config isn't on the Car Thing. Save it, then choose <strong>Use on Car Thing</strong> above.</p>{% endif %}
+
+  <div class="ct-layout">
+    <div class="ct-forms">
+      <div class="seg ct-tabs" role="tablist" aria-label="Editor sections">
+        {% for t, label in [("pages", "Pages"), ("controls", "Controls"), ("actions", "Actions"), ("idle", "Idle"), ("clock", "Clock"), ("look", "Look")] %}
+        <button type="button" class="seg-btn" role="tab" data-ct-tab="{{ t }}" aria-pressed="{{ 'true' if loop.first else 'false' }}">{{ label }}</button>
+        {% endfor %}
+      </div>
+
+      <div class="ct-pane stack" data-ct-pane="pages">
+        <p class="hint">The panel's screens, in order (up to {{ cat.max_pages }}). Each page has {{ cat.page_capacity }} spaces: a small card takes 1, a half page 3, a full page all {{ cat.page_capacity }}. Cards open their mini-app.</p>
+        <ul class="ct-pages" data-ct-pages></ul>
+        <div class="row-actions"><button type="button" class="btn btn-ghost" data-ct-page-add>+ Add a page</button></div>
+        <fieldset class="stack ct-page-edit">
+          <legend data-ct-page-legend>Page</legend>
+          <label class="ct-page-name">Name<input type="text" maxlength="30" data-ct-page-name /></label>
+          <p class="hint" data-ct-page-space></p>
+          <ul class="ct-order ct-widgets" data-ct-page-widgets></ul>
+        </fieldset>
+        <fieldset class="stack">
+          <legend>Turning pages</legend>
+          <label class="check"><input type="checkbox" data-ct-rotate-on /><span>Turn pages by themselves</span></label>
+          <div class="ct-grid">
+            <label>Every (seconds)<input type="number" min="5" max="3600" data-ct-rotate-every /></label>
+            <label>Resume after (seconds untouched)<input type="number" min="5" max="3600" data-bind="rotation.resume_after_s" /></label>
+          </div>
+          <p class="hint">Turning pauses while someone uses the panel and resumes after that long untouched (an open mini-app closes back to its page). The screensaver and quiet hours still come first; for an always-on dashboard, set the screensaver to 0 under Idle. Map <em>Next page</em>, <em>Previous page</em> or <em>Go to page N</em> under Controls; the dots on the panel can be tapped too.</p>
+          <div class="row-actions"><button type="button" class="btn btn-ghost" data-ct-rotate-try aria-pressed="false">Try turning in the preview</button></div>
+        </fieldset>
+      </div>
+
+      <div class="ct-pane stack" data-ct-pane="controls" hidden>
+        <p class="hint">Click a button or the dial on the drawing, or pick here. Only <em>allowed</em> actions are offered.</p>
+        <table class="ct-controls">
+          <tbody>
+            {% for inp in cat.inputs %}
+            <tr data-ct-input-row="{{ inp.id }}" class="kind-{{ inp.kind }}">
+              <th scope="row"><label for="ct-ctl-{{ inp.id }}">{{ inp.label }}</label></th>
+              <td><select id="ct-ctl-{{ inp.id }}" data-ct-control="{{ inp.id }}"></select></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="ct-pane stack" data-ct-pane="actions" hidden>
+        <p class="hint">What this config may do at all. Home and Back always stay on, so the panel can never strand you.</p>
+        {% for group in ["Navigate", "Pages", "Mini-apps", "Screen", "Admin"] %}
+        <fieldset class="ct-actions">
+          <legend>{{ group }}</legend>
+          {% for a in cat.actions if a.group == group %}
+          <label class="check">
+            <input type="checkbox" data-ct-allowed="{{ a.id }}" {% if a.id in ("home", "back") %}disabled{% endif %} />
+            <span data-ct-action-label="{{ a.id }}">{{ a.label }}</span>
+          </label>
+          {% endfor %}
+        </fieldset>
+        {% endfor %}
+      </div>
+
+      <div class="ct-pane stack" data-ct-pane="idle" hidden>
+        <div class="ct-grid">
+          <label>Screensaver after (seconds, 0 = only in quiet hours)<input type="number" min="0" max="3600" data-bind="idle.screensaver_after_s" /></label>
+          <label>Then dim after (seconds, 0 = never)<input type="number" min="0" max="21600" data-bind="idle.dim_after_s" /></label>
+          <label>Dim brightness <span class="muted" data-ct-out="idle.dim_level"></span><input type="range" min="5" max="100" data-bind="idle.dim_level" /></label>
+        </div>
+        <fieldset class="stack">
+          <legend>Quiet hours</legend>
+          <label class="check"><input type="checkbox" data-bind="idle.quiet_hours.enabled" /><span>Use quiet hours</span></label>
+          <div class="ct-grid">
+            <label>From<input type="time" data-bind="idle.quiet_hours.from" /></label>
+            <label>To<input type="time" data-bind="idle.quiet_hours.to" /></label>
+            <label>Screen<select data-bind="idle.quiet_hours.mode"><option value="dim">Dim</option><option value="off">Off</option></select></label>
+            <label>Quiet brightness <span class="muted" data-ct-out="idle.quiet_hours.level"></span><input type="range" min="1" max="100" data-bind="idle.quiet_hours.level" /></label>
+          </div>
+        </fieldset>
+        <fieldset class="stack">
+          <legend>Screensaver background</legend>
+          <div class="seg" role="group" aria-label="Background type">
+            <button type="button" class="seg-btn" data-ct-bg-type="gradient">Gradient</button>
+            <button type="button" class="seg-btn" data-ct-bg-type="solid">Colour</button>
+            <button type="button" class="seg-btn" data-ct-bg-type="image">Image</button>
+          </div>
+          <div data-ct-bg-pane="gradient" class="ct-swatches">
+            {% for g in cat.gradients %}
+            <button type="button" class="ct-swatch wide" data-ct-gradient="{{ g.id }}" style="background:{{ g.css }}" title="{{ g.label }}"><span>{{ g.label }}</span></button>
+            {% endfor %}
+          </div>
+          <label data-ct-bg-pane="solid">Colour<input type="color" data-ct-bg-solid /></label>
+          <div data-ct-bg-pane="image" class="stack">
+            <img class="ct-bg-thumb" data-ct-bg-thumb alt="Current background" hidden />
+            <label>Upload an image <span class="muted">(cropped to 800×480)</span><input type="file" accept="image/*" data-ct-bg-upload /></label>
+            <span class="hint" data-ct-bg-status></span>
+          </div>
+        </fieldset>
+        <fieldset class="stack">
+          <legend>On the screensaver</legend>
+          <label class="check"><input type="checkbox" data-bind="idle.show.date" /><span>Date</span></label>
+          <label class="check"><input type="checkbox" data-bind="idle.show.weather" /><span>Weather <span class="muted">(set the location under Look)</span></span></label>
+          <label>Live line
+            <select data-bind="idle.show.live_line">
+              <option value="none">None</option>
+              {% for a in cat.mini_apps if a.id != "system" %}<option value="{{ a.id }}">{{ a.label }}</option>{% endfor %}
+            </select>
+          </label>
+        </fieldset>
+        <div class="row-actions">
+          <button type="button" class="btn btn-ghost" data-ct-send="saver">Show screensaver</button>
+          <button type="button" class="btn btn-ghost" data-ct-quiet aria-pressed="false">Preview quiet hours</button>
+          <button type="button" class="btn btn-ghost" data-ct-send="wake">Wake</button>
+        </div>
+      </div>
+
+      <div class="ct-pane stack" data-ct-pane="clock" hidden>
+        <fieldset>
+          <legend>Clock face</legend>
+          <div class="ct-faces">
+            {% for f in cat.clock_faces %}
+            <label class="ct-face"><input type="radio" name="ct-face" value="{{ f.id }}" data-bind="clock.face" /><span>{{ f.label }}</span></label>
+            {% endfor %}
+          </div>
+        </fieldset>
+        <fieldset class="stack">
+          <legend>Clock colour</legend>
+          <div class="ct-swatches">
+            {% for c in cat.color_presets %}
+            <button type="button" class="ct-swatch" data-ct-color="{{ c.value }}" style="background:{{ c.value }}" title="{{ c.label }}"><span class="sr-only">{{ c.label }}</span></button>
+            {% endfor %}
+            <input type="color" data-bind="clock.color" aria-label="Any colour" />
+          </div>
+          <label>Accent <span class="muted">(colon, seconds, hands)</span><input type="color" data-bind="clock.accent" /></label>
+          <label class="check"><input type="checkbox" data-ct-quiet-color-on /><span>Different colour during quiet hours</span></label>
+          <label data-ct-quiet-color-wrap>Quiet-hours colour<input type="color" data-ct-quiet-color /></label>
+        </fieldset>
+        <div class="ct-grid">
+          <label>Hours<select data-bind="clock.hour_format"><option value="24">24-hour</option><option value="12">12-hour</option></select></label>
+          <label>Date<select data-bind="clock.date_format">{% for d in cat.date_formats %}<option value="{{ d.id }}">{{ d.label }}</option>{% endfor %}</select></label>
+        </div>
+        <label class="check"><input type="checkbox" data-bind="clock.seconds" /><span>Show seconds <span class="muted">(updates every second; a little more work for the device)</span></span></label>
+        <div class="row-actions"><button type="button" class="btn btn-ghost" data-ct-send="saver">Show screensaver</button></div>
+      </div>
+
+      <div class="ct-pane stack" data-ct-pane="look" hidden>
+        <div class="ct-grid">
+          <label>Theme<select data-bind="look.theme"><option value="dark">Dark</option><option value="light">Light</option></select></label>
+          <label>Accent<input type="color" data-bind="look.accent" /></label>
+          <label>Units<select data-bind="look.units"><option value="metric">°C</option><option value="imperial">°F</option></select></label>
+        </div>
+        <fieldset class="stack">
+          <legend>Weather location</legend>
+          <p class="hint" data-ct-weather-now></p>
+          <div class="create-row">
+            <input type="search" placeholder="Town or city" data-ct-geo-q aria-label="Search for a town or city" />
+            <button type="button" class="btn btn-ghost" data-ct-geo-go>Search</button>
+            <button type="button" class="btn btn-ghost" data-ct-geo-clear>No weather</button>
+          </div>
+          <ul class="ct-geo" data-ct-geo-results></ul>
+        </fieldset>
+      </div>
+    </div>
+
+    <div class="ct-device-wrap">
+      <div class="ct-device" data-ct-device>
+        {# Labels sit around the drawing, never on it: the top row lines up with the buttons and the dial. #}
+        <div class="ct-callouts">
+          {% for n in range(1, 5) %}
+          <button type="button" class="ct-co" data-input="preset{{ n }}" title="Preset {{ n }}"><b>{{ n }}</b><span data-ct-label="preset{{ n }}"></span></button>
+          {% endfor %}
+          <button type="button" class="ct-co" data-input="m" title="M button"><b>M</b><span data-ct-label="m"></span></button>
+          <div class="ct-co-dial" role="group" aria-label="Dial">
+            <button type="button" class="ct-co" data-input="dial_ccw" title="Dial anticlockwise"><b aria-hidden="true">&#8634;</b><span data-ct-label="dial_ccw"></span></button>
+            <button type="button" class="ct-co" data-input="dial_press" title="Dial press"><b aria-hidden="true">&#9679;</b><span data-ct-label="dial_press"></span></button>
+            <button type="button" class="ct-co" data-input="dial_cw" title="Dial clockwise"><b aria-hidden="true">&#8635;</b><span data-ct-label="dial_cw"></span></button>
+          </div>
+        </div>
+        <div class="ct-device-body">
+          <svg class="ct-drawing" viewBox="0 16 640 394" role="img" aria-label="Car Thing: four preset buttons and M on top, dial at top right, back button on the right">
+            <rect class="ct-body" x="20" y="70" width="600" height="330" rx="34" />
+            {% for n in range(1, 5) %}
+            <g class="ct-ctl" data-input="preset{{ n }}" tabindex="0" role="button" aria-label="Preset {{ n }}">
+              <rect x="{{ 70 + (n - 1) * 90 }}" y="56" width="74" height="16" rx="6" />
+            </g>
+            {% endfor %}
+            <g class="ct-ctl" data-input="m" tabindex="0" role="button" aria-label="M button">
+              <rect x="432" y="56" width="44" height="16" rx="6" />
+            </g>
+            <g class="ct-dial" data-dial>
+              <rect class="ct-knob" x="502" y="22" width="108" height="52" rx="18" />
+              <path class="ct-knob-ridge" d="M520 30v36M532 28v40M544 27v42M556 27v42M568 27v42M580 28v40M592 30v36" />
+              <rect class="ct-hit" data-input="dial_ccw" x="502" y="22" width="34" height="52" tabindex="0" role="button" aria-label="Dial anticlockwise" />
+              <rect class="ct-hit" data-input="dial_press" x="536" y="22" width="40" height="52" tabindex="0" role="button" aria-label="Dial press" />
+              <rect class="ct-hit" data-input="dial_cw" x="576" y="22" width="34" height="52" tabindex="0" role="button" aria-label="Dial clockwise" />
+            </g>
+            <g class="ct-ctl" data-input="back" tabindex="0" role="button" aria-label="Back button">
+              <circle cx="572" cy="214" r="24" />
+            </g>
+            <rect class="ct-bezel" x="40" y="92" width="488" height="296" rx="10" />
+          </svg>
+          <div class="ct-screen" data-ct-screen>
+            <iframe src="/carthing/panel/" title="Car Thing preview" data-ct-frame tabindex="-1"></iframe>
+          </div>
+        </div>
+        <div class="ct-under">
+          <div class="ct-pager" data-ct-pager>
+            <button type="button" class="btn btn-ghost" data-ct-pager-step="-1" aria-label="Previous page in the preview">&lsaquo;</button>
+            <span data-ct-pager-label>Page 1</span>
+            <button type="button" class="btn btn-ghost" data-ct-pager-step="1" aria-label="Next page in the preview">&rsaquo;</button>
+          </div>
+          <button type="button" class="ct-co ct-co-back" data-input="back" title="Back button"><b>Back</b><span data-ct-label="back"></span></button>
+        </div>
+      </div>
+      <p class="hint ct-device-hint" data-ct-device-hint>Click the buttons, click or scroll over the dial, and tap the screen to try the panel. Hold a button for its long-press. The drawing is a schematic.</p>
+    </div>
+  </div>
+</section>
+<script type="application/json" id="ct-data">{{ editor|tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/carthing.js?v={{ app_version }}-{{ asset_rev }}" defer></script>
+{% endblock %}

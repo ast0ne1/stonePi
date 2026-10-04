@@ -4,7 +4,7 @@ import logging
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from app.services import strike
+from app.services import strike, trust
 
 logger = logging.getLogger("pricewatch.schedule")
 
@@ -22,8 +22,17 @@ def _scheduled_tick() -> None:
         summary = strike.check_due_watches()
         if summary.get("checked"):
             logger.info("Scheduled tick checked %s watches", summary["checked"])
+        if summary.get("skipped"):
+            logger.info("Scheduled tick skipped %s watches whose owners lost access", summary["skipped"])
     except Exception:
         logger.exception("Scheduled tick failed")
+    try:
+        # New shops (seen in the checks above) and weekly refreshes, in their own
+        # thread so a slow Bright Data job never delays the next watch checks.
+        # No-op when trust scores are off or a lookup is already running.
+        trust.refresh_in_background()
+    except Exception:
+        logger.exception("Trust score refresh failed to start")
     finally:
         _running = False
 

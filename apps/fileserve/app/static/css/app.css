@@ -502,6 +502,9 @@ h2 { font-family: var(--serif); font-size: 1.35rem; }
   touch-action: manipulation;
 }
 .btn:disabled { opacity: 0.55; }
+.hosted-live:disabled { opacity: 0.55; cursor: not-allowed; }
+/* Wraps the add form so "Publish pages" off can disable every control at once. */
+.publish-fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 .btn:focus-visible,
 .toggle:focus-visible,
 .icon-btn:focus-visible,

@@ -16,6 +16,35 @@ MIN_LEAD_MINUTES = 5
 MAX_LEAD_MINUTES = 24 * 60
 
 
+def _session_secret() -> str:
+    from app.routes import _session_secret as secret  # looked up per call (tests patch it)
+
+    return secret()
+
+
+def _roster():
+    from stonepi_auth.roster import get_roster
+
+    from app.config import env
+
+    return get_roster("sportguide", auth_url=env.auth_url, secret_getter=_session_secret)
+
+
+def still_has_access(user_key: str) -> bool:
+    """False only when Auth's roster says this person lost SportGuide (disabled, deleted, app removed).
+
+    The shared ``"local"`` list and unknown answers (no secret, Auth down) keep
+    the previous behaviour and alert as before.
+    """
+    from stonepi_auth.alerts import auth_user_id
+
+    owner = auth_user_id(user_key)
+    if not owner:
+        return True
+    access = _roster().access(owner)
+    return access is None or access.has_app
+
+
 def emit_watched_match_approaching(
     *,
     user_key: str,
@@ -33,6 +62,9 @@ def emit_watched_match_approaching(
     from stonepi_auth.alerts import auth_user_id
 
     owner = auth_user_id(user_key)
+    if owner and not still_has_access(user_key):
+        logger.info("watched match for %s not sent: no SportGuide access in Auth", owner)
+        return False
     if owner:
         audience = "personal"
     elif user_key == db.LOCAL_KEY:
@@ -72,8 +104,11 @@ def listing_matches_watched(title: str, teams: list[str]) -> str | None:
 
 def check_all_watching(*, now: datetime | None = None) -> dict:
     """Run the approaching check for every person with teams to watch."""
-    totals = {"people": 0, "checked": 0, "notified": 0, "skipped": 0}
+    totals = {"people": 0, "checked": 0, "notified": 0, "skipped": 0, "no_access": 0}
     for user_key in db.watching_user_keys():
+        if not still_has_access(user_key):
+            totals["no_access"] += 1
+            continue
         result = check_approaching_watched(user_key=user_key, now=now)
         totals["people"] += 1
         for key in ("checked", "notified", "skipped"):

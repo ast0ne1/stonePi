@@ -1,0 +1,10 @@
+{% from "_icons.html" import icon %}
+{% set show = config.idle.show %}
+<div class="saver-inner face-{{ config.clock.face }}">
+  <div class="clock" data-clock data-face="{{ config.clock.face }}"></div>
+  <div class="saver-meta">
+    {% if show.date %}<span class="saver-date" data-date></span>{% endif %}
+    {% if weather %}<span class="saver-wx">{{ icon(weather.icon) }} {{ weather.temp if weather.temp is not none else "–" }}{{ weather.unit }}{% if weather.high is not none %} <span class="soft">{{ weather.high }}° / {{ weather.low }}°</span>{% endif %}</span>{% endif %}
+  </div>
+  {% if live %}<p class="live"><span class="live-label">{{ live.label }}</span> {{ live.text }}</p>{% endif %}
+</div>

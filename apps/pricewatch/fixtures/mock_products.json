@@ -7,12 +7,16 @@
       "variant": "Black",
       "image_url": "https://via.placeholder.com/120x120.png?text=XM6",
       "product_url": "https://www.pricerunner.dk/pl/0-1000000001",
-      "lowest_price": 1899,
+      "lowest_price": 1599,
       "currency": "DKK",
       "offers": [
         {
           "offer_id": "a1",
           "retailer": "Example Electronics",
+          "merchant_id": "m1",
+          "merchant_domain": "example-electronics.dk",
+          "merchant_rating": 4.8,
+          "merchant_rating_count": 210,
           "product_price": 1899,
           "delivery_cost": 0,
           "availability": "in_stock",
@@ -22,6 +26,10 @@
         {
           "offer_id": "a2",
           "retailer": "Nordic Audio",
+          "merchant_id": "m2",
+          "merchant_domain": "nordic-audio.dk",
+          "merchant_rating": 5.0,
+          "merchant_rating_count": 3,
           "product_price": 1949,
           "delivery_cost": 49,
           "availability": "in_stock",
@@ -31,11 +39,26 @@
         {
           "offer_id": "a3",
           "retailer": "Used Gear DK",
+          "merchant_id": "m3",
+          "merchant_domain": "usedgear.dk",
           "product_price": 1499,
           "delivery_cost": 39,
           "availability": "in_stock",
           "condition": "used",
           "product_url": "https://example.com/xm6-used"
+        },
+        {
+          "offer_id": "a4",
+          "retailer": "BudgetBay",
+          "merchant_id": "m4",
+          "merchant_domain": "budgetbay.dk",
+          "merchant_rating": 4.9,
+          "merchant_rating_count": 88,
+          "product_price": 1599,
+          "delivery_cost": 99,
+          "availability": "in_stock",
+          "condition": "new",
+          "product_url": "https://example.com/xm6-budget"
         }
       ]
     },
@@ -52,6 +75,8 @@
         {
           "offer_id": "b1",
           "retailer": "TechBay",
+          "merchant_id": "m5",
+          "merchant_domain": "techbay.dk",
           "product_price": 1699,
           "delivery_cost": 0,
           "availability": "in_stock",
@@ -61,6 +86,10 @@
         {
           "offer_id": "b2",
           "retailer": "PhoneHouse",
+          "merchant_id": "m6",
+          "merchant_domain": "phonehouse.dk",
+          "merchant_rating": 4.1,
+          "merchant_rating_count": 640,
           "product_price": 1795,
           "delivery_cost": 29,
           "availability": "in_stock",
@@ -69,5 +98,11 @@
         }
       ]
     }
-  ]
+  ],
+  "trustpilot": {
+    "example-electronics.dk": {"score": 4.4, "count": 12431, "website": "https://www.example-electronics.dk"},
+    "nordic-audio.dk": {"score": 3.9, "count": 812, "website": "https://nordic-audio.dk"},
+    "budgetbay.dk": {"score": 2.1, "count": 1904, "website": "https://www.budgetbay.dk"},
+    "phonehouse.dk": {"score": 4.6, "count": 5120, "website": "https://www.phonehouse.dk"}
+  }
 }

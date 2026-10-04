@@ -99,3 +99,26 @@ def test_prefix_middleware_serves_routes_and_static_both_ways(tmp_path):
     for path in ("/notify/static/css/app.css", "/static/css/app.css", "/notify/healthz", "/healthz"):
         assert client.get(path).status_code == 200, path
     assert client.get("/notify/static/css/missing.css").status_code == 404
+
+
+def test_every_catalog_app_path_is_left_alone_by_other_prefixes():
+    """Auth's post-sign-in redirect to /library/read/... must not become /auth/library/..."""
+    from stonepi_auth.catalog import APP_CATALOG
+
+    assert prefix_path("/library/read/content/knots/guide.pdf", "/auth") == "/library/read/content/knots/guide.pdf"
+    for item in APP_CATALOG:
+        root = (item.get("path") or "/").rstrip("/")
+        if not root:
+            continue  # Dashboard lives at /
+        assert prefix_path(root + "/x", "/auth") == root + "/x", item["id"]
+
+
+def test_capability_missing_from_older_cookie_uses_catalog_default():
+    from stonepi_auth.session import PlatformUser
+
+    member = PlatformUser(user_id="2", username="kid", display_name="Kid", is_admin=False,
+                          apps=["pinboard", "studio"], permissions={"pinboard": {"can_assign_others": False}})
+    assert member.has_capability("pinboard", "can_post_notices") is True  # not in cookie: default on
+    assert member.has_capability("pinboard", "can_assign_others") is False  # explicit choice wins
+    assert member.has_capability("studio", "can_use_llm") is False  # default off
+    assert member.has_capability("newscast", "can_add_custom_sources") is False  # no app access

@@ -5,11 +5,12 @@ import re
 import threading
 import time
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 
 from app.config import env
-from app.sources.base import NormalisedOffer, ProductDetail, ProductHit
+from app.sources.base import NormalisedOffer, ProductDetail, ProductHit, normalise_domain
 
 logger = logging.getLogger("pricewatch.pricerunner")
 
@@ -217,6 +218,7 @@ class PriceRunnerDkSource:
         url = raw.get("url") or raw.get("productRawUrl")
         if isinstance(url, str) and url.startswith("/"):
             url = f"{BASE}{url}"
+        rating, rating_count = _merchant_rating(merchant)
         return NormalisedOffer(
             product_id=product_id,
             product_name=product_name,
@@ -231,8 +233,43 @@ class PriceRunnerDkSource:
             product_url=url if isinstance(url, str) else None,
             image_url=image,
             offer_id=str(raw.get("id") or ""),
+            merchant_id=merchant_id or None,
+            merchant_domain=_merchant_domain(merchant),
+            merchant_rating=rating,
+            merchant_rating_count=rating_count,
             raw=raw,
         )
+
+
+def _merchant_domain(merchant: Any) -> str | None:
+    """Shop web address, from the Klarna one-time-card link (`merchantUrl=merlin.dk`).
+
+    Undocumented, but present on every merchant probed (64/64, 2026-09-30).
+    """
+    if not isinstance(merchant, dict):
+        return None
+    otc = merchant.get("otcUrl")
+    if not isinstance(otc, str) or "merchantUrl=" not in otc:
+        return None
+    values = parse_qs(urlsplit(otc).query).get("merchantUrl") or []
+    return normalise_domain(values[0]) if values else None
+
+
+def _merchant_rating(merchant: Any) -> tuple[float | None, int | None]:
+    """PriceRunner's shop rating; ``"0.0"`` with 0 reviews means no rating."""
+    if not isinstance(merchant, dict):
+        return None, None
+    rating = merchant.get("rating")
+    if not isinstance(rating, dict):
+        return None, None
+    try:
+        average = float(rating.get("average"))
+        count = int(rating.get("count") or 0)
+    except (TypeError, ValueError):
+        return None, None
+    if average <= 0 or count <= 0:
+        return None, None
+    return average, count
 
 
 def _price_amount(value: Any) -> float | None:

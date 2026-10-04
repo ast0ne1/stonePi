@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections import OrderedDict
 from datetime import timezone
 from urllib.parse import quote
@@ -9,7 +10,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app import __asset_rev__, __github__, __github_user__, __version__, db
-from app.config import COMMON_TIMEZONES, FOOTBALL_LEAGUES, ROOT_DIR, SPORTS, env
+from app.config import COMMON_TIMEZONES, ROOT_DIR, SPORT_LEAGUES, SPORTS, env
 from app.services import ingest
 from app.timeutil import enrich_listing_row, format_local, timezone_choices, window_utc
 
@@ -37,6 +38,15 @@ def _session_secret() -> str:
     except Exception:
         pass
     return env.session_secret.strip()
+
+
+def _auth_optional() -> bool:
+    """Running without a session secret is allowed only in dev (Windows run-dev or STONEPI_DEV=1).
+
+    On a Pi a missing/unreadable secret must refuse privileged actions (refresh)
+    rather than open them to everyone; ``app.main`` locks the whole app then.
+    """
+    return os.name == "nt" or (os.environ.get("STONEPI_DEV") or "").strip() == "1"
 
 
 def _prefix() -> str:
@@ -85,7 +95,7 @@ def _user_key(user) -> str:
 
 def _can_refresh(user) -> bool:
     if not _session_secret():
-        return True
+        return _auth_optional()
     return bool(user and (user.is_admin or user.has_capability("sportguide", "can_refresh")))
 
 
@@ -137,7 +147,7 @@ def _redirect(path: str, *, msg: str | None = None, error: str | None = None) ->
 
 
 def _group_listings(listings: list[dict], *, sport: str, league: str = "all") -> list[dict]:
-    """Group for the feed: All → sport then league; football → league; single league → flat."""
+    """Group for the feed: All → sport then league; league sports → league; single league → flat."""
     if not listings:
         return []
     def _meta(sid: str, label: str | None = None) -> dict:
@@ -160,24 +170,24 @@ def _group_listings(listings: list[dict], *, sport: str, league: str = "all") ->
             if not rows:
                 continue
             meta = _meta(sid)
-            if sid == "football":
-                subsections = _group_by_league(rows)
+            if sid in SPORT_LEAGUES:
+                subsections = _group_by_league(rows, SPORT_LEAGUES[sid])
                 sections.append({**meta, "subsections": subsections, "rows": []})
             else:
                 sections.append({**meta, "subsections": [], "rows": rows})
         return sections
-    if sport == "football":
-        meta = _meta("football")
+    if sport in SPORT_LEAGUES:
+        meta = _meta(sport)
         if league and league != "all":
             return [{**meta, "label": league, "subsections": [], "rows": listings}]
-        return [{**meta, "subsections": _group_by_league(listings), "rows": []}]
+        return [{**meta, "subsections": _group_by_league(listings, SPORT_LEAGUES[sport]), "rows": []}]
     meta = _meta(sport)
     return [{**meta, "subsections": [], "rows": listings}]
 
 
-def _group_by_league(rows: list[dict]) -> list[dict]:
+def _group_by_league(rows: list[dict], leagues: tuple[str, ...]) -> list[dict]:
     buckets: OrderedDict[str, list] = OrderedDict()
-    for name in FOOTBALL_LEAGUES:
+    for name in leagues:
         buckets[name] = []
     for row in rows:
         league = row.get("league") or "Other"
@@ -192,8 +202,50 @@ def healthz():
     return {"ok": True, "service": "sportguide"}
 
 
+def _panel_feed(tz: str, start: str, end: str, watched_entries: list, limit: int) -> dict:
+    """Car Thing panel extras for ``/api/display?items=N``: watched teams first, then by start."""
+    from app.teams import first_matching_entry
+
+    rows = []
+    for row in db.query_listings(starts_from=start, starts_to=end, limit=200):
+        enrich_listing_row(row, tz)
+        title, sport = str(row.get("title") or ""), str(row.get("sport") or "")
+        watched = bool(watched_entries) and first_matching_entry(title, sport, watched_entries) is not None
+        rows.append((not watched, str(row.get("starts_at") or ""), row, watched))
+    rows.sort(key=lambda r: (r[0], r[1]))
+    items = []
+    for _, _, row, watched in rows[: max(1, min(50, limit))]:
+        when = f"{str(row.get('day_label') or '').title()} {row.get('time_label') or ''}".strip()
+        league = str(row.get("league") or row.get("sport") or "")
+        items.append(
+            {
+                "id": str(row.get("id")),
+                "title": str(row.get("title") or "")[:90],
+                "sub": " · ".join(p for p in (when, league) if p),
+                "badge": "On now" if row.get("is_live") else ("Yours" if watched else ""),
+                "detail": "\n".join(
+                    p
+                    for p in (
+                        " · ".join(x for x in (str(row.get("sport") or ""), league) if x),
+                        when,
+                        f"Watch on: {row.get('channel_label') or 'Check guide'}",
+                    )
+                    if p
+                ),
+            }
+        )
+    lead = items[0] if items else None
+    on_now = sum(1 for i in items if i["badge"] == "On now")
+    card = {
+        "headline": lead["title"] if lead else "Nothing scheduled",
+        "sub": (lead["sub"] if lead else "") + (f" · {on_now} on now" if on_now else ""),
+        "badge": lead["badge"] if lead else "",
+    }
+    return {"card": card, "items": items, "refresh_s": 120}
+
+
 @router.get("/api/display")
-def api_display():
+def api_display(items: int = 0):
     # Household display: household timezone, everyone's teams.
     tz = db.household_timezone()
     start, end, _ = window_utc(tz)
@@ -218,15 +270,16 @@ def api_display():
                     "local_time": format_local(str(row.get("starts_at") or ""), tz),
                 }
                 break
-    return JSONResponse(
-        {
-            "ok": True,
-            "on_now": n,
-            "detail": f"{n} on now" if n else "—",
-            "watched_teams": teams,
-            "next_watched": next_watched,
-        }
-    )
+    payload = {
+        "ok": True,
+        "on_now": n,
+        "detail": f"{n} on now" if n else "—",
+        "watched_teams": teams,
+        "next_watched": next_watched,
+    }
+    if items > 0:  # Car Thing panel lists; the plain call (Dashboard tile, TRMNL) is unchanged
+        payload.update(_panel_feed(tz, start, end, watched_entries, items))
+    return JSONResponse(payload)
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -247,10 +300,13 @@ def now_page(
     if sport not in {s["id"] for s in SPORTS}:
         sport = "all"
     league = league or "all"
+    sport_leagues = SPORT_LEAGUES.get(sport, ())
+    if league not in sport_leagues:
+        league = "all"
     start, end, local_now = window_utc(tz)
     listings = db.query_listings(
         sport=None if sport == "all" else sport,
-        league=None if sport != "football" or league == "all" else league,
+        league=None if league == "all" else league,
         starts_from=start,
         starts_to=end,
         limit=250,
@@ -270,7 +326,7 @@ def now_page(
             "sports": SPORTS,
             "sport": sport,
             "league": league,
-            "leagues": ("all",) + FOOTBALL_LEAGUES,
+            "leagues": sport_leagues,
             "groups": groups,
             "listings": listings,
             "timezone": tz,

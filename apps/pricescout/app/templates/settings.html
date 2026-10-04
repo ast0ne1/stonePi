@@ -64,13 +64,25 @@
       </select>
     </label>
     <p class="hint">Leaflet prices are collected in DKK. Other currencies are converted for display only.</p>
-    <label>
-      Postcode (for optional madspild)
-      <input name="zip" value="{{ zip }}" placeholder="e.g. 2100" inputmode="numeric" />
-    </label>
-    <p class="hint">Used only for the optional Salling food-waste stream when a token is in Vault. Manage supermarket sources on the Sources page.</p>
     <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("check") }} Save</button>
   </form>
+  {% if can_edit_household %}
+  <form method="post" action="/settings/household" class="card stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <h2>Household postcode</h2>
+    <label>
+      Postcode (for optional madspild)
+      <input name="household_zip" value="{{ household_zip }}" placeholder="e.g. 2100" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" />
+    </label>
+    <p class="hint">One postcode for the whole household. Used only for the optional Salling food-waste stream when a token is in Vault. Manage supermarket sources on the Sources page.</p>
+    <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("check") }} Save</button>
+  </form>
+  {% else %}
+  <div class="card stack">
+    <h2>Household postcode</h2>
+    <p class="hint">Madspild offers use the household postcode{% if household_zip %} ({{ household_zip }}){% endif %}. Only an admin can change it.</p>
+  </div>
+  {% endif %}
   </div>
   {% elif settings_tab == 'general' and settings_panel == 'history' %}
   <div class="stack settings-panel" id="settings-panel-history" role="tabpanel">

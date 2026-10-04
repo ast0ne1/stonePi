@@ -40,3 +40,50 @@ def test_watch_summary_keeps_names_of_services_not_running():
     # Already joined (Dashboard status API): not doubled.
     joined = dict(watch, summary="Multiple services are not running (NewsCast, Studio)")
     assert build_merge_variables(hostname="pi", watch=joined, backup={}, fetched={})["watch_summary"] == joined["summary"]
+
+
+def test_cpu_is_measured_between_calls(monkeypatch, tmp_path):
+    """CPU % covers the time since the last reading, not a fresh 0.12 s blip per call."""
+    from types import SimpleNamespace
+
+    from stonepi_display import variables
+
+    stat = tmp_path / "stat"
+    stat.write_text("cpu  100 0 50 800 50 0 0 0 0 0\ncpu0 1 2 3 4\n", encoding="utf-8")
+    assert variables._proc_stat_ticks(str(stat)) == (1000, 850)
+
+    clock = {"now": 1000.0}
+    samples = iter([(1000, 850), (1100, 940), (2100, 1440), (2101, 1440), (2201, 1540)])
+    sleeps: list[float] = []
+    monkeypatch.setattr(variables, "os", SimpleNamespace(name="posix"))
+    monkeypatch.setattr(variables, "_proc_stat_ticks", lambda path="/proc/stat": next(samples))
+    monkeypatch.setattr(variables.time, "monotonic", lambda: clock["now"])
+    monkeypatch.setattr(variables.time, "sleep", lambda s: sleeps.append(s) or clock.update(now=clock["now"] + s))
+    monkeypatch.setattr(variables, "_cpu_state", {"ticks": None, "at": 0.0, "value": None})
+
+    # First call in a process: a short sample (100 jiffies, 90 idle) → 10 %.
+    assert variables.read_cpu_pct() == 10 and sleeps == [variables._CPU_SAMPLE_S]
+    # 30 s later: everything since the last reading (1000 jiffies, 500 idle) → 50 %, no sleep.
+    clock["now"] += 30
+    assert variables.read_cpu_pct() == 50 and len(sleeps) == 1
+    # Within a second: the same value again (a 1-jiffy window would just be noise).
+    clock["now"] += 0.2
+    assert variables.read_cpu_pct() == 50
+    # A stale baseline (over 2 min) is re-sampled rather than averaged over minutes.
+    clock["now"] += 600
+    assert variables.read_cpu_pct() == 0 and len(sleeps) == 2  # a fresh 100 jiffies, all idle
+
+
+def test_cpu_is_none_where_proc_stat_is_missing(monkeypatch):
+    from types import SimpleNamespace
+
+    from stonepi_display import variables
+
+    monkeypatch.setattr(variables, "_cpu_state", {"ticks": None, "at": 0.0, "value": None})
+    monkeypatch.setattr(variables, "os", SimpleNamespace(name="posix"))
+
+    def _missing(path="/proc/stat"):
+        raise OSError("no /proc")
+
+    monkeypatch.setattr(variables, "_proc_stat_ticks", _missing)
+    assert variables.read_cpu_pct() is None

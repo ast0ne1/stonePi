@@ -15,6 +15,7 @@ It runs on one Raspberry Pi on your own network: a portal with one shared sign-i
 | What’s on in sport and entertainment | **SportGuide** — TV / stream schedules and the teams you follow |
 | This week’s supermarket deals without five retailer apps | **PriceScout** — cross-store compare |
 | To know when something you want hits your price | **PriceWatch** — strike alerts for named products |
+| Wikipedia and other references without the internet | **Library** — offline reference content (Kiwix) on the Pi |
 | Useful updates on your phone or screens around the house | **Notify** — ntfy phone alerts and TRMNL / e-ink displays |
 | Your files and household tools in one place | **FileServe** (share files and small sites on the LAN), **Pinboard** (notices and reminders), **Studio** (build a simple site and publish it to FileServe) |
 
@@ -54,6 +55,7 @@ More images: [docs/screenshots/](docs/screenshots/).
 | **[PriceScout](apps/pricescout/README.md)** | Weekly supermarket offers and cross-store compare | Household shopping without five retailer apps | eTilbudsavis JSON; optional Salling madspild |
 | **[PriceWatch](apps/pricewatch/README.md)** | Watch specific products until a target price is met | Strike alerts for named SKUs | PriceRunner Denmark (+ mock for local) |
 | **[SportGuide](apps/sportguide/README.md)** | Sports TV / stream schedules (Now + Sources) | What’s on without juggling guide sites | Playwright scrapes (AusSportGuide + WheresTheMatch) |
+| **[Library](apps/library/README.md)** | Wikipedia and other references, offline on your Pi | Household reference that works without the internet | Kiwix ZIMs on microSD, USB or SSD; reader at `/library/read/` behind sign-in |
 
 ### Portal (not launcher tiles)
 
@@ -195,6 +197,7 @@ The installer enables systemd services so everything comes back after a reboot. 
 | http://stonepi.local/studio/ | Studio |
 | http://stonepi.local/prices/ | PriceScout |
 | http://stonepi.local/watch/ | PriceWatch |
+| http://stonepi.local/library/ | Library |
 | http://stonepi.local/sports/ | SportGuide |
 | http://stonepi.local/notify/ | Notify |
 | http://stonepi.local/recover/ | Recovery Console (Recover; also direct on `:8099` when nginx or Dashboard is down) |
@@ -223,6 +226,7 @@ Creates per-app virtualenvs and starts:
 | http://127.0.0.1:8006/ | PriceScout |
 | http://127.0.0.1:8007/ | SportGuide |
 | http://127.0.0.1:8008/ | PriceWatch |
+| http://127.0.0.1:8009/ | Library (no Kiwix on Windows) |
 
 SSO is shared on `127.0.0.1`. Solo `run-local.bat` still works if `STONEPI_SESSION_SECRET` is unset. On the Pi (with session secret set), **Users**, **Updates**, and **Backup** live under dashboard Settings; in-app Users/Update tabs are for solo runs only.
 
@@ -266,6 +270,7 @@ apps/studio
 apps/pricescout
 apps/sportguide
 apps/pricewatch
+apps/library
 packages/stonepi_auth         shared login, APP_CATALOG, brand fonts + asset_rev
 packages/stonepi_update
 packages/stonepi_display

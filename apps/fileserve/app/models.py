@@ -30,6 +30,25 @@ class User(Base):
     def is_admin(self) -> bool:
         return self.role == "admin"
 
+    def can(self, cap: str) -> bool:
+        """FileServe capability for this request (see services/capabilities.py).
+
+        ``app.auth.current_user`` sets ``_capabilities`` under StonePi; it stays None in
+        solo mode, where local accounts have no per-person switches.
+        """
+        if self.is_admin:
+            return True
+        granted = getattr(self, "_capabilities", None)
+        if granted is None:
+            return True
+        platform = getattr(self, "_platform", None)
+        if platform is not None:
+            # Same answer as every other app: cookie value, else the catalog default.
+            return platform.has_capability("fileserve", cap)
+        from app.services import capabilities
+
+        return capabilities.resolve(granted, cap)
+
 
 class Page(Base):
     __tablename__ = "pages"

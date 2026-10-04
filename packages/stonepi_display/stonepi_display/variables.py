@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,26 +20,54 @@ from typing import Any
 LEVEL_HEALTHY = "healthy"
 
 
+# CPU use is measured between calls, not in a fresh blip per call. A 0.12 s sample taken
+# right after the caller's own work (Notify's scrape, Dashboard's probes) reads ~48 ticks on
+# a 4-core Pi: 2 % steps, and mostly 0-3 % or a spike, whatever the Pi was actually doing.
+_CPU_MIN_WINDOW_S = 1.0  # closer calls reuse the last value
+_CPU_MAX_WINDOW_S = 120.0  # an older baseline is re-sampled, so the value stays recent
+_CPU_SAMPLE_S = 0.5  # first call in a process (or after a long gap)
+_cpu_lock = threading.Lock()
+_cpu_state: dict[str, Any] = {"ticks": None, "at": 0.0, "value": None}
+
+
+def _proc_stat_ticks(path: str = "/proc/stat") -> tuple[int, int]:
+    """(total, idle) jiffies from the aggregate ``cpu`` line."""
+    with open(path, encoding="utf-8") as handle:
+        line = handle.readline()
+    # user nice system idle iowait irq softirq steal (guest time is already inside user/nice)
+    fields = [int(x) for x in line.split()[1:9]]
+    return sum(fields), fields[3] + (fields[4] if len(fields) > 4 else 0)
+
+
+def _busy_pct(before: tuple[int, int], after: tuple[int, int]) -> int | None:
+    total = after[0] - before[0]
+    if total <= 0:
+        return None
+    idle = after[1] - before[1]
+    return max(0, min(100, int(round(100 * (1 - idle / total)))))
+
+
 def read_cpu_pct() -> int | None:
+    """Whole-Pi CPU use (%) since the previous call (1 s to 2 min ago), else over a 0.5 s sample."""
     if os.name == "nt":
         return None
     try:
-        with open("/proc/stat", encoding="utf-8") as handle:
-            line1 = handle.readline()
-        time.sleep(0.12)
-        with open("/proc/stat", encoding="utf-8") as handle:
-            line2 = handle.readline()
-
-        def parts(line: str) -> list[int]:
-            return [int(x) for x in line.split()[1:8]]
-
-        a, b = parts(line1), parts(line2)
-        idle_a, idle_b = a[3] + a[4], b[3] + b[4]
-        total_d = sum(b) - sum(a)
-        idle_d = idle_b - idle_a
-        if total_d <= 0:
-            return 0
-        return max(0, min(100, int(round(100 * (1 - idle_d / total_d)))))
+        with _cpu_lock:
+            now = time.monotonic()
+            before, at, last = _cpu_state["ticks"], float(_cpu_state["at"]), _cpu_state["value"]
+            if before is not None and last is not None and now - at < _CPU_MIN_WINDOW_S:
+                return last
+            after = _proc_stat_ticks()
+            if before is None or now - at > _CPU_MAX_WINDOW_S:
+                before = after
+                time.sleep(_CPU_SAMPLE_S)
+                after = _proc_stat_ticks()
+                now = time.monotonic()
+            value = _busy_pct(before, after)
+            if value is None:
+                value = last if last is not None else 0
+            _cpu_state.update(ticks=after, at=now, value=value)
+            return value
     except Exception:
         return None
 

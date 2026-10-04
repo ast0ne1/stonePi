@@ -1,0 +1,26 @@
+<!doctype html>
+<!-- Pushed to the Car Thing by stonepi-carthing (method from pything, MIT). Lives in /tmp on the device. -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StonePi</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #000; color: #F5F1E8; overflow: hidden;
+      font-family: "DejaVu Sans", Arial, Helvetica, sans-serif; }
+    p { margin: 0; position: absolute; top: 50%; left: 0; right: 0; text-align: center;
+      font-size: 32px; transform: translateY(-50%); }
+  </style>
+  <script>
+    var timer = setInterval(function () {
+      fetch("http://localhost:__PORT__/isready").then(function (response) {
+        if (response.ok) {
+          clearInterval(timer);
+          window.location.href = "http://localhost:__PORT__/?t=__TOKEN__";
+        }
+      }).catch(function () {});
+    }, 1000);
+  </script>
+</head>
+<body><p>Waiting for StonePi…</p></body>
+</html>

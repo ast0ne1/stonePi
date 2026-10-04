@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_filter_icon.html" import filter_icon %}
+{% block title %}Settings · Library{% endblock %}
+{% block content %}
+{% set tab_labels = dict(settings_tabs) %}
+<section class="hero" data-settings-hero>
+  <a class="settings-back" href="/settings" data-settings-hub-back{% if settings_hub %} hidden{% endif %}>&larr; Settings</a>
+  <h1 data-settings-title>{% if settings_hub %}Settings{% else %}{{ tab_labels.get(settings_tab, settings_tab|title) }}{% endif %}</h1>
+  <div class="page-status settings-page-status">
+    <p class="page-status-text" data-settings-lede>{% if settings_hub %}{{ settings_hub_lede }}{% else %}{{ settings_ledes[settings_tab] }}{% endif %}</p>
+  </div>
+</section>
+
+<div
+  class="settings-tabs{% if settings_hub %} is-hub{% endif %}"
+  data-settings-tabs
+  data-settings-hub="{{ 'true' if settings_hub else 'false' }}"
+  data-settings-active-tab="{{ settings_tab }}"
+  data-settings-hub-lede="{{ settings_hub_lede }}"
+>
+<script type="application/json" data-settings-ledes-json>{{ settings_ledes | tojson }}</script>
+<script type="application/json" data-settings-labels-json>{{ tab_labels | tojson }}</script>
+
+<nav class="settings-hub" data-settings-hub-list aria-label="Settings groups"{% if not settings_hub %} hidden{% endif %}>
+  {% for group_id, group_label, rows in settings_groups %}
+  <div class="settings-hub-group" data-settings-hub-group="{{ group_id }}">
+    <h2 class="section-label settings-hub-heading">{{ group_label }}</h2>
+    <div class="group-card settings-hub-card">
+      {% for key, label, subtext in rows %}
+      <a class="settings-hub-row" href="/settings?tab={{ key }}" data-settings-hub-row="{{ key }}">
+        <span class="settings-hub-icon" aria-hidden="true">{{ filter_icon(key) }}</span>
+        <span class="settings-hub-copy">
+          <span class="settings-hub-title">{{ label }}</span>
+          <span class="settings-hub-sub">{{ subtext }}</span>
+        </span>
+        <span class="settings-hub-chevron" aria-hidden="true">&rsaquo;</span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</nav>
+
+<div class="settings-section" data-settings-section{% if settings_hub %} hidden{% endif %}>
+<div class="chips settings-chips settings-top-chips" role="tablist" aria-label="Settings sections">
+  {% for key, label in settings_tabs %}
+  <a class="chip-btn{% if settings_tab == key %} is-active{% endif %}" href="/settings?tab={{ key }}" role="tab" id="settings-tab-{{ key }}" data-settings-tab="{{ key }}" aria-selected="{{ 'true' if settings_tab == key else 'false' }}" aria-controls="settings-panel-{{ key }}">{{ filter_icon(key) }}<span>{{ label }}</span></a>
+  {% endfor %}
+</div>
+
+{# ---------- Storage ---------- #}
+<div class="stack settings-panel" id="settings-panel-storage" role="tabpanel" data-settings-panel="storage" aria-labelledby="settings-tab-storage"{% if settings_tab != 'storage' %} hidden{% endif %}>
+  <section class="card stack">
+    <h2 class="section-heading">{{ filter_icon("storage") }} Library files</h2>
+    <dl class="facts">
+      <dt>Location</dt><dd>{{ storage_kind_label }}<br /><code>{{ storage_dir }}</code></dd>
+      {% if storage_mount.fstype %}<dt>Filesystem</dt><dd>{{ storage_mount.fstype }}</dd>{% endif %}
+      <dt>Content</dt><dd>{{ installed_count }} collection{{ 's' if installed_count != 1 }} · {{ used|gb }}</dd>
+      <dt>Free</dt><dd>{{ usage.free|gb }} of {{ usage.total|gb }}</dd>
+    </dl>
+  </section>
+
+  {% if is_admin %}
+  {% if move_job %}
+  <section class="card stack" data-poll-status>
+    <h2 class="section-heading">{{ filter_icon("download") }} Moving</h2>
+    <p class="hint">Copying to <code>{{ move_job.url }}</code>. The library stays readable until the switch. Progress is on the <a class="text-link" href="/">Library</a> page.</p>
+  </section>
+  {% else %}
+  <form method="post" action="/settings/storage" class="card stack" data-busy-form data-confirm="Move the library?" data-confirm-detail="{% if installed_count %}Copies {{ used|gb }} to the new place, switches over, then deletes the old copies. Downloads are paused until it finishes.{% else %}New downloads go to the new place.{% endif %}" data-confirm-ok="Move">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <h2 class="section-heading">{{ icon("move") }} Change storage</h2>
+    <fieldset class="choice-list">
+      <legend class="visually-hidden">New location</legend>
+      <label class="choice">
+        <input type="radio" name="storage_choice" value="sd" {% if storage_kind == 'sd' %}disabled{% endif %} data-storage-choice />
+        <span class="choice-copy"><span class="choice-title">This Pi’s microSD</span><span class="hint">{% if storage_kind == 'sd' %}Current location{% else %}Default{% endif %}</span></span>
+      </label>
+      {% for d in drives %}
+      <label class="choice{% if d.problem %} is-off{% endif %}">
+        <input type="radio" name="storage_choice" value="drive:{{ d.uuid }}" {% if d.problem %}disabled{% endif %} data-storage-choice />
+        <span class="choice-copy">
+          <span class="choice-title">{{ d.label or d.model or d.path }} · {{ d.size|gb }}</span>
+          <span class="hint">{% if d.problem %}{{ d.problem }}{% else %}{{ d.fstype }}{% if d.is_backup %} · your backup drive{% endif %}{% endif %}</span>
+        </span>
+      </label>
+      {% endfor %}
+      <label class="choice">
+        <input type="radio" name="storage_choice" value="custom" data-storage-choice />
+        <span class="choice-copy"><span class="choice-title">Another folder</span><span class="hint">An already-mounted path</span></span>
+      </label>
+      <label class="choice-extra" data-storage-custom hidden>
+        Folder
+        <input type="text" name="custom_path" placeholder="/mnt/usb/kiwix" autocomplete="off" />
+      </label>
+    </fieldset>
+    {% if not drives %}<p class="hint">{% if simulated %}Drives are listed on the Pi.{% else %}No USB drives found. Plug one in (ext4 or exFAT) and reload.{% endif %}</p>{% endif %}
+    <p class="hint">FAT32 drives can’t hold files over 4 GB; StonePi doesn’t format drives, so format a new one as ext4 (best) or exFAT first.</p>
+    <button class="btn btn-primary btn-with-icon" type="submit" {% if busy %}disabled title="Wait for downloads to finish"{% endif %}>{{ icon("move") }} Move here</button>
+  </form>
+  {% endif %}
+  {% else %}
+  <p class="hint">Only a StonePi admin can change where library files live.</p>
+  {% endif %}
+</div>
+
+{# ---------- Backup ---------- #}
+{% set c = capacity %}
+<div class="stack settings-panel" id="settings-panel-backup" role="tabpanel" data-settings-panel="backup" aria-labelledby="settings-tab-backup"{% if settings_tab != 'backup' %} hidden{% endif %}>
+  <section class="card stack">
+    <h2 class="section-heading">{{ filter_icon("backup") }} Always included</h2>
+    <p class="hint">Library settings, the list of installed content, and the reader’s setup are part of every StonePi backup. A restore can download the content again from Kiwix.</p>
+  </section>
+
+  <section class="card stack">
+    <h2 class="section-heading">{{ filter_icon("library") }} Library files</h2>
+    <dl class="facts">
+      <dt>Status</dt><dd>{% if c.enabled %}<span class="fit is-ok">Included in USB backups</span>{% else %}Not included{% endif %}</dd>
+      <dt>Size</dt><dd>{{ c.content_total|gb }}</dd>
+      <dt>Destination</dt>
+      <dd>{{ c.drive_label }} (USB){% if not c.drive_present %} · not connected{% endif %}{% if c.total %}<br />{{ c.free|gb }} free of {{ c.total|gb }}{% if not c.live and c.as_of %} as of last backup, {{ c.as_of }}{% endif %}{% endif %}</dd>
+    </dl>
+
+    {% if c.state != 'unknown' %}
+    <div class="capacity capacity-{{ c.state }}">
+      <dl class="facts">
+        <dt>New library files to copy</dt><dd>{{ c.new_bytes|gb }}{% if c.already %} ({{ c.already|gb }} already there){% endif %}</dd>
+        <dt>Platform backup</dt><dd>~{{ c.platform|gb }}</dd>
+        <dt>Safety margin</dt><dd>{{ c.margin|gb }}</dd>
+        <dt>Required</dt><dd><strong>{{ c.required|gb }}</strong></dd>
+        <dt>Left afterwards</dt><dd>~{{ c.after|gb if c.after > 0 else '0 GB' }}</dd>
+      </dl>
+      <p class="capacity-verdict">
+        {% if c.state == 'ok' %}✓ Sufficient capacity
+        {% elif c.state == 'low' %}⚠ This will leave very little free space on the backup drive.
+        {% else %}✕ Not enough space. Library files can’t be included on this drive.{% endif %}
+      </p>
+    </div>
+    {% else %}
+    <p class="hint">Connect the backup drive (labelled STONEPI-BACKUP) or run one USB backup so StonePi can check its space.</p>
+    {% endif %}
+
+    {% if c.same_drive %}
+    <p class="banner banner-muted">Your library files are on the same drive as your backups. Including them makes a <strong>second full copy</strong> on that drive ({{ c.content_total|gb }} more), and every new or updated title then takes its size twice. It protects against accidental removal and lets you rebuild the Pi from this drive, but <strong>not</strong> against the drive itself failing.</p>
+    {% endif %}
+    <p class="hint">Only USB backups include library files, never the local (microSD) backup. The first copy can take a long time; later backups only copy new or updated titles.</p>
+
+    {% if is_admin %}
+    <div class="btn-row">
+      {% if c.enabled %}
+      <form method="post" action="/settings/backup" data-confirm="Stop including library files?" data-confirm-detail="Copies already on the backup drive are removed at the next backup." data-confirm-ok="Stop including">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <input type="hidden" name="include" value="0" />
+        <button class="btn btn-ghost btn-with-icon" type="submit">{{ icon("clear") }} Stop including</button>
+      </form>
+      {% else %}
+      <form method="post" action="/settings/backup"
+        data-confirm="{% if c.same_drive %}Back up library files to the same drive?{% else %}Include library files in backups?{% endif %}"
+        data-confirm-detail="Uses {{ c.new_bytes|gb }} more on {{ c.drive_label }}{% if c.total %} ({{ c.free|gb }} free now, ~{{ c.after|gb if c.after > 0 else '0 GB' }} after){% endif %}.{% if c.same_drive %} It is a second copy on the drive your library already uses: it doesn’t protect against that drive failing.{% endif %}"
+        data-confirm-ok="Include">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <input type="hidden" name="include" value="1" />
+        <button class="btn btn-primary btn-with-icon" type="submit" {% if c.state in ['insufficient', 'unknown'] or not c.content_total %}disabled{% endif %}>{{ icon("check") }} Include library files</button>
+      </form>
+      {% endif %}
+      <a class="btn btn-secondary btn-with-icon" href="/settings?tab=backup">{{ icon("refresh") }} Check capacity</a>
+    </div>
+    {% else %}
+    <p class="hint">Only a StonePi admin can change whether library files are backed up.</p>
+    {% endif %}
+  </section>
+</div>
+
+{# ---------- Content ---------- #}
+<div class="stack settings-panel" id="settings-panel-content" role="tabpanel" data-settings-panel="content" aria-labelledby="settings-tab-content"{% if settings_tab != 'content' %} hidden{% endif %}>
+  <form method="post" action="/settings/content" class="card stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <h2 class="section-heading">{{ filter_icon("content") }} Downloads</h2>
+    <label>
+      Featured language
+      <select name="language" {% if not can_manage %}disabled{% endif %}>
+        {% for code, label in languages %}<option value="{{ code }}" {% if code == language %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    {% if is_admin %}
+    <label>
+      Speed limit (Mbit/s)
+      <input type="number" name="max_mbps" min="0" step="1" value="{{ max_mbps }}" placeholder="No limit" />
+    </label>
+    <p class="hint">Downloads run in the background at low priority. A limit keeps the rest of the house’s internet quick during big downloads.</p>
+    {% else %}
+    <p class="hint">Downloads run in the background at low priority{% if max_mbps %}, capped at {{ max_mbps }} Mbit/s{% endif %}. Only a StonePi admin can change the speed limit.</p>
+    {% endif %}
+    {% if can_manage %}<button class="btn btn-primary btn-with-icon" type="submit">{{ icon("check") }} Save</button>{% endif %}
+  </form>
+  <form method="post" action="/catalog/refresh" class="card stack" data-busy-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="back" value="/settings?tab=content" />
+    <h2 class="section-heading">{{ filter_icon("browse") }} Catalogue</h2>
+    <p class="hint">{% if fetched_at %}Last updated {{ fetched_at }} UTC. {% endif %}Refreshed daily when online; installed content never needs it.</p>
+    {% if can_manage %}<button class="btn btn-secondary btn-with-icon" type="submit">{{ icon("refresh") }} Refresh now</button>{% endif %}
+  </form>
+</div>
+
+{# ---------- Reader ---------- #}
+<div class="stack settings-panel" id="settings-panel-reader" role="tabpanel" data-settings-panel="reader" aria-labelledby="settings-tab-reader"{% if settings_tab != 'reader' %} hidden{% endif %}>
+  <section class="card stack">
+    <h2 class="section-heading">{{ filter_icon("reader") }} Kiwix reader</h2>
+    <dl class="facts">
+      <dt>Installed</dt><dd>{% if kiwix.installed %}Yes{% if kiwix.version %} · {{ kiwix.version }}{% endif %}{% else %}No{% endif %}</dd>
+      <dt>Service</dt><dd>{% if kiwix_reachable %}<span class="fit is-ok">Running</span>{% elif kiwix.active %}Starting…{% elif installed_count %}<span class="fit is-error">Stopped</span>{% else %}Stopped (starts when content is installed){% endif %}</dd>
+      <dt>Address</dt><dd><code>{{ reader_url }}</code></dd>
+    </dl>
+    {% if simulated %}<p class="hint">Running off the Pi: the reader is simulated.</p>{% endif %}
+    {% if kiwix.error %}<p class="hint fit is-error">{{ kiwix.error }}</p>{% endif %}
+    {% if can_manage and kiwix.installed %}
+    <form method="post" action="/settings/reader/restart" data-busy-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <button class="btn btn-secondary btn-with-icon" type="submit">{{ icon("refresh") }} Restart reader</button>
+    </form>
+    {% endif %}
+  </section>
+  {% if is_admin and kiwix.installed %}
+  <form method="post" action="/settings/reader/remove" class="card stack" data-confirm="Remove the Library?" data-confirm-detail="Deletes all {{ installed_count }} installed collection{{ 's' if installed_count != 1 }} ({{ used|gb }}) and uninstalls Kiwix. Only files the Library downloaded are deleted. StonePi itself isn’t affected." data-confirm-ok="Remove">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <h2 class="section-heading">{{ icon("trash") }} Remove the Library</h2>
+    <p class="hint">Removes the Kiwix reader, its setup, and all installed content. Library files on a USB drive are deleted one by one; anything else on that drive stays.</p>
+    <button class="btn btn-ghost btn-with-icon" type="submit">{{ icon("trash") }} Remove</button>
+  </form>
+  {% endif %}
+</div>
+
+{# ---------- Notifications ---------- #}
+<div class="stack settings-panel" id="settings-panel-notifications" role="tabpanel" data-settings-panel="notifications" aria-labelledby="settings-tab-notifications"{% if settings_tab != 'notifications' %} hidden{% endif %}>
+  {% from "stonepi/alerts.html" import notifications_card %}
+  {% if notifications_card_state %}
+  {{ notifications_card(notifications_card_state) }}
+  {% else %}
+  <div class="card stack">
+    <h2 class="section-heading">{{ filter_icon("notifications") }} Alerts</h2>
+    <p class="lede">Phone alerts need StonePi sign-in. When the Library runs on its own, it doesn’t send alerts.</p>
+  </div>
+  {% endif %}
+</div>
+
+{# ---------- About ---------- #}
+<div class="stack settings-panel" id="settings-panel-about" role="tabpanel" data-settings-panel="about" aria-labelledby="settings-tab-about"{% if settings_tab != 'about' %} hidden{% endif %}>
+  <div class="card stack about-card">
+    <h2 class="section-heading">{{ filter_icon("about") }} {{ app_name }}</h2>
+    <p class="lede">Wikipedia and other references, offline on your Pi. Reading, search and browsing come from <a class="text-link" href="https://kiwix.org" target="_blank" rel="noopener noreferrer">Kiwix</a>; StonePi handles setup, storage, downloads and backups.</p>
+    <p class="hint">GitHub: <a class="text-link" href="{{ app_github }}" rel="noopener noreferrer" target="_blank">{{ app_github_user }}</a></p>
+    <p class="hint">Version {{ app_version }}</p>
+  </div>
+</div>
+</div>
+</div>
+{% endblock %}

@@ -137,3 +137,37 @@ def test_dev_install_uses_the_apps_own_venv(tmp_path, monkeypatch):
     monkeypatch.setattr(core.subprocess, "run", lambda cmd, **kw: calls.append(cmd))
     updater._install_requirements()
     assert calls and calls[0][0] == str(venv_python)
+
+
+def _failing_restart(monkeypatch, own_unit: str) -> list:
+    exits: list = []
+
+    def fail(*_a, **_k):
+        raise subprocess.CalledProcessError(1, "sudo")
+
+    monkeypatch.setattr(core.subprocess, "run", fail)
+    monkeypatch.setattr(core.os, "_exit", lambda code: exits.append(code))
+    monkeypatch.setattr(core, "_own_unit", lambda: own_unit)
+    monkeypatch.setattr(core.Path, "exists", lambda self: True)
+    monkeypatch.setattr("time.sleep", lambda _s: None)
+    return exits
+
+
+def test_failed_restart_of_another_app_does_not_kill_the_caller(tmp_path, monkeypatch):
+    """Dashboard updating NewsCast: a failed helper restart must not exit Dashboard."""
+    updater = _updater(tmp_path, service_names=("stonepi-newscast",))
+    exits = _failing_restart(monkeypatch, own_unit="stonepi-dashboard")
+    updater._restart_soon()
+    assert exits == []
+
+
+def test_failed_restart_of_own_unit_exits_for_systemd(tmp_path, monkeypatch):
+    updater = _updater(tmp_path, service_names=("stonepi-pinboard",))
+    exits = _failing_restart(monkeypatch, own_unit="stonepi-pinboard")
+    updater._restart_soon()
+    assert exits == [0]
+
+
+def test_own_unit_reads_cgroup(monkeypatch):
+    monkeypatch.setattr(core.Path, "read_text", lambda self, **kw: "0::/system.slice/stonepi-dashboard.service\n")
+    assert core._own_unit() == "stonepi-dashboard"

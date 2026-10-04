@@ -14,12 +14,14 @@ fi
 
 SRC="${1:-}"
 if [[ -z "$SRC" || ! -d "$SRC" ]]; then
-  echo "Usage: sudo stonepi-restore /path/to/backup" >&2
+  echo "Usage: sudo stonepi-restore /path/to/backup [--no-library-content]" >&2
   exit 1
 fi
+LIBRARY_CONTENT=1
+[[ "${2:-}" == "--no-library-content" ]] && LIBRARY_CONTENT=0
 
-APPS="stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch"
-systemctl stop $APPS || true
+APPS="stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library"
+systemctl stop $APPS stonepi-kiwix 2>/dev/null || true
 
 if [[ -d "$SRC/applications" ]]; then
   rsync -a "$SRC/applications/" /var/lib/stonepi/
@@ -51,15 +53,66 @@ chown -R stonepi-studio:stonepi-studio /var/lib/stonepi/studio
 [[ -d /var/lib/stonepi/pricescout ]] && chown -R stonepi-prices:stonepi-prices /var/lib/stonepi/pricescout
 [[ -d /var/lib/stonepi/sportguide ]] && chown -R stonepi-sport:stonepi-sport /var/lib/stonepi/sportguide
 [[ -d /var/lib/stonepi/pricewatch ]] && chown -R stonepi-watch:stonepi-watch /var/lib/stonepi/pricewatch
+if [[ -d /var/lib/stonepi/library ]] && id -u stonepi-library >/dev/null 2>&1; then
+  chown -R stonepi-library:stonepi-library /var/lib/stonepi/library
+  chmod 2750 /var/lib/stonepi/library
+fi
 if [[ -d /var/lib/stonepi/vault ]]; then
   groupadd --system stonepi-vault 2>/dev/null || true
-  for u in stonepi-dash stonepi-auth stonepi-notify stonepi-news stonepi-files stonepi-events stonepi-pin stonepi-studio stonepi-prices stonepi-sport stonepi-watch; do
+  for u in stonepi-dash stonepi-auth stonepi-notify stonepi-news stonepi-files stonepi-events stonepi-pin stonepi-studio stonepi-prices stonepi-sport stonepi-watch stonepi-library; do
     id -u "$u" >/dev/null 2>&1 && usermod -aG stonepi-vault "$u" || true
   done
+  # Same as install.sh: every service user reads and saves secrets (setgid group folder).
   chown -R stonepi-dash:stonepi-vault /var/lib/stonepi/vault
-  chmod 750 /var/lib/stonepi/vault
-  chmod g+s /var/lib/stonepi/vault
-  find /var/lib/stonepi/vault -type f -exec chmod 640 {} \;
+  chmod 2770 /var/lib/stonepi/vault
+  find /var/lib/stonepi/vault -type f -exec chmod 660 {} \;
+fi
+
+# ---------- Library: reader, drive mount, content ----------
+if [[ -f /var/lib/stonepi/library/library.sqlite ]]; then
+  if ! command -v kiwix-serve >/dev/null 2>&1; then
+    if compgen -G "$SRC/packages/kiwix/*.deb" >/dev/null; then
+      echo "Installing Kiwix from the backup's packages"
+      apt-get install -y -qq "$SRC"/packages/kiwix/*.deb >/dev/null 2>&1 || apt-get install -y -qq kiwix-tools || true
+    else
+      apt-get install -y -qq kiwix-tools || echo "Kiwix not installed — run Set up in the Library."
+    fi
+  fi
+  if [[ -d "$SRC/config/systemd/stonepi-kiwix.service.d" ]]; then
+    mkdir -p /etc/systemd/system/stonepi-kiwix.service.d
+    rsync -a "$SRC/config/systemd/stonepi-kiwix.service.d/" /etc/systemd/system/stonepi-kiwix.service.d/
+  fi
+  # Library drive mount (only if that drive is plugged in and fstab lacks it).
+  if [[ -s "$SRC/manifests/fstab-library.txt" ]]; then
+    while read -r line; do
+      uuid="$(awk '{print $1}' <<<"$line")"; uuid="${uuid#UUID=}"
+      mp="$(awk '{print $2}' <<<"$line")"
+      if blkid -U "$uuid" >/dev/null 2>&1 && ! grep -q "UUID=$uuid " /etc/fstab; then
+        # exFAT lines carry the Library's numeric uid/gid from the old Pi;
+        # on this one stonepi-library may have other ids.
+        if id -u stonepi-library >/dev/null 2>&1; then
+          line="$(sed -E "s/uid=[0-9]+/uid=$(id -u stonepi-library)/; s/gid=[0-9]+/gid=$(id -g stonepi-library)/" <<<"$line")"
+        fi
+        echo "$line" >> /etc/fstab
+        mkdir -p "$mp"
+      fi
+    done < "$SRC/manifests/fstab-library.txt"
+    systemctl daemon-reload
+    mount -a 2>/dev/null || true
+  fi
+  # Content: USB backups keep ZIMs in a shared store beside the timestamped runs.
+  STORE="$(dirname "$SRC")/library-content"
+  MANIFEST=/var/lib/stonepi/library/backup-manifest.json
+  if [[ "$LIBRARY_CONTENT" == "1" && -f "$STORE/manifest.json" && -f "$MANIFEST" && -x /usr/local/sbin/stonepi-backup-library ]]; then
+    # The manifest was written by the Library app, so the helper reads and
+    # checks content_dir itself (allowed folders only, falls back to the
+    # microSD when the drive is missing) and sets ownership file by file.
+    echo "Restoring library content (this can take a while)"
+    result="$(/usr/local/sbin/stonepi-backup-library restore "$STORE" "$MANIFEST" /var/log/stonepi-backup.log || true)"
+    read -r status _bytes target <<<"$result"
+    echo "Library content restore: ${status:-failed} → ${target:-/var/lib/stonepi/library/zim}"
+  fi
+  # The Library app reconciles on start (finds moved files, restarts the reader).
 fi
 
 systemctl start $APPS

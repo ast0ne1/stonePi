@@ -792,6 +792,7 @@ document.querySelectorAll("[data-paper-naming]").forEach((root) => {
     const cursor = Math.min(before.length + chunk.length, next.length);
     input.focus();
     input.setSelectionRange(cursor, cursor);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
     renderPreview();
   }
 
@@ -801,7 +802,7 @@ document.querySelectorAll("[data-paper-naming]").forEach((root) => {
   root.querySelectorAll("[data-paper-category-token]").forEach((button) => {
     button.addEventListener("click", () => insertToken(categoryPatternInput, button.dataset.paperCategoryToken || ""));
   });
-  [patternInput, categoryPatternInput, labelInput, dateSelect, hostInput, instanceInput].forEach((el) => {
+  [patternInput, categoryPatternInput, labelInput, dateSelect, instanceInput].forEach((el) => {
     if (!el) return;
     el.addEventListener("input", renderPreview);
     el.addEventListener("change", renderPreview);
@@ -1167,16 +1168,188 @@ if (settingsRoot) {
     requestAnimationFrame(resetFilterScroll);
   }
 
+  // --- Unsaved changes: POST /settings only saves the submitted tab, so warn before leaving a dirty one.
+  const unsavedSheet = document.querySelector("[data-settings-unsaved-sheet]");
+  const SETTINGS_PENDING_KEY = "newscast-settings-next";
+  const initialValues = new WeakMap();
+  const dirtyTabs = new Set();
+  let settingsSubmitting = false;
+  let pendingNextTab = null;
+
+  function trackedFields(tab) {
+    if (!settingsForm) return [];
+    const selector = tab ? `[data-settings-panel="${tab}"]` : "[data-settings-panel]";
+    const fields = [];
+    settingsForm.querySelectorAll(selector).forEach((panelEl) => {
+      panelEl.querySelectorAll("input[name], select[name], textarea[name]").forEach((el) => {
+        if (el.type === "file" || el.type === "submit" || el.type === "button") return;
+        fields.push(el);
+      });
+    });
+    return fields;
+  }
+
+  function fieldValue(el) {
+    if (el.type === "checkbox" || el.type === "radio") return el.checked ? "1" : "0";
+    if (el.tagName === "SELECT" && el.multiple) {
+      return [...el.options].filter((o) => o.selected).map((o) => o.value).join("\u0000");
+    }
+    return el.value;
+  }
+
+  function setFieldValue(el, value) {
+    if (el.type === "checkbox" || el.type === "radio") {
+      el.checked = value === "1";
+    } else if (el.tagName === "SELECT" && el.multiple) {
+      const picked = new Set(value.split("\u0000"));
+      [...el.options].forEach((o) => {
+        o.selected = picked.has(o.value);
+      });
+    } else {
+      el.value = value;
+    }
+  }
+
+  trackedFields().forEach((el) => initialValues.set(el, fieldValue(el)));
+
+  function markUnsaved(tab, on) {
+    const label = labelsByTab[tab] || tab;
+    settingsRoot.querySelectorAll(`[data-settings-tab="${tab}"], [data-settings-hub-row="${tab}"]`).forEach((el) => {
+      el.classList.toggle("has-unsaved", on);
+      if (on) el.setAttribute("title", `${label}: unsaved changes`);
+      else el.removeAttribute("title");
+    });
+  }
+
+  function refreshDirty(tab) {
+    if (!tab) return;
+    const dirty = trackedFields(tab).some(
+      (el) => initialValues.has(el) && fieldValue(el) !== initialValues.get(el)
+    );
+    if (dirty) dirtyTabs.add(tab);
+    else dirtyTabs.delete(tab);
+    markUnsaved(tab, dirty);
+  }
+
+  function discardTab(tab) {
+    trackedFields(tab).forEach((el) => {
+      if (!initialValues.has(el)) return;
+      const initial = initialValues.get(el);
+      if (fieldValue(el) === initial) return;
+      setFieldValue(el, initial);
+      // Let dependent UI (reader device hints, LLM provider rows, previews) re-sync.
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    dirtyTabs.delete(tab);
+    markUnsaved(tab, false);
+  }
+
+  if (settingsForm) {
+    const onEdit = (event) => {
+      settingsSubmitting = false;
+      pendingNextTab = null;
+      const panelEl = event.target.closest?.("[data-settings-panel]");
+      if (panelEl && settingsForm.contains(panelEl)) refreshDirty(panelEl.dataset.settingsPanel);
+    };
+    settingsForm.addEventListener("input", onEdit);
+    settingsForm.addEventListener("change", onEdit);
+    settingsForm.addEventListener("submit", () => {
+      // The shared POST handler reloads on success; don't let beforeunload block that.
+      settingsSubmitting = true;
+      if (!pendingNextTab) return;
+      try {
+        sessionStorage.setItem(SETTINGS_PENDING_KEY, JSON.stringify({ tab: pendingNextTab, at: Date.now() }));
+      } catch (_err) {
+        /* storage unavailable: the reload just lands on the saved tab */
+      }
+      pendingNextTab = null;
+    });
+  }
+
+  window.addEventListener("beforeunload", (event) => {
+    if (settingsSubmitting || !dirtyTabs.size) return;
+    event.preventDefault();
+    event.returnValue = "";
+  });
+
+  function askUnsaved(tab) {
+    const label = labelsByTab[tab] || tab;
+    const message = `You have unsaved changes on ${label}. Save them first, or discard?`;
+    if (!unsavedSheet) {
+      // Fallback: OK saves, Cancel discards.
+      return Promise.resolve(
+        window.confirm(`${message}\n\nOK saves them. Cancel discards them.`) ? "save" : "discard"
+      );
+    }
+    return new Promise((resolve) => {
+      const body = unsavedSheet.querySelector("[data-settings-unsaved-body]");
+      const saveBtn = unsavedSheet.querySelector("[data-settings-unsaved-save]");
+      const discardBtn = unsavedSheet.querySelector("[data-settings-unsaved-discard]");
+      const stayBtn = unsavedSheet.querySelector("[data-settings-unsaved-stay]");
+      if (body) body.textContent = message;
+      const finish = (choice) => {
+        closeSheetEl(unsavedSheet);
+        unsavedSheet.removeEventListener("click", onBackdrop);
+        saveBtn?.removeEventListener("click", onSave);
+        discardBtn?.removeEventListener("click", onDiscard);
+        stayBtn?.removeEventListener("click", onStay);
+        document.removeEventListener("keydown", onKey);
+        resolve(choice);
+      };
+      const onSave = () => finish("save");
+      const onDiscard = () => finish("discard");
+      const onStay = () => finish("stay");
+      const onBackdrop = (event) => {
+        if (event.target === unsavedSheet) finish("stay");
+      };
+      const onKey = (event) => {
+        if (event.key === "Escape") finish("stay");
+      };
+      unsavedSheet.addEventListener("click", onBackdrop);
+      saveBtn?.addEventListener("click", onSave);
+      discardBtn?.addEventListener("click", onDiscard);
+      stayBtn?.addEventListener("click", onStay);
+      document.addEventListener("keydown", onKey);
+      openSheetEl(unsavedSheet);
+      saveBtn?.focus();
+    });
+  }
+
+  function openTab(tab) {
+    if (tabHasPanelList(tab)) showSettingsTab(tab, { panelListMode: true });
+    else showSettingsTab(tab, { hub: false });
+  }
+
+  function saveTabThenOpen(dirtyTab, nextTab) {
+    if (!settingsForm) return;
+    // Show the dirty tab while it saves so any validation message is visible.
+    showSettingsTab(dirtyTab, { hub: false, panel: settingsRoot.dataset.settingsActivePanel || null });
+    pendingNextTab = nextTab;
+    if (typeof settingsForm.requestSubmit === "function") settingsForm.requestSubmit();
+    else settingsForm.dispatchEvent(new Event("submit", { cancelable: true }));
+  }
+
+  async function guardedOpenTab(tab) {
+    const current = settingsRoot.dataset.settingsActiveTab || "device";
+    if (tab === current || !dirtyTabs.has(current)) {
+      openTab(tab);
+      return;
+    }
+    const choice = await askUnsaved(current);
+    if (choice === "save") {
+      saveTabThenOpen(current, tab);
+    } else if (choice === "discard") {
+      discardTab(current);
+      openTab(tab);
+    }
+  }
+
   settingsChips.forEach((chip) => {
     chip.addEventListener("click", (event) => {
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       event.preventDefault();
-      const tab = chip.dataset.settingsTab;
-      if (tabHasPanelList(tab)) {
-        showSettingsTab(tab, { panelListMode: true });
-      } else {
-        showSettingsTab(tab, { hub: false });
-      }
+      guardedOpenTab(chip.dataset.settingsTab);
     });
   });
 
@@ -1184,12 +1357,7 @@ if (settingsRoot) {
     row.addEventListener("click", (event) => {
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       event.preventDefault();
-      const tab = row.dataset.settingsHubRow;
-      if (tabHasPanelList(tab)) {
-        showSettingsTab(tab, { panelListMode: true });
-      } else {
-        showSettingsTab(tab, { hub: false });
-      }
+      guardedOpenTab(row.dataset.settingsHubRow);
     });
   });
 
@@ -1230,9 +1398,24 @@ if (settingsRoot) {
     });
   }
 
+  let pendingTab = null;
+  try {
+    const raw = sessionStorage.getItem(SETTINGS_PENDING_KEY);
+    if (raw) {
+      sessionStorage.removeItem(SETTINGS_PENDING_KEY);
+      const pending = JSON.parse(raw);
+      if (pending?.tab && Date.now() - (pending.at || 0) < 60000) pendingTab = pending.tab;
+    }
+  } catch (_err) {
+    pendingTab = null;
+  }
+
   const initialHub = settingsRoot.dataset.settingsHub === "true";
   const urlPanel = new URL(window.location.href).searchParams.get("panel");
-  if (initialHub) {
+  if (pendingTab) {
+    // Saved from the unsaved-changes prompt: carry on to the tab the user was heading for.
+    openTab(pendingTab);
+  } else if (initialHub) {
     updateBackControl("hub", settingsRoot.dataset.settingsActiveTab || "device");
   } else {
     const tab = settingsRoot.dataset.settingsActiveTab || "device";

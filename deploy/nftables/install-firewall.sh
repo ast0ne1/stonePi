@@ -33,9 +33,9 @@ EOF
     fi
   fi
 else
+  # No `flush ruleset`: stonepi.nft replaces only its own table.
   cat > /etc/nftables.conf <<'EOF'
 #!/usr/sbin/nft -f
-flush ruleset
 include "/etc/nftables.d/stonepi.nft"
 EOF
 fi
@@ -45,7 +45,26 @@ if systemctl is-enabled ufw >/dev/null 2>&1; then
   systemctl disable --now ufw >/dev/null 2>&1 || true
 fi
 
+# Load only StonePi's table now (stonepi.nft deletes and re-adds `table inet stonepi`).
+# Do not (re)start nftables.service here: it runs /etc/nftables.conf, whose Debian default
+# begins with `flush ruleset` and would wipe tailscaled's tables until tailscaled restarts.
+# Enabled, it loads the rules at boot, before tailscaled starts.
 nft -f "$DEST_RULES"
 systemctl enable nftables >/dev/null 2>&1 || true
-systemctl restart nftables >/dev/null 2>&1 || systemctl start nftables >/dev/null 2>&1 || true
+
+# One-time repair: before 0.1.9 this script ran `flush ruleset`, which wiped tailscaled's
+# ts-* chains until tailscaled restarted. Restart it once to put them back, unless an SSH
+# session is coming in over Tailscale (the restart would cut it); then say what to run.
+TS_REPAIRED=/var/lib/stonepi/tailscale-rules-repaired
+if [[ ! -f "$TS_REPAIRED" ]] && systemctl is-active --quiet tailscaled \
+  && ! nft list ruleset 2>/dev/null | grep -q 'ts-input' \
+  && ! iptables-legacy -S 2>/dev/null | grep -q 'ts-input'; then
+  if ss -tnH state established '( sport = :22 )' 2>/dev/null | awk '{print $4}' | grep -q '^100\.'; then
+    echo "NOTE: Tailscale's firewall rules are missing. From the LAN, run: sudo systemctl restart tailscaled"
+  elif systemctl restart tailscaled; then
+    mkdir -p "$(dirname "$TS_REPAIRED")"
+    touch "$TS_REPAIRED"
+    echo "Restarted tailscaled once to restore its firewall rules."
+  fi
+fi
 echo "StonePi nftables rules applied."

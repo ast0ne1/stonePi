@@ -38,6 +38,11 @@ APPS = [
     ("pricescout", ROOT / "apps" / "pricescout", 8006, "", "python -m app.serve"),
     ("sportguide", ROOT / "apps" / "sportguide", 8007, "", "python -m app.serve"),
     ("pricewatch", ROOT / "apps" / "pricewatch", 8008, "", "python -m app.serve"),
+    # No Kiwix on Windows: Library shows "Kiwix not installed" / mock mode in dev.
+    ("library", ROOT / "apps" / "library", 8009, "", "python -m app.serve"),
+    # Car Thing panel. Preview it in Notify → Displays → Car Thing; with adb on PATH and a
+    # Car Thing plugged into this PC, the connector takes over its screen too.
+    ("carthing", ROOT / "apps" / "carthing", 8013, "", "python -m app.serve"),
 ]
 
 
@@ -46,17 +51,29 @@ def free_dev_ports() -> None:
     ports = sorted({port for _, _, port, _, _ in APPS})
     if os.name == "nt":
         port_list = ", ".join(str(p) for p in ports)
+        # A listening socket is inherited by child processes (SportGuide's Playwright driver /
+        # Chromium), so the reported owner may already be dead while an orphan still holds the
+        # port. Kill the owner's tree plus any orphans it left, then wait for the port to clear.
         script = f"""
 $ports = @({port_list})
-Get-NetTCPConnection -LocalPort $ports -State Listen -ErrorAction SilentlyContinue |
-  ForEach-Object {{
-    $procId = $_.OwningProcess
-    $port = $_.LocalPort
-    try {{
-      Stop-Process -Id $procId -Force -ErrorAction Stop
-      Write-Output "Freed port $port (PID $procId)"
-    }} catch {{}}
+function Stop-Tree($procId) {{
+  Get-CimInstance Win32_Process -Filter "ParentProcessId=$procId" -ErrorAction SilentlyContinue |
+    ForEach-Object {{ Stop-Tree $_.ProcessId }}
+  Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
+}}
+$listeners = Get-NetTCPConnection -LocalPort $ports -State Listen -ErrorAction SilentlyContinue
+foreach ($c in $listeners) {{
+  Stop-Tree $c.OwningProcess
+  Write-Output "Freed port $($c.LocalPort) (PID $($c.OwningProcess))"
+}}
+if ($listeners) {{
+  $deadline = (Get-Date).AddSeconds(10)
+  while ((Get-Date) -lt $deadline -and (Get-NetTCPConnection -LocalPort $ports -State Listen -ErrorAction SilentlyContinue)) {{
+    Start-Sleep -Milliseconds 250
   }}
+  Get-NetTCPConnection -LocalPort $ports -State Listen -ErrorAction SilentlyContinue |
+    ForEach-Object {{ Write-Output "WARNING: port $($_.LocalPort) still in use (PID $($_.OwningProcess))" }}
+}}
 """
         result = subprocess.run(
             ["powershell", "-NoProfile", "-Command", script],
@@ -171,6 +188,8 @@ def ensure_venv(name: str, app_dir: Path) -> Path:
         "pricescout",
         "sportguide",
         "pricewatch",
+        "library",
+        "carthing",
     }:
         _pip(py, "-e", str(vault))
     contracts = ROOT / "packages" / "stonepi_contracts"
@@ -183,6 +202,8 @@ def ensure_venv(name: str, app_dir: Path) -> Path:
         "pinboard",
         "sportguide",
         "pricewatch",
+        "library",
+        "carthing",
     }:
         _pip(py, "-e", str(contracts))
     browser_pkg = ROOT / "packages" / "stonepi_browser"
@@ -198,6 +219,8 @@ def ensure_venv(name: str, app_dir: Path) -> Path:
                 "stonepi_browser",
             }:
                 _pip(py, "-e", str(pkg))
+    if name == "carthing":
+        _pip(py, "-e", str(ROOT / "packages" / "stonepi_display"))
     if name == "notify":
         for pkg_name in ("stonepi_display", "stonepi_notify", "stonepi_watch"):
             pkg = ROOT / "packages" / pkg_name
@@ -251,6 +274,8 @@ def main() -> None:
         print("  PriceScout  http://127.0.0.1:8006/")
         print("  SportGuide  http://127.0.0.1:8007/")
         print("  PriceWatch  http://127.0.0.1:8008/")
+        print("  Library     http://127.0.0.1:8009/")
+        print("  Car Thing   http://127.0.0.1:8012/notify/displays/carthing (preview)")
         print("  Login       admin / admin")
         print("Ctrl+C to stop.")
         while True:
@@ -263,7 +288,14 @@ def main() -> None:
     finally:
         for proc in procs:
             if proc.poll() is None:
-                proc.terminate()
+                if os.name == "nt":
+                    # terminate() would leave Playwright/Chromium children holding the port.
+                    subprocess.run(
+                        ["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+                        capture_output=True,
+                    )
+                else:
+                    proc.terminate()
         for proc in procs:
             try:
                 proc.wait(timeout=8)

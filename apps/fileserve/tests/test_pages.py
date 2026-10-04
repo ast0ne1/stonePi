@@ -702,3 +702,38 @@ def test_non_admin_cannot_manage_other_pages(client):
     denied = client.post("/admin/delete/1", headers={"Accept": "application/json", "X-Requested-With": "fetch"})
     assert denied.status_code == 400
     assert b"cannot delete" in denied.data
+
+
+def test_hosted_pages_and_assets_are_sandboxed(client):
+    _login(client)
+    html = b"<html><body><script>document.title='x'</script></body></html>"
+    client.post(
+        "/admin/add",
+        data={"title": "Sandboxed", "file": (BytesIO(html), "page.html")},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    public = client.get("/sandboxed")
+    assert public.status_code == 200
+    csp = public.headers.get("Content-Security-Policy", "")
+    assert csp.startswith("sandbox ")
+    assert "allow-scripts" in csp
+    assert "allow-same-origin" not in csp
+    assert public.headers.get("X-Content-Type-Options") == "nosniff"
+
+    client.post(
+        "/admin/add",
+        data={
+            "label": "Sandboxed Site",
+            "slug": "sandboxed-site",
+            "file": (BytesIO(_site_zip_bytes()), "site.zip"),
+        },
+        content_type="multipart/form-data",
+        headers={"Accept": "application/json", "X-Requested-With": "fetch"},
+    )
+    for path in ("/sandboxed-site/", "/sandboxed-site/js/app.js"):
+        response = client.get(path)
+        assert response.status_code == 200, path
+        assert "allow-same-origin" not in response.headers["Content-Security-Policy"]
+        assert response.headers["Content-Security-Policy"].startswith("sandbox ")
+        assert response.headers["X-Content-Type-Options"] == "nosniff"

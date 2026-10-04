@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from app.db import SessionLocal
 from app.models import Event, User
-from app.services import auth, calendar_sync, ingest
+from app.services import auth, calendar_sync, capabilities, ingest
 
 bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -69,14 +69,85 @@ def display_status():
                 if len(title) > 42:
                     title = title[:39] + "…"
                 next_label = f"{title} · {when}"
-    return jsonify(
-        {
-            "ok": True,
-            "next": next_label,
-            "favourites": favourites_count,
-            "events": upcoming,
-        }
-    )
+    payload = {
+        "ok": True,
+        "next": next_label,
+        "favourites": favourites_count,
+        "events": upcoming,
+    }
+    limit = request.args.get("items", default=0, type=int) or 0
+    if limit > 0:  # Car Thing panel lists; the plain call (Dashboard tile, TRMNL) is unchanged
+        payload.update(_panel_feed(now, limit))
+    return jsonify(payload)
+
+
+def _plain(text: str, limit: int) -> str:
+    import html
+    import re
+
+    clean = re.sub(r"<[^>]+>", " ", html.unescape(text or ""))
+    clean = re.sub(r"[ \t]+", " ", clean)
+    return "\n".join(line.strip() for line in clean.splitlines() if line.strip())[:limit]
+
+
+def _panel_feed(now: datetime, limit: int) -> dict:
+    """Upcoming favourites (the admin's, as on the household display) for ``?items=N``."""
+    items: list[dict] = []
+    with SessionLocal() as db:
+        admin = db.execute(select(User).where(User.role == "admin").order_by(User.id.asc())).scalars().first()
+        events = []
+        if admin is not None:
+            events = (
+                db.execute(
+                    select(Event)
+                    .where(
+                        Event.user_id == admin.id,
+                        Event.is_favourited == True,  # noqa: E712
+                        Event.is_cancelled == False,  # noqa: E712
+                    )
+                    .order_by(Event.start_time.asc())
+                )
+                .scalars()
+                .all()
+            )
+        for event in events:
+            start = event.start_time
+            if start is None:
+                continue
+            if start.tzinfo is None:
+                start = start.replace(tzinfo=timezone.utc)
+            end = event.end_time
+            if end is not None and end.tzinfo is None:
+                end = end.replace(tzinfo=timezone.utc)
+            if start < now and (end is None or end < now):
+                continue
+            local = start.astimezone()
+            when = local.strftime("%a %d %b · %H:%M").replace(" 0", " ")
+            where = (event.location or "").strip()
+            where = "" if where.lower() == "unspecified" else where
+            happening = start <= now
+            details = [when, where]
+            if event.cost and event.cost.strip().lower() != "unspecified":
+                details.append(f"Cost: {event.cost.strip()}")
+            details.append(_plain(event.description, 900))
+            items.append(
+                {
+                    "id": str(event.id),
+                    "title": (event.title or "Event").strip()[:90],
+                    "sub": " · ".join(p for p in (when, where) if p),
+                    "badge": "Now" if happening else "",
+                    "detail": "\n".join(p for p in details if p),
+                }
+            )
+            if len(items) >= min(50, limit):
+                break
+    lead = items[0] if items else None
+    card = {
+        "headline": lead["title"] if lead else "No upcoming favourites",
+        "sub": lead["sub"] if lead else "",
+        "badge": lead["badge"] if lead else "",
+    }
+    return {"card": card, "items": items, "refresh_s": 300}
 
 
 @bp.route("/sync/status")
@@ -126,7 +197,7 @@ def toggle_favourite(event_id: int):
         cal_msg = ""
 
         # If favourited and not already synced, try forwarding to Google Calendar
-        if event.is_favourited:
+        if event.is_favourited and user.can(capabilities.SYNC_CALENDAR):
             success, msg = calendar_sync.forward_event_to_google(db, user.user_id, event)
             cal_msg = msg
 
@@ -176,6 +247,7 @@ def social_accounts_list():
 
 @bp.route("/social/accounts/<int:account_id>/check", methods=["POST"])
 @auth.login_required
+@auth.capability_required(capabilities.USE_SOCIAL, redirect_endpoint="sources.social_accounts")
 def social_account_check(account_id: int):
     from app.models import SocialAccount
     from app.services.social import poll as social_poll

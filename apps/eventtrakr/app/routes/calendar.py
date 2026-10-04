@@ -9,10 +9,14 @@ from stonepi_auth import is_public_exposure
 from app.config import env
 from app.db import SessionLocal
 from app.models import CalendarConnection, Event, User
-from app.services import auth, calendar_sync, settings as settings_service
+from app.services import auth, calendar_sync, capabilities, settings as settings_service
 
 bp = Blueprint("calendar", __name__, url_prefix="/calendar")
 logger = logging.getLogger("eventtrakr.routes.calendar")
+
+sync_calendar_required = auth.capability_required(
+    capabilities.SYNC_CALENDAR, redirect_endpoint="settings.view_settings", tab="calendar"
+)
 
 
 def _ics_requires_login() -> None:
@@ -42,7 +46,8 @@ def user_calendar_feed(username: str):
     _ics_requires_login()
     with SessionLocal() as db:
         user = db.execute(select(User).where(User.username == username)).scalar_one_or_none()
-        if not user:
+        # The live feed is a calendar subscription: it goes with Google Calendar sync.
+        if not user or not capabilities.user_can(user, capabilities.SYNC_CALENDAR):
             abort(404)
         ics_data = calendar_sync.build_user_calendar_feed(db, user.id)
 
@@ -55,6 +60,7 @@ def user_calendar_feed(username: str):
 
 @bp.route("/google/connect")
 @auth.login_required
+@sync_calendar_required
 def google_connect():
     with SessionLocal() as db:
         client_id, client_secret = settings_service.get_google_oauth_credentials(db)
@@ -88,6 +94,7 @@ def google_connect():
 
 @bp.route("/google/callback")
 @auth.login_required
+@sync_calendar_required
 def google_callback():
     user = auth.get_current_user()
     code = request.args.get("code")

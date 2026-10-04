@@ -85,6 +85,28 @@ def _require_user(request: Request, *, capability: str | None = None):
     return user, None
 
 
+def _can_manage_sources(user) -> bool:
+    """Refresh and source toggles: solo mode, admins, or the Manage sources capability."""
+    if not _session_secret():
+        return True
+    return bool(user and (user.is_admin or user.has_capability("pricescout", "can_manage_sources")))
+
+
+def _is_household_admin(user) -> bool:
+    if not _session_secret():
+        return True
+    return bool(user and user.is_admin)
+
+
+def _seed_household_zip(user) -> None:
+    """One-time migration: adopt the first admin's personal postcode for madspild."""
+    if not _is_household_admin(user) or db.household_zip_is_set():
+        return
+    personal = db.get_pref(_user_key(user), "zip", "").strip()
+    if personal:
+        db.set_household_zip(personal)
+
+
 def _user_key(user) -> str:
     if user is None:
         return "local"
@@ -113,7 +135,7 @@ def _csrf_response(request: Request, name: str, ctx: dict) -> HTMLResponse:
 
     ctx.setdefault("using_factory_admin", factory_admin_warning(user))
     if "can_refresh" not in ctx:
-        ctx["can_refresh"] = True if not _session_secret() else user is not None
+        ctx["can_refresh"] = _can_manage_sources(user)
     ctx.setdefault(
         "alerts_bell_state",
         bell_context(
@@ -357,9 +379,7 @@ def sources_page(request: Request, msg: str | None = None, error: str | None = N
     user, denied = _require_user(request)
     if denied:
         return denied
-    can_manage = bool(user and (user.is_admin or user.has_capability("pricescout", "can_manage_sources")))
-    if not user:
-        can_manage = True  # solo mode
+    can_manage = _can_manage_sources(user)
     sources = db.list_sources()
     return _csrf_response(
         request,
@@ -399,7 +419,7 @@ def sources_refresh(
     csrf_token: str = Form(""),
     next: str = Form("offers"),
 ):
-    user, denied = _require_user(request)
+    user, denied = _require_user(request, capability="can_manage_sources")
     if denied:
         return denied
     dest = {
@@ -415,11 +435,11 @@ def sources_refresh(
     token = _salling_token()
     if token:
         env.salling_api_token = token
-    uk = _user_key(user)
-    zip_code = db.get_pref(uk, "zip", "") or db.get_pref("local", "zip", "")
+    _seed_household_zip(user)
 
     def _run() -> None:
-        ingest.refresh_all(zip_code=zip_code)
+        # Shared rows: madspild uses the household postcode, never the clicker's.
+        ingest.refresh_all()
 
     threading.Thread(target=_run, daemon=True).start()
     return _redirect(dest, msg="Refresh started")
@@ -448,11 +468,17 @@ def _pricescout_settings_view(tab: str | None, panel: str | None) -> tuple[bool,
 
 
 @router.get("/settings", response_class=HTMLResponse)
-def settings_page(request: Request, tab: str | None = None, panel: str | None = None, msg: str | None = None):
+def settings_page(
+    request: Request,
+    tab: str | None = None,
+    panel: str | None = None,
+    msg: str | None = None,
+    error: str | None = None,
+):
     user, denied = _require_user(request)
     if denied:
         return denied
-    uk = _user_key(user)
+    _seed_household_zip(user)
     settings_hub, tab, settings_level, settings_panel = _pricescout_settings_view(tab, panel)
     home = portal_home_url(request, env.public_origin).rstrip("/")
     ledes = {
@@ -490,10 +516,12 @@ def settings_page(request: Request, tab: str | None = None, panel: str | None = 
                 )),
             ),
             "is_admin": bool(user and user.is_admin) or not _session_secret(),
-            "zip": db.get_pref(uk, "zip", ""),
+            "can_edit_household": _is_household_admin(user),
+            "household_zip": db.household_zip(),
             "currency": _currency(user),
             "currencies": CURRENCIES,
             "message": msg,
+            "error": error,
             "salling_configured": bool(_salling_token()),
             "settings_lede": lede,
             "notifications_card_state": notifications_card_context(
@@ -509,7 +537,6 @@ def settings_page(request: Request, tab: str | None = None, panel: str | None = 
 @router.post("/settings/general")
 def settings_general(
     request: Request,
-    zip: str = Form(""),
     currency: str = Form("DKK"),
     csrf_token: str = Form(""),
 ):
@@ -519,12 +546,31 @@ def settings_general(
     if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
         return _redirect("/settings?tab=general", error="Invalid session token")
     uk = _user_key(user)
-    db.set_pref(uk, "zip", zip.strip())
     code = (currency or "DKK").strip().upper()
     if code not in {c["id"] for c in CURRENCIES}:
         code = "DKK"
     db.set_pref(uk, "currency", code)
     return _redirect("/settings?tab=general&panel=preferences", msg="Saved")
+
+
+@router.post("/settings/household")
+def settings_household(
+    request: Request,
+    household_zip: str = Form(""),
+    csrf_token: str = Form(""),
+):
+    user, denied = _require_user(request)
+    if denied:
+        return denied
+    if not _is_household_admin(user):
+        return HTMLResponse("Only admins can change the household postcode.", status_code=403)
+    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+        return _redirect("/settings?tab=general&panel=preferences", error="Invalid session token")
+    value = (household_zip or "").strip()
+    if value and not (value.isdigit() and len(value) == 4):
+        return _redirect("/settings?tab=general&panel=preferences", error="Postcode must be 4 digits.")
+    db.set_household_zip(value)
+    return _redirect("/settings?tab=general&panel=preferences", msg="Household postcode saved")
 
 
 @router.post("/settings/clear-history")

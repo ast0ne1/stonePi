@@ -1,0 +1,20 @@
+{% from "_icons.html" import icon %}
+<section class="screen detail" data-screen="item" data-app="{{ mini }}">
+  <header class="bar">
+    <span class="bar-title">{{ label }}</span>
+    <span class="bar-meta"></span>
+    <span class="bar-time" data-clock-small></span>
+  </header>
+  <article class="doc" data-scroller>
+    {% if item %}
+    <h1>{{ item.title }}{% if item.badge %} <span class="badge">{{ item.badge }}</span>{% endif %}</h1>
+    {% if item.sub %}<p class="meta">{{ item.sub }}</p>{% endif %}
+    {% for p in paragraphs %}<p>{{ p }}</p>{% endfor %}
+    {% if can_restart %}
+    <button class="btn btn-primary" data-focus data-act="restart" data-unit="{{ item.unit }}">{{ icon("restart") }} Restart {{ item.title }}</button>
+    {% endif %}
+    {% else %}
+    <p class="empty">That item is gone. It may have just updated.</p>
+    {% endif %}
+  </article>
+</section>

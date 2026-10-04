@@ -21,6 +21,7 @@ APP_LABELS: dict[str, str] = {
     "fileserve": "FileServe",
     "studio": "Studio",
     "pinboard": "Pinboard",
+    "library": "Library",
     "system": "System",
 }
 
@@ -54,6 +55,8 @@ EVENT_CATALOG: tuple[EventType, ...] = (
               "A watched item hit your target price."),
     EventType("pricewatch.price_drop", "pricewatch", "Significant price drop", AUDIENCE_PERSONAL,
               "A watched item dropped in price."),
+    EventType("pricewatch.low_rated_offer", "pricewatch", "Cheaper offer from low-rated shop", AUDIENCE_PERSONAL,
+              "A shop below your minimum rating is under your target."),
     EventType("sportguide.watched_match_approaching", "sportguide", "Watched match starting", AUDIENCE_PERSONAL,
               "A team you watch plays soon."),
     EventType("pricescout.publication_released", "pricescout", "New store leaflet", AUDIENCE_HOUSEHOLD,
@@ -66,6 +69,16 @@ EVENT_CATALOG: tuple[EventType, ...] = (
               "A reminder is due today (yours, or the household's if unassigned)."),
     EventType("pinboard.notice_posted", "pinboard", "New notice", AUDIENCE_HOUSEHOLD,
               "Someone posted a notice."),
+    EventType("library.content_installed", "library", "Content installed", AUDIENCE_HOUSEHOLD,
+              "New offline content like Wikipedia is ready to read."),
+    EventType("library.download_failed", "library", "Download failed", AUDIENCE_ADMIN,
+              "An offline content download could not finish."),
+    EventType("library.update_available", "library", "Content update available", AUDIENCE_ADMIN,
+              "A newer edition of installed offline content is out."),
+    EventType("library.storage_missing", "library", "Library storage missing", AUDIENCE_ADMIN,
+              "The drive holding offline content is not connected."),
+    EventType("library.backup_capacity", "library", "Library backup won't fit", AUDIENCE_ADMIN,
+              "The backup drive can't fit the offline library content."),
     EventType("system.disk_warning", "system", "Disk warning", AUDIENCE_ADMIN,
               "The Pi is running low on disk space."),
 )

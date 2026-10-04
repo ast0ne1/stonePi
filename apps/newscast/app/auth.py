@@ -344,13 +344,41 @@ def require_login(request: Request, db: Annotated[Session, Depends(get_db)]) -> 
     )
 
 
-def require_admin(request: Request, db: Annotated[Session, Depends(get_db)]) -> str:
-    """Backward-compatible dependency: returns username string."""
+def require_user(request: Request, db: Annotated[Session, Depends(get_db)]) -> SessionUser:
+    """Router-level dependency: signed in with NewsCast access (members and admins).
+
+    ``session_from_request`` already drops people the platform no longer lets use
+    NewsCast and deactivated local accounts, so a session here means access.
+    Anything household-wide must still check :func:`session_is_admin` (or depend
+    on :func:`require_admin`).
+    """
+    return require_login(request, db)
+
+
+def require_admin(request: Request, db: Annotated[Session, Depends(get_db)]) -> SessionUser:
+    """Household admin only (403 for members)."""
     session = require_login(request, db)
     if session.role != "admin":
-        # Non-admins may still use most UI; admin-only routes use require_role.
-        return session.username
-    return session.username
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the household admin can do that.")
+    return session
+
+
+def session_is_admin(session: SessionUser | None) -> bool:
+    return bool(session and session.role == "admin")
+
+
+def may_add_custom_sources(db: Session, session: SessionUser | None) -> bool:
+    """Admins always; members when the platform (mirrored locally) grants can_add_custom_sources."""
+    if session is None:
+        return False
+    if session_is_admin(session):
+        return True
+    if session.user_id is None:
+        return False
+    from app.models import User
+
+    row = db.get(User, int(session.user_id))
+    return bool(row and row.active and row.can_add_custom_sources)
 
 
 def require_role(*roles: str):

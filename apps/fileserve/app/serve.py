@@ -54,7 +54,7 @@ def main() -> None:
         ssl_certfile=ssl_certfile,
         ssl_keyfile=ssl_keyfile,
         log_level="info",
-        timeout_keep_alive=15,
+        timeout_keep_alive=15, access_log=False,
     )
 
 

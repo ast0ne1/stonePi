@@ -6,11 +6,14 @@
 <section class="hero">
   {% include "_back_to_settings.html" %}
   <h1>Displays</h1>
-  <p class="lede">Lay out widgets for each TRMNL screen. Every Display pushes to its own TRMNL plugin.</p>
+  <p class="lede">Two kinds of screen: TRMNL e-ink displays to glance at on the wall, and the Car Thing touch panel to use on a desk or dash.</p>
 </section>
 
 {% if message %}<p class="flash ok" role="status">{{ message }}</p>{% endif %}
 {% if error %}<p class="flash bad" role="alert">{{ error }}</p>{% endif %}
+
+<h2 class="section-heading">TRMNL</h2>
+<p class="hint">Read-only screens that refresh on a timer with news, sport, events, prices and system status from your apps. Add a display, then open it to lay out widgets and save its webhook.</p>
 
 <form method="post" action="/displays/create" class="create-row">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
@@ -44,7 +47,25 @@
 {% else %}
 <div class="card stack empty-state">
   <h2>No displays yet</h2>
-  <p class="lede">Create a Display or use the built-in Dashboard overview.</p>
+  <p class="lede">Add a display above, or use the built-in Dashboard overview.</p>
 </div>
 {% endif %}
+
+<h2 class="section-heading">Car Thing</h2>
+<p class="hint">A control panel you touch: pages of widgets (System, clock and weather, SportGuide, EventTrakr, NewsCast, Pinboard) that turn on a timer or with a button, the dial and buttons run the actions you pick, and a clock shows when it's idle. Open it to set up pages and configs.</p>
+
+<div class="service-grid">
+  <section class="card stack carthing-summary">
+    <h2><a class="text-link" href="/displays/carthing">Car Thing panel</a></h2>
+    <p class="muted">
+      Plugged into the Pi by USB
+      · {{ 'On' if carthing.enabled else 'Off' }}
+      {% if carthing.active %}· showing “{{ carthing.active }}”{% endif %}
+      · {{ carthing.configs }} saved config{{ '' if carthing.configs == 1 else 's' }}
+    </p>
+    <div class="row-actions">
+      <a class="btn btn-ghost btn-with-icon" href="/displays/carthing">{{ svg('open') }} Open</a>
+    </div>
+  </section>
+</div>
 {% endblock %}

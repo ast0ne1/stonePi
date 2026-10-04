@@ -10,7 +10,10 @@ CONF="/etc/stonepi/backup.conf"
 STAMP_LEGACY="/var/lib/stonepi/last-backup.txt"
 STAMP_LOCAL="/var/lib/stonepi/last-local-backup.txt"
 STAMP_USB="/var/lib/stonepi/last-usb-backup.txt"
-APPS="stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch"
+APPS="stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library"
+INCLUDE_LIBRARY_CONTENT=0
+LIBRARY_MANIFEST="/var/lib/stonepi/library/backup-manifest.json"
+LIBRARY_COPY="/usr/local/sbin/stonepi-backup-library"
 LABEL="STONEPI-BACKUP"
 UUID=""
 LOCAL_ROOT="/var/backups/stonepi"
@@ -31,6 +34,10 @@ done
 if [[ -f "$CONF" ]]; then
   # shellcheck disable=SC1090
   source "$CONF"
+fi
+# backup.conf from older installs pins APPS without newer apps.
+if [[ " $APPS " != *" stonepi-library "* ]] && systemctl cat stonepi-library.service >/dev/null 2>&1; then
+  APPS="$APPS stonepi-library"
 fi
 
 STAMP="$STAMP_USB"
@@ -181,9 +188,13 @@ backup_sqlite /var/lib/stonepi/auth/users.sqlite "$STAMP_DIR/databases/users.sql
 backup_sqlite /var/lib/stonepi/newscast/newscast.sqlite "$STAMP_DIR/databases/newscast.sqlite"
 backup_sqlite /var/lib/stonepi/fileserve/fileserve.sqlite "$STAMP_DIR/databases/fileserve.sqlite"
 backup_sqlite /var/lib/stonepi/eventtrakr/eventtrakr.sqlite "$STAMP_DIR/databases/eventtrakr.sqlite"
+backup_sqlite /var/lib/stonepi/library/library.sqlite "$STAMP_DIR/databases/library.sqlite"
 
 log "Application data copying"
-rsync -a --delete /var/lib/stonepi/ "$STAMP_DIR/applications/" || fail "Application data copy failed"
+# Library ZIM files are re-downloadable and can be 100+ GB: never in the per-run copy.
+# (The opt-in content backup copies them once into a shared store — see below.)
+rsync -a --delete --exclude '/library/zim/' --exclude '.partial/' \
+  /var/lib/stonepi/ "$STAMP_DIR/applications/" || fail "Application data copy failed"
 rsync -a /opt/stonepi/ "$STAMP_DIR/system/opt-stonepi/" --exclude '.venv' --exclude '__pycache__' || fail "Application code copy failed"
 
 log "Configuration copying"
@@ -195,6 +206,19 @@ rsync -a /boot/firmware/ "$STAMP_DIR/boot/" 2>/dev/null || rsync -a /boot/ "$STA
 hostnamectl > "$STAMP_DIR/manifests/hostname.txt" || true
 dpkg --get-selections > "$STAMP_DIR/manifests/dpkg-selections.txt"
 systemctl list-unit-files 'stonepi*' > "$STAMP_DIR/manifests/units.txt"
+rsync -a /etc/systemd/system/stonepi-kiwix.service.d/ "$STAMP_DIR/config/systemd/stonepi-kiwix.service.d/" 2>/dev/null || true
+grep -- '# stonepi-library' /etc/fstab > "$STAMP_DIR/manifests/fstab-library.txt" 2>/dev/null || true
+
+# Kiwix reader packages, so a restore works without internet.
+if dpkg -s kiwix-tools >/dev/null 2>&1; then
+  mkdir -p "$STAMP_DIR/packages/kiwix"
+  (
+    cd "$STAMP_DIR/packages/kiwix"
+    deps="$(apt-cache depends kiwix-tools 2>/dev/null | awk '/^  Depends:/{print $2}' | grep -E '^lib(kiwix|zim|xapian|microhttpd|pugixml|mustache)' | tr '\n' ' ' || true)"
+    # shellcheck disable=SC2086
+    apt-get download kiwix-tools $deps >/dev/null 2>&1 || log "Kiwix packages not cached (offline?) — restore will use apt"
+  ) || true
+fi
 
 # Finalize local destination (safe single-copy rotate).
 DESTINATION="$STAMP_DIR"
@@ -217,6 +241,7 @@ if [[ "$MODE" == "local" ]]; then
 fi
 
 SIZE=$(du -sh "$STAMP_DIR" | awk '{print $1}')
+SIZE_KB=$(du -sk "$STAMP_DIR" | awk '{print $1}')
 INFO_EXTRA=""
 if [[ "$MODE" == "usb" ]]; then
   INFO_EXTRA="LABEL=$LABEL
@@ -228,6 +253,7 @@ KIND=$MODE
 TIMESTAMP=$(date -Is)
 DESTINATION=$DESTINATION
 SIZE=$SIZE
+SIZE_KB=$SIZE_KB
 $INFO_EXTRA
 EOF
 write_stamp "$STAMP" < "$STAMP_DIR/backup-info.txt"
@@ -236,6 +262,31 @@ log "Backup verified"
 log "Applications restarting"
 restart_apps
 trap - EXIT
+
+# Library content (opt-in, USB only). Runs after apps restart so downtime is
+# unchanged; a skipped/failed copy marks the run partial, never failed.
+LIBRARY_CONTENT="off"
+LIBRARY_CONTENT_BYTES=0
+if [[ "$MODE" == "usb" && "${INCLUDE_LIBRARY_CONTENT:-0}" =~ ^(1|true|yes)$ && -f "$LIBRARY_MANIFEST" && -x "$LIBRARY_COPY" ]]; then
+  log "Library content copying"
+  lib_result="$("$LIBRARY_COPY" backup "$LIBRARY_MANIFEST" "$MOUNT/RaspberryPi-Backup/library-content" "$LOG" || echo "failed 0")"
+  LIBRARY_CONTENT="${lib_result%% *}"
+  LIBRARY_CONTENT_BYTES="${lib_result##* }"
+  log "Library content: $LIBRARY_CONTENT"
+fi
+# Destination facts, so Library can check capacity while the drive is unplugged.
+DEST_TOTAL_KB=$(df -Pk "$STAMP_DIR" | awk 'NR==2{print $2}')
+DEST_AVAIL_KB=$(df -Pk "$STAMP_DIR" | awk 'NR==2{print $4}')
+cat >> "$STAMP_DIR/backup-info.txt" <<EOF
+DEST_TOTAL_KB=$DEST_TOTAL_KB
+DEST_AVAIL_KB=$DEST_AVAIL_KB
+LIBRARY_CONTENT=$LIBRARY_CONTENT
+LIBRARY_CONTENT_BYTES=$LIBRARY_CONTENT_BYTES
+EOF
+if [[ "$LIBRARY_CONTENT" == "skipped" || "$LIBRARY_CONTENT" == "failed" ]]; then
+  sed -i 's/^STATUS=ok$/STATUS=partial/' "$STAMP_DIR/backup-info.txt"
+fi
+write_stamp "$STAMP" < "$STAMP_DIR/backup-info.txt"
 
 log "BACKUP COMPLETE Kind=$MODE Size=$SIZE Destination=$DESTINATION"
 echo

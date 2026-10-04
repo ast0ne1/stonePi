@@ -1,0 +1,32 @@
+[Unit]
+Description=StonePi Library
+After=network-online.target stonepi-auth.service
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=stonepi-library
+Group=stonepi-library
+EnvironmentFile=/etc/stonepi/stonepi.env
+EnvironmentFile=-/etc/stonepi/library.env
+Environment=HOME=/opt/stonepi
+WorkingDirectory=/opt/stonepi/apps/library
+ExecStart=/opt/stonepi/apps/library/.venv/bin/python -m app.serve
+Restart=always
+RestartSec=5
+# Library calls the root helper (/usr/local/sbin/stonepi-library-helper) via sudoers
+# for apt install, mounts, and Kiwix unit control. NoNewPrivileges would block sudo.
+NoNewPrivileges=no
+# Content downloads land in /var/lib/stonepi/library/zim or on external storage
+# (/mnt/stonepi-library, /mnt/stonepi-backup); no ProtectSystem, like siblings.
+Nice=10
+CPUWeight=20
+# Multi-GB downloads and checksums: disk access only when nothing else wants it.
+IOSchedulingClass=idle
+IOWeight=20
+MemoryMax=384M
+
+[Install]
+WantedBy=multi-user.target

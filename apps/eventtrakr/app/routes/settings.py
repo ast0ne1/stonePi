@@ -8,7 +8,8 @@ from stonepi_auth.http import portal_home_url
 from app.config import env
 from app.db import SessionLocal
 from app.models import CalendarConnection, Category, EventSource, User
-from app.services import auth, categories, hostname, passwords, settings, tls, update
+from app.services import auth, brightdata, capabilities, categories, hostname, passwords, settings, tls, update
+from app.services.scrapers import brightdata_facebook
 from app import __github__, __github_user__, __version__ as app_version
 
 bp = Blueprint("settings", __name__, url_prefix="/settings")
@@ -151,6 +152,8 @@ def view_settings():
         global_keyword_include, global_keyword_exclude = settings.get_global_keywords(db)
         category_list = categories.list_categories(db)
         brightdata_configured = bool(settings.get_brightdata_api_key(db))
+        brightdata.ensure_instagram_allowance()
+        brightdata_usage = brightdata.usage()
         google_client_id, _ = settings.get_google_oauth_credentials(db)
         google_configured = bool(google_client_id)
         github_repo = update.repo_from_db(db) if user.role == "admin" and not platform_managed else ""
@@ -169,6 +172,10 @@ def view_settings():
         social_ai_fallback = False
         social_notify_enabled = social_config.notify_enabled(db)
         social_posts_per_check = social_config.posts_per_check(db)
+        social_active_hours = social_config.active_hours(db) or ("", "")
+        social_estimate = social_config.estimate_usage(db, (brightdata_usage or {}).get("period_days") or 30)
+        social_allowance = ((brightdata_usage or {}).get("use_limits") or {}).get(brightdata.INSTAGRAM_USE)
+        social_instagram_used = ((brightdata_usage or {}).get("by_use") or {}).get(brightdata.INSTAGRAM_USE, 0)
 
     return render_template(
         "settings.html",
@@ -199,6 +206,9 @@ def view_settings():
         global_keyword_exclude=global_keyword_exclude,
         category_list=category_list,
         brightdata_configured=brightdata_configured,
+        brightdata_usage=brightdata_usage,
+        brightdata_search_limit=brightdata_facebook.SEARCH_LIMIT,
+        brightdata_search_cache_hours=int(brightdata_facebook.SEARCH_CACHE_HOURS),
         google_configured=google_configured,
         github_repo=github_repo,
         update_check=update_check,
@@ -217,6 +227,11 @@ def view_settings():
         social_ai_fallback=social_ai_fallback,
         social_notify_enabled=social_notify_enabled,
         social_posts_per_check=social_posts_per_check,
+        social_active_start=social_active_hours[0],
+        social_active_end=social_active_hours[1],
+        social_estimate=social_estimate,
+        social_allowance=social_allowance,
+        social_instagram_used=social_instagram_used,
         notifications_card_state=notifications_card_context(
             "eventtrakr",
             auth._platform_user(),
@@ -251,6 +266,7 @@ def save_general():
 
 @bp.route("/privacy", methods=["POST"])
 @auth.login_required
+@auth.capability_required(capabilities.SHARE_AGENDA, redirect_endpoint="settings.view_settings", tab="privacy")
 def save_privacy():
     user = auth.get_current_user()
     is_public = request.form.get("is_public") == "1"
@@ -346,6 +362,24 @@ def save_discovery():
         except (TypeError, ValueError):
             posts = 10
         settings.set_value(db, "social_posts_per_check", str(posts))
+        try:
+            social_config.set_active_hours(
+                db, request.form.get("social_active_start", ""), request.form.get("social_active_end", "")
+            )
+        except ValueError as e:
+            flash(f"{e}. Other discovery settings were saved.", "error")
+            return redirect(url_for("settings.view_settings", tab="discovery"))
+        raw_allowance = request.form.get("social_allowance", "").strip()
+        try:
+            allowance = None if raw_allowance == "" else min(10_000_000, max(0, int(raw_allowance)))
+        except ValueError:
+            flash("Enter a whole number of records for the Instagram allowance. Other discovery settings were saved.", "error")
+            return redirect(url_for("settings.view_settings", tab="discovery"))
+        try:
+            brightdata.set_instagram_allowance(allowance)
+        except Exception:
+            flash("Couldn't save the Instagram allowance: the StonePi Vault folder isn't writable.", "error")
+            return redirect(url_for("settings.view_settings", tab="discovery"))
         flash("Discovery settings saved.", "success")
     return redirect(url_for("settings.view_settings", tab="discovery"))
 
@@ -431,6 +465,33 @@ def save_integrations():
         with SessionLocal() as db:
             settings.set_brightdata_api_key(db, api_key)
         flash("Bright Data API key saved.", "success")
+    return redirect(url_for("settings.view_settings", tab="providers"))
+
+
+@bp.route("/integrations/limit", methods=["POST"])
+@auth.admin_required
+def save_brightdata_limit():
+    try:
+        limit = int(request.form.get("brightdata_limit", "").strip())
+    except ValueError:
+        flash("Enter a whole number of records.", "error")
+        return redirect(url_for("settings.view_settings", tab="providers"))
+    try:
+        reset_day = min(31, max(1, int(request.form.get("brightdata_reset_day", "1").strip() or 1)))
+    except ValueError:
+        flash("Enter a reset day from 1 to 31.", "error")
+        return redirect(url_for("settings.view_settings", tab="providers"))
+    try:
+        brightdata.set_limit(min(10_000_000, max(0, limit)))
+        status = brightdata.set_reset_day(reset_day)
+    except Exception:
+        flash("Couldn't save the limit: the StonePi Vault folder isn't writable.", "error")
+        return redirect(url_for("settings.view_settings", tab="providers"))
+    flash(
+        f"Bright Data limit set to {max(0, limit)} records a month (shared by all apps), "
+        f"resetting on day {reset_day}; next reset {status['resets_on']}.",
+        "success",
+    )
     return redirect(url_for("settings.view_settings", tab="providers"))
 
 

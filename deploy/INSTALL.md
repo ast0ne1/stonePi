@@ -98,6 +98,7 @@ sudo bash deploy/install.sh --hostname stonepi
 The installer will:
 
 - Install system packages (Python, Nginx, Avahi + `avahi-utils`, Cockpit, Playwright libs)
+- Install `adb` for the optional Car Thing panel (a failure only warns) and Tailscale from its signed apt repository (a failure only warns; the ready check lists it and a re-run retries)
 - Configure Avahi for IPv4 mDNS publish (`stonepi.local`)
 - Copy the tree to `/opt/stonepi`
 - Create `/etc/stonepi/*.env` (with `STONEPI_DATA_DIR` under `/var/lib/stonepi`) and data dirs
@@ -108,7 +109,8 @@ The installer will:
 - Enable USB-plug backup udev rule; leave weekly **USB** backup timer **disabled**
 - Install local-backup unit/timer (timer stays off until enabled in Settings → Backup)
 - Enable Cockpit
-- Run health checks (units active, loopback apps, edge HTTP)
+- Run health checks (units active, every enabled app's `/healthz`, edge HTTP) and the ready check (permissions as each service user, sudo helpers, Tailscale)
+- Print the first admin password (first install only) and mark the install complete — an interrupted install is resumed by running the bootstrap command again
 
 First run can take several minutes (pip + Chromium for EventTrakr).
 
@@ -128,6 +130,7 @@ On another device on the same LAN:
 | http://stonepi.local/prices/ | PriceScout |
 | http://stonepi.local/sports/ | SportGuide |
 | http://stonepi.local/watch/ | PriceWatch |
+| http://stonepi.local/library/ | Library (reader at `/library/read/`) |
 | http://stonepi.local/notify/ | Notify (admin: Displays, TRMNL, ntfy) |
 | http://stonepi.local/recover/ or http://stonepi.local:8099/ | Recovery Console (escape hatch; user `stonepi`) |
 | https://stonepi.local:9090 or https://PI_LAN_IP:9090 | Cockpit (Linux admin; HTTPS) |
@@ -136,7 +139,7 @@ Prefer a **router DHCP reservation + local DNS** name (e.g. `stonepi.home` on a 
 
 `stonepi urls` prints the same list using the Pi hostname.
 
-Default account: **admin** / **admin** — change it immediately under **Settings → General → Your password** (admins reset other accounts under **Users**).
+Default account: **admin** with a random password the installer prints at the end of a first install (only when no accounts exist yet). It is also kept for root in `/etc/stonepi/initial-admin.txt` (`sudo cat /etc/stonepi/initial-admin.txt`). Change it immediately under **Settings → General → Your password** (admins reset other accounts under **Users**).
 
 ## After install
 
@@ -179,14 +182,14 @@ cat /var/lib/stonepi/last-usb-backup.txt
 sudo stonepi-backup-helper list
 ```
 
-Recovery Console: http://stonepi.local/recover/ — user `stonepi`, password Vault `STONEPI_RECOVER_PASSWORD`.
+Recovery Console: http://stonepi.local/recover/ — user `stonepi`, password in root-only `/etc/stonepi/recover.passwd`, shown at the end of the install (`sudo cut -d: -f2- /etc/stonepi/recover.passwd` shows it again; change it from Dashboard → Settings → Vault, at least 12 characters). It is never kept in the Vault.
 ## Fresh OS checklist
 
 - [ ] SSH enabled in Imager
 - [ ] `stonePi` folder on boot partition (without `.venv`)
 - [ ] `sudo bash …/deploy/install.sh --hostname stonepi` completed
 - [ ] http://stonepi.local/ loads
-- [ ] Password changed from `admin` / `admin`
+- [ ] First admin password (end of install / `/etc/stonepi/initial-admin.txt`) changed
 - [ ] Backup USB labelled and tested once
 
 ## Public internet exposure (optional)
@@ -224,6 +227,7 @@ Application units (enabled on boot):
 - `stonepi-pricescout`
 - `stonepi-sportguide`
 - `stonepi-pricewatch`
+- `stonepi-library`
 
 Platform units (enabled on boot):
 
@@ -231,5 +235,7 @@ Platform units (enabled on boot):
 - `stonepi-recover` — Recovery Console on `:8099`
 - `stonepi-failover-monitor` — points `/` at Recover while Dashboard is down
 - `stonepi.target` — groups every StonePi unit
+
+Library reader: `stonepi-kiwix` (kiwix-serve on loopback `:8014`) is installed but not enabled; the Library helper enables and starts it once offline content is installed. Without content it is inactive by design.
 
 Backup units: `stonepi-backup` (USB, runs on insert; the optional weekly `stonepi-backup.timer` is off by default) and `stonepi-local-backup` + `stonepi-local-backup.timer` (timer only when enabled in **Settings → Backup**).

@@ -1,6 +1,13 @@
 # Changelog — Pinboard
 
-## Unreleased
+## 0.0.7 — 2026-10-04
+
+### Added
+- "Post notices" and "Assign reminders to others" permissions (both on by default). Without the second, reminders are your own (the picker shows "Me"), including PriceScout shopping-list sends.
+- `/api/display?items=N` (loopback) adds `card` + `items` for the Car Thing panel: notices and reminders, overdue ones badged. The plain call is unchanged.
+
+### Security
+- On a platform install with no session secret every page returns 503 instead of opening up (solo runs unchanged).
 
 ## 0.0.6 — 2026-09-29
 

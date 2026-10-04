@@ -12,12 +12,20 @@ from typing import Any
 logger = logging.getLogger("stonepi.dashboard.collector")
 
 CARDS_INTERVAL = 20.0
+# Floor between card refreshes when someone is waiting on a change (Health page
+# polling, a Services start/stop/restart, a unit mid-transition). One systemctl
+# call + loopback probes per pass; never more often than this, however many tabs ask.
+FAST_CARDS_INTERVAL = 3.0
 TEMP_INTERVAL = 30.0
 SLOW_INTERVAL = 300.0
+TRANSITIONAL_UNIT_STATES = frozenset({"activating", "deactivating", "reloading"})
 
 _lock = threading.RLock()
 _thread: threading.Thread | None = None
 _stop = threading.Event()
+# Wakes the loop early (refresh requested, or stop).
+_wake = threading.Event()
+_cards_state: dict[str, float | bool] = {"last": -1e9, "early": False, "fast_until": -1e9}
 
 _snapshot: dict[str, Any] = {
     "ready": False,
@@ -187,6 +195,44 @@ def _refresh_cards_and_watch() -> None:
     }
     maybe_emit_disk_warning(watch)
     _merge({"cards": cards, "watch": watch, "backup": backup})
+    with _lock:
+        _cards_state["last"] = time.monotonic()
+        _cards_state["early"] = False
+
+
+def watch_in_transition(watch: dict | None) -> bool:
+    """True while an enabled app's unit is starting/stopping/reloading."""
+    for row in (watch or {}).get("apps") or []:
+        if row.get("enabled", True) and str(row.get("unit") or "") in TRANSITIONAL_UNIT_STATES:
+            return True
+    return False
+
+
+def request_refresh(*, window: float = 0.0) -> None:
+    """Ask the loop to re-check cards/watch soon (rate-limited to FAST_CARDS_INTERVAL).
+
+    ``window`` keeps the fast cadence for that many seconds (e.g. after a
+    Services restart, while the app comes back). Never runs systemctl itself.
+    """
+    now = time.monotonic()
+    with _lock:
+        _cards_state["early"] = True
+        if window > 0:
+            _cards_state["fast_until"] = max(float(_cards_state["fast_until"]), now + window)
+    _wake.set()
+
+
+def _cards_due_at(now: float | None = None) -> float:
+    """When the next cards/watch refresh is due."""
+    now = time.monotonic() if now is None else now
+    with _lock:
+        last = float(_cards_state["last"])
+        fast = (
+            bool(_cards_state["early"])
+            or now < float(_cards_state["fast_until"])
+            or watch_in_transition(_snapshot.get("watch"))
+        )
+    return last + (FAST_CARDS_INTERVAL if fast else CARDS_INTERVAL)
 
 
 def _refresh_temp() -> None:
@@ -266,21 +312,7 @@ def _build_system_health() -> dict[str, Any]:
     apps = list(watch.get("apps") or [])
     notifications = next((a for a in apps if a.get("id") == "notify"), None)
 
-    nginx_ok = True
-    if os.name != "nt" and shutil.which("systemctl"):
-        try:
-            import subprocess
-
-            result = subprocess.run(
-                ["systemctl", "is-active", "nginx"],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=3,
-            )
-            nginx_ok = (result.stdout or "").strip() == "active"
-        except Exception:
-            nginx_ok = False
+    nginx_ok = _nginx_active()
 
     level = watch.get("level") or stonepi_watch.LEVEL_HEALTHY
     ntfy = dest.get("ntfy") or {"enabled": False, "configured": False, "token_set": False}
@@ -331,6 +363,36 @@ def _build_system_health() -> dict[str, Any]:
     }
 
 
+_NGINX: dict[str, float | bool] = {"at": -1e9, "ok": True}
+
+
+def _nginx_active() -> bool:
+    """nginx state, re-checked at most every CARDS_INTERVAL (a systemctl process each time)."""
+    now = time.monotonic()
+    if now - float(_NGINX["at"]) < CARDS_INTERVAL:
+        return bool(_NGINX["ok"])
+    import os
+    import shutil
+
+    ok = True
+    if os.name != "nt" and shutil.which("systemctl"):
+        try:
+            import subprocess
+
+            result = subprocess.run(
+                ["systemctl", "is-active", "nginx"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=3,
+            )
+            ok = (result.stdout or "").strip() == "active"
+        except Exception:
+            ok = False
+    _NGINX.update(at=now, ok=ok)
+    return ok
+
+
 def refresh_now(*, cards: bool = True, temp: bool = True, slow: bool = True) -> dict[str, Any]:
     """Synchronous refresh (tests / forced)."""
     if cards:
@@ -356,26 +418,40 @@ def refresh_now(*, cards: bool = True, temp: bool = True, slow: bool = True) -> 
 def _loop() -> None:
     # Prime quickly so first Overview is not empty for long, then honour intervals.
     refresh_now()
-    last_cards = time.monotonic()
-    last_temp = last_cards
-    last_slow = last_cards
+    last_temp = time.monotonic()
+    last_slow = last_temp
     while not _stop.is_set():
+        _wake.clear()
         now = time.monotonic()
+        ran = False
         try:
-            if now - last_cards >= CARDS_INTERVAL:
-                _refresh_cards_and_watch()
-                last_cards = now
+            if now >= _cards_due_at(now):
+                try:
+                    _refresh_cards_and_watch()
+                finally:
+                    # A failing pass still counts, so a broken probe can't spin the loop.
+                    with _lock:
+                        _cards_state["last"] = time.monotonic()
+                        _cards_state["early"] = False
+                ran = True
             if now - last_temp >= TEMP_INTERVAL:
                 _refresh_temp()
                 last_temp = now
+                ran = True
             if now - last_slow >= SLOW_INTERVAL:
                 _refresh_slow()
                 last_slow = now
-            with _lock:
-                _snapshot["system_health"] = _build_system_health()
+                ran = True
+            # Rebuild the summary only when its inputs changed (it used to run,
+            # with a systemctl process, every 2 s whether or not anything had).
+            if ran:
+                with _lock:
+                    _snapshot["system_health"] = _build_system_health()
         except Exception as exc:  # noqa: BLE001
             logger.warning("collector tick failed: %s", exc)
-        _stop.wait(2.0)
+        # Sleep until the next refresh is due, or until request_refresh()/stop() wakes us.
+        due = min(_cards_due_at(), last_temp + TEMP_INTERVAL, last_slow + SLOW_INTERVAL)
+        _wake.wait(max(0.25, due - time.monotonic()))
 
 
 def start() -> None:
@@ -391,3 +467,4 @@ def start() -> None:
 
 def stop() -> None:
     _stop.set()
+    _wake.set()

@@ -88,6 +88,9 @@
   <h2 class="section-heading">{{ icon('lock') }} Personal Overview Privacy</h2>
   <p class="form-hint" style="margin-bottom: 20px;">Control whether your 7-day personal event agenda is visible publicly to others without logging in.</p>
 
+  {% if not current_user.can('can_share_agenda') %}
+  <p class="form-hint" data-cap-hint="can_share_agenda">Your agenda and favourites stay private. Ask an admin to allow “Share agenda publicly” in StonePi → Users.</p>
+  {% else %}
   <form method="post" action="/settings/privacy">
     <div style="margin-bottom: 20px;">
       <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 600;">
@@ -129,8 +132,10 @@
 
     <button type="submit" class="btn btn-primary btn-with-icon">{{ icon('check') }} Save Privacy Settings</button>
   </form>
+  {% endif %}
 </div>
 
+{% if current_user.can('can_sync_calendar') %}
 <div class="card">
   <h2 class="section-heading">{{ icon('calendar') }} Webcal Calendar Subscription Feed</h2>
   <p class="form-hint" style="margin-bottom: 14px;">Subscribe to all your favourited events in Apple Calendar, Microsoft Outlook, or Google Calendar using this live iCal URL.</p>
@@ -139,6 +144,7 @@
     webcal://{{ public_url|replace('http://','')|replace('https://','') }}/calendar/feed/{{ user.username }}.ics
   </div>
 </div>
+{% endif %}
 </div>
 
 <!-- Tab: Schedule -->
@@ -268,6 +274,25 @@
       <input type="number" id="social_posts_per_check" name="social_posts_per_check" class="form-control" min="1" max="20" value="{{ social_posts_per_check }}" />
       <span class="form-hint">Ask Bright Data for at most this many recent posts per account (keeps free-tier usage low).</span>
     </div>
+    <div class="form-group">
+      <label>Polling hours</label>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <input type="time" name="social_active_start" class="form-control" value="{{ social_active_start }}" aria-label="Poll from" />
+        <span>to</span>
+        <input type="time" name="social_active_end" class="form-control" value="{{ social_active_end }}" aria-label="Poll until" />
+      </div>
+      <span class="form-hint">Scheduled checks only run in this window (e.g. 08:00 to 23:00 skips the night). Leave both blank for all day. Accounts on fixed weekly times keep them.</span>
+    </div>
+    <div class="form-group">
+      <label for="social_allowance">Instagram allowance (Bright Data records per period)</label>
+      <input type="number" id="social_allowance" name="social_allowance" class="form-control" min="0" max="10000000" value="{{ social_allowance.limit if social_allowance else '' }}" placeholder="No separate allowance" />
+      <span class="form-hint">Instagram's share of the Bright Data limit set under Data Providers, so polling can't use up what Facebook sources and PriceWatch need. Default 2,000; blank shares the whole limit; 0 stops Instagram checks. Scheduled checks spread it across the period; "Check now" can use what's left.</span>
+    </div>
+    <p class="form-hint" style="margin-bottom: 12px;">
+      Used this period: <strong>{{ social_instagram_used }}</strong>{% if social_allowance %} of {{ social_allowance.limit }}{% endif %} records.
+      At these settings, {{ social_estimate.accounts }} tracked account{{ '' if social_estimate.accounts == 1 else 's' }} make about {{ social_estimate.checks }} checks a period: at most {{ social_estimate.worst_case }} records if every check returned {{ social_estimate.posts_per_check }} new posts. Usually far fewer, since only posts since the last check come back.
+      {% if social_allowance and social_estimate.worst_case > social_allowance.limit %}<strong>That's more than the allowance</strong>, so checks pause for the day once today's share is used. Poll less often, narrow the hours or lower posts per check to spread it evenly.{% endif %}
+    </p>
     <label class="check-row">
       <input type="checkbox" name="social_auto_discover" value="1" {% if social_auto_discover %}checked{% endif %} />
       <span>Automatic discovery</span>
@@ -418,7 +443,14 @@
   <h2 class="section-heading">{{ icon('calendar') }} Google &amp; Gmail Calendar</h2>
   <p class="form-hint" style="margin-bottom: 16px;">Connect your Google account so favourited events can be forwarded directly onto your Google Calendar.</p>
 
-  {% if gcal_conn and gcal_conn.access_token %}
+  {% if not current_user.can('can_sync_calendar') %}
+  <p class="form-hint" data-cap-hint="can_sync_calendar">Ask an admin to allow “Google Calendar sync” in StonePi → Users. The “Add to Google Calendar” button on each event still works.</p>
+  {% if gcal_conn %}
+  <form method="post" action="/calendar/google/disconnect" style="margin-top: 12px;">
+    <button type="submit" class="btn btn-outline" style="color: var(--error);">Disconnect Google Calendar</button>
+  </form>
+  {% endif %}
+  {% elif gcal_conn and gcal_conn.access_token %}
   <div style="background-color: color-mix(in srgb, var(--ok) 15%, var(--card)); border: 1px solid var(--ok); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
     <div style="font-weight: 600; color: var(--ok); margin-bottom: 4px;">✓ Connected to Google Calendar</div>
     <div style="font-size: 0.88rem;">Connected Account: <strong>{{ gcal_conn.account_email }}</strong></div>
@@ -477,6 +509,40 @@
   {% endif %}
   {% else %}
   <p class="form-hint">Only an admin can manage the Bright Data API key.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 class="section-heading">{{ icon('sliders') }} Monthly usage</h2>
+  {% if brightdata_usage %}
+  <p style="margin-bottom: 8px;"><strong>{{ brightdata_usage.used }}</strong> of {{ brightdata_usage.limit }} records used since {{ brightdata_usage.period_start }} (resets {{ brightdata_usage.resets_on }}){% if brightdata_usage.by_app %} ({% for app, n in brightdata_usage.by_app.items() %}{{ app|capitalize }} {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}){% endif %}.</p>
+  {% if brightdata_usage.remaining == 0 %}
+  <p class="form-hint" style="color: var(--error);">Limit reached: Facebook sources and Instagram accounts keep what they have until {{ brightdata_usage.resets_on }}.</p>
+  {% endif %}
+  <p class="form-hint" style="margin-bottom: 16px;">
+    Shared by every StonePi app on this Bright Data account (PriceWatch too). Bright Data bills per record, so before
+    each call the app books its maximum and skips the call if that would pass the limit. Scheduled checks also spread
+    the limit evenly across the period (up to {{ brightdata_usage.pace_allowance }} by today); "Fetch Details" and
+    "Check now" can use whatever is left. A Facebook search returns at most {{ brightdata_search_limit }} events and is
+    reused for {{ brightdata_search_cache_hours }} hours.
+  </p>
+  {% if user.role == 'admin' %}
+  <form method="post" action="/settings/integrations/limit">
+    <div class="form-group">
+      <label for="brightdata_limit">Monthly limit (records, all apps)</label>
+      <input type="number" id="brightdata_limit" name="brightdata_limit" class="form-control" min="0" max="10000000" value="{{ brightdata_usage.limit }}" />
+      <span class="form-hint">Set this to your Bright Data allowance (free tier: 5,000). 0 stops all Bright Data calls.</span>
+    </div>
+    <div class="form-group">
+      <label for="brightdata_reset_day">Resets on day of the month</label>
+      <input type="number" id="brightdata_reset_day" name="brightdata_reset_day" class="form-control" min="1" max="31" value="{{ brightdata_usage.reset_day }}" />
+      <span class="form-hint">Match your Bright Data billing date (default 1). A day past a short month's end uses its last day. Changing it keeps what's been used so far.</span>
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm btn-with-icon">{{ icon('check') }} Save limit</button>
+  </form>
+  {% endif %}
+  {% else %}
+  <p class="form-hint">Usage can't be read from the StonePi Vault folder, so Bright Data calls are paused.</p>
   {% endif %}
 </div>
 </div>

@@ -1,0 +1,8 @@
+# Car Thing (superbird) with ADB-enabled firmware -> usable by the stonepi-carthing service.
+# Thing Labs 8.9.2 exposes an RNDIS + ADB composite gadget as 1d6b:1014 ("Linux Foundation
+# Superbird", manufacturer Spotify). 1d6b is the generic Linux gadget vendor, so also match the
+# product string to leave other Linux gadgets alone.
+SUBSYSTEM=="usb", ATTR{idVendor}=="1d6b", ATTR{idProduct}=="1014", ATTR{product}=="Superbird", MODE="0660", GROUP="stonepi-carthing"
+# Other ADB firmwares report Google's 18d1:4e40 (lsusb: "Nexus 7 (fastboot)").
+# If yet another Car Thing firmware shows a different id in `lsusb`, add a line for it here.
+SUBSYSTEM=="usb", ATTR{idVendor}=="18d1", ATTR{idProduct}=="4e40", MODE="0660", GROUP="stonepi-carthing"

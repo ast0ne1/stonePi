@@ -6,13 +6,26 @@ from sqlalchemy import select
 from app.config import env
 from app.db import SessionLocal
 from app.models import CatalogSource, Category, Event, EventSource, SocialAccount, utcnow
-from app.services import auth, categories, favicon, ingest, settings
+from app.services import auth, capabilities, categories, favicon, ingest, settings
 from app.services.social import config as social_config
 from app.services.social import poll as social_poll
 
 bp = Blueprint("sources", __name__, url_prefix="/sources")
 
 ACCOUNT_TYPE_LABELS = dict(social_config.ACCOUNT_TYPES)
+
+manage_sources_required = auth.capability_required(
+    capabilities.MANAGE_SOURCES, redirect_endpoint="sources.list_sources"
+)
+social_required = auth.capability_required(capabilities.USE_SOCIAL, redirect_endpoint="sources.social_accounts")
+
+
+def _facebook_refused(user, url: str) -> bool:
+    """Facebook sources are fetched through paid Bright Data: they need Instagram & Facebook too."""
+    if "facebook.com" in (url or "").lower() and not user.can(capabilities.USE_SOCIAL):
+        flash(capabilities.denied_message(capabilities.USE_SOCIAL), "error")
+        return True
+    return False
 
 
 @bp.route("")
@@ -31,6 +44,11 @@ def list_sources():
                 .order_by(CatalogSource.category, CatalogSource.name)
             ).scalars()
         )
+
+        # Heal icons whose cached file has gone missing (or are due a recheck) in the
+        # background; the template shows the placeholder until they're back.
+        if any(favicon.needs_backfill(row) for row in [*user_sources, *catalog_sources]):
+            favicon.backfill_all_async()
 
         subscribed_urls = {s.url for s in user_sources}
         global_schedule = settings.get_global_schedule(db, env.default_sync_interval_minutes)
@@ -59,10 +77,13 @@ def list_sources():
 
 @bp.route("/catalog/subscribe/<int:catalog_id>", methods=["POST"])
 @auth.login_required
+@manage_sources_required
 def subscribe_catalog(catalog_id: int):
     user = auth.get_current_user()
     with SessionLocal() as db:
         cat = db.get(CatalogSource, catalog_id)
+        if cat and _facebook_refused(user, cat.url):
+            return redirect(url_for("sources.list_sources"))
         if cat:
             existing = db.execute(
                 select(EventSource).where(EventSource.user_id == user.user_id, EventSource.url == cat.url)
@@ -77,7 +98,7 @@ def subscribe_catalog(catalog_id: int):
                     category=categories.resolve_category_key(db, cat.category),
                     schedule_mode="global",
                     enabled=True,
-                    favicon_path=cat.favicon_path,
+                    favicon_path=cat.favicon_path if favicon.is_usable(cat.favicon_path) else None,
                 )
                 db.add(src)
                 db.commit()
@@ -93,6 +114,7 @@ def subscribe_catalog(catalog_id: int):
 
 @bp.route("/add", methods=["POST"])
 @auth.login_required
+@manage_sources_required
 def add_source():
     user = auth.get_current_user()
     name = request.form.get("name", "").strip()
@@ -106,6 +128,8 @@ def add_source():
 
     if not name or not url:
         flash("Source Name and URL are required.", "error")
+        return redirect(url_for("sources.list_sources"))
+    if _facebook_refused(user, url):
         return redirect(url_for("sources.list_sources"))
 
     with SessionLocal() as db:
@@ -153,6 +177,7 @@ def add_source():
 
 @bp.route("/delete/<int:source_id>", methods=["POST"])
 @auth.login_required
+@manage_sources_required
 def delete_source(source_id: int):
     user = auth.get_current_user()
     with SessionLocal() as db:
@@ -166,6 +191,7 @@ def delete_source(source_id: int):
 
 @bp.route("/toggle/<int:source_id>", methods=["POST"])
 @auth.login_required
+@manage_sources_required
 def toggle_source(source_id: int):
     user = auth.get_current_user()
     with SessionLocal() as db:
@@ -178,6 +204,7 @@ def toggle_source(source_id: int):
 
 @bp.route("/<int:source_id>/category", methods=["POST"])
 @auth.login_required
+@manage_sources_required
 def update_category(source_id: int):
     user = auth.get_current_user()
     category_key = request.form.get("category", "general").strip()
@@ -203,6 +230,7 @@ def update_category(source_id: int):
 
 @bp.route("/<int:source_id>/schedule", methods=["POST"])
 @auth.login_required
+@manage_sources_required
 def update_schedule(source_id: int):
     user = auth.get_current_user()
     custom_schedule = settings.schedule_config_from_form(
@@ -272,6 +300,7 @@ def social_accounts():
 
 @bp.route("/social/<int:account_id>/schedule", methods=["POST"])
 @auth.login_required
+@social_required
 def social_schedule(account_id: int):
     user = auth.get_current_user()
     with SessionLocal() as db:
@@ -294,6 +323,7 @@ def social_schedule(account_id: int):
 
 @bp.route("/social/add", methods=["POST"])
 @auth.login_required
+@social_required
 def social_add():
     user = auth.get_current_user()
     username = social_config.normalize_username(request.form.get("username", ""))
@@ -335,6 +365,7 @@ def social_add():
 
 @bp.route("/social/<int:account_id>/toggle", methods=["POST"])
 @auth.login_required
+@social_required
 def social_toggle(account_id: int):
     user = auth.get_current_user()
     with SessionLocal() as db:
@@ -350,6 +381,7 @@ def social_toggle(account_id: int):
 
 @bp.route("/social/<int:account_id>/delete", methods=["POST"])
 @auth.login_required
+@social_required
 def social_delete(account_id: int):
     user = auth.get_current_user()
     with SessionLocal() as db:
@@ -389,6 +421,7 @@ def social_delete(account_id: int):
 
 @bp.route("/social/<int:account_id>/check", methods=["POST"])
 @auth.login_required
+@social_required
 def social_check(account_id: int):
     user = auth.get_current_user()
     with SessionLocal() as db:

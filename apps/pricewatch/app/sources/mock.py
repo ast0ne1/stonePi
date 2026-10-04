@@ -89,7 +89,17 @@ class MockSource:
                         manufacturer=item.get("manufacturer"),
                         variant=item.get("variant"),
                         offer_id=str(offer.get("offer_id") or ""),
+                        merchant_id=offer.get("merchant_id"),
+                        merchant_domain=offer.get("merchant_domain"),
+                        merchant_rating=offer.get("merchant_rating"),
+                        merchant_rating_count=offer.get("merchant_rating_count"),
                     )
                 )
             return offers
         return []
+
+
+def mock_trustpilot_scores() -> dict[str, dict]:
+    """Fixture Trustpilot results keyed by domain (stands in for Bright Data when mocked)."""
+    data = _load().get("trustpilot") or {}
+    return data if isinstance(data, dict) else {}

@@ -15,11 +15,18 @@ When the portal itself is broken there is no Dashboard to fix it from. Recover i
 
 ## Signing in
 
-- **Username** `stonepi`, **password** from Vault key **`STONEPI_RECOVER_PASSWORD`** (Dashboard → Settings → Vault). The fallback is `/etc/stonepi/recover.passwd`. This is **not** your portal or OS password.
+- **Username** `stonepi`, **password** from `/etc/stonepi/recover.passwd` (root, `0600`). That file is the only source. This is **not** your portal or OS password.
+- The password is **never** kept in the Vault: every app user can read the Vault, and Recover runs as root. Dashboard → Settings → Vault → **Recover password** writes the file through the root backup helper (`recover-passwd-set` / `recover-passwd-clear`) and shows only whether it is set.
+- Upgrading from a build that kept `STONEPI_RECOVER_PASSWORD` (or the older `STONEPI_RECOVERY_PASSWORD`) in the Vault: on startup Recover writes that value to `recover.passwd` (it was the password in use) and deletes the Vault key(s).
 - First start creates a random password if none exists; the installer prints where to find it.
-- Saving the Vault key syncs `recover.passwd`, so the two stay in step.
+- The `STONEPI_RECOVER_PASSWORD` env override works only in dev (Windows run-dev, or `RECOVER_DEV=1`).
 - A StonePi **admin** session cookie is also accepted when Auth is healthy. The Recover login is for when it isn't.
 - Sign-in sets a signed `stonepi_recover` session cookie (12 hours).
+- **Sign out** clears that cookie. If you came in with a portal admin session, it signs that out too (otherwise the admin cookie would let you straight back in): through `/auth/logout` when nginx and Auth are up, or by clearing the portal cookies in this browser on direct `:8099` / when Auth is down.
+- **Dashboard** in the header goes to portal Home: `/` through nginx, `http://<same host>/` when Recover was opened on `:8099`.
+- Failed sign-ins are rate-limited: 5 per client IP and 30 overall per 15 minutes. Behind nginx the client IP comes from `X-Real-IP`; direct `:8099` requests use the socket peer (the header is ignored there).
+- Every form (sign-in, sign-out, service actions, restore) carries a CSRF token matched against Recover's own `stonepi_recover_csrf` cookie.
+- Restore paths are resolved (symlinks and `..`) and must be the local `current` copy or a directory inside the USB `RaspberryPi-Backup/` tree.
 
 ## What it does
 

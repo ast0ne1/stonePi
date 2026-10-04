@@ -5,6 +5,8 @@ import os
 import re
 import shutil
 import subprocess
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
@@ -96,11 +98,22 @@ def notify_settings_url(tab: str = "") -> str:
     return notify_page_url("settings" + (f"?tab={tab}" if tab else ""))
 
 
+_NOTIFY_SUMMARY: dict[str, object] = {"at": -1e9, "body": None}
+
+
 def notify_admin_status(cookies: dict[str, str]) -> dict[str, str] | None:
-    """Status lines for Dashboard -> Settings: Displays and Phone alerts. None if Notify can't say."""
-    status, body = notify_request("GET", "/api/admin/summary", cookies)
-    if status != 200 or not body.get("ok"):
-        return None
+    """Status lines for Dashboard -> Settings: Displays and Phone alerts. None if Notify can't say.
+
+    Notify's summary itself asks Auth for the household, so it's cached for 30 s
+    (admin-only and household-wide, so one copy serves every admin).
+    """
+    now = time.monotonic()
+    body = _NOTIFY_SUMMARY["body"] if now - _NOTIFY_SUMMARY["at"] < 30 else None
+    if body is None:
+        status, body = notify_request("GET", "/api/admin/summary", cookies)
+        if status != 200 or not body.get("ok"):
+            return None
+        _NOTIFY_SUMMARY.update(at=now, body=body)
     displays = body.get("displays") or {}
     count, pushing = int(displays.get("count") or 0), int(displays.get("pushing") or 0)
     if count:
@@ -209,14 +222,22 @@ def unit_statuses(units: list[str]) -> dict[str, str]:
         return {unit: "unknown" for unit in unique}
 
 
+# Root helper (deploy/stonepi-service-helper.sh) that sudoers allows stonepi-dash to run:
+# one validated stonepi-* unit per call, instead of wildcard systemctl/journalctl rules.
+SERVICE_HELPER = "/usr/local/sbin/stonepi-service-helper"
+_UNIT_RE = re.compile(r"^stonepi-[a-z0-9-]+(\.service)?$")
+
+
 def control_unit(unit: str, action: str) -> tuple[bool, str]:
     if action not in {"start", "stop", "restart"}:
         return False, "Unsupported action"
+    if not _UNIT_RE.match(unit or ""):
+        return False, "Not a StonePi service"
     if os.name == "nt" or shutil.which("systemctl") is None:
         return False, "Service control is available on the Raspberry Pi via systemd."
     try:
         result = subprocess.run(
-            ["sudo", "-n", "systemctl", action, unit],
+            ["sudo", "-n", SERVICE_HELPER, action, unit],
             capture_output=True,
             text=True,
             check=False,
@@ -232,9 +253,12 @@ def control_unit(unit: str, action: str) -> tuple[bool, str]:
 def unit_logs(unit: str, lines: int = 40) -> str:
     if os.name == "nt" or shutil.which("journalctl") is None:
         return "Logs are available from Cockpit or journalctl on the Raspberry Pi."
+    if not _UNIT_RE.match(unit or ""):
+        return "Not a StonePi service."
+    lines = max(1, min(int(lines), 2000))
     try:
         result = subprocess.run(
-            ["sudo", "-n", "journalctl", "-u", unit, "-n", str(lines), "--no-pager"],
+            ["sudo", "-n", SERVICE_HELPER, "logs", unit, str(lines)],
             capture_output=True,
             text=True,
             check=False,
@@ -245,8 +269,32 @@ def unit_logs(unit: str, lines: int = 40) -> str:
         return str(exc)
 
 
+class AuthAPIError(RuntimeError):
+    """An Auth API call that failed: ``status_code`` is Auth's HTTP status, or 503 when
+    Auth could not be reached at all (restarting, connection refused, timeout)."""
+
+    def __init__(self, message: str, status_code: int, *, unreachable: bool = False):
+        super().__init__(message)
+        self.status_code = int(status_code)
+        self.unreachable = unreachable
+
+    @property
+    def signed_out(self) -> bool:
+        """Auth no longer knows this session (signed out elsewhere, password changed,
+        account disabled, restore): the cookie still verifies here but is dead."""
+        return self.status_code == 401
+
+    @property
+    def unavailable(self) -> bool:
+        """Auth is down or restarting — worth retrying in a few seconds."""
+        return self.unreachable or self.status_code in {502, 503, 504}
+
+
+AUTH_RESTARTING_MESSAGE = "Auth is restarting — retrying…"
+
+
 def auth_request(method: str, path: str, cookies: dict[str, str], json_body=None):
-    """JSON Auth API helper. Raises RuntimeError on HTTP errors."""
+    """JSON Auth API helper. Raises :class:`AuthAPIError` (a RuntimeError) on failure."""
     response = auth_exchange(method, path, cookies, json_body=json_body)
     if not response.content:
         return {}
@@ -262,7 +310,10 @@ def auth_exchange(method: str, path: str, cookies: dict[str, str], json_body=Non
     csrf = (cookies or {}).get(CSRF_COOKIE) or (cookies or {}).get("stonepi_csrf")
     if csrf and method.upper() in {"POST", "PATCH", "PUT", "DELETE"}:
         headers["X-StonePi-CSRF"] = csrf
-    response = _AUTH_HTTP.request(method, url, cookies=cookies, json=json_body, headers=headers or None)
+    try:
+        response = _AUTH_HTTP.request(method, url, cookies=cookies, json=json_body, headers=headers or None)
+    except httpx.TransportError as exc:
+        raise AuthAPIError(AUTH_RESTARTING_MESSAGE, 503, unreachable=True) from exc
     if response.status_code >= 400:
         detail = response.text
         try:
@@ -270,7 +321,9 @@ def auth_exchange(method: str, path: str, cookies: dict[str, str], json_body=Non
             detail = payload.get("detail") or payload
         except Exception:
             pass
-        raise RuntimeError(str(detail))
+        if response.status_code in {502, 503, 504} and not str(detail).strip():
+            detail = AUTH_RESTARTING_MESSAGE
+        raise AuthAPIError(str(detail), response.status_code)
     return response
 
 
@@ -327,13 +380,13 @@ def backup_info() -> dict:
     return read_backup_info(env.backup_stamp or None)
 
 
-def _helper_run(args: list[str], timeout: float = 120) -> tuple[int, str]:
+def _helper_run(args: list[str], timeout: float = 120, stdin: str | None = None) -> tuple[int, str]:
     helper = "/usr/local/sbin/stonepi-backup-helper"
     if os.name == "nt" or not Path(helper).exists():
         return 1, "helper unavailable (Pi only)"
     cmd = ["sudo", "-n", helper, *args]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=timeout)
+        result = subprocess.run(cmd, input=stdin, capture_output=True, text=True, check=False, timeout=timeout)
         out = ((result.stdout or "") + (result.stderr or "")).strip()
         return result.returncode, out
     except Exception as exc:  # noqa: BLE001
@@ -709,23 +762,37 @@ def apply_disabled_to_watch(watch: dict, disabled: set[str]) -> dict:
     return out
 
 
-def launcher_tiles(user, cookies: dict[str, str] | None = None) -> list[dict]:
-    """Product apps the signed-in user may open (not Auth/Dashboard chrome)."""
-    catalog = {item["id"]: item for item in catalog_apps(include_auth=False, cookies=cookies)}
+def launcher_tiles(user, cookies: dict[str, str] | None = None, status: dict | None = None) -> list[dict]:
+    """Product apps the signed-in user may open (not Auth/Dashboard chrome).
+
+    ``status["order_live"]`` says whether the saved order really came from Auth
+    (False while Auth is restarting: Home still shows tiles in catalog order).
+    Raises :class:`AuthAPIError` when Auth says the session is gone, so Home
+    can send the person to sign in instead of showing an order it can't save.
+    """
+    # /api/apps is admin-only: for members it was a round trip that always 403'd.
+    catalog = {item["id"]: item for item in catalog_apps(include_auth=False, cookies=cookies if getattr(user, "is_admin", False) else None)}
     # Prefer the user's saved order from Auth; fall back to catalog order.
     # Factory-admin banner still uses the session `fac` claim (no /api/me for that).
     order = list(LAUNCHER_APP_IDS)
+    order_live = False
     if cookies:
         try:
             me = auth_request("GET", "/api/me", cookies)
+            order_live = True
             saved = me.get("launcher_order")
             if isinstance(saved, list) and saved:
                 known = set(LAUNCHER_APP_IDS)
                 preferred = [str(app_id) for app_id in saved if str(app_id) in known]
                 rest = [app_id for app_id in LAUNCHER_APP_IDS if app_id not in preferred]
                 order = preferred + rest
+        except AuthAPIError as exc:
+            if exc.signed_out:
+                raise
         except Exception:
             pass
+    if status is not None:
+        status["order_live"] = order_live
     tiles = []
     for app_id in order:
         item = catalog.get(app_id) or next((a for a in APP_CATALOG if a["id"] == app_id), None)
@@ -741,11 +808,54 @@ def launcher_tiles(user, cookies: dict[str, str] | None = None) -> list[dict]:
             {
                 **item,
                 "url": app_public_url(item),
-                "description": item.get("description") or "",
+                "description": _tile_status(item) or item.get("description") or "",
                 "icon": item.get("icon") or app_id,
             }
         )
     return tiles
+
+
+LIVE_TILE_STATES = frozenset({"downloading"})
+_TILE_STATUS: dict[str, tuple[float, str]] = {}
+_TILE_REFRESHING: set[str] = set()
+_TILE_LOCK = threading.Lock()
+_TILE_HTTP = httpx.Client(timeout=0.8)
+
+
+def _refresh_tile_status(app_id: str, port: int) -> None:
+    detail = ""
+    try:
+        resp = _TILE_HTTP.get(f"http://127.0.0.1:{port}/api/display")
+        if resp.status_code == 200:
+            data = resp.json()
+            # Only work in progress replaces the tile's standard description; at rest
+            # (e.g. Library's installed titles) the tile reads like every other app.
+            if data.get("state") in LIVE_TILE_STATES:
+                detail = str(data.get("detail") or "")[:80]
+    except Exception:  # noqa: BLE001
+        detail = ""
+    with _TILE_LOCK:
+        _TILE_STATUS[app_id] = (time.monotonic(), detail)
+        _TILE_REFRESHING.discard(app_id)
+
+
+def _tile_status(item: dict) -> str:
+    """Live one-liner for ``live_status`` apps while work is in progress (Library "Installing Wikipedia · 71%").
+
+    Read from the app's loopback /api/display in the background: Home shows the
+    last known line (empty at first, so the tile falls back to its description)
+    and never waits on a slow or stopped app.
+    """
+    if not item.get("live_status") or not item.get("port"):
+        return ""
+    app_id = item["id"]
+    with _TILE_LOCK:
+        cached = _TILE_STATUS.get(app_id)
+        stale = not cached or time.monotonic() - cached[0] >= 20
+        if stale and app_id not in _TILE_REFRESHING:
+            _TILE_REFRESHING.add(app_id)
+            threading.Thread(target=_refresh_tile_status, args=(app_id, int(item["port"])), daemon=True).start()
+    return cached[1] if cached else ""
 
 
 def save_launcher_order(cookies: dict[str, str], order: list[str]) -> list[str]:

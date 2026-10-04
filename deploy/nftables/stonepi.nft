@@ -1,12 +1,27 @@
 #!/usr/sbin/nft -f
 # StonePi host firewall baseline
-# Allow: SSH, HTTP/HTTPS, Tailscale, mDNS, recover :8099.
+# Allow: SSH, HTTP/HTTPS, Tailscale, mDNS; Recover :8099 from LAN/Tailscale ranges only.
 # Cockpit (9090): not via Tailscale (LAN / local only).
 # App backends stay on 127.0.0.1 and are not exposed here.
+#
+# Replaces only StonePi's own table: other tables (tailscaled's ts-* chains, Docker, the
+# distro's default filter) are left alone. The empty declaration makes the delete safe on
+# the first load; nft -f applies the file atomically.
 
-flush ruleset
+table inet stonepi
+delete table inet stonepi
 
 table inet stonepi {
+  # Private source ranges: RFC 1918 + link-local + Tailscale CGNAT (IPv4); ULA + link-local (IPv6).
+  set lan4 {
+    type ipv4_addr; flags interval;
+    elements = { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10 }
+  }
+  set lan6 {
+    type ipv6_addr; flags interval;
+    elements = { fc00::/7, fe80::/10 }
+  }
+
   chain input {
     type filter hook input priority 0; policy drop;
 
@@ -18,15 +33,20 @@ table inet stonepi {
 
     tcp dport 22 accept
     tcp dport { 80, 443 } accept
-    tcp dport 8099 accept
+
+    # Recover: plain-HTTP break-glass console (works when nginx/apps are down). LAN/tailnet only.
+    ip saddr @lan4 tcp dport 8099 accept
+    ip6 saddr @lan6 tcp dport 8099 accept
+
+    # Cockpit — dropped on the Tailscale path (before tailscale0 is accepted below);
+    # allowed on other interfaces (typically LAN). Keep it off the internet at the router.
+    iifname "tailscale0" tcp dport 9090 drop
+    tcp dport 9090 accept
 
     udp dport 41641 accept
     iifname "tailscale0" accept
 
     udp dport 5353 accept
-
-    # Cockpit — block Tailscale path; allow other interfaces (typically LAN)
-    tcp dport 9090 iifname != "tailscale0" accept
 
     counter drop
   }

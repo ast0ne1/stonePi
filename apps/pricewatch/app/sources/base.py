@@ -2,6 +2,23 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol
+from urllib.parse import urlsplit
+
+
+def normalise_domain(value: str | None) -> str | None:
+    """`https://www.Elgiganten.dk/x` → `elgiganten.dk`."""
+    raw = (value or "").strip().lower()
+    if not raw:
+        return None
+    if "//" not in raw:
+        raw = f"//{raw}"
+    try:
+        host = (urlsplit(raw).hostname or "").strip(".")
+    except ValueError:
+        return None
+    if host.startswith("www."):
+        host = host[4:]
+    return host or None
 
 
 @dataclass
@@ -56,6 +73,12 @@ class NormalisedOffer:
     variant: str | None = None
     offer_id: str | None = None
     timestamp: str | None = None
+    # Shop identity from the source (PriceRunner merchant id + web address) and
+    # the source's own shop rating; None when the source doesn't give one.
+    merchant_id: str | None = None
+    merchant_domain: str | None = None
+    merchant_rating: float | None = None
+    merchant_rating_count: int | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:

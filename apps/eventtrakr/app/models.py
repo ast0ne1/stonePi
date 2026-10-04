@@ -24,6 +24,9 @@ class User(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     auth_user_id: Mapped[str | None] = mapped_column(String(36), nullable=True, unique=True)
+    # JSON mirror of this person's StonePi capabilities for background jobs (see
+    # services/capabilities.py). NULL until first seen: catalog defaults apply.
+    capabilities: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class UserSetting(Base):

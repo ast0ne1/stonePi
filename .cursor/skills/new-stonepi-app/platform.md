@@ -19,8 +19,9 @@ port `8006`, prefix `/prices/`).
 | Env file | `/etc/stonepi/pricescout.env` |
 
 Pick a free port; keep `packages/stonepi_auth/.../session.py` `allowed_ports`
-in sync (dev + cookie trust). Taken: 8001–8008, 8010–8012 (SportGuide = 8007 `/sports/`;
-PriceWatch = 8008 `/watch/`; Notify = 8012 `/notify/`).
+in sync (dev + cookie trust). Taken: 8001–8012, 8014 (SportGuide = 8007 `/sports/`;
+PriceWatch = 8008 `/watch/`; Library = 8009 `/library/`; Notify = 8012 `/notify/`;
+Kiwix = 8014 loopback only, `/library/read/`). 8080 is in `safe_next` allowed ports.
 
 ## Files to touch
 

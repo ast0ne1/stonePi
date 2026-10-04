@@ -14,10 +14,23 @@ from app.config import (
     DEFAULT_CONDITION,
     DEFAULT_RETENTION_DAYS,
     DEFAULT_SCHEDULE_MINUTES,
+    DEFAULT_TRUST_MIN_REVIEWS,
+    DEFAULT_TRUST_REFRESH_DAYS,
     SCAN_CACHE_TTL_SECONDS,
 )
 
 _lock = threading.RLock()
+
+WATCH_COLUMN_MIGRATIONS = (
+    ("include_delivery", "INTEGER NOT NULL DEFAULT 0"),
+    ("min_trust_score", "REAL"),
+    ("require_rating", "INTEGER NOT NULL DEFAULT 0"),
+    ("low_rated_mode", "TEXT NOT NULL DEFAULT 'ignore'"),
+    ("low_rated_snapshot_json", "TEXT"),
+    ("low_rated_fingerprint", "TEXT"),
+    ("low_rated_at", "TEXT"),
+)
+LOW_RATED_MODES = ("ignore", "warn")
 
 
 def _utc_now() -> datetime:
@@ -130,11 +143,37 @@ def init_db() -> None:
                 PRIMARY KEY (source_id, product_id)
             );
 
+            CREATE TABLE IF NOT EXISTS merchants (
+                source_id TEXT NOT NULL,
+                merchant_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                domain TEXT,
+                domain_override TEXT,
+                pr_rating REAL,
+                pr_rating_count INTEGER,
+                tp_score REAL,
+                tp_review_count INTEGER,
+                tp_url TEXT,
+                tp_website TEXT,
+                tp_status TEXT NOT NULL DEFAULT 'pending',
+                tp_fetched_at TEXT,
+                tp_last_error TEXT,
+                first_seen_at TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL,
+                PRIMARY KEY (source_id, merchant_id)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_watches_status ON watches(status);
             CREATE INDEX IF NOT EXISTS idx_watches_next ON watches(next_check_at);
             CREATE INDEX IF NOT EXISTS idx_obs_watch ON observations(watch_id, checked_at);
             """
         )
+        # Columns added after 0.0.6. Existing watches keep product-price targets
+        # (include_delivery 0) and no minimum score, so nothing changes under them.
+        existing = {str(r["name"]) for r in conn.execute("PRAGMA table_info(watches)").fetchall()}
+        for column, ddl in WATCH_COLUMN_MIGRATIONS:
+            if column not in existing:
+                conn.execute(f"ALTER TABLE watches ADD COLUMN {column} {ddl}")
         # Live default: PriceRunner only. Mock is registered only when PRICEWATCH_MOCK=1
         # (see ensure_mock_source) so it does not clutter Settings on a real Pi.
         conn.execute(
@@ -153,6 +192,10 @@ def init_db() -> None:
             "ntfy_enabled": "0",
             "ntfy_server": "https://ntfy.sh",
             "ntfy_topic": "",
+            "trust_brightdata_enabled": "0",
+            "trust_pricerunner_fallback": "0",
+            "trust_min_reviews": str(DEFAULT_TRUST_MIN_REVIEWS),
+            "trust_refresh_days": str(DEFAULT_TRUST_REFRESH_DAYS),
         }
         for key, value in defaults.items():
             conn.execute(
@@ -279,17 +322,24 @@ def update_source_status(source_id: str, *, ok: bool, error: str | None = None) 
             )
 
 
+def _json_or_none(raw: Any) -> Any:
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return None
+
+
 def _row_to_watch(row: sqlite3.Row) -> dict[str, Any]:
     data = dict(row)
-    snap = data.get("strike_snapshot_json")
-    if snap:
-        try:
-            data["strike"] = json.loads(snap)
-        except json.JSONDecodeError:
-            data["strike"] = None
-    else:
-        data["strike"] = None
+    data["strike"] = _json_or_none(data.get("strike_snapshot_json"))
+    data["low_rated"] = _json_or_none(data.get("low_rated_snapshot_json"))
     data["in_stock_required"] = bool(data.get("in_stock_required"))
+    data["include_delivery"] = bool(data.get("include_delivery"))
+    data["require_rating"] = bool(data.get("require_rating"))
+    if data.get("low_rated_mode") not in LOW_RATED_MODES:
+        data["low_rated_mode"] = "ignore"
     target = data.get("target_price")
     lowest = data.get("current_lowest")
     if target is not None and lowest is not None:
@@ -357,9 +407,10 @@ def create_watch(payload: dict[str, Any]) -> int:
             INSERT INTO watches (
                 user_key, source_id, product_id, product_name, variant, manufacturer,
                 image_url, product_url, market, currency, target_price, condition,
-                in_stock_required, schedule_minutes, status, next_check_at,
+                in_stock_required, schedule_minutes, include_delivery, min_trust_score,
+                require_rating, low_rated_mode, status, next_check_at,
                 created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'watching', ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'watching', ?, ?, ?)
             """,
             (
                 payload.get("user_key") or "local",
@@ -376,6 +427,10 @@ def create_watch(payload: dict[str, Any]) -> int:
                 payload.get("condition") or DEFAULT_CONDITION,
                 1 if payload.get("in_stock_required", True) else 0,
                 schedule,
+                1 if payload.get("include_delivery", True) else 0,
+                payload.get("min_trust_score"),
+                1 if payload.get("require_rating") else 0,
+                payload.get("low_rated_mode") if payload.get("low_rated_mode") in LOW_RATED_MODES else "ignore",
                 now,
                 now,
                 now,
@@ -405,14 +460,23 @@ def update_watch_fields(watch_id: int, **fields: Any) -> None:
         "product_url",
         "product_name",
         "manufacturer",
+        "include_delivery",
+        "min_trust_score",
+        "require_rating",
+        "low_rated_mode",
+        "low_rated_snapshot_json",
+        "low_rated_fingerprint",
+        "low_rated_at",
     }
     sets: list[str] = []
     values: list[Any] = []
     for key, value in fields.items():
         if key not in allowed:
             continue
-        if key == "in_stock_required":
+        if key in {"in_stock_required", "include_delivery", "require_rating"}:
             value = 1 if value else 0
+        if key == "low_rated_mode" and value not in LOW_RATED_MODES:
+            value = "ignore"
         sets.append(f"{key} = ?")
         values.append(value)
     if not sets:
@@ -465,6 +529,9 @@ def rearm_watch(watch_id: int) -> None:
         strike_snapshot_json=None,
         strike_fingerprint=None,
         strike_at=None,
+        low_rated_snapshot_json=None,
+        low_rated_fingerprint=None,
+        low_rated_at=None,
         last_error=None,
         next_check_at=_iso(),
     )
@@ -615,6 +682,198 @@ def watch_counts() -> dict[str, int]:
     counts["total"] = total
     counts["active"] = counts["watching"] + counts["strike_found"] + counts["no_results"] + counts["error"]
     return counts
+
+
+def latest_offers_by_watch() -> dict[int, list[dict[str, Any]]]:
+    """Offers from each watch's most recent observation (dashboard rows)."""
+    with db() as conn:
+        rows = conn.execute(
+            """
+            SELECT o.watch_id, o.offers_json FROM observations o
+            JOIN (SELECT watch_id, MAX(id) AS id FROM observations GROUP BY watch_id) latest
+              ON latest.id = o.id
+            """
+        ).fetchall()
+    out: dict[int, list[dict[str, Any]]] = {}
+    for row in rows:
+        offers = _json_or_none(row["offers_json"])
+        out[int(row["watch_id"])] = offers if isinstance(offers, list) else []
+    return out
+
+
+# -- merchants (shops) -------------------------------------------------------------
+
+
+def _row_to_merchant(row: sqlite3.Row) -> dict[str, Any]:
+    data = dict(row)
+    data["effective_domain"] = data.get("domain_override") or data.get("domain")
+    return data
+
+
+def upsert_merchants(source_id: str, offers: list[dict[str, Any]]) -> int:
+    """Record every shop seen in an offers fetch. Returns how many were new.
+
+    Refreshes name, PriceRunner rating and discovered domain; a changed domain
+    re-queues the Trustpilot lookup. Never touches the user's domain override.
+    """
+    now = _iso()
+    seen: dict[str, dict[str, Any]] = {}
+    for offer in offers:
+        mid = str(offer.get("merchant_id") or "").strip()
+        if mid and mid not in seen:
+            seen[mid] = offer
+    if not seen:
+        return 0
+    new = 0
+    with db() as conn:
+        for mid, offer in seen.items():
+            row = conn.execute(
+                "SELECT domain FROM merchants WHERE source_id = ? AND merchant_id = ?",
+                (source_id, mid),
+            ).fetchone()
+            domain = offer.get("merchant_domain")
+            if row is None:
+                new += 1
+                conn.execute(
+                    """
+                    INSERT INTO merchants (
+                        source_id, merchant_id, name, domain, pr_rating, pr_rating_count,
+                        tp_status, first_seen_at, last_seen_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+                    """,
+                    (
+                        source_id,
+                        mid,
+                        str(offer.get("retailer") or "Retailer"),
+                        domain,
+                        offer.get("merchant_rating"),
+                        offer.get("merchant_rating_count"),
+                        now,
+                        now,
+                    ),
+                )
+                continue
+            requeue = ""
+            if domain and domain != row["domain"]:
+                requeue = ", tp_status = CASE WHEN domain_override IS NULL THEN 'pending' ELSE tp_status END"
+            conn.execute(
+                "UPDATE merchants SET name = ?, pr_rating = ?, pr_rating_count = ?, last_seen_at = ?,"
+                " domain = COALESCE(?, domain)" + requeue + " WHERE source_id = ? AND merchant_id = ?",
+                (
+                    str(offer.get("retailer") or "Retailer"),
+                    offer.get("merchant_rating"),
+                    offer.get("merchant_rating_count"),
+                    now,
+                    domain,
+                    source_id,
+                    mid,
+                ),
+            )
+    return new
+
+
+def get_merchants(source_id: str, merchant_ids: list[str]) -> dict[str, dict[str, Any]]:
+    ids = sorted({str(m) for m in merchant_ids if m})
+    if not ids:
+        return {}
+    marks = ",".join("?" for _ in ids)
+    with db() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM merchants WHERE source_id = ? AND merchant_id IN ({marks})",
+            (source_id, *ids),
+        ).fetchall()
+    return {str(r["merchant_id"]): _row_to_merchant(r) for r in rows}
+
+
+def get_merchant(source_id: str, merchant_id: str) -> dict[str, Any] | None:
+    return get_merchants(source_id, [merchant_id]).get(str(merchant_id))
+
+
+def list_merchants() -> list[dict[str, Any]]:
+    with db() as conn:
+        rows = conn.execute("SELECT * FROM merchants ORDER BY last_seen_at DESC, name").fetchall()
+    return [_row_to_merchant(r) for r in rows]
+
+
+def set_merchant_domain_override(source_id: str, merchant_id: str, domain: str | None) -> None:
+    """Save (or clear) the user's address correction and re-queue the score lookup."""
+    with db() as conn:
+        conn.execute(
+            """
+            UPDATE merchants SET domain_override = ?, tp_status = 'pending', tp_last_error = NULL
+            WHERE source_id = ? AND merchant_id = ?
+            """,
+            (domain or None, source_id, merchant_id),
+        )
+
+
+def requeue_merchant(source_id: str, merchant_id: str) -> None:
+    with db() as conn:
+        conn.execute(
+            "UPDATE merchants SET tp_status = 'pending' WHERE source_id = ? AND merchant_id = ?",
+            (source_id, merchant_id),
+        )
+
+
+MERCHANT_ERROR_RETRY_HOURS = 6
+
+
+def merchants_due_for_score(*, refresh_days: int, seen_within_days: int = 60) -> list[dict[str, Any]]:
+    """Shops that need a Trustpilot lookup: pending ones first, then stale ones still in use.
+
+    A shop whose own lookup errored is retried after a few hours, not on the weekly cycle.
+    """
+    stale_before = _iso(_utc_now() - timedelta(days=max(1, refresh_days)))
+    error_before = _iso(_utc_now() - timedelta(hours=MERCHANT_ERROR_RETRY_HOURS))
+    seen_after = _iso(_utc_now() - timedelta(days=seen_within_days))
+    with db() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM merchants
+            WHERE COALESCE(domain_override, domain) IS NOT NULL
+              AND (
+                tp_status = 'pending'
+                OR (tp_status = 'error' AND (tp_fetched_at IS NULL OR tp_fetched_at < ?))
+                OR (last_seen_at >= ? AND (tp_fetched_at IS NULL OR tp_fetched_at < ?))
+              )
+            ORDER BY CASE WHEN tp_status = 'pending' THEN 0 ELSE 1 END, last_seen_at DESC
+            """,
+            (error_before, seen_after, stale_before),
+        ).fetchall()
+    return [_row_to_merchant(r) for r in rows]
+
+
+def update_merchant_score(
+    source_id: str,
+    merchant_id: str,
+    *,
+    status: str,
+    score: float | None = None,
+    review_count: int | None = None,
+    url: str | None = None,
+    website: str | None = None,
+    error: str | None = None,
+) -> None:
+    """Store a lookup result. Errors keep the last known score."""
+    with db() as conn:
+        if status == "error":
+            conn.execute(
+                """
+                UPDATE merchants SET tp_status = 'error', tp_last_error = ?, tp_fetched_at = ?
+                WHERE source_id = ? AND merchant_id = ?
+                """,
+                ((error or "Lookup failed")[:300], _iso(), source_id, merchant_id),
+            )
+            return
+        conn.execute(
+            """
+            UPDATE merchants SET
+              tp_status = ?, tp_score = ?, tp_review_count = ?, tp_url = ?, tp_website = ?,
+              tp_fetched_at = ?, tp_last_error = NULL
+            WHERE source_id = ? AND merchant_id = ?
+            """,
+            (status, score, review_count, url, website, _iso(), source_id, merchant_id),
+        )
 
 
 def format_price(value: float | None, currency: str = "DKK") -> str:

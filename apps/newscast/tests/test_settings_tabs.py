@@ -89,7 +89,9 @@ def test_settings_groups_for_respects_role_and_platform():
 
 
 def test_settings_section_panels_publication_and_device():
-    pub = settings_section_panels_for("publication")
+    pub = settings_section_panels_for("publication", is_admin=True)
+    # Members keep only their own Stories toggle, so no sub-chip row.
+    assert settings_section_panels_for("publication", is_admin=False) == ()
     assert [panel_id for panel_id, _label, _cards in pub] == ["naming", "stories", "topics", "x3"]
     topics = next(cards for panel_id, _label, cards in pub if panel_id == "topics")
     assert topics == ("topics-mix", "topics-opds")
@@ -115,8 +117,8 @@ def test_settings_section_panels_publication_and_device():
     assert settings_section_panels_for("filters") == ()
     assert normalize_settings_panel("publication", None) is None
     assert normalize_settings_panel("publication", "") is None
-    assert normalize_settings_panel("publication", "stories") == "stories"
-    assert normalize_settings_panel("publication", "nope") == "naming"
+    assert normalize_settings_panel("publication", "stories", is_admin=True) == "stories"
+    assert normalize_settings_panel("publication", "nope", is_admin=True) == "naming"
     assert normalize_settings_panel("filters", "anything") is None
     assert normalize_settings_panel("device", "view", is_admin=False) == "view"
 
@@ -143,6 +145,10 @@ def test_non_admin_settings_tabs_hide_household_controls():
     assert "catalog" not in keys
     assert "schedule" not in keys
     assert "update" not in keys
+    # Household-wide keys (keyword filters, translate target) and categories are admin work.
+    assert "filters" not in keys
+    assert "translation" not in keys
+    assert "categories" not in keys
     assert "publication" in keys
     assert "notifications" in keys
     assert "about" in keys

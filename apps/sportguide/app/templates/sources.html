@@ -4,7 +4,7 @@
 {% block content %}
 <section class="hero">
   <h1>Sources</h1>
-  <p class="lede">AusSportGuide for AFL, Cricket and Rugby. WheresTheMatch for Football in Europe.</p>
+  <p class="lede">AusSportGuide for AFL, Cricket and Rugby. Football from timezone.football (channels in your country) and WheresTheMatch (UK channels), merged per match.</p>
 </section>
 
 <div class="page-status">
@@ -27,7 +27,7 @@
           <h2>{{ s.name }}</h2>
           <p class="hint">
             {% if s.id == 'ausportguide' %}AU · AFL, Cricket, Rugby
-            {% elif s.id == 'wheresthematch' %}Euro · Football leagues
+            {% elif s.id == 'wheresthematch' %}Football · channels where you are (timezone.football), plus UK channels (WheresTheMatch)
             {% else %}{{ s.id }}{% endif %}
           </p>
           <p class="hint">{{ s.listing_count or 0 }} listings · {{ 'enabled' if s.enabled else 'off' }}</p>

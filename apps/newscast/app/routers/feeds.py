@@ -4,12 +4,19 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.auth import require_admin
+from app.auth import (
+    SessionUser,
+    effective_user_id,
+    may_add_custom_sources,
+    require_user,
+    session_from_request,
+    session_is_admin,
+)
 from app.db import get_db
 from app.models import Feed
 from app.services.catalog import find_catalog_item, grouped_catalog
 
-router = APIRouter(dependencies=[Depends(require_admin)])
+router = APIRouter(dependencies=[Depends(require_user)])
 
 
 class FeedCreate(BaseModel):
@@ -57,23 +64,70 @@ def _feed_dict(feed: Feed) -> dict:
     }
 
 
+def _caller(request: Request) -> SessionUser | None:
+    return session_from_request(request)
+
+
+def _visible_feeds(db: Session, session: SessionUser | None):
+    """Admins see every household feed; members only their own."""
+    query = db.query(Feed)
+    if not session_is_admin(session):
+        query = query.filter(Feed.user_id == effective_user_id(session))
+    return query
+
+
+def _feed_for_caller(db: Session, session: SessionUser | None, feed_id: int) -> Feed:
+    # Another account's source is reported exactly like a missing one.
+    feed = db.get(Feed, feed_id)
+    if feed is None:
+        raise HTTPException(status_code=404, detail="Feed not found")
+    if not session_is_admin(session) and int(feed.user_id or 1) != effective_user_id(session):
+        raise HTTPException(status_code=404, detail="Feed not found")
+    return feed
+
+
+def _allowed_urls(feed: Feed) -> set[str]:
+    """URLs a feed may keep without can_add_custom_sources: its own and its catalog entry's."""
+    from app.services.catalog import catalog_homepage_url, catalog_rss_url
+    from app.services.feed_urls import clean_http_url
+
+    allowed = {
+        clean_http_url(feed.url),
+        clean_http_url(getattr(feed, "homepage_url", None)),
+        clean_http_url(getattr(feed, "rss_url", None)),
+    }
+    item = find_catalog_item(feed.catalog_id) if feed.catalog_id else None
+    if item is not None:
+        allowed |= {
+            clean_http_url(item.get("url")),
+            clean_http_url(catalog_homepage_url(item)),
+            clean_http_url(catalog_rss_url(item)),
+        }
+    allowed.discard("")
+    return allowed
+
+
+def repoints_feed(feed: Feed, *urls: str | None) -> bool:
+    """True when any submitted URL is new for this feed (a custom URL, not its own or its catalog's)."""
+    from app.services.feed_urls import clean_http_url
+
+    allowed = _allowed_urls(feed)
+    return any(clean_http_url(url) and clean_http_url(url) not in allowed for url in urls)
+
+
 @router.get("/api/feeds")
-def list_feeds(db: Annotated[Session, Depends(get_db)]):
-    feeds = db.query(Feed).order_by(Feed.name.asc()).all()
+def list_feeds(request: Request, db: Annotated[Session, Depends(get_db)]):
+    feeds = _visible_feeds(db, _caller(request)).order_by(Feed.name.asc()).all()
     return {"feeds": [_feed_dict(feed) for feed in feeds]}
 
 
 @router.post("/api/feeds")
 def create_feed(payload: FeedCreate, request: Request, db: Annotated[Session, Depends(get_db)]):
-    from app.auth import effective_user_id, session_from_request
-    from app.models import User
     from app.services import feed_urls
 
     session = session_from_request(request)
     uid = effective_user_id(session)
-    is_admin = bool(session and session.role == "admin")
-    user_row = db.get(User, uid) if uid else None
-    if not is_admin and not (user_row and user_row.can_add_custom_sources):
+    if not may_add_custom_sources(db, session):
         raise HTTPException(status_code=403, detail="Custom sources are not enabled for your account.")
     kind = feed_urls.normalize_feed_type(payload.type, default="auto")
     home = feed_urls.clean_http_url(payload.homepage_url)
@@ -112,12 +166,15 @@ def create_feed(payload: FeedCreate, request: Request, db: Annotated[Session, De
 
 
 @router.patch("/api/feeds/{feed_id}")
-def update_feed(feed_id: int, payload: FeedUpdate, db: Annotated[Session, Depends(get_db)]):
+def update_feed(feed_id: int, payload: FeedUpdate, request: Request, db: Annotated[Session, Depends(get_db)]):
     from app.services import feed_urls
 
-    feed = db.get(Feed, feed_id)
-    if feed is None:
-        raise HTTPException(status_code=404, detail="Feed not found")
+    session = _caller(request)
+    feed = _feed_for_caller(db, session, feed_id)
+    if repoints_feed(feed, payload.url, payload.homepage_url, payload.rss_url) and not may_add_custom_sources(
+        db, session
+    ):
+        raise HTTPException(status_code=403, detail="Custom sources are not enabled for your account.")
     if payload.name is not None:
         feed.name = payload.name.strip()
     if payload.homepage_url is not None or payload.rss_url is not None or payload.type is not None:
@@ -170,18 +227,22 @@ def update_feed(feed_id: int, payload: FeedUpdate, db: Annotated[Session, Depend
 
 
 @router.delete("/api/feeds/{feed_id}")
-def delete_feed(feed_id: int, db: Annotated[Session, Depends(get_db)]):
-    feed = db.get(Feed, feed_id)
-    if feed is None:
-        raise HTTPException(status_code=404, detail="Feed not found")
+def delete_feed(feed_id: int, request: Request, db: Annotated[Session, Depends(get_db)]):
+    feed = _feed_for_caller(db, _caller(request), feed_id)
     db.delete(feed)
     db.commit()
     return {"ok": True}
 
 
 @router.get("/api/feeds/recommended")
-def recommended_feeds(db: Annotated[Session, Depends(get_db)]):
-    return {"categories": grouped_catalog(db)}
+def recommended_feeds(request: Request, db: Annotated[Session, Depends(get_db)]):
+    # Same view as Sources -> Catalog: members see approved sources, with their own "added" state.
+    session = _caller(request)
+    return {
+        "categories": grouped_catalog(
+            db, user_id=effective_user_id(session), approved_only=not session_is_admin(session)
+        )
+    }
 
 
 def add_catalog_feed(db: Session, catalog_id: str, user_id: int = 1, *, require_approved: bool = False) -> dict:
@@ -243,26 +304,33 @@ def add_catalog_feed(db: Session, catalog_id: str, user_id: int = 1, *, require_
 
 @router.post("/api/feeds/recommended/{catalog_id}")
 def add_recommended(catalog_id: str, request: Request, db: Annotated[Session, Depends(get_db)]):
-    from app.auth import effective_user_id, session_from_request
-
     session = session_from_request(request)
-    is_admin = bool(session and session.role == "admin")
     return add_catalog_feed(
         db,
         catalog_id,
         effective_user_id(session),
-        require_approved=not is_admin,
+        require_approved=not session_is_admin(session),
     )
 
 
 @router.delete("/api/feeds/recommended/{catalog_id}")
-def remove_recommended(catalog_id: str, db: Annotated[Session, Depends(get_db)]):
+def remove_recommended(catalog_id: str, request: Request, db: Annotated[Session, Depends(get_db)]):
+    """Unsubscribe the caller from a catalog source (every account shares catalog ids)."""
     item = find_catalog_item(catalog_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Unknown recommended feed")
-    feed = db.query(Feed).filter((Feed.catalog_id == catalog_id) | (Feed.url == item["url"])).one_or_none()
-    if feed is None:
+    session = _caller(request)
+    # Always the caller's own copy: an admin removing their subscription must not
+    # drop everyone else's, and several rows can match (catalog id + legacy URL).
+    feeds = (
+        db.query(Feed)
+        .filter(Feed.user_id == effective_user_id(session))
+        .filter((Feed.catalog_id == catalog_id) | (Feed.url == item["url"]))
+        .all()
+    )
+    if not feeds:
         return {"ok": True, "removed": False}
-    db.delete(feed)
+    for feed in feeds:
+        db.delete(feed)
     db.commit()
     return {"ok": True, "removed": True}

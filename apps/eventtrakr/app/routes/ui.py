@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import logging
+import re
 import threading
+import unicodedata
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
-from sqlalchemy import or_, select
+from sqlalchemy import select
 
 from app.config import env
 from app.db import SessionLocal
 from app.models import Category, Event, EventSource, User, utcnow
-from app.services import auth, categories, ingest
+from app.services import auth, capabilities, categories, ingest
 from app.services import settings as settings_service
 from app.services.calendar_sync import (
     build_facebook_share_url,
@@ -257,22 +259,157 @@ def _deep_search_needs_browser(db, user_id: int, cat_query: str) -> bool | None:
     return any(not ingest.is_ics_source(s) for s in sources)
 
 
+# -- search ------------------------------------------------------------------------
+
+SEARCH_MAX_TOKENS = 8
+_TOKEN_TRIM = "@#.,;:!?\"'()[]{}\u00ab\u00bb\u201c\u201d\u2018\u2019"
+_COMBINING_MARKS = re.compile("[\u0300-\u036f]")
+# Rank tiers: every word in the title, then also in place/source/category, then description.
+RANK_TITLE, RANK_META, RANK_DESCRIPTION = 0, 1, 2
+
+
+def fold_text(value: str | None) -> str:
+    """Case- and accent-insensitive form for matching (SQLite LIKE only folds ASCII).
+
+    ``casefold`` handles Æ/Ø/Å and ß; NFKD + dropping combining marks makes "cafe"
+    match "café". Both sides go through this, so "Århus" and "arhus" agree.
+    """
+    if not value:
+        return ""
+    if value.isascii():
+        return value.lower()
+    return _COMBINING_MARKS.sub("", unicodedata.normalize("NFKD", value.casefold()))
+
+
+def search_tokens(query: str | None) -> list[str]:
+    """Folded words of a search, in order: short words dropped unless nothing else, max 8."""
+    words: list[str] = []
+    for raw in (query or "").split():
+        word = fold_text(raw).strip(_TOKEN_TRIM)
+        if word and word not in words:
+            words.append(word)
+    longer = [w for w in words if len(w) >= 2]
+    return (longer or words)[:SEARCH_MAX_TOKENS]
+
+
+def match_rank(tokens: list[str], title: str, meta: str, description: str) -> int | None:
+    """Best tier where every token appears (AND across fields), or None. Inputs are folded."""
+    rank = RANK_TITLE
+    for token in tokens:
+        if token in title:
+            continue
+        if token in meta:
+            rank = max(rank, RANK_META)
+        elif token in description:
+            rank = RANK_DESCRIPTION
+        else:
+            return None
+    return rank
+
+
+def _aware(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+def _social_names_by_event(db, user_id: int) -> dict[int, str]:
+    """Instagram account names behind social-linked events, so "theglobe" finds them."""
+    from app.models import EventSocialLink, SocialAccount, SocialPost
+
+    rows = db.execute(
+        select(EventSocialLink.event_id, SocialAccount.username, SocialAccount.display_name)
+        .join(SocialPost, SocialPost.id == EventSocialLink.social_post_id)
+        .join(SocialAccount, SocialAccount.id == SocialPost.social_account_id)
+        .where(SocialAccount.user_id == user_id)
+    ).all()
+    names: dict[int, list[str]] = {}
+    for event_id, username, display_name in rows:
+        names.setdefault(event_id, []).extend([username or "", display_name or ""])
+    return {event_id: " ".join(parts) for event_id, parts in names.items()}
+
+
+def run_search(
+    db,
+    user_id: int,
+    *,
+    tokens: list[str],
+    location: str = "",
+    category: str = "",
+    target_date=None,
+    now: datetime | None = None,
+) -> list[Event]:
+    """Events for a search, best matches first.
+
+    SQL narrows by owner, date and category; words and location are matched in
+    Python (Unicode-aware) over the user's events -- a few thousand on a Pi.
+    Order: rank tier, then upcoming before past, then soonest first.
+    """
+    now = now or datetime.now(timezone.utc)
+    conditions = [Event.user_id == user_id, Event.is_cancelled == False]  # noqa: E712
+    if target_date:
+        day_start = datetime(target_date.year, target_date.month, target_date.day, 0, 0, tzinfo=timezone.utc)
+        conditions += [Event.start_time >= day_start, Event.start_time < day_start + timedelta(days=1)]
+    if category and category != "all":
+        conditions.append(Event.category.ilike(f"%{category}%"))
+
+    if not tokens and not location:
+        return list(db.execute(select(Event).where(*conditions).order_by(Event.start_time)).scalars())
+
+    rows = db.execute(
+        select(
+            Event.id, Event.title, Event.description, Event.location, Event.category,
+            Event.start_time, EventSource.name,
+        )
+        .outerjoin(EventSource, EventSource.id == Event.source_id)
+        .where(*conditions)
+    ).all()
+    social_names = _social_names_by_event(db, user_id) if tokens else {}
+    loc_needle = fold_text(location)
+    upcoming_from = now - timedelta(hours=3)
+
+    ranked: list[tuple[int, bool, datetime, int]] = []
+    for event_id, title, description, ev_location, ev_category, start_time, source_name in rows:
+        folded_location = fold_text(ev_location)
+        if loc_needle and loc_needle not in folded_location:
+            continue
+        rank = RANK_TITLE
+        if tokens:
+            folded_title = fold_text(title)
+            meta = " ".join(
+                [folded_location, fold_text(ev_category), fold_text(source_name), fold_text(social_names.get(event_id))]
+            )
+            # Description is folded only when the cheaper fields don't settle it.
+            found = match_rank(tokens, folded_title, meta, "")
+            if found is None:
+                found = match_rank(tokens, folded_title, meta, fold_text(description))
+            if found is None:
+                continue
+            rank = found
+        start = _aware(start_time)
+        ranked.append((rank, start < upcoming_from, start, event_id))
+
+    ranked.sort()
+    ids = [row[3] for row in ranked]
+    by_id: dict[int, Event] = {}
+    for offset in range(0, len(ids), 500):
+        chunk = ids[offset:offset + 500]
+        by_id.update({ev.id: ev for ev in db.execute(select(Event).where(Event.id.in_(chunk))).scalars()})
+    return [by_id[i] for i in ids if i in by_id]
+
+
 @bp.route("/search")
 @auth.login_required
 def search():
     user = auth.get_current_user()
     date_query = request.args.get("date", "").strip()
-    raw_loc_query = request.args.get("location", "").strip()
+    # Location filters only when the person typed or picked one: the default
+    # location is offered as a chip, never applied silently.
+    loc_query = request.args.get("location", "").strip()
     term_query = request.args.get("q", "").strip()
-    cat_query = request.args.get("category", "all").strip()
+    cat_query = request.args.get("category", "all").strip() or "all"
+    tokens = search_tokens(term_query)
 
     events = []
-    # A bare page visit still pre-fills the location field with the user's
-    # default (a convenience for the form), but that resolved default must
-    # not, by itself, look like a search was already submitted -- only
-    # explicit criteria should trigger one.
-    performed = bool(date_query or raw_loc_query or term_query)
-    loc_query = raw_loc_query or user.default_location
+    performed = bool(date_query or loc_query or term_query or cat_query != "all")
     deep_search_sources_checked = None
 
     with SessionLocal() as db:
@@ -298,29 +435,20 @@ def search():
                         # ICS-only: cheap enough to finish before render.
                         deep_search_sources_checked = _deep_search_sources(db, user.user_id, target_date, cat_query)
 
-            query = select(Event).where(Event.user_id == user.user_id, Event.is_cancelled == False)
-
-            if target_date:
-                day_start = datetime(target_date.year, target_date.month, target_date.day, 0, 0, tzinfo=timezone.utc)
-                day_end = day_start + timedelta(days=1)
-                query = query.where(Event.start_time >= day_start, Event.start_time < day_end)
-
-            if loc_query:
-                query = query.where(Event.location.ilike(f"%{loc_query}%"))
-
-            if term_query:
-                term_pat = f"%{term_query}%"
-                query = query.where(or_(Event.title.ilike(term_pat), Event.description.ilike(term_pat)))
-
-            if cat_query and cat_query != "all":
-                query = query.where(Event.category.ilike(f"%{cat_query}%"))
-
-            events = list(db.execute(query.order_by(Event.start_time)).scalars())
+            events = run_search(
+                db,
+                user.user_id,
+                tokens=tokens,
+                location=loc_query,
+                category=cat_query,
+                target_date=target_date,
+            )
             _enrich_events(events)
 
         cat_rows = db.execute(select(Event.category).where(Event.user_id == user.user_id).distinct()).scalars().all()
         categories = sorted({c.strip() for c in cat_rows if c and c.strip()})
 
+    without_location = {k: v for k, v in request.args.items() if k != "location" and v}
     return render_template(
         "search.html",
         user=user,
@@ -328,6 +456,8 @@ def search():
         performed=performed,
         date_query=date_query,
         loc_query=loc_query,
+        default_location=(user.default_location or "").strip(),
+        clear_location_url=url_for("ui.search", **without_location),
         term_query=term_query,
         cat_query=cat_query,
         categories=categories,
@@ -336,11 +466,18 @@ def search():
     )
 
 
+def _may_share(db, target_user: User) -> bool:
+    """Public pages show nothing once the owner loses "Share agenda publicly"."""
+    if capabilities.refresh_from_auth(db):
+        db.refresh(target_user)
+    return capabilities.user_can(target_user, capabilities.SHARE_AGENDA)
+
+
 @bp.route("/u/<username>")
 def public_agenda(username: str):
     with SessionLocal() as db:
         target_user = db.execute(select(User).where(User.username == username)).scalar_one_or_none()
-        if not target_user or not target_user.is_public:
+        if not target_user or not target_user.is_public or not _may_share(db, target_user):
             return render_template(
                 "public_agenda.html",
                 is_private=True,
@@ -378,7 +515,7 @@ def public_agenda(username: str):
 def public_favourites(username: str):
     with SessionLocal() as db:
         target_user = db.execute(select(User).where(User.username == username)).scalar_one_or_none()
-        if not target_user or not target_user.favourites_public:
+        if not target_user or not target_user.favourites_public or not _may_share(db, target_user):
             return render_template(
                 "public_agenda.html",
                 is_private=True,
@@ -421,6 +558,7 @@ def add_event():
 
 @bp.route("/add-event/fetch-facebook", methods=["POST"])
 @auth.login_required
+@auth.capability_required(capabilities.USE_SOCIAL, redirect_endpoint="ui.add_event")
 def add_event_fetch_facebook():
     event_url = (request.get_json(silent=True) or {}).get("url", "").strip()
     if not event_url or "facebook.com" not in event_url.lower():

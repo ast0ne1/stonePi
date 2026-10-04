@@ -75,7 +75,7 @@
   {% endfor %}
 </div>
 
-<form method="post" action="/settings" class="stack settings-form" data-settings autocomplete="off"{% if settings_tab not in settings_save_tabs %} hidden{% endif %}>
+<form method="post" action="/settings" class="stack settings-form" data-settings data-settings-dirty-track autocomplete="off"{% if settings_tab not in settings_save_tabs %} hidden{% endif %}>
   <input type="hidden" name="settings_tab" value="{{ settings_tab }}" data-settings-tab-field />
 
   <div class="stack settings-panel settings-panel-stack" id="settings-panel-device" role="tabpanel" data-settings-panel="device" aria-labelledby="settings-tab-device"{% if settings_tab != 'device' %} hidden{% endif %}>
@@ -217,6 +217,7 @@
   </div>
 
   <div class="stack settings-panel settings-panel-stack" id="settings-panel-publication" role="tabpanel" data-settings-panel="publication" aria-labelledby="settings-tab-publication"{% if settings_tab != 'publication' %} hidden{% endif %}>
+    {% if is_admin %}
     <div class="card stack" data-paper-naming data-paper-hostname="{{ device_hostname }}" data-settings-panel-card="naming">
       <h2 class="section-heading">{{ filter_icon("publication") }} Paper naming</h2>
       <label>
@@ -256,9 +257,11 @@
       </label>
       <p class="hint">Date style applies to both the full paper and category papers.</p>
     </div>
+    {% endif %}
 
     <div class="card stack" data-settings-panel-card="stories">
       <h2 class="section-heading">{{ filter_icon("today") }} Briefing</h2>
+      {% if is_admin %}
       <label>
         Stories on Briefing
         <select name="briefing_limit">
@@ -277,6 +280,7 @@
         </select>
       </label>
       <p class="hint">New stories get an importance score from 1 (ignore) to 5 (major). Favourites always stay when their publish date matches the day chip.</p>
+      {% endif %}
       <label class="check">
         <input type="checkbox" name="publication_include_saved" value="1" {% if publication_include_saved %}checked{% endif %} />
         <span>Include saved long-reads in today’s paper</span>
@@ -284,6 +288,7 @@
       <p class="hint">When on, active Saved-tab long-reads are appended to the frozen reader EPUB/OPDS daily briefing (even if their publish date is older). The live Today chip stays publish-date only. Default is off.</p>
     </div>
 
+    {% if is_admin %}
     <div class="card stack" data-settings-panel-card="x3">
       <h2 class="section-heading">{{ filter_icon("reader") }} Xteink / X3 paper</h2>
       <p class="hint">Layout aimed at the Xteink X3 (3.7″, 528×792, buttons only — no touchscreen). Turn options off for a larger reader or KOReader if you prefer the classic paper.</p>
@@ -355,6 +360,7 @@
         {% endfor %}
       </div>
     </div>
+    {% endif %}
     <button class="btn btn-primary btn-with-icon settings-save" type="submit">{{ icon("check") }} {{ t("Save settings") }}</button>
   </div>
 
@@ -395,7 +401,6 @@
     </div>
     <button class="btn btn-primary btn-with-icon settings-save" type="submit">{{ icon("check") }} {{ t("Save settings") }}</button>
   </div>
-  {% endif %}
 
   <div class="stack settings-panel settings-panel-stack" id="settings-panel-filters" role="tabpanel" data-settings-panel="filters" aria-labelledby="settings-tab-filters"{% if settings_tab != 'filters' %} hidden{% endif %}>
     <div class="card stack">
@@ -443,7 +448,6 @@
     <button class="btn btn-primary btn-with-icon settings-save" type="submit">{{ icon("check") }} {{ t("Save settings") }}</button>
   </div>
 
-  {% if is_admin %}
   <div class="stack settings-panel" id="settings-panel-llm" role="tabpanel" data-settings-panel="llm" aria-labelledby="settings-tab-llm"{% if settings_tab != 'llm' %} hidden{% endif %}>
     <div class="card stack">
       <h2 class="section-heading">{{ filter_icon("llm") }} Summaries</h2>
@@ -894,6 +898,7 @@
 {% endif %}
 {% endif %}
 
+{% if is_admin %}
 <div class="stack settings-panel" id="settings-panel-categories" role="tabpanel" data-settings-panel="categories" aria-labelledby="settings-tab-categories"{% if settings_tab != 'categories' %} hidden{% endif %}>
   <div class="card stack">
     <h2 class="section-heading">{{ filter_icon("categories") }} Categories</h2>
@@ -932,7 +937,6 @@
   </div>
 </div>
 
-{% if is_admin %}
 <div class="stack settings-panel settings-panel-stack" id="settings-panel-catalog" role="tabpanel" data-settings-panel="catalog" aria-labelledby="settings-tab-catalog"{% if settings_tab != 'catalog' %} hidden{% endif %}>
   <div class="card stack" data-settings-panel-card="packages">
     <h2 class="section-heading">{{ icon("files") }} Packages</h2>
@@ -1002,6 +1006,18 @@
     </div>
     <div class="btn-row">
       <button class="btn btn-secondary" type="button" data-close-sheet>Got it</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet" hidden data-settings-unsaved-sheet role="dialog" aria-modal="true" aria-labelledby="settings-unsaved-title">
+  <div class="sheet-card card">
+    <h2 id="settings-unsaved-title">Unsaved changes</h2>
+    <p class="hint" data-settings-unsaved-body>You have unsaved changes. Save them first, or discard?</p>
+    <div class="btn-row">
+      <button class="btn btn-primary" type="button" data-settings-unsaved-save>Save</button>
+      <button class="btn btn-secondary" type="button" data-settings-unsaved-discard>Discard</button>
+      <button class="btn btn-ghost" type="button" data-settings-unsaved-stay>Stay</button>
     </div>
   </div>
 </div>

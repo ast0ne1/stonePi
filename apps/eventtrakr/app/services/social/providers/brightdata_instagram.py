@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 
 import httpx
 
+from app.services import brightdata
+from app.services.brightdata import BrightDataBudgetError, BrightDataError  # noqa: F401 (re-exported)
 from app.services.social.types import RawSocialPost
 
 logger = logging.getLogger("eventtrakr.social.brightdata_instagram")
@@ -19,10 +21,6 @@ MAX_WAIT_SECONDS = 300.0
 # Cost control: never ask Bright Data for more than this many posts per check.
 DEFAULT_NUM_OF_POSTS = 10
 MAX_NUM_OF_POSTS = 20
-
-
-class BrightDataError(Exception):
-    pass
 
 
 def _parse_dt(raw: str | None) -> datetime | None:
@@ -176,11 +174,14 @@ def fetch_recent_posts(
     posts_to_not_include: list[str] | None = None,
     start_date: str | None = None,
     dataset_id: str = INSTAGRAM_POSTS_DATASET_ID,
+    paced: bool = True,
 ) -> list[RawSocialPost]:
     """Discover recent Instagram posts for a public profile via Bright Data.
 
     Uses discover_new + discover_by=url with a capped num_of_posts so free-tier
-    credits are not burned re-fetching large histories.
+    credits are not burned re-fetching large histories. ``paced`` (scheduled
+    polls) keeps to the month's share of the shared Bright Data limit; a manual
+    "Check now" passes False and only the hard limit applies.
     """
     handle = (username or "").strip().lstrip("@")
     if not handle:
@@ -195,34 +196,48 @@ def fetch_recent_posts(
     if start_date:
         payload_item["start_date"] = start_date
 
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    with httpx.Client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
-        try:
-            resp = client.post(
-                f"{API_BASE}/scrape",
-                params={
-                    "dataset_id": dataset_id,
-                    "notify": "false",
-                    "include_errors": "true",
-                    "type": "discover_new",
-                    "discover_by": "url",
-                },
-                headers=headers,
-                json={"input": [payload_item]},
-            )
-            resp.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            raise BrightDataError(f"Bright Data scrape failed: HTTP {e.response.status_code}") from e
-        except httpx.HTTPError as e:
-            raise BrightDataError(f"Bright Data scrape request failed: {e}") from e
+    def call() -> list:
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        with httpx.Client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
+            try:
+                resp = client.post(
+                    f"{API_BASE}/scrape",
+                    params={
+                        "dataset_id": dataset_id,
+                        "notify": "false",
+                        "include_errors": "true",
+                        "type": "discover_new",
+                        "discover_by": "url",
+                    },
+                    headers=headers,
+                    json={"input": [payload_item]},
+                )
+                resp.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                raise BrightDataError(f"Bright Data scrape failed: HTTP {e.response.status_code}", billed=False) from e
+            except httpx.HTTPError as e:
+                raise BrightDataError(f"Bright Data scrape request failed: {e}", billed=False) from e
 
-        if resp.status_code == 202:
-            snapshot_id = resp.json().get("snapshot_id")
-            if not snapshot_id:
-                raise BrightDataError("Bright Data returned 202 without a snapshot_id")
-            records = _wait_for_snapshot(client, headers, snapshot_id)
-        else:
-            records = resp.json()
+            try:
+                if resp.status_code == 202:
+                    snapshot_id = resp.json().get("snapshot_id")
+                    if not snapshot_id:
+                        raise BrightDataError("Bright Data returned 202 without a snapshot_id")
+                    records = _wait_for_snapshot(client, headers, snapshot_id)
+                else:
+                    records = resp.json()
+            except httpx.HTTPError as e:
+                raise BrightDataError(f"Bright Data snapshot fetch failed: {e}") from e
+        return records if isinstance(records, list) else []
+
+    # Posts can come back nested under one profile record; count whichever is larger.
+    records = brightdata.metered(
+        "instagram",
+        limit,
+        call,
+        paced=paced,
+        count=lambda recs: max(len(recs), len(_flatten_records(recs))),
+    )
 
     raw_list = records if isinstance(records, list) else []
     flat = _flatten_records(raw_list)
@@ -254,6 +269,7 @@ class BrightDataInstagramProvider:
         num_of_posts: int = DEFAULT_NUM_OF_POSTS,
         posts_to_not_include: list[str] | None = None,
         start_date: str | None = None,
+        paced: bool = True,
     ) -> list[RawSocialPost]:
         return fetch_recent_posts(
             self.api_key,
@@ -262,4 +278,5 @@ class BrightDataInstagramProvider:
             posts_to_not_include=posts_to_not_include,
             start_date=start_date,
             dataset_id=self.dataset_id,
+            paced=paced,
         )

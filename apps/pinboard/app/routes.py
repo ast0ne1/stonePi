@@ -68,6 +68,44 @@ def _user(request: Request):
     return decode_session(request.cookies.get(COOKIE_NAME), _session_secret())
 
 
+POST_NOTICES = "can_post_notices"
+ASSIGN_OTHERS = "can_assign_others"
+NO_POST_NOTICES = "Ask an admin to allow 'Post notices' in StonePi → Users."
+NO_ASSIGN_OTHERS = "Ask an admin to allow 'Assign reminders to others' in StonePi → Users."
+
+
+def _can(user, capability: str) -> bool:
+    """Pinboard capability; standalone (no secret) has no users, so everything is allowed."""
+    if not _session_secret():
+        return True
+    return bool(user and (user.is_admin or user.has_capability("pinboard", capability)))
+
+
+def _own_assignee(user) -> tuple[str, str]:
+    name = people.name_for(people.household_people(_session_secret()), user.user_id)
+    return name or user.display_name or user.username, user.user_id
+
+
+def _reminder_assignee(user, assignee_user: str, assignee: str) -> tuple[str, str, str | None]:
+    """(name, uid, error). Without "Assign reminders to others" a reminder is the caller's own.
+
+    An unassigned (household) reminder pushes to everyone, so it counts as
+    assigning to others: those callers get it as their own reminder instead
+    (PriceScout's shopping-list send keeps working), while naming somebody
+    else is refused.
+    """
+    if _can(user, ASSIGN_OTHERS):
+        name, uid = _assignee(assignee_user, assignee)
+        return name, uid, None
+    from stonepi_auth.alerts import auth_user_id
+
+    picked = auth_user_id(assignee_user) or ""
+    if (picked and picked != user.user_id) or (not picked and assignee.strip()):
+        return "", "", NO_ASSIGN_OTHERS
+    name, uid = _own_assignee(user)
+    return name, uid, None
+
+
 def _safe_next(raw: str, fallback: str = "/") -> str:
     value = (raw or "").strip()
     if value.startswith("/") and not value.startswith("//"):
@@ -92,6 +130,10 @@ def _page_ctx(request: Request, *, active: str, user, csrf: str, extra: dict | N
         "error": request.query_params.get("err"),
         "message": request.query_params.get("msg"),
         "focus_new": request.query_params.get("new") == "1",
+        "can_post_notices": _can(user, POST_NOTICES),
+        "can_assign_others": _can(user, ASSIGN_OTHERS),
+        "no_post_notices_hint": NO_POST_NOTICES,
+        "no_assign_others_hint": NO_ASSIGN_OTHERS,
         "alerts_bell_state": bell_context(
             user,
             session_cookie=request.cookies.get(COOKIE_NAME),
@@ -140,8 +182,11 @@ def healthz():
 
 
 @router.get("/api/display")
-def api_display():
-    return store.display_payload()
+def api_display(items: int = 0):
+    payload = store.display_payload()
+    if items > 0:  # Car Thing panel lists; the plain call (Dashboard tile, TRMNL) is unchanged
+        payload.update(store.panel_feed(items))
+    return payload
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -260,6 +305,8 @@ async def add_notice(request: Request, text: str = Form(""), csrf_token: str = F
     user = _user(request)
     if _session_secret() and (user is None or (not user.is_admin and not user.can_access("pinboard"))):
         return RedirectResponse(login_url(_settings(), "/pinboard/notices"), status_code=303)
+    if not _can(user, POST_NOTICES):
+        return RedirectResponse(f"/notices?err={quote(NO_POST_NOTICES)}", status_code=303)
     if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
         return RedirectResponse("/notices?err=Form+expired", status_code=303)
     if not text.strip():
@@ -286,7 +333,9 @@ async def add_reminder(
         return RedirectResponse("/reminders?err=Form+expired", status_code=303)
     if not text.strip():
         return RedirectResponse("/reminders?err=Reminder+required&new=1", status_code=303)
-    name, uid = _assignee(assignee_user, assignee)
+    name, uid, err = _reminder_assignee(user, assignee_user, assignee)
+    if err:
+        return RedirectResponse(f"/reminders?err={quote(err)}&new=1", status_code=303)
     store.add_reminder(text.strip(), due=due, assignee=name, assignee_user=uid)
     return RedirectResponse("/reminders?msg=Reminder+added", status_code=303)
 
@@ -332,8 +381,11 @@ async def api_reminder(request: Request):
         return JSONResponse({"ok": False, "message": "Form expired — refresh and try again."}, status_code=403)
     if not text.strip():
         return JSONResponse({"ok": False, "message": "Reminder text required."}, status_code=400)
-    # Callers may pass a household member's Auth id; without one the reminder is household.
-    name, uid = _assignee(assignee_user, assignee)
+    # Callers may pass a household member's Auth id; without one the reminder is
+    # household — or the caller's own when they can't assign to others.
+    name, uid, err = _reminder_assignee(user, assignee_user, assignee)
+    if err:
+        return JSONResponse({"ok": False, "message": err}, status_code=403)
     item = store.add_reminder(text.strip(), due=due, assignee=name, assignee_user=uid)
     return JSONResponse({"ok": True, "id": item["id"], "message": "Reminder added."})
 

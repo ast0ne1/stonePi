@@ -10,4 +10,4 @@ if [[ -f /opt/fileserve/.env ]]; then
   set +a
 fi
 
-exec /opt/fileserve/.venv/bin/gunicorn -b "${HOST:-0.0.0.0}:${PORT:-8081}" app.main:app
+exec /opt/fileserve/.venv/bin/gunicorn -b "${HOST:-127.0.0.1}:${PORT:-8081}" app.main:app

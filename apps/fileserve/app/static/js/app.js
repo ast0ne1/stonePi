@@ -643,7 +643,8 @@ function openEditSheet(button) {
     pass.value = "";
     pass.type = "password";
   }
-  if (toggle) toggle.checked = protectedOn;
+  // Members without "Publish without a password" always keep the switch on.
+  if (toggle) toggle.checked = protectedOn || toggle.dataset.protectRequired != null;
   if (fields) fields.dataset.hasPassword = protectedOn ? "1" : "";
   if (expiry) expiry.value = button.dataset.pageExpiry || "none";
   if (expiryDate) expiryDate.value = button.dataset.pageExpiryDate || "";

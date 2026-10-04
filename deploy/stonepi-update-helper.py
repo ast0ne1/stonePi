@@ -266,15 +266,8 @@ def install_requirements(app_dir: Path, unit: str) -> None:
     if result.returncode != 0:
         tail = (result.stderr or result.stdout or "").strip().splitlines()[-1:] or ["pip failed"]
         raise HelperError(f"Installing requirements failed: {tail[0]}")
-    user = service_user(unit)
-    if user:
-        run(["chown", "-R", f"{user}:{user}", str(app_dir / ".venv")])
-
-
-def service_user(unit: str) -> str:
-    result = run(["systemctl", "show", "-p", "User", "--value", unit])
-    user = (result.stdout or "").strip()
-    return user if re.match(r"^[a-z_][a-z0-9_-]*$", user) else ""
+    # The venv stays root:root and read-only to the service user (as install.sh leaves it):
+    # this helper runs its pip as root, so a venv the service could write would hand it root.
 
 
 def restart_and_wait(unit: str, entry: dict) -> None:

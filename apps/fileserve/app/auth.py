@@ -82,9 +82,11 @@ def request_is_https() -> bool:
 
 
 def is_signed_in() -> bool:
-    if current_user_id() is not None:
-        return True
-    return _platform_user() is not None
+    if _platform_settings() is not None:
+        # Under StonePi the platform cookie is the sign-in. A FileServe session left
+        # behind after StonePi sign-out (or by someone else on this browser) doesn't count.
+        return _platform_user() is not None
+    return current_user_id() is not None
 
 
 def current_user_id() -> int | None:
@@ -100,26 +102,60 @@ def current_role() -> str:
 
 
 def is_admin() -> bool:
+    if _platform_settings() is not None:
+        # Read the live cookie so a demotion applies before the FileServe session catches up.
+        platform = _platform_user()
+        return bool(platform and platform.is_admin and platform.can_access("fileserve"))
     return current_role() == "admin"
 
 
 def current_user(db: Session | None = None) -> User | None:
-    uid = current_user_id()
+    """The signed-in FileServe user, with ``can(cap)`` wired to StonePi capabilities.
+
+    Under StonePi only the platform cookie counts (the local Flask session just mirrors
+    it), so a role or capability change, a StonePi sign-out, or a different person signing
+    in on the same browser applies on the next request.
+    """
     session_db = db or getattr(g, "db", None)
-    if uid is not None and session_db is not None:
-        found = users_svc.get_user(session_db, uid)
-        if found is not None:
-            return found
+    if session_db is None:
+        return None
+    if _platform_settings() is not None:
+        platform = _platform_user()
+        if platform is None or not platform.can_access("fileserve"):
+            return None
+        local = users_svc.get_or_create_from_platform(session_db, platform)
+        if not local.active:
+            return None
+        local._platform = platform
+        local._capabilities = dict((platform.permissions or {}).get("fileserve") or {})
+        if session.get("uid") != local.id or session.get("role") != local.role:
+            attach_session(local)
+        return local
+    uid = current_user_id()
+    if uid is None:
+        return None
+    found = users_svc.get_user(session_db, uid)
+    if found is None:
+        return None
+    # Solo FileServe: no StonePi grants, so local accounts keep publishing as before.
+    found._platform = None
+    found._capabilities = None
+    return found
+
+
+def platform_capability(app_id: str, cap: str) -> bool:
+    """Another StonePi app's capability for the signed-in person (e.g. Studio's can_publish).
+
+    Solo FileServe has no other apps, so it never blocks there; admins always pass.
+    """
+    if _platform_settings() is None:
+        return True
     platform = _platform_user()
-    if platform is None or session_db is None:
-        return None
-    if not platform.can_access("fileserve"):
-        return None
-    local = users_svc.get_or_create_from_platform(session_db, platform)
-    if not local.active:
-        return None
-    attach_session(local)
-    return local
+    if platform is None:
+        return is_admin()
+    if platform.is_admin:
+        return True
+    return platform.has_capability(app_id, cap)
 
 
 def attach_session(user: User) -> None:

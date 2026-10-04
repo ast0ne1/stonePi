@@ -1,12 +1,15 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
 {% from "_filter_icon.html" import filter_icon %}
+{% from "_trust.html" import trust_badge %}
 {% block title %}Watches · PriceWatch{% endblock %}
 {% block content %}
 <section class="hero">
   <div class="hero-row hero-row-inline">
     <h1>Watches</h1>
+    {% if can_manage_watches %}
     <a class="btn btn-primary btn-with-icon" href="/watches/new">{{ icon("plus") }}<span class="btn-label-full">Add watch</span><span class="btn-label-short">Add</span></a>
+    {% endif %}
   </div>
   <div class="page-status">
     <span class="page-status-dot{% if not watches %} is-muted{% elif counts.strike_found %} is-busy{% elif counts.error %} is-error{% endif %}" aria-hidden="true"></span>
@@ -43,13 +46,16 @@
           <span class="watch-row-copy">
             <span class="watch-row-title">{{ w.product_name }}</span>
             <span class="watch-row-meta">{% if w.variant %}{{ w.variant }} · {% endif %}{% if w.last_checked_at %}checked {{ w.last_checked_at[11:16] }}{% else %}not checked yet{% endif %}</span>
+            {% if w.row_offer %}
+            <span class="watch-row-meta watch-row-shop">at {{ w.row_offer.retailer }} {{ trust_badge(w.row_offer.trust) }}</span>
+            {% endif %}
             <span class="watch-health watch-health-{{ w.status }}">
               <span class="watch-health-dot" aria-hidden="true"></span>
               {{ status_labels.get(w.status, w.status|replace('_', ' ')|capitalize) }}
             </span>
           </span>
           <span class="watch-row-price">
-            <strong>{{ format_price(w.current_lowest, w.currency) }}</strong>
+            <strong>{{ format_price(w.row_price, w.currency) }}</strong>
             <span class="watch-row-meta">≤ {{ format_price(w.target_price, w.currency) }}</span>
           </span>
           <span class="watch-row-chevron" aria-hidden="true">{{ filter_icon("chevron") }}</span>
@@ -68,6 +74,7 @@
     <div class="help-sheet-body">
       <p><strong>Watching</strong> — PriceWatch checks retailers on each watch’s schedule.</p>
       <p><strong>Strike found</strong> — an offer met your target price and conditions. With Notifications ntfy on, you’re alerted when it’s found and again if the price drops further. Re-arm to clear the strike and start fresh.</p>
+      <p><strong>Retailer scores</strong> — ★ scores come from Trustpilot; a muted, outlined badge is PriceRunner’s own shop rating, used only when Trustpilot has none. A watch can require a minimum score: cheaper offers from lower-rated shops are never strikes, but can send a warning.</p>
       <p><strong>Error / No results</strong> — the last check failed or found no offers; PriceWatch keeps trying on schedule.</p>
       <p><strong>Paused</strong> — kept with its history, but not checked.</p>
       <p><strong>Refresh</strong> in the top bar checks every active watch now.</p>

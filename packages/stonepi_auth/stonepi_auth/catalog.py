@@ -93,7 +93,10 @@ APP_CATALOG: list[dict[str, Any]] = [
         "unit": "stonepi-fileserve",
         "health": "/healthz",
         "color": "#1d5a8a",
-        "capabilities": [],
+        "capabilities": [
+            {"id": "can_publish_pages", "label": "Publish pages", "default": True},
+            {"id": "can_publish_unprotected", "label": "Publish without a password", "default": False},
+        ],
         "launcher": True,
         "group": "user",
         "icon": "fileserve",
@@ -107,7 +110,14 @@ APP_CATALOG: list[dict[str, Any]] = [
         "unit": "stonepi-eventtrakr",
         "health": "/healthz",
         "color": "#3a5628",
-        "capabilities": [],
+        # "default": what a member gets until an admin saves their toggles (Auth fills
+        # it in for grants that predate the capability, and for new people).
+        "capabilities": [
+            {"id": "can_manage_sources", "label": "Manage sources", "default": True},
+            {"id": "can_use_social", "label": "Instagram & Facebook", "default": False},
+            {"id": "can_share_agenda", "label": "Share agenda publicly", "default": True},
+            {"id": "can_sync_calendar", "label": "Google Calendar sync", "default": True},
+        ],
         "launcher": True,
         "group": "user",
         "icon": "eventtrakr",
@@ -121,7 +131,10 @@ APP_CATALOG: list[dict[str, Any]] = [
         "unit": "stonepi-pinboard",
         "health": "/healthz",
         "color": "#6b4c2a",
-        "capabilities": [],
+        "capabilities": [
+            {"id": "can_post_notices", "label": "Post notices", "default": True},
+            {"id": "can_assign_others", "label": "Assign reminders to others", "default": True},
+        ],
         "launcher": True,
         "group": "user",
         "icon": "pinboard",
@@ -136,8 +149,8 @@ APP_CATALOG: list[dict[str, Any]] = [
         "health": "/healthz",
         "color": "#5c3d6e",
         "capabilities": [
-            {"id": "can_use_llm", "label": "Use LLM"},
-            {"id": "can_publish", "label": "Publish to FileServe"},
+            {"id": "can_use_llm", "label": "Use LLM", "default": False},
+            {"id": "can_publish", "label": "Publish to FileServe", "default": False},
         ],
         "launcher": True,
         "group": "user",
@@ -154,7 +167,6 @@ APP_CATALOG: list[dict[str, Any]] = [
         "color": "#2f6f4e",
         "capabilities": [
             {"id": "can_manage_sources", "label": "Manage sources"},
-            {"id": "can_use_alerts", "label": "Offer alerts"},
         ],
         "launcher": True,
         "group": "user",
@@ -186,14 +198,32 @@ APP_CATALOG: list[dict[str, Any]] = [
         "health": "/healthz",
         "color": "#b45309",
         "capabilities": [
-            {"id": "can_manage_watches", "label": "Manage watches"},
+            {"id": "can_manage_watches", "label": "Manage watches", "default": True},
             {"id": "can_manage_sources", "label": "Manage sources"},
-            {"id": "can_use_alerts", "label": "Strike alerts"},
+            {"id": "can_use_alerts", "label": "Strike alerts", "default": True},
         ],
         "launcher": True,
         "group": "user",
         "icon": "pricewatch",
         "description": "Watch specific products and get notified when your target price is met.",
+    },
+    {
+        "id": "library",
+        "name": "Library",
+        "path": "/library/",
+        "port": 8009,
+        "unit": "stonepi-library",
+        "health": "/healthz",
+        "color": "#3f5f7a",
+        "capabilities": [
+            {"id": "can_manage_content", "label": "Manage content"},
+        ],
+        "launcher": True,
+        "group": "user",
+        "icon": "library",
+        # While a download runs, the Home tile shows its progress ("Installing Wikipedia · 71%").
+        "live_status": True,
+        "description": "Wikipedia and other references, offline on your Pi.",
     },
 ]
 
@@ -203,6 +233,9 @@ SYSTEM_APP_IDS = tuple(item["id"] for item in APP_CATALOG if item.get("group") =
 # Apps with their own release zip / Dashboard update. System apps carry `ships_with: platform`:
 # they take the platform version and ship inside the platform zip.
 UPDATABLE_APP_IDS = tuple(item["id"] for item in APP_CATALOG if not item.get("ships_with"))
+# Optional platform services under apps/ that are not apps (no tile, no grants, no Watch row):
+# they ship in the platform zip and are switched on elsewhere (Car Thing: Notify → Displays).
+PLATFORM_SERVICE_APP_IDS: tuple[str, ...] = ("carthing",)
 
 # Pre-rename app ids still found in session cookies, grants and saved prefs.
 LEGACY_APP_IDS: dict[str, str] = {"notifications": "notify", "recovery": "recover"}
@@ -223,7 +256,7 @@ def app_by_id(app_id: str) -> dict[str, Any] | None:
     return None
 
 
-def capabilities_for(app_id: str) -> list[dict[str, str]]:
+def capabilities_for(app_id: str) -> list[dict[str, Any]]:
     item = app_by_id(app_id)
     if not item:
         return []

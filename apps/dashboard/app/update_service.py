@@ -5,6 +5,7 @@ from pathlib import Path
 
 from app.config import DATA_DIR, ROOT_DIR, env
 from stonepi_auth import APP_CATALOG, SERVICE_GROUP_LABELS, UPDATABLE_APP_IDS
+from stonepi_auth.catalog import PLATFORM_SERVICE_APP_IDS
 from stonepi_update import Updater, normalize_repo, read_app_version, read_platform_version, refresh_check
 
 UPDATE_STORE = DATA_DIR / "updates-state.json"
@@ -28,7 +29,9 @@ def privileged_helper() -> Path | None:
 PLATFORM_TARGET = {"id": "platform", "name": "StonePi platform", "color": "#0a6e6e", "group": "system"}
 
 # Apps that ship inside the platform zip; the platform install overlays them.
-PLATFORM_APP_PATHS = tuple(f"apps/{item['id']}" for item in APP_CATALOG if item.get("ships_with") == "platform")
+PLATFORM_APP_PATHS = tuple(f"apps/{item['id']}" for item in APP_CATALOG if item.get("ships_with") == "platform") + tuple(
+    f"apps/{app_id}" for app_id in PLATFORM_SERVICE_APP_IDS
+)
 
 
 def update_targets() -> list[dict]:

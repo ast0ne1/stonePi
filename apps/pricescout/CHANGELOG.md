@@ -1,6 +1,12 @@
 # PriceScout changelog
 
-## Unreleased
+## 0.0.7 — 2026-10-04
+
+### Security
+- On a platform install with no session secret every page returns 503 instead of opening up (solo runs unchanged).
+
+### Changed
+- Refresh needs "Manage sources" (the button is hidden otherwise). Madspild offers use one household postcode set by an admin instead of whoever clicked Refresh; the personal postcode field is gone. The unused "Offer alerts" permission is retired.
 
 ## 0.0.6 — 2026-09-29
 

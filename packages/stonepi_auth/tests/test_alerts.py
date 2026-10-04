@@ -112,7 +112,11 @@ def test_card_none_when_signed_out():
 def test_card_for_member_with_alerts():
     card = alerts.notifications_card_context("pricewatch", _user(phone_alerts=True), home_url="https://pi.local")
     assert card["manage_url"] == "https://pi.local/notifications"
-    assert card["events"] == ["Target price reached", "Significant price drop"]
+    assert card["events"] == [
+        "Target price reached",
+        "Significant price drop",
+        "Cheaper offer from low-rated shop",
+    ]
     assert card["blurb"] == "PriceWatch can send phone alerts about:"
     assert card["is_admin"] is False and card["destinations_url"] == ""
 

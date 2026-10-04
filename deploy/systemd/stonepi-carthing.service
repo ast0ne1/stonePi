@@ -1,0 +1,28 @@
+[Unit]
+Description=StonePi Car Thing panel (switched on in Notify -> Displays -> Car Thing)
+After=network-online.target stonepi-notify.service
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=stonepi-carthing
+Group=stonepi-carthing
+# adb keeps its keys and server state under HOME.
+Environment=HOME=/var/lib/stonepi/carthing
+EnvironmentFile=/etc/stonepi/stonepi.env
+EnvironmentFile=-/etc/stonepi/carthing.env
+WorkingDirectory=/opt/stonepi/apps/carthing
+ExecStart=/opt/stonepi/apps/carthing/.venv/bin/python -m app.serve
+ExecStopPost=-/usr/bin/adb kill-server
+# SIGTERM the panel only: on the way down it gives the Car Thing its own web app back
+# over adb, so the adb server must still be running.
+KillMode=mixed
+TimeoutStopSec=30
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

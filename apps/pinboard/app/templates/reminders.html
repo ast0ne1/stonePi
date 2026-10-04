@@ -21,7 +21,12 @@
     </label>
     <label>
       Assignee
-      {% if people %}
+      {% if not can_assign_others and user %}
+      <select name="assignee_user">
+        <option value="{{ user.user_id }}">Me</option>
+      </select>
+      <span class="hint">{{ no_assign_others_hint }}</span>
+      {% elif people %}
       <select name="assignee_user">
         <option value="">Anyone (household)</option>
         {% for person in people %}

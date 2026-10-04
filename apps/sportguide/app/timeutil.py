@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -118,7 +119,7 @@ def normalize_sport(raw: str) -> str | None:
     return None
 
 
-def normalize_football_league(raw: str) -> str:
+def normalize_football_league(raw: str, *, club_hints: bool = True) -> str:
     t = (raw or "").strip()
     low = t.lower()
     mapping = (
@@ -153,6 +154,8 @@ def normalize_football_league(raw: str) -> str:
     }
     if t in known:
         return t
+    if not club_hints:
+        return "Other"
     # Club-name hints when competition string is missing
     clubs = (
         (("liverpool", "man city", "manchester city", "man united", "manchester united",
@@ -174,4 +177,41 @@ def normalize_football_league(raw: str) -> str:
     for names, label in clubs:
         if any(n in low for n in names):
             return label
+    return "Other"
+
+
+_RUGBY_NATIONS = (
+    "australia", "new zealand", "south africa", "argentina", "england", "ireland",
+    "scotland", "wales", "france", "italy", "fiji", "samoa", "tonga", "japan",
+    "georgia", "portugal", "uruguay", "chile", "canada", "usa", "png", "papua new guinea",
+    "cook islands", "lebanon", "british and irish lions", "lions", "wallabies",
+    "all blacks", "springboks", "pumas", "kangaroos", "kiwis", "jillaroos", "kiwi ferns",
+    "wallaroos", "black ferns",
+)
+_RUGBY_INTL_HINTS = (
+    "test", "rugby championship", "bledisloe", "world cup", "pacific championship",
+    "pacific cup", "nations championship", "six nations",
+)
+
+
+def _is_rugby_nation(side: str) -> bool:
+    side = re.sub(r"\b(w|women|u\d{2})\b", "", side.lower()).strip(" -")
+    return side in _RUGBY_NATIONS
+
+
+def normalize_rugby_league(title: str) -> str:
+    """Rugby title → one of RUGBY_LEAGUES. Title only: section blobs mix competitions."""
+    low = (title or "").lower()
+    if "super rugby" in low:
+        return "Super Rugby"
+    if any(h in low for h in _RUGBY_INTL_HINTS):
+        return "Internationals"
+    body = re.sub(r"\s*\brugby (league|union)\b\s*$", "", low).strip()
+    sides = re.split(r"\s+(?:-|vs\.?|v)\s+", body, maxsplit=1)
+    if len(sides) == 2 and all(_is_rugby_nation(s) for s in sides):
+        return "Internationals"
+    is_league = "rugby league" in low or "state of origin" in low or re.search(r"\bnrlw?\b", low)
+    if is_league and "super league" not in low:
+        women = re.search(r"\bnrlw\b", low) or re.search(r"\bw\s+(?:-|vs\.?|v)\s+|\bw$|\bw\s+rugby league", low)
+        return "NRLW" if women else "NRL"
     return "Other"

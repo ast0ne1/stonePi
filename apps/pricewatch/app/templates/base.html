@@ -20,6 +20,7 @@
           <a class="brand" href="/">{% include "_brand_mark.html" %}PriceWatch</a>
         </div>
         <div class="topbar-actions">
+          {% if can_manage_watches %}
           <form method="post" action="/check-all" class="refresh-form" data-busy-form>
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
             <input type="hidden" name="next" value="{{ request.url.path }}" />
@@ -28,6 +29,7 @@
               <span>Refresh</span>
             </button>
           </form>
+          {% endif %}
           {% if user %}
           {% from "stonepi/alerts.html" import alerts_bell %}
           {{ alerts_bell(alerts_bell_state) }}
@@ -43,7 +45,7 @@
 
       <main class="main">
         {% if using_factory_admin and active == 'settings' %}
-        <p class="banner banner-muted">Factory login is still <strong>admin / admin</strong>. Change it under <a href="{{ stonepi_home_url }}/settings?tab=general">StonePi → Settings → General</a>.</p>
+        <p class="banner banner-muted">The admin account still uses its first-run password. Change it under <a href="{{ stonepi_home_url }}/settings?tab=general">StonePi → Settings → General</a>.</p>
         {% endif %}
         {% if error %}<p class="banner">{{ error }}</p>{% endif %}
         {% block content %}{% endblock %}
@@ -58,10 +60,12 @@
           {{ filter_icon("watches") }}
           <span>Watches</span>
         </a>
+        {% if can_manage_watches %}
         <a href="/watches/new" class="{% if active == 'add' %}is-active{% endif %}">
           {{ filter_icon("add") }}
           <span>Add</span>
         </a>
+        {% endif %}
         <a href="/settings" class="{% if active == 'settings' %}is-active{% endif %}">
           {{ filter_icon("settings") }}
           <span>Settings</span>

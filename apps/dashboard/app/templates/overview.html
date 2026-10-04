@@ -13,6 +13,9 @@
   </div>
 </section>
 
+{# Live region: app.js polls /api/overview/watch and repaints this banner and the
+   per-app states below in place (3 s while something is starting or down, 20 s when all clear). #}
+<div class="overview-alert-slot" data-health-live data-health-poll-url="/api/overview/watch" data-health-settled="{{ 'false' if health_checking or (watch.level or 'healthy')|lower != 'healthy' else 'true' }}">
 {% if health_checking %}
 <aside class="overview-alert is-attention" role="status">
   <div>
@@ -35,12 +38,13 @@
   {% endif %}
 </aside>
 {% endif %}
+</div>
 
 <div class="health-stats">
   <div class="health-stats-row">
     <section class="card stat">
       <p class="stat-label muted"><span class="stat-icon" aria-hidden="true">{{ svg('dashboard') }}</span> Apps</p>
-      <strong>{{ healthy_count }} / {{ cards|length }}</strong>
+      <strong data-health-count="stat">{{ healthy_count }} / {{ cards|length }}</strong>
       <p class="muted">Responding / total</p>
     </section>
     <section class="card stat">
@@ -246,7 +250,7 @@
 
 {% if cards %}
 <div class="section-head">
-  <p class="muted">{{ healthy_count }} of {{ cards|length }} responding</p>
+  <p class="muted" data-health-count="head">{{ healthy_count }} of {{ cards|length }} responding</p>
 </div>
 {% endif %}
 {% if card_groups %}
@@ -257,7 +261,7 @@
     <div class="service-grid health-app-grid">
       {% for card in group_cards %}
       {% set card_disabled = card.enabled is defined and not card.enabled %}
-      <section class="card service-card service-card-health is-managed{% if card_disabled %} is-disabled{% elif not card.health.ok %} is-unhealthy{% endif %}" data-expand-card>
+      <section class="card service-card service-card-health is-managed{% if card_disabled %} is-disabled{% elif not card.health.ok %} is-unhealthy{% endif %}" data-expand-card data-health-card="{{ card.id }}">
         <div class="service-card-actions">
           <button type="button" class="icon-btn service-expand-btn" data-card-expand aria-expanded="false" aria-label="Show details for {{ card.name }}" title="Details">{{ svg('chevron-down') }}</button>
           <a class="icon-btn" href="{{ card.url }}" aria-label="Open {{ card.name }}" title="Open">{{ svg('open') }}</a>
@@ -280,11 +284,11 @@
         </div>
         <div class="service-card-foot health-status-foot">
           {# Disabled = household access lock in Auth; the unit may still be running, so show its state after. #}
-          <p class="health-status{% if card_disabled %} is-off{% elif card.health.ok %} is-ok{% else %} is-bad{% endif %}">
-            <span class="dot{% if card_disabled %} off{% elif card.health.ok %} ok{% else %} bad{% endif %}"></span>
-            {% if card_disabled %}Disabled{% elif card.health.ok %}Healthy{% else %}Down{% endif %}
+          <p class="health-status{% if card_disabled %} is-off{% elif card.health.ok %} is-ok{% else %} is-bad{% endif %}" data-health-status>
+            <span class="dot{% if card_disabled %} off{% elif card.health.ok %} ok{% else %} bad{% endif %}" data-health-dot></span>
+            <span data-health-label>{% if card_disabled %}Disabled{% elif card.health.ok %}Healthy{% else %}Down{% endif %}</span>
             <span class="health-status-sep">·</span>
-            <span class="health-status-unit">{% if card.unit_status == 'local' %}local process{% else %}{{ card.unit_status }}{% endif %}</span>
+            <span class="health-status-unit" data-health-unit>{% if card.unit_status == 'local' %}local process{% else %}{{ card.unit_status }}{% endif %}</span>
           </p>
         </div>
       </section>

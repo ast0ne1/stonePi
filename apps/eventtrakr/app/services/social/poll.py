@@ -32,8 +32,13 @@ def _account_due(
     global_minutes: int,
     now_utc: datetime,
     now_local: datetime,
+    hours: tuple[str, str] | None = None,
 ) -> bool:
-    """Due check matching URL sources: Global Discovery interval or per-account custom."""
+    """Due check matching URL sources: Global Discovery interval or per-account custom.
+
+    Interval schedules also keep to the Discovery polling hours (saves Bright Data
+    records overnight); a weekly schedule's own days and times are left as set.
+    """
     if not account.tracking_enabled:
         return False
     from app.services import settings as settings_service
@@ -41,10 +46,10 @@ def _account_due(
 
     global_schedule = {"mode": "interval", "interval_minutes": max(15, int(global_minutes))}
     custom = settings_service.get_source_schedule(account, global_minutes)
-    last = account.last_checked
-    if custom is not None:
-        return is_due_for_config(custom, last, now_utc, now_local)
-    return is_due_for_config(global_schedule, last, now_utc, now_local)
+    schedule = custom if custom is not None else global_schedule
+    if schedule.get("mode") != "weekly" and not social_config.within_active_hours(hours, now_local):
+        return False
+    return is_due_for_config(schedule, account.last_checked, now_utc, now_local)
 
 
 def _known_external_ids(db: Session, account_id: int, limit: int = 40) -> list[str]:
@@ -99,6 +104,9 @@ def poll_account(db: Session, account: SocialAccount, *, force: bool = False) ->
         summary["error"] = str(e)
         return summary
 
+    from app.services import brightdata
+
+    brightdata.ensure_instagram_allowance()
     known = _known_external_ids(db, account.id)
     num_posts = social_config.posts_per_check(db)
     try:
@@ -107,6 +115,7 @@ def poll_account(db: Session, account: SocialAccount, *, force: bool = False) ->
             num_of_posts=num_posts,
             posts_to_not_include=known or None,
             start_date=_start_date_mmddyyyy(account.last_successful_check),
+            paced=not force,
         )
     except BrightDataError as e:
         account.last_error = str(e)
@@ -190,6 +199,7 @@ def poll_due_accounts(db: Session | None = None) -> dict:
         now_utc = datetime.now(timezone.utc)
         now_local = datetime.now().astimezone()
         poll_mins = social_config.poll_minutes(session)
+        hours = social_config.active_hours(session)
         accounts = list(
             session.execute(
                 select(SocialAccount).where(
@@ -198,7 +208,13 @@ def poll_due_accounts(db: Session | None = None) -> dict:
                 )
             ).scalars()
         )
-        due = [a for a in accounts if _account_due(a, poll_mins, now_utc, now_local)]
+        # Bright Data is paid: skip people who no longer hold "Instagram & Facebook".
+        from app.services import capabilities
+
+        allowed = capabilities.user_ids_with(session, capabilities.USE_SOCIAL, {a.user_id for a in accounts})
+        skipped = sum(1 for a in accounts if a.user_id not in allowed)
+        accounts = [a for a in accounts if a.user_id in allowed]
+        due = [a for a in accounts if _account_due(a, poll_mins, now_utc, now_local, hours)]
         results = []
         for account in due:
             try:
@@ -207,6 +223,7 @@ def poll_due_accounts(db: Session | None = None) -> dict:
                 logger.exception("poll_account failed for %s", account.id)
         return {
             "checked": len(accounts),
+            "skipped_no_permission": skipped,
             "due": len(due),
             "results": results,
             "poll_minutes": poll_mins,

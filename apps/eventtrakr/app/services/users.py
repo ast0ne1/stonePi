@@ -6,7 +6,7 @@ from sqlalchemy import select
 from app.config import env
 from app.db import SessionLocal
 from app.models import CatalogSource, User
-from app.services import passwords
+from app.services import capabilities, passwords
 
 logger = logging.getLogger("eventtrakr.users")
 
@@ -74,6 +74,14 @@ DEFAULT_CATALOG = [
         "city_or_region": "Copenhagen, Denmark",
         "source_type": "supported",
         "description": "Local Copenhagen happenings, culture, food, and family-friendly events.",
+    },
+    {
+        "name": "Jungle Copenhagen",
+        "url": "https://jungle.am/events",
+        "category": "Food & Drink",
+        "city_or_region": "Copenhagen, Denmark",
+        "source_type": "supported",
+        "description": "Food and drink events in Copenhagen from Jungle: dinners, tastings, pop-ups and supper clubs.",
     },
     {
         "name": "Madbillet Copenhagen",
@@ -179,11 +187,14 @@ def get_or_create_from_platform(platform) -> User:
         raise ValueError("Platform user is missing an id or username.")
     is_admin = bool(getattr(platform, "is_admin", False))
     desired_role = "admin" if is_admin else "user"
+    # Mirrored so background jobs (social polling, public pages) can honour them.
+    desired_caps = capabilities.encode(capabilities.from_platform(platform))
     with SessionLocal() as db:
         existing = db.execute(select(User).where(User.auth_user_id == auth_id)).scalar_one_or_none()
         if existing is not None:
-            if existing.role != desired_role:
+            if existing.role != desired_role or existing.capabilities != desired_caps:
                 existing.role = desired_role
+                existing.capabilities = desired_caps
                 db.commit()
                 db.refresh(existing)
             db.expunge(existing)
@@ -193,6 +204,7 @@ def get_or_create_from_platform(platform) -> User:
             if not by_name.auth_user_id:
                 by_name.auth_user_id = auth_id
                 by_name.role = desired_role
+                by_name.capabilities = desired_caps
                 db.commit()
                 db.refresh(by_name)
                 db.expunge(by_name)
@@ -205,6 +217,7 @@ def get_or_create_from_platform(platform) -> User:
             default_location=env.default_location,
             active=True,
             auth_user_id=auth_id,
+            capabilities=desired_caps,
         )
         db.add(user)
         db.commit()

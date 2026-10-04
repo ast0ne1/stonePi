@@ -29,7 +29,7 @@
         <p class="banner">{{ error }}</p>
         {% endif %}
         {% if using_factory_admin %}
-        <p class="banner banner-muted">Factory login is still <strong>admin / admin</strong>. Change it on the dashboard Users tab after sign-in.</p>
+        <p class="banner banner-muted">The admin account still uses its first-run password (saved on the Pi in <code>/etc/stonepi/initial-admin.txt</code>). Change it on the dashboard Users tab after sign-in.</p>
         {% endif %}
         <form method="post" action="/login" class="stack" autocomplete="on">
           <input type="hidden" name="next" value="{{ next }}" />

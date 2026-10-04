@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.config import DATA_DIR
 from app.models import ArticleCache, SourceFetch, utcnow
+from app.services import net_guard
 
 logger = logging.getLogger("newscast.source_cache")
 
@@ -87,6 +88,7 @@ def get_or_fetch_feed(
         with httpx.Client(
             timeout=timeout or HTTP_TIMEOUT,
             follow_redirects=True,
+            event_hooks=net_guard.EVENT_HOOKS,
             headers=_headers(accept or RSS_ACCEPT, etag=etag, last_modified=last_modified),
         ) as client:
             response = client.get(key)
@@ -155,6 +157,7 @@ def get_or_fetch_article(
         with httpx.Client(
             timeout=PAGE_TIMEOUT,
             follow_redirects=True,
+            event_hooks=net_guard.EVENT_HOOKS,
             headers=_headers(HTML_ACCEPT),
         ) as client:
             response = client.get(key)

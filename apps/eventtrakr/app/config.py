@@ -14,7 +14,7 @@ class EnvSettings(BaseSettings):
         extra="ignore",
     )
 
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = 8085
     database_url: str = "sqlite:///./data/eventtrakr.db"
     public_base_url: str = "http://127.0.0.1:8085"

@@ -8,7 +8,8 @@
       <h1>Home</h1>
       <p class="lede" data-launcher-lede>Your apps{% if user.display_name %} · {{ user.display_name }}{% endif %}</p>
     </div>
-    {% if tiles and tiles|length > 1 %}
+    {% set order_live = launcher_order_live is not defined or launcher_order_live %}
+    {% if tiles and tiles|length > 1 and order_live %}
     <button type="button" class="icon-btn" data-launcher-edit-toggle aria-pressed="false" aria-label="Reorder apps" title="Reorder">
       {{ svg('reorder') }}
     </button>
@@ -17,11 +18,12 @@
 </section>
 
 {% if tiles %}
-<form method="post" action="/launcher-order" class="launcher-form" data-launcher-form>
+{# Saved order unknown while Auth restarts: show tiles, but don't let a drag save over the real order. #}
+<form method="post" action="/launcher-order" class="launcher-form" data-launcher-form{% if not order_live %} data-launcher-readonly{% endif %}>
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
   <input type="hidden" name="order" value="{% for tile in tiles %}{{ tile.id }}{% if not loop.last %},{% endif %}{% endfor %}" data-launcher-order />
   <div class="launcher-edit-bar" data-launcher-edit-bar hidden>
-    <p class="muted">Hold a tile to reorder, then drag. Saves as you go.</p>
+    <p class="muted"><span>Hold a tile to reorder, then drag.</span> <span class="launcher-save-status" data-launcher-status role="status" aria-live="polite">Saves as you go.</span></p>
     <button type="button" class="btn btn-ghost btn-with-icon" data-launcher-cancel>{{ svg('check') }} Done</button>
   </div>
   <div class="launcher-grid" data-launcher-grid>

@@ -840,6 +840,8 @@ html[data-view-services-port="0"] .services-grid .service-meta {
   color: var(--muted);
   font-size: 0.9rem;
 }
+/* Holder the Health poller repaints; adds no box (or gap) of its own. */
+.overview-alert-slot { display: contents; }
 
 .avail-toggle {
   position: relative;
@@ -2626,6 +2628,10 @@ html[data-view-home="icons"] .launcher-form.is-editing .launcher-tile-link {
   background: var(--card);
 }
 .launcher-edit-bar .muted { margin: 0; }
+/* "Saving…" / "Saved" / "Not saved" next to the reorder hint. */
+.launcher-save-status { font-weight: 600; transition: color 0.2s ease; }
+.launcher-save-status.is-ok { color: var(--ok); }
+.launcher-save-status.is-error { color: var(--error); }
 
 @media (min-width: 720px) {
   .launcher-grid {

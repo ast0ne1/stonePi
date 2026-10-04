@@ -264,6 +264,8 @@ def home(request: Request):
 def displays_page(request: Request):
     import stonepi_display
 
+    from app.carthing_routes import carthing_summary
+
     user, denied = _guard(request, path="/displays", active="displays", template="displays.html")
     if denied is not None:
         return denied
@@ -278,7 +280,7 @@ def displays_page(request: Request):
             active="displays",
             user=user,
             csrf=csrf,
-            extra={"displays": displays, "webhook_ids": webhook_ids},
+            extra={"displays": displays, "webhook_ids": webhook_ids, "carthing": carthing_summary()},
         ),
     )
     set_csrf_cookie(response, csrf, secure=request_is_https(request))

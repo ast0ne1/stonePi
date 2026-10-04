@@ -11,8 +11,10 @@
   <p class="page-status-text">
     {% if refresh.running %}
       Refreshing offers…
-    {% else %}
+    {% elif can_refresh %}
       Use the header Refresh button to pull the latest offers from eTilbudsavis.
+    {% else %}
+      Offers refresh automatically. Ask someone who manages sources to refresh sooner.
     {% endif %}
   </p>
 </div>

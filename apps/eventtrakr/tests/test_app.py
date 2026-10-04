@@ -105,3 +105,24 @@ def test_favourite_api_and_public_agenda():
     res = public_client.get(f"/u/{admin.username}")
     assert res.status_code == 200
     assert b"Design System Meetup" in res.data
+
+
+def test_brightdata_limit_shows_and_saves():
+    from app.services import brightdata
+
+    app = create_app()
+    app.config["TESTING"] = True
+    client = app.test_client()
+    with SessionLocal() as db:
+        admin = db.query(User).filter_by(role="admin").first()
+        token = create_session_token(admin.id, admin.username, admin.role)
+    client.set_cookie("eventtrakr_session", token)
+
+    res = client.get("/settings?tab=providers")
+    assert res.status_code == 200
+    assert b"Monthly limit (records, all apps)" in res.data
+    assert b'value="5000"' in res.data
+
+    res = client.post("/settings/integrations/limit", data={"brightdata_limit": "3000"})
+    assert res.status_code == 302
+    assert brightdata.usage()["limit"] == 3000

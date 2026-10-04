@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -12,6 +13,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 
 from app.config import BUNDLED_FAVICON_DIR, FAVICON_DIR
+from app.services import net_guard
 
 logger = logging.getLogger("newscast.favicon")
 USER_AGENT = (
@@ -48,7 +50,48 @@ ITEM_SPLIT_RE = re.compile(r"<(?:item|entry)\b", re.I)
 FAVICON_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _bundled_svg_bodies() -> set[bytes]:
+    bodies: set[bytes] = set()
+    try:
+        for src in BUNDLED_FAVICON_DIR.glob("*.svg"):
+            try:
+                bodies.add(src.read_bytes())
+            except OSError:
+                continue
+    except OSError:
+        pass
+    return bodies
+
+
+def purge_remote_svgs() -> int:
+    """Delete cached SVGs that did not come from the bundled set.
+
+    Older builds cached remote image/svg+xml favicons; an SVG can carry script, and
+    /favicons is served on the shared platform origin. Bundled SVGs (and their alias
+    copies, which are byte-identical) are kept.
+    """
+    keep = _bundled_svg_bodies()
+    removed = 0
+    try:
+        cached = list(FAVICON_DIR.glob("*.svg"))
+    except OSError:
+        return 0
+    for path in cached:
+        try:
+            if path.read_bytes() in keep:
+                continue
+            path.unlink()
+            removed += 1
+        except OSError:
+            logger.debug("could not purge cached svg %s", path.name, exc_info=True)
+    if removed:
+        _forget_lookups()
+        logger.info("removed %s remote SVG favicon(s) from the cache", removed)
+    return removed
+
+
 def seed_bundled_favicons() -> None:
+    purge_remote_svgs()
     if not BUNDLED_FAVICON_DIR.is_dir():
         return
     try:
@@ -65,6 +108,7 @@ def seed_bundled_favicons() -> None:
             continue
         try:
             shutil.copyfile(src, dest)
+            _forget_lookups()
         except OSError:
             logger.debug("could not seed bundled favicon %s", src.name, exc_info=True)
 
@@ -125,7 +169,44 @@ def src_for_url(url: str) -> str | None:
     return f"/favicons/{path.name}" if path else None
 
 
+# Pages map every feed and story to an icon; each lookup globbed the folder
+# and read candidate files whole. Remember answers until the folder changes
+# (re-checked at most every 5 s), so a page costs one stat, not hundreds of reads.
+_LOOKUPS: dict = {"root": None, "dir": None, "checked": 0.0, "paths": {}, "usable": {}}
+
+
+def _forget_lookups() -> None:
+    _LOOKUPS.update(root=None, dir=None, checked=0.0, paths={}, usable={})
+
+
+def _lookups_fresh() -> dict:
+    now = time.monotonic()
+    if _LOOKUPS["root"] != str(FAVICON_DIR):
+        _forget_lookups()
+        _LOOKUPS["root"] = str(FAVICON_DIR)
+    if now - _LOOKUPS["checked"] >= 5:
+        _LOOKUPS["checked"] = now
+        try:
+            stamp = FAVICON_DIR.stat().st_mtime_ns
+        except OSError:
+            stamp = None
+        if stamp != _LOOKUPS["dir"]:
+            _LOOKUPS.update(dir=stamp, paths={}, usable={})
+    return _LOOKUPS
+
+
 def stored_path(url: str) -> Path | None:
+    cache = _lookups_fresh()["paths"]
+    if url in cache:
+        path = cache[url]
+        if path is None or path.is_file():
+            return path
+    path = _stored_path(url)
+    cache[url] = path
+    return path
+
+
+def _stored_path(url: str) -> Path | None:
     keys = [host_key(url), host_key(homepage_url(url))]
     keys.extend(host_key(site) for site in website_candidates(url))
     seen: set[str] = set()
@@ -442,10 +523,18 @@ def _is_stub_icon(data: bytes) -> bool:
 
 def _file_is_usable(path: Path) -> bool:
     try:
-        data = path.read_bytes()
+        st = path.stat()
     except OSError:
         return False
-    return _ext_for(data, "", path.name) is not None and not _is_stub_icon(data)
+    key = (str(path), st.st_mtime_ns, st.st_size)
+    usable = _lookups_fresh()["usable"]
+    if key not in usable:
+        try:
+            data = path.read_bytes()
+        except OSError:
+            return False
+        usable[key] = _ext_for(data, "", path.name) is not None and not _is_stub_icon(data)
+    return usable[key]
 
 
 def _helper_urls(*urls: str) -> list[str]:
@@ -508,6 +597,7 @@ def _get(url: str, accept: str, client: httpx.Client | None = None) -> httpx.Res
             timeout=TIMEOUT,
             follow_redirects=True,
             headers={"User-Agent": USER_AGENT},
+            event_hooks=net_guard.EVENT_HOOKS,
         )
         try:
             response = session.get(url, headers={"Accept": accept})
@@ -548,7 +638,8 @@ def _save(data: bytes, content_type: str, source_url: str, aliases: list[str]) -
     if _is_stub_icon(data):
         return None
     ext = _ext_for(data, content_type, source_url)
-    if ext is None:
+    if ext is None or ext == ".svg":
+        # Remote SVGs can carry script and /favicons is on the platform origin: never cache them.
         return None
     primary = host_key(homepage_url(aliases[0] if aliases else source_url) or source_url)
     if not primary:
@@ -557,6 +648,7 @@ def _save(data: bytes, content_type: str, source_url: str, aliases: list[str]) -
         return None
     dest = FAVICON_DIR / f"{primary}{ext}"
     dest.write_bytes(data)
+    _forget_lookups()
     return dest
 
 
@@ -604,7 +696,12 @@ def _fetch_icon(url: str) -> Path | None:
     aliases = [url]
     feed_icons: list[str] = []
     websites: list[str] = []
-    with httpx.Client(timeout=TIMEOUT, follow_redirects=True, headers={"User-Agent": USER_AGENT}) as client:
+    with httpx.Client(
+        timeout=TIMEOUT,
+        follow_redirects=True,
+        headers={"User-Agent": USER_AGENT},
+        event_hooks=net_guard.EVENT_HOOKS,
+    ) as client:
         feed = _get(
             url,
             "application/rss+xml, application/atom+xml, application/xml, text/xml, text/html;q=0.8, */*;q=0.5",

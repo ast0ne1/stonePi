@@ -41,11 +41,14 @@ From repo root (versions already in each `app/__init__.py`; the app list comes f
 python scripts/build_release_zips.py --versions-table
 ```
 
-Paste the output under `### App versions in this cut` in the root [CHANGELOG.md](../CHANGELOG.md) — never type the table by hand. Then build:
+Paste the output under `### App versions in this cut` in the root [CHANGELOG.md](../CHANGELOG.md) — never type the table by hand. Then check, and build:
 
 ```bash
+python scripts/build_release_zips.py --all --dry-run [-v]   # pre-flight + file list, writes nothing
 python scripts/build_release_zips.py --all
 ```
+
+Every build starts with a **pre-flight**. In a git checkout it stops when `apps/`, `packages/` or `deploy/` hold untracked, non-ignored files: they would be in the zips but missing from the tag tarball the web installer downloads. In any tree it checks that every `$DEST/...` path `deploy/install.sh` uses exists (and, in a checkout, is tracked and in tag `v<VERSION>` once that tag exists). `--allow-dirty` turns these into warnings (local test builds only). The zips never carry caches, venvs, `.env` files (`.env.example` excepted), databases, keys/certificates, `session.secret` / `vault.key` / `secrets.enc`, runtime `data/` folders (bundled `app/data/` ships), logs or tarballs, and text files are written with LF endings.
 
 Assets are **StonePi portal variants** (not standalone app releases):
 
@@ -60,7 +63,7 @@ Do **not** ship ad-hoc Pi overlay helpers (`scripts/push-*-fixes.*`, `scripts/ap
 
 Tag the platform `v<VERSION>` (the value in [`VERSION`](../VERSION)), attach the `stonepi-*.zip` assets, the source tarball and `SHA256SUMS`, summarize from root `CHANGELOG.md`. Tag every cut you publish.
 
-**Build from an LF export, never the Windows working tree.** With `core.autocrlf=true`, both the working tree and a plain `git archive` have CRLF line endings, and a CRLF `install.sh` fails on the Pi at line 2 (`set: pipefail: invalid option`). Export the tag with conversion off, then build the zips from that export (this also keeps `.pytest_cache` / `*.egg-info` out):
+**Build from an LF export, never the Windows working tree.** With `core.autocrlf=true` and no `.gitattributes`, both the working tree and a plain `git archive` had CRLF line endings, and a CRLF `install.sh` fails on the Pi at line 2 (`set: pipefail: invalid option`). The repo's [`.gitattributes`](../.gitattributes) now pins text files to LF (`.bat`/`.cmd`/`.ps1` CRLF), but keep exporting with conversion off as a second guard. Export the tag with conversion off, then build the zips from that export (this also keeps `.pytest_cache` / `*.egg-info` out):
 
 ```bash
 git -c core.autocrlf=false -c core.eol=lf archive --format=tar --prefix=stonePi-<VERSION>/ v<VERSION> | gzip -n -9 > <folder>/stonepi-source-<VERSION>.tar.gz

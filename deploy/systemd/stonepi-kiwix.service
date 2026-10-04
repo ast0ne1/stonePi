@@ -1,0 +1,39 @@
+[Unit]
+Description=StonePi Library reader (kiwix-serve)
+After=network-online.target stonepi-library.service
+Wants=network-online.target
+ConditionPathExists=/usr/bin/kiwix-serve
+StartLimitIntervalSec=60
+StartLimitBurst=5
+# Not part of stonepi.target and not enabled by install.sh. The Library helper
+# (stonepi-library-helper) enables/starts this unit only once content exists, and
+# writes a drop-in (stonepi-kiwix.service.d/storage.conf) with
+# RequiresMountsFor=/mnt/stonepi-library (or /mnt/stonepi-backup) when content
+# lives on external storage. With no content it is inactive by design.
+
+[Service]
+Type=simple
+User=stonepi-kiwix
+Group=stonepi-kiwix
+SupplementaryGroups=stonepi-library
+EnvironmentFile=-/etc/stonepi/library.env
+ExecStart=/usr/bin/kiwix-serve --library --monitorLibrary --address=127.0.0.1 --port=8014 --urlRootLocation=/library/read /var/lib/stonepi/library/library.xml
+Restart=on-failure
+RestartSec=5
+# Read-only reader: whole filesystem read-only (/mnt stays visible for external content).
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+Nice=10
+CPUWeight=20
+IOWeight=50
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

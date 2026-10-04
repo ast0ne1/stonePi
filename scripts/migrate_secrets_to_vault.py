@@ -24,6 +24,10 @@ EVENTTRAKR_SETTING_TO_VAULT: dict[str, str] = {
     "google_client_secret": "GOOGLE_CLIENT_SECRET",
 }
 
+PRICEWATCH_SETTING_TO_VAULT: dict[str, str] = {
+    "brightdata_api_key": "PRICEWATCH_BRIGHTDATA_API_KEY",
+}
+
 USER_SETTING_TO_VAULT: dict[str, str] = {
     "x3_sync_token": "NEWSCAST_USER_{user_id}_X3_SYNC_TOKEN",
     "ntfy_token": "NEWSCAST_USER_{user_id}_NTFY_TOKEN",
@@ -128,6 +132,18 @@ def migrate_eventtrakr(path: Path) -> int:
         conn.close()
 
 
+def migrate_pricewatch(path: Path) -> int:
+    conn = open_db(path)
+    if conn is None:
+        return 0
+    try:
+        return migrate_settings_table(
+            conn, "settings", PRICEWATCH_SETTING_TO_VAULT, label="pricewatch"
+        )
+    finally:
+        conn.close()
+
+
 def default_vault_dir() -> Path:
     env = os.environ.get("STONEPI_VAULT_DIR", "").strip()
     if env:
@@ -146,6 +162,11 @@ def main() -> int:
         "--eventtrakr-db",
         type=Path,
         default=ROOT / "apps" / "eventtrakr" / "data" / "eventtrakr.db",
+    )
+    parser.add_argument(
+        "--pricewatch-db",
+        type=Path,
+        default=ROOT / "apps" / "pricewatch" / "data" / "pricewatch.sqlite",
     )
     parser.add_argument(
         "--vault-dir",
@@ -173,6 +194,7 @@ def main() -> int:
     configure(vault_dir)
     moved = migrate_newscast(args.newscast_db)
     moved += migrate_eventtrakr(args.eventtrakr_db)
+    moved += migrate_pricewatch(args.pricewatch_db)
     moved += seed_platform_secrets_from_env()
     print(f"done: migrated={moved}")
     return 0
@@ -189,7 +211,8 @@ def seed_platform_secrets_from_env() -> int:
         "STONEPI_SESSION_SECRET": ("STONEPI_SESSION_SECRET", "SESSION_SECRET"),
         "STONEPI_NTFY_TOKEN": ("STONEPI_NTFY_TOKEN",),
         "DISPLAY_WEBHOOK_URL": ("DISPLAY_WEBHOOK_URL", "STONEPI_DISPLAY_WEBHOOK"),
-        "STONEPI_RECOVER_PASSWORD": ("STONEPI_RECOVER_PASSWORD",),
+        # STONEPI_RECOVER_PASSWORD is deliberately absent: the Vault is readable by every app
+        # user, so the root Recover console keeps its password only in /etc/stonepi/recover.passwd.
     }
     env_file = Path("/etc/stonepi/stonepi.env")
     file_vals: dict[str, str] = {}

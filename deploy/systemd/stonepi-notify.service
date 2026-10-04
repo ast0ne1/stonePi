@@ -15,7 +15,9 @@ WorkingDirectory=/opt/stonepi/apps/notify
 ExecStart=/opt/stonepi/apps/notify/.venv/bin/python -m app.serve
 Restart=always
 RestartSec=5
-NoNewPrivileges=yes
+# Notify → Displays → Car Thing switches the panel via the root helper
+# (/usr/local/sbin/stonepi-carthing-helper) over sudoers. NoNewPrivileges would block sudo.
+NoNewPrivileges=no
 
 [Install]
 WantedBy=multi-user.target

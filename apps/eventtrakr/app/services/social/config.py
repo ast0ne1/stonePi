@@ -116,3 +116,99 @@ def normalize_username(raw: str) -> str:
 def profile_url_for(username: str) -> str:
     handle = normalize_username(username)
     return f"https://www.instagram.com/{handle}/" if handle else ""
+
+
+# -- Bright Data usage: polling hours and a worst-case estimate ------------------------
+
+
+def _parse_hhmm(raw: str) -> int | None:
+    """Minutes after midnight for "HH:MM", or None."""
+    try:
+        hh, mm = (int(part) for part in str(raw or "").strip().split(":"))
+    except ValueError:
+        return None
+    if not (0 <= hh <= 24 and 0 <= mm < 60) or hh * 60 + mm > 1440:
+        return None
+    return hh * 60 + mm
+
+
+def active_hours(db: Session) -> tuple[str, str] | None:
+    """Scheduled polls only run between these local times ("HH:MM", "HH:MM"); None = all day."""
+    start = settings_service.get_value(db, "social_active_start", "")
+    end = settings_service.get_value(db, "social_active_end", "")
+    if _parse_hhmm(start) is None or _parse_hhmm(end) is None or start == end:
+        return None
+    return start, end
+
+
+def set_active_hours(db: Session, start: str, end: str) -> None:
+    """Both blank (or equal) means all day. Raises ValueError for a malformed time."""
+    start, end = (start or "").strip(), (end or "").strip()
+    if not start and not end:
+        start = end = ""
+    elif _parse_hhmm(start) is None or _parse_hhmm(end) is None:
+        raise ValueError("Use HH:MM for polling hours")
+    settings_service.set_value(db, "social_active_start", start)
+    settings_service.set_value(db, "social_active_end", end)
+
+
+def active_minutes_per_day(hours: tuple[str, str] | None) -> int:
+    if hours is None:
+        return 1440
+    start, end = _parse_hhmm(hours[0]), _parse_hhmm(hours[1])
+    return (end - start) % 1440 or 1440
+
+
+def within_active_hours(hours: tuple[str, str] | None, now_local) -> bool:
+    """True when ``now_local`` falls inside the window (which may cross midnight)."""
+    if hours is None:
+        return True
+    start, end = _parse_hhmm(hours[0]), _parse_hhmm(hours[1])
+    minute = now_local.hour * 60 + now_local.minute
+    if start < end:
+        return start <= minute < end
+    return minute >= start or minute < end
+
+
+def checks_per_day(schedule: dict, active_minutes: int) -> float:
+    if schedule.get("mode") == "weekly":
+        return len(schedule.get("days") or []) * len(schedule.get("times") or []) / 7
+    interval = max(MIN_POLL_MINUTES, int(schedule.get("interval_minutes") or DEFAULT_POLL_MINUTES))
+    return active_minutes / interval
+
+
+def estimate_usage(db: Session, period_days: int) -> dict:
+    """Worst case Bright Data records Instagram polling could use in a period: every
+    scheduled check returning a full "posts per check". Real use is usually far lower,
+    since only posts newer than the last check come back."""
+    from sqlalchemy import select
+
+    from app.models import SocialAccount
+
+    accounts = list(
+        db.execute(
+            select(SocialAccount).where(
+                SocialAccount.tracking_enabled == True,  # noqa: E712
+                SocialAccount.platform == "instagram",
+            )
+        ).scalars()
+    )
+    global_minutes = poll_minutes(db)
+    schedules = [settings_service.get_source_schedule(a, global_minutes) for a in accounts]
+    return estimate_from(
+        schedules,
+        global_minutes=global_minutes,
+        active_minutes=active_minutes_per_day(active_hours(db)),
+        posts=posts_per_check(db),
+        period_days=period_days,
+    )
+
+
+def estimate_from(
+    schedules: list[dict | None], *, global_minutes: int, active_minutes: int, posts: int, period_days: int
+) -> dict:
+    """``schedules``: one per tracked account, None for one that follows the global interval."""
+    global_schedule = {"mode": "interval", "interval_minutes": global_minutes}
+    per_day = sum(checks_per_day(s or global_schedule, active_minutes) for s in schedules)
+    checks = round(per_day * period_days)
+    return {"accounts": len(schedules), "checks": checks, "posts_per_check": posts, "worst_case": checks * posts}

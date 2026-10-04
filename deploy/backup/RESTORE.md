@@ -52,7 +52,7 @@ Settings → Backup lists **local + USB** snapshots. **Restore** runs `stonepi-r
 When Dashboard is unhealthy, nginx redirects `/` to `/recover/` (also `http://stonepi.local:8099/` if nginx is down).
 
 - Sign-in matches the StonePi login look; subtitle **Recovery Console**. More: [apps/recover/README.md](../../apps/recover/README.md).
-- Username **`stonepi`**; password is Vault key **`STONEPI_RECOVER_PASSWORD`** (also `/etc/stonepi/recover.passwd`) — **not** your portal or OS password.
+- Username **`stonepi`**; password lives only in root-only **`/etc/stonepi/recover.passwd`** (set it from Dashboard → Settings → Vault) — **not** your portal or OS password.
 - Admins already signed in on the portal may skip the form via SSO cookie.
 - Home lists local and USB snapshots for restore.
 
@@ -86,3 +86,20 @@ sudo mkfs.ext4 -L STONEPI-BACKUP /dev/sdX1
 2. Or **Run local backup now** / `sudo systemctl start stonepi-local-backup`.
 
 Stamps: `/var/lib/stonepi/last-local-backup.txt` and `last-usb-backup.txt`.
+
+## Library (offline content)
+
+**Always in every backup:** Library settings (`library.sqlite`), the content list (`backup-manifest.json`), `library.xml`, the Kiwix unit drop-in, the Library drive's fstab line (`manifests/fstab-library.txt`) and the Kiwix `.deb` packages (`packages/kiwix/`), so a restore can reinstall the reader without internet.
+
+**Never in the per-run copy:** the ZIM files themselves (`/var/lib/stonepi/library/zim/` is excluded).
+
+**Opt-in content backup** (Library → Settings → Backup, `INCLUDE_LIBRARY_CONTENT=1` in `backup.conf`): USB backups also copy ZIMs into one shared store, `RaspberryPi-Backup/library-content/`, beside the timestamped runs. Only new or updated files are copied (checked against the recorded size + SHA-256). Removed titles are pruned after a successful copy. The store can be on the same drive as the content; that's a full second copy. A copy that doesn't fit or fails marks the run `STATUS=partial`, and the platform data is still good.
+
+**On restore** (`stonepi-restore DIR`):
+
+1. Kiwix is reinstalled from `packages/kiwix/*.deb` (falls back to apt).
+2. The Library drive's fstab line is restored if that drive is plugged in.
+3. ZIMs are copied back from `library-content/` into the recorded content folder. If that drive isn't connected, they go to the microSD (`/var/lib/stonepi/library/zim`).
+4. On start, the Library app reconciles: it finds files that moved and restarts the reader. Anything still missing shows as **Missing**, with Remove, or install again from Browse.
+
+Skip the content copy with `stonepi-restore DIR --no-library-content`. The restore drill checks the content store against its manifest (sizes only).

@@ -49,6 +49,7 @@
   </div>
 {%- endmacro %}
 
+{% set can_social = current_user.can('can_use_social') %}
 <section class="hero">
   <div class="hero-row hero-row-inline">
     <h1>Instagram</h1>
@@ -62,6 +63,13 @@
   </div>
 </section>
 
+{% if not can_social %}
+<section class="source-group">
+  <div class="card" data-cap-hint="can_use_social">
+    <p class="form-hint">Instagram and Facebook tracking uses the household's paid Bright Data allowance, so it's off for you. Ask an admin to allow “Instagram &amp; Facebook” in StonePi → Users.</p>
+  </div>
+</section>
+{% else %}
 <section class="source-group">
   <h2 class="section-label">Add account</h2>
   <form method="post" action="/sources/social/add" class="card stack">
@@ -85,6 +93,7 @@
     <button type="submit" class="btn btn-primary btn-with-icon">{{ icon('plus') }} Track account</button>
   </form>
 </section>
+{% endif %}
 
 <section class="source-group">
   <h2 class="section-label">Tracked accounts ({{ accounts|length }})</h2>
@@ -114,7 +123,7 @@
                 {% if account.last_error %}
                 <p class="source-row-health is-error">{{ account.last_error }}</p>
                 {% endif %}
-                <p class="source-row-hint">Tap for schedule</p>
+                {% if can_social %}<p class="source-row-hint">Tap for schedule</p>{% endif %}
               </div>
               <span class="source-row-chevron" aria-hidden="true">
                 <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
@@ -122,6 +131,7 @@
             </div>
           </summary>
           <div class="source-row-panel">
+            {% if can_social %}
             <div class="source-row-actions">
               <form method="post" action="/sources/social/{{ account.id }}/toggle">
                 <button type="submit" class="btn btn-outline btn-sm">{% if account.tracking_enabled %}Pause{% else %}Resume{% endif %}</button>
@@ -152,13 +162,18 @@
               </div>
               <button type="submit" class="btn btn-outline btn-sm btn-with-icon">{{ icon('check') }} Save schedule</button>
             </form>
+            {% else %}
+            <p class="form-hint">Not checked while “Instagram &amp; Facebook” is off for you.</p>
+            {% endif %}
           </div>
         </details>
+        {% if can_social %}
         <form method="post" action="/sources/social/{{ account.id }}/check" class="source-row-sync">
           <button type="submit" class="icon-btn icon-btn-quiet" aria-label="Check @{{ account.username }} now" title="Check now" {% if not brightdata_ok %}disabled{% endif %}>
             {{ icon('refresh') }}
           </button>
         </form>
+        {% endif %}
       </div>
     </li>
     {% endfor %}
@@ -166,7 +181,7 @@
   {% else %}
   <div class="empty-state">
     <p>No Instagram accounts yet.</p>
-    <p class="form-hint">Add a venue, organiser, or artist above. EventTrakr will poll for new posts and suggest events on Discoveries.</p>
+    {% if can_social %}<p class="form-hint">Add a venue, organiser, or artist above. EventTrakr will poll for new posts and suggest events on Discoveries.</p>{% endif %}
   </div>
   {% endif %}
 </section>

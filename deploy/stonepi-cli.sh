@@ -14,7 +14,11 @@ UNITS=(
   stonepi-pricescout
   stonepi-sportguide
   stonepi-pricewatch
+  stonepi-library
 )
+# stonepi-kiwix (Library reader) shows in status/logs but is never started/stopped here:
+# the Library helper runs it only once content exists.
+STATUS_UNITS=("${UNITS[@]}" stonepi-kiwix stonepi-carthing)
 
 usage() {
   cat <<'EOF'
@@ -32,7 +36,7 @@ EOF
 cmd="${1:-}"
 case "$cmd" in
   status)
-    systemctl --no-pager --full status "${UNITS[@]}" || true
+    systemctl --no-pager --full status "${STATUS_UNITS[@]}" || true
     ;;
   restart)
     sudo systemctl restart "${UNITS[@]}"
@@ -56,6 +60,8 @@ case "$cmd" in
       -u stonepi-pricescout \
       -u stonepi-sportguide \
       -u stonepi-pricewatch \
+      -u stonepi-library \
+      -u stonepi-kiwix \
       -f
     ;;
   urls)
@@ -72,6 +78,7 @@ case "$cmd" in
     echo "http://${host}.local/prices/"
     echo "http://${host}.local/sports/"
     echo "http://${host}.local/watch/"
+    echo "http://${host}.local/library/"
     echo "https://${host}.local:9090  # Cockpit"
     if [[ -n "${lan_ip}" ]]; then
       echo "https://${lan_ip}:9090      # Cockpit (LAN IP)"

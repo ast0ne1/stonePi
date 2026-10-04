@@ -95,6 +95,7 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
   font-family: var(--chrome);
   background: var(--paper);
@@ -112,8 +113,7 @@ a { color: var(--accent); }
   .login-shell { width: min(440px, calc(100% - 48px)); padding: 48px 0 80px; }
 }
 @media (max-width: 719px) {
-  .card { padding: 22px 18px; }
-  .login-shell { width: min(440px, calc(100% - 24px)); }
+  .login-shell { width: min(440px, calc(100% - 2 * var(--gutter))); }
 }
 .brand {
   display: flex;
@@ -203,6 +203,7 @@ input, select, textarea {
   border-radius: 12px;
   padding: 10px 12px;
   margin: 0 0 16px;
+  overflow-wrap: anywhere;
 }
 .banner-ok { background: color-mix(in srgb, var(--ok) 14%, var(--card)); }
 .banner-muted { background: color-mix(in srgb, var(--muted) 12%, var(--card)); }
@@ -232,12 +233,15 @@ input, select, textarea {
   flex: 0 0 auto;
 }
 .logout-form { margin: 0; }
+/* Header buttons share one shape: Dashboard / Refresh pills, Sign out as a round icon. */
+.console-top-actions .icon-btn { border-radius: 999px; }
 .subbrand {
   font-family: var(--chrome);
   font-weight: 500;
   font-size: 0.85rem;
   color: var(--muted);
   margin: 6px 0 0;
+  overflow-wrap: anywhere;
 }
 .console-section { margin-bottom: 1.25rem; }
 .empty-state {
@@ -324,7 +328,7 @@ input, select, textarea {
   border-bottom: 1px solid var(--line);
 }
 .snap-row:last-child { border-bottom: 0; }
-.snap-row-text { flex: 1 1 12rem; min-width: 0; }
+.snap-row-text { flex: 1 1 12rem; min-width: 0; overflow-wrap: anywhere; }
 .snap-meta { margin: 4px 0 0; }
 .snap-row form { margin: 0; }
 
@@ -442,6 +446,8 @@ pre {
   font-size: 0.8rem;
 }
 code { font-size: 0.85em; word-break: break-all; }
+/* Logs / Network: the output is the page, so let it use the screen (scrolls inside itself). */
+.console-pre { max-height: calc(100vh - 150px); max-height: calc(100dvh - 150px); margin: 0; }
 
 /* Confirm sheet (chrome.md) — no bottom nav clearance on Recover */
 .sheet {
@@ -477,6 +483,8 @@ html.sheet-open body {
 }
 
 @media (max-width: 719px) {
+  /* After the base .card rule so the phone padding actually applies. */
+  .card { padding: 22px 18px; }
   .console-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -486,22 +494,28 @@ html.sheet-open body {
   .console-actions .btn,
   .console-actions form .btn {
     width: 100%;
+    padding-left: 10px;
+    padding-right: 10px;
+    white-space: nowrap;
   }
   .console-actions form { display: block; }
   .snap-row {
     flex-direction: column;
     align-items: stretch;
   }
+  /* In a column the 12rem flex-basis becomes a height and leaves a gap above Restore. */
+  .snap-row-text { flex: 0 0 auto; }
   .btn-restore { width: 100%; }
-  .unit-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .unit-row-actions {
-    justify-content: flex-end;
-  }
+  /* Name + status on the left, Restart/Stop on the right: one line per unit. */
+  .unit-row { flex-wrap: nowrap; }
+  .unit-row-main { flex: 1 1 auto; }
+  .unit-row-actions { flex-wrap: nowrap; flex: 0 0 auto; }
+  .unit-row-actions .icon-btn { width: var(--tap); height: var(--tap); border-radius: 12px; }
+  .console-top { gap: 10px; margin-bottom: 16px; }
+  .console-top-actions { flex-wrap: nowrap; gap: 6px; }
   .console-top-actions .btn-label { display: none; }
-  .btn-refresh { min-width: var(--tap); padding-left: 12px; padding-right: 12px; }
+  .btn-top { min-width: var(--tap); padding-left: 12px; padding-right: 12px; }
+  .console-pre { font-size: 0.75rem; }
 }
 
 @media (min-width: 720px) {

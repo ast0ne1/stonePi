@@ -49,6 +49,7 @@ Prefer the `.cmd` form. Do not only offer the `.ps1` unless they ask.
 | `scripts/push-notify-ui-fixes.cmd` | Notify UI only (templates/static/routes + Dashboard Settings link; restart, no pip) |
 | `scripts/push-health-layout-fixes.cmd` | Full Dashboard + Recover `app/` trees (Health tab layout, Recovery Console wording; restart both, no pip) |
 | `scripts/push-services-groups-fixes.cmd` | Dashboard Services System/Apps groups + Recover catalog (Dashboard + Auth + stonepi_auth) |
+| `scripts/push-release-smoke-fixes.cmd` | **Pre-release smoke.** Packs the tree a release tag would ship (tracked + untracked-not-ignored, release deny list, LF), then runs the real `deploy/install.sh` on the Pi and checks the hardening (sudo helper, root venvs, Recover passwd, firewall, CSP). Snapshot in `/var/backups`, log `/var/log/stonepi-release-smoke.log`; exits non-zero on any FAIL |
 | `scripts/push-purge-favicon-fixes.cmd` | Three files only: FileServe `main.py` + `services/pages.py` (favicon 500, expired pages), EventTrakr `services/ingest.py` (purge FK). Hash-checks Pi copies against the pre-fix versions and aborts if they differ (`-Force` overrides); restarts FileServe + EventTrakr |
 
 Prefer a **tree-based** combined script when several apps changed in one session

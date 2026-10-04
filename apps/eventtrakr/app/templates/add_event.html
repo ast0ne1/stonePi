@@ -13,7 +13,9 @@
 
 <div class="card" style="margin-bottom: 28px;">
   <h2>From a Facebook Event</h2>
-  {% if brightdata_configured %}
+  {% if not current_user.can('can_use_social') %}
+  <p class="form-hint" data-cap-hint="can_use_social">Fetching from Facebook uses the household's paid Bright Data allowance. Ask an admin to allow “Instagram &amp; Facebook” in StonePi → Users. You can still add any event manually below.</p>
+  {% elif brightdata_configured %}
   <p class="form-hint" style="margin-bottom: 16px;">Paste a facebook.com/events/... URL and fetch its details -- you can still edit everything below before saving.</p>
   <div style="display: flex; gap: 12px; flex-wrap: wrap;">
     <input type="url" id="fb_event_url" class="form-control" style="flex: 1; min-width: 240px;" placeholder="https://www.facebook.com/events/..." />

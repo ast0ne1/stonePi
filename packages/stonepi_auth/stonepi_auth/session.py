@@ -39,7 +39,20 @@ class PlatformUser:
             return False
         if self.is_admin:
             return True
-        return bool((self.permissions.get(app_id) or {}).get(capability))
+        granted = self.permissions.get(app_id) or {}
+        if capability in granted:
+            return bool(granted[capability])
+        # Cookies issued before a capability existed don't carry it: use the catalog
+        # default, as Auth does for grants saved before it existed.
+        try:
+            from .catalog import canonical_app_id, capabilities_for
+
+            for item in capabilities_for(canonical_app_id(app_id)):
+                if item.get("id") == capability:
+                    return bool(item.get("default", False))
+        except Exception:  # noqa: BLE001
+            pass
+        return False
 
 
 def encode_session(
@@ -171,7 +184,7 @@ def safe_next(value: str | None, *, allowed_ports: set[int] | None = None) -> st
     host = (parsed.hostname or "").lower()
     if not _host_allowed_for_redirect(host):
         return "/"
-    ports = allowed_ports or {80, 443, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8010, 8011, 8012, 8080, 8081, 8085}
+    ports = allowed_ports or {80, 443, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009, 8010, 8011, 8012, 8080, 8081, 8085}
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
     if port not in ports:
         return "/"

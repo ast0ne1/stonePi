@@ -555,7 +555,7 @@
 <section class="card stack settings-panel-span-2">
   <h2 class="section-heading">{{ svg("backup") }} Backup/Restore</h2>
   <p class="muted">Local keeps one on-disk copy for Recover. Offline USB sticks labelled <code>STONEPI-BACKUP</code> are for disaster recovery (SD failure). Full SD imaging still uses Cockpit. Run a restore drill before trusting a backup.</p>
-  <p class="muted">Recovery Console password is Vault key <code>STONEPI_RECOVER_PASSWORD</code> (user <code>stonepi</code>), not your portal login.</p>
+  <p class="muted">Recovery Console password (user <code>stonepi</code>) is set under Settings → Vault as <strong>Recover password</strong> (at least 12 characters). It is written root-only to <code>/etc/stonepi/recover.passwd</code>, never stored in the Vault, and is not your portal login.</p>
 
   <div class="backup-status-grid">
     <div class="backup-status-col stack">

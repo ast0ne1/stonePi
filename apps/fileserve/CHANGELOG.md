@@ -1,8 +1,19 @@
 # Changelog
 
-Current version is **0.0.0.15**.
+Current version is **0.0.7**.
 
-## Unreleased
+## 0.0.7 — 2026-10-04
+
+### Security
+- Only the page owner, or an admin with FileServe access, skips page passwords or sees switched-off pages; the URL fetch tool needs FileServe access and "Publish pages"; under StonePi only the StonePi sign-in counts, so signing out or a role change applies straight away.
+- Members without "Publish without a password" must set a page password when creating, replacing or switching on a page and can't remove one; existing open pages are left as they are.
+- Publishing pages, ZIP sites and Studio Publish follow the "Publish pages" permission (Studio Publish also needs Studio's "Publish to FileServe"); members can still switch off or delete their pages.
+- Hosted pages, ZIP sites and their assets load in a CSP sandbox (no same-origin) with nosniff, so an uploaded page can't act as the person viewing it; the same applies to the URL fetch preview.
+- The URL fetch proxy always blocks loopback/link-local and re-checks every redirect hop.
+- Listens on `127.0.0.1` by default; a solo install that should be reachable on the LAN needs `HOST=0.0.0.0` in `.env`.
+
+### Fixed
+- The household "new page" alert is sent only for admin pages and links to the page's real address.
 
 ## 0.0.6 — 2026-09-29
 

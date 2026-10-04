@@ -33,6 +33,7 @@ from app.auth import (
     login_rate_limited,
     login_redirect,
     password_matches,
+    platform_capability,
     record_login_failure,
     request_is_https,
     safe_next,
@@ -47,7 +48,7 @@ from app.config import BACKUPS_DIR, DATA_DIR, HOSTED_DIR, UPDATES_DIR, env
 from app.db import init_db
 from app import db as database
 from app.services import backup, hostname, pages as pages_svc, qrcode, settings, tls, update
-from app.services import fetch_proxy, users as users_svc
+from app.services import capabilities, fetch_proxy, users as users_svc
 
 logging.basicConfig(level=logging.INFO)
 
@@ -94,6 +95,22 @@ SETTINGS_SECTION_PANELS = {
     "device": ("access", "network"),
     "users": ("people", "add"),
 }
+
+
+# User-uploaded pages and ZIP sites are served on the shared platform origin. Run them in an
+# opaque-origin sandbox (no allow-same-origin) so their scripts can't read StonePi cookies,
+# call other apps' APIs as the viewer, or touch localStorage for the household origin.
+HOSTED_CONTENT_CSP = "sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"
+
+
+def apply_hosted_content_headers(response: Response) -> Response:
+    mimetype = (response.mimetype or "").lower()
+    # Chrome refuses to render PDFs in a sandboxed document; PDF JS runs in the viewer's own
+    # origin, not ours, so leave PDFs unsandboxed.
+    if mimetype != "application/pdf":
+        response.headers["Content-Security-Policy"] = HOSTED_CONTENT_CSP
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 def platform_managed_settings() -> bool:
@@ -217,6 +234,8 @@ def create_app(config: dict | None = None) -> Flask:
         home = "FileServe"
         admin = is_admin()
         pending_tls = False
+        can_publish = False
+        must_protect = False
         platform_managed = platform_managed_settings()
         platform_user = _platform_user() if platform_managed else None
         if platform_managed:
@@ -226,6 +245,8 @@ def create_app(config: dict | None = None) -> Flask:
             viewer = current_user(db)
             if viewer is not None:
                 page_count = len(pages_svc.list_pages(db, viewer=viewer))
+                can_publish = viewer.can(capabilities.PUBLISH_PAGES)
+                must_protect = not viewer.can(capabilities.PUBLISH_UNPROTECTED)
             if not platform_managed:
                 factory = settings.using_factory_admin(db)
             home = hostname.homescreen_name(db)
@@ -240,6 +261,10 @@ def create_app(config: dict | None = None) -> Flask:
             "homescreen_name": home,
             "page_count": page_count,
             "current_user_is_admin": admin,
+            "can_publish_pages": can_publish,
+            "must_protect_pages": must_protect,
+            "publish_ask_hint": capabilities.ASK_PUBLISH,
+            "protect_ask_hint": capabilities.ASK_UNPROTECTED,
             "tls_pending_restart": pending_tls,
             "platform_managed": platform_managed,
             "settings_tabs": settings_tabs_for(admin=admin, platform_managed=platform_managed),
@@ -325,6 +350,33 @@ def create_app(config: dict | None = None) -> Flask:
             abort(401)
         return user
 
+    def _publish_denied(message: str, location: str | None = None):
+        if wants_json():
+            return jsonify({"ok": False, "message": message}), 403
+        flash(message, "error")
+        return redirect(location or url_for("pages_list"))
+
+    def _publish_block(viewer, *, protect: bool, page=None, new_content: bool = True) -> str | None:
+        """Why this viewer may not publish (None when allowed). Admins always pass.
+
+        Members need Publish pages; without Publish without a password every page they
+        create, replace, or turn on needs a password, and protection can't be removed.
+        An existing open page whose file isn't being replaced is left as it is.
+        """
+        if not viewer.can(capabilities.PUBLISH_PAGES):
+            return capabilities.ASK_PUBLISH
+        if protect or viewer.can(capabilities.PUBLISH_UNPROTECTED):
+            return None
+        if page is not None and not page.is_protected and not new_content:
+            return None
+        return capabilities.ASK_UNPROTECTED
+
+    def _managed_page_or_none(viewer, page_id: int):
+        page = pages_svc.get_page(g.db, page_id)
+        if page is None or not pages_svc.can_manage(viewer, page):
+            return None
+        return page
+
     def _page_form():
         label = (request.form.get("label") or request.form.get("title") or "").strip()
         slug = (request.form.get("slug") or "").strip()
@@ -364,13 +416,28 @@ def create_app(config: dict | None = None) -> Flask:
             abort(403)
         return page, viewer
 
+    def _bypasses_page_auth(page) -> bool:
+        """Owner, or an admin with FileServe access, previews disabled/protected pages.
+
+        Any other signed-in household member is a normal visitor here.
+        """
+        if not is_signed_in():
+            return False
+        viewer = current_user(g.db)
+        if viewer is None:
+            return False
+        return page.user_id == viewer.id or viewer.is_admin
+
     def _authorize_public_page(page):
         # Expired pages 404 straight away; the purge timer deletes them later.
         if page is None or pages_svc.is_expired(page):
             abort(404)
-        if not page.enabled and not is_signed_in():
+        if page.enabled and not page.is_protected:
+            return None
+        bypass = _bypasses_page_auth(page)
+        if not page.enabled and not bypass:
             abort(404)
-        if page.is_protected and not is_signed_in():
+        if page.is_protected and not bypass:
             auth = request.authorization
             username = auth.username if auth else ""
             password = auth.password if auth else ""
@@ -406,8 +473,8 @@ def create_app(config: dict | None = None) -> Flask:
             payload = path.read_bytes()
             buffer = BytesIO(payload)
             buffer.seek(0)
-            return send_file(buffer, download_name=path.name, **send_kwargs)
-        return send_file(path, **send_kwargs)
+            return apply_hosted_content_headers(send_file(buffer, download_name=path.name, **send_kwargs))
+        return apply_hosted_content_headers(send_file(path, **send_kwargs))
 
     def _owner_filter_id(raw: str | None) -> int | None:
         value = (raw or "").strip()
@@ -572,6 +639,11 @@ def create_app(config: dict | None = None) -> Flask:
             label, slug, protect, page_username, password, expiry_mode, expiry_date, description = _page_form()
             upload = request.files.get("file")
             try:
+                blocked = _publish_block(viewer, protect=protect)
+                if blocked is not None:
+                    if wants_json():
+                        return jsonify({"ok": False, "message": blocked}), 403
+                    raise ValueError(blocked)
                 if upload is None:
                     raise ValueError("Choose an HTML, PDF, or Word file.")
                 page = pages_svc.create_page(
@@ -627,6 +699,9 @@ def create_app(config: dict | None = None) -> Flask:
     @app.get("/admin/add/fetch")
     @login_required
     def add_fetch():
+        viewer = _require_viewer()
+        if not viewer.can(capabilities.PUBLISH_PAGES):
+            return jsonify({"ok": False, "message": capabilities.ASK_PUBLISH}), 403
         target = request.args.get("url") or ""
         try:
             body, content_type = fetch_proxy.fetch_url(target)
@@ -636,7 +711,8 @@ def create_app(config: dict | None = None) -> Flask:
             return jsonify({"ok": False, "message": f"Upstream HTTP {exc.response.status_code}"}), 502
         except httpx.HTTPError as exc:
             return jsonify({"ok": False, "message": f"Fetch failed: {exc}"}), 502
-        return Response(body, mimetype=content_type or "application/octet-stream")
+        # Remote bytes on our origin: sandbox them in case the caller opens this URL directly.
+        return apply_hosted_content_headers(Response(body, mimetype=content_type or "application/octet-stream"))
 
     @app.get("/admin/tools/url-to-zip")
     @login_required
@@ -658,6 +734,16 @@ def create_app(config: dict | None = None) -> Flask:
         viewer = _require_viewer()
         label, slug, protect, page_username, password, expiry_mode, expiry_date, description = _page_form()
         upload = request.files.get("file")
+        existing = _managed_page_or_none(viewer, page_id)
+        if existing is not None:
+            blocked = _publish_block(
+                viewer,
+                protect=protect,
+                page=existing,
+                new_content=bool(upload is not None and upload.filename),
+            )
+            if blocked is not None:
+                return _publish_denied(blocked)
         try:
             page = pages_svc.update_page(
                 g.db,
@@ -741,6 +827,12 @@ def create_app(config: dict | None = None) -> Flask:
         if denied is not None:
             return denied
         viewer = _require_viewer()
+        existing = _managed_page_or_none(viewer, page_id)
+        if existing is not None and not existing.enabled:
+            # Turning a page on publishes it again; switching off is always allowed.
+            blocked = _publish_block(viewer, protect=existing.is_protected)
+            if blocked is not None:
+                return _publish_denied(blocked)
         try:
             page = pages_svc.toggle_page(g.db, page_id, viewer=viewer)
         except ValueError as exc:
@@ -781,6 +873,10 @@ def create_app(config: dict | None = None) -> Flask:
                 ),
                 403,
             )
+        if not platform_capability(capabilities.STUDIO_APP_ID, capabilities.STUDIO_PUBLISH):
+            return jsonify({"ok": False, "message": capabilities.ASK_STUDIO}), 403
+        if not viewer.can(capabilities.PUBLISH_PAGES):
+            return jsonify({"ok": False, "message": capabilities.ASK_PUBLISH}), 403
         upload = request.files.get("file")
         if upload is None:
             return jsonify({"ok": False, "message": "Missing zip file."}), 400
@@ -793,6 +889,12 @@ def create_app(config: dict | None = None) -> Flask:
         expiry_mode = (request.form.get("expiry") or "none").strip().lower()
         expiry_date = (request.form.get("expiry_date") or "").strip()
         page_id_raw = (request.form.get("page_id") or "").strip()
+        existing = None
+        if page_id_raw.isdigit():
+            existing = _managed_page_or_none(viewer, int(page_id_raw))
+        blocked = _publish_block(viewer, protect=protect, page=existing)
+        if blocked is not None:
+            return jsonify({"ok": False, "message": blocked}), 403
         try:
             if page_id_raw:
                 page = pages_svc.update_page(

@@ -1210,6 +1210,21 @@ select:focus-visible {
   stroke-linejoin: round;
 }
 .chip-btn.is-active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+/* Settings: a tab (or hub row) with edits that haven't been saved yet. */
+.chip-btn.has-unsaved::after,
+.settings-hub-row.has-unsaved .settings-hub-title::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warn);
+  flex: 0 0 auto;
+}
+.settings-hub-row.has-unsaved .settings-hub-title::after {
+  margin-left: 6px;
+  vertical-align: middle;
+}
 .chips-secondary {
   position: static;
   top: auto;

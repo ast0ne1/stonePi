@@ -17,11 +17,14 @@
   <main class="card login-card">
     <h1>Sign in</h1>
     <p class="lede">Recovery Console</p>
+    {% if notice %}
+    <p class="banner banner-ok">{{ notice }}</p>
+    {% endif %}
     {% if error %}
     <p class="banner">{{ error }}</p>
     {% endif %}
-    <p class="hint">Not your portal login. User <code>stonepi</code> · password from Vault <code>STONEPI_RECOVER_PASSWORD</code>.</p>
-    <form method="post" action="login" class="stack" autocomplete="on">
+    <p class="hint">Not your portal login. User <code>stonepi</code> · password set in Dashboard → Settings → Recover (stored in <code>/etc/stonepi/recover.passwd</code>).</p>
+    <form method="post" action="login" class="stack" autocomplete="on"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"/>
       <label>
         Username
         <input type="text" name="username" value="{{ username or 'stonepi' }}" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus />

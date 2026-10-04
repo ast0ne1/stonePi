@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <base href="{{ caller.base }}">
+  <meta name="viewport" content="width=800, height=480, initial-scale=1, user-scalable=no">
+  <title>StonePi</title>
+  <link rel="stylesheet" href="static/css/panel.css?v={{ asset_rev }}">
+</head>
+<body class="theme-{{ config.look.theme }}" style="--accent:{{ config.look.accent }};--clock:{{ config.clock.color }};--clock-accent:{{ config.clock.accent }}">
+  <main id="view" class="view">{% include "home.html" %}</main>
+  <div id="saver" class="saver" style="{{ bg_style }}" hidden></div>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <script type="application/json" id="cfg">{{ client|client_json|safe }}</script>
+  <script src="static/js/panel.js?v={{ asset_rev }}"></script>
+</body>
+</html>

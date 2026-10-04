@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 
 import httpx
 
+from app.services import brightdata
+from app.services.brightdata import BrightDataBudgetError, BrightDataError  # noqa: F401 (re-exported)
 from app.services.cost import UNSPECIFIED_COST
 from app.services.scrapers.base import ScrapedEvent
 
@@ -46,10 +48,13 @@ POLL_INTERVAL_SECONDS = 3.0
 # cost to a generous budget here -- better to wait out a genuinely slow job
 # than time out one that would have succeeded a little later.
 MAX_WAIT_SECONDS = 300.0
-
-
-class BrightDataError(Exception):
-    pass
+# Bright Data bills per record and the account's free tier is shared with
+# PriceWatch (see services/brightdata.py), so a search returns at most
+# SEARCH_LIMIT events and its result is reused for SEARCH_CACHE_HOURS.
+SEARCH_LIMIT = 30
+SEARCH_CACHE_HOURS = 12.0
+SINGLE_EVENT_LIMIT = 1
+SINGLE_EVENT_CACHE_HOURS = 24.0
 
 
 def _parse_dt(raw: str | None) -> datetime | None:
@@ -122,14 +127,9 @@ def _map_record(rec: dict, fallback_url: str) -> ScrapedEvent | None:
     )
 
 
-def fetch_single_event(api_key: str, event_url: str) -> ScrapedEvent | None:
-    """Look up one specific Facebook event by its own URL (the default
-    "collect" mode -- no discover_new/discover_by params, unlike the search
-    discovery flow in fetch_events()). Used by the "Add Event" page's
-    "Fetch Details" button. Returns None if Bright Data found nothing
-    parseable for that URL; raises BrightDataError on a request failure."""
+def _scrape(api_key: str, params: dict, url: str, limit: int) -> list:
+    """POST one input to /scrape and return Bright Data's raw records (sync 200 or async 202)."""
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-
     with httpx.Client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
         try:
             resp = client.post(
@@ -138,25 +138,46 @@ def fetch_single_event(api_key: str, event_url: str) -> ScrapedEvent | None:
                     "dataset_id": FACEBOOK_EVENTS_DATASET_ID,
                     "notify": "false",
                     "include_errors": "true",
+                    **params,
                 },
                 headers=headers,
-                json={"input": [{"url": event_url}], "limit_per_input": None},
+                json={"input": [{"url": url}], "limit_per_input": limit},
             )
             resp.raise_for_status()
         except httpx.HTTPStatusError as e:
-            raise BrightDataError(f"Bright Data scrape failed: HTTP {e.response.status_code}") from e
+            raise BrightDataError(f"Bright Data scrape failed: HTTP {e.response.status_code}", billed=False) from e
         except httpx.HTTPError as e:
-            raise BrightDataError(f"Bright Data scrape request failed: {e}") from e
+            raise BrightDataError(f"Bright Data scrape request failed: {e}", billed=False) from e
 
-        if resp.status_code == 202:
-            snapshot_id = resp.json().get("snapshot_id")
-            if not snapshot_id:
-                raise BrightDataError("Bright Data returned 202 without a snapshot_id")
-            records = _wait_for_snapshot(client, headers, snapshot_id)
-        else:
-            records = resp.json()
+        try:
+            if resp.status_code == 202:
+                snapshot_id = resp.json().get("snapshot_id")
+                if not snapshot_id:
+                    raise BrightDataError("Bright Data returned 202 without a snapshot_id")
+                records = _wait_for_snapshot(client, headers, snapshot_id)
+            else:
+                records = resp.json()
+        except httpx.HTTPError as e:
+            raise BrightDataError(f"Bright Data snapshot fetch failed: {e}") from e
+    return records if isinstance(records, list) else []
 
-    if not isinstance(records, list) or not records or not isinstance(records[0], dict):
+
+def fetch_single_event(api_key: str, event_url: str) -> ScrapedEvent | None:
+    """Look up one specific Facebook event by its own URL (the default
+    "collect" mode -- no discover_new/discover_by params, unlike the search
+    discovery flow in fetch_events()). Used by the "Add Event" page's
+    "Fetch Details" button. Returns None if Bright Data found nothing
+    parseable for that URL; raises BrightDataError on a request failure, or
+    BrightDataBudgetError when the monthly Bright Data limit is used up."""
+    records = brightdata.metered(
+        "facebook-event",
+        SINGLE_EVENT_LIMIT,
+        lambda: _scrape(api_key, {}, event_url, SINGLE_EVENT_LIMIT),
+        paced=False,  # someone pressed the button: only the hard monthly limit applies
+        cache_key=f"facebook-event:{event_url}",
+        cache_hours=SINGLE_EVENT_CACHE_HOURS,
+    )
+    if not records or not isinstance(records[0], dict):
         return None
     return _map_record(records[0], event_url)
 
@@ -184,45 +205,29 @@ def fetch_events(api_key: str, search_url: str) -> list[ScrapedEvent]:
     """Run a Bright Data scrape job for a Facebook events search URL and
     return the results as ScrapedEvents.
 
-    Raises BrightDataError on an invalid key or a failed request -- callers
+    Capped at SEARCH_LIMIT events per run, and a result is reused for
+    SEARCH_CACHE_HOURS -- by every user with the same search URL, and by
+    "Sync all" -- so the hourly schedule doesn't re-buy the same events.
+
+    Raises BrightDataError on an invalid key or a failed request (and
+    BrightDataBudgetError when the monthly limit is used up) -- callers
     should catch this the same way they'd catch a failed page render, and
     surface source.last_error instead of crashing the sync.
     """
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    records = brightdata.metered(
+        "facebook",
+        SEARCH_LIMIT,
+        lambda: _scrape(api_key, {"type": "discover_new", "discover_by": "url"}, search_url, SEARCH_LIMIT),
+        paced=True,
+        cache_key=f"facebook-search:{search_url}",
+        cache_hours=SEARCH_CACHE_HOURS,
+    )
 
-    with httpx.Client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
-        try:
-            resp = client.post(
-                f"{API_BASE}/scrape",
-                params={
-                    "dataset_id": FACEBOOK_EVENTS_DATASET_ID,
-                    "notify": "false",
-                    "include_errors": "true",
-                    "type": "discover_new",
-                    "discover_by": "url",
-                },
-                headers=headers,
-                json={"input": [{"url": search_url}], "limit_per_input": None},
-            )
-            resp.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            raise BrightDataError(f"Bright Data scrape failed: HTTP {e.response.status_code}") from e
-        except httpx.HTTPError as e:
-            raise BrightDataError(f"Bright Data scrape request failed: {e}") from e
-
-        if resp.status_code == 202:
-            snapshot_id = resp.json().get("snapshot_id")
-            if not snapshot_id:
-                raise BrightDataError("Bright Data returned 202 without a snapshot_id")
-            records = _wait_for_snapshot(client, headers, snapshot_id)
-        else:
-            records = resp.json()
-
-    raw_count = len(records) if isinstance(records, list) else 0
-    logger.info("Bright Data Facebook: received %d raw record(s) for %s", raw_count, search_url)
+    raw_count = len(records)
+    logger.info("Bright Data Facebook: %d raw record(s) for %s", raw_count, search_url)
 
     events: list[ScrapedEvent] = []
-    for rec in records if isinstance(records, list) else []:
+    for rec in records:
         if not isinstance(rec, dict):
             continue
         mapped = _map_record(rec, search_url)

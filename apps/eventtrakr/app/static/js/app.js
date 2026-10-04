@@ -605,6 +605,17 @@
     });
   });
 
+  // Search: the default location is a one-tap chip, never a silent filter.
+  document.querySelectorAll("[data-fill-location]").forEach(function (chip) {
+    chip.addEventListener("click", function () {
+      var input = document.getElementById("location");
+      if (!input) return;
+      input.value = chip.getAttribute("data-fill-location") || "";
+      chip.hidden = true;
+      input.focus();
+    });
+  });
+
   if (window.location.hash === "#add-custom-source") {
     openSheetEl(findSheet("add-custom-source"));
   }

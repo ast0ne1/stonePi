@@ -132,10 +132,19 @@ def get_or_create_from_platform(db: Session, platform) -> User:
     existing = db.query(User).filter(User.auth_user_id == auth_id).one_or_none()
     is_admin = bool(getattr(platform, "is_admin", False))
     perms = (getattr(platform, "permissions", None) or {}).get("newscast") or {}
+    checker = getattr(platform, "has_capability", None)
+
+    def cap(name: str) -> bool:
+        # has_capability applies catalog defaults for caps the cookie doesn't carry.
+        if callable(checker):
+            return bool(checker("newscast", name))
+        return bool(perms.get(name))
 
     def apply_platform_flags(user: User) -> bool:
         changed = False
-        if is_admin or user.role == "admin":
+        # The platform is the source of truth: a local "admin" row demoted in
+        # StonePi becomes a member here too (solo mode never reaches this path).
+        if is_admin:
             desired = {
                 "can_add_custom_sources": True,
                 "can_use_ntfy": True,
@@ -145,9 +154,9 @@ def get_or_create_from_platform(db: Session, platform) -> User:
         else:
             desired = {
                 "role": "user",
-                "can_add_custom_sources": bool(perms.get("can_add_custom_sources")),
-                "can_use_ntfy": bool(perms.get("can_use_ntfy")),
-                "can_view_status": bool(perms.get("can_view_status")),
+                "can_add_custom_sources": cap("can_add_custom_sources"),
+                "can_use_ntfy": cap("can_use_ntfy"),
+                "can_view_status": cap("can_view_status"),
             }
         for attr, value in desired.items():
             if getattr(user, attr) != value:
@@ -195,9 +204,9 @@ def get_or_create_from_platform(db: Session, platform) -> User:
         username=username[:80],
         password="",
         role="admin" if is_admin else "user",
-        can_add_custom_sources=True if is_admin else bool(perms.get("can_add_custom_sources")),
-        can_use_ntfy=True if is_admin else bool(perms.get("can_use_ntfy")),
-        can_view_status=True if is_admin else bool(perms.get("can_view_status")),
+        can_add_custom_sources=True if is_admin else cap("can_add_custom_sources"),
+        can_use_ntfy=True if is_admin else cap("can_use_ntfy"),
+        can_view_status=True if is_admin else cap("can_view_status"),
         active=True,
         auth_user_id=auth_id,
     )

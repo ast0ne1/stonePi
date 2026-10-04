@@ -22,11 +22,13 @@ from app.auth import (
     record_login_failure,
     login_location,
     logout_location,
-    require_admin,
+    may_add_custom_sources,
+    require_user,
     request_is_https,
     resolve_login_identity,
     safe_next,
     session_from_request,
+    session_is_admin,
 )
 from app.config import ROOT_DIR, env
 from stonepi_auth.brand import fonts_rev
@@ -70,7 +72,7 @@ from stonepi_auth.csrf import csrf_from_request, csrf_ok, set_csrf_cookie
 from stonepi_auth.session import COOKIE_NAME, CSRF_COOKIE
 
 public = APIRouter()
-router = APIRouter(dependencies=[Depends(require_admin)])
+router = APIRouter(dependencies=[Depends(require_user)])
 templates = Jinja2Templates(directory=str(ROOT_DIR / "app" / "templates"))
 templates.env.globals.update(asset_rev=__asset_rev__, fonts_rev=fonts_rev())
 add_shared_templates(templates.env)
@@ -93,9 +95,10 @@ SETTINGS_TABS = (
     ("about", "About"),
 )
 SETTINGS_TAB_KEYS = {key for key, _label in SETTINGS_TABS}
-# Instance / household controls — non-admins never see these tabs.
+# Instance / household controls — non-admins never see these tabs. Filters and
+# Translation hold only household-wide keys (read globally by the briefing and ingest).
 ADMIN_ONLY_SETTINGS_TABS = frozenset(
-    {"schedule", "llm", "catalog", "users", "backup", "update"}
+    {"schedule", "filters", "translation", "llm", "categories", "catalog", "users", "backup", "update"}
 )
 # Owned by the StonePi dashboard when SSO is configured.
 PLATFORM_HIDDEN_SETTINGS_TABS = frozenset({"users", "update"})
@@ -298,6 +301,9 @@ def settings_section_panels_for(
                 continue
             filtered.append((panel_id, label, cards))
         panels = tuple(filtered)
+    if tab == "publication" and not is_admin:
+        # Members only keep their own "include saved long-reads" toggle (Stories card).
+        panels = tuple(panel for panel in panels if panel[0] == "stories")
     if len(panels) <= 1:
         return ()
     return panels
@@ -379,6 +385,10 @@ def settings_path(tab: str | None = "device", panel: str | None = None) -> str:
     return path
 
 
+def _is_admin(request: Request) -> bool:
+    return session_is_admin(session_from_request(request))
+
+
 def _current_user_id(request: Request) -> int:
     return effective_user_id(session_from_request(request))
 
@@ -432,11 +442,23 @@ def _story_categories(db: Session, user_id: int | None = None) -> dict[str, str]
     return {feed.name: feed.category for feed in query.all()}
 
 
+def _ingest_for(request: Request, db: Session) -> dict:
+    """Refresh status as this caller may see it: own feed stats, Stop only for their own run."""
+    from app.routers.stories import scoped_snapshot
+
+    data = scoped_snapshot(db, request)
+    session = session_from_request(request)
+    if not session_is_admin(session):
+        mine = session is not None and data.get("started_by") == _current_user_id(request)
+        data["stoppable"] = bool(data.get("stoppable") and mine)
+    return data
+
+
 def _base_context(request: Request, db: Session, active: str) -> dict:
     from app.auth import _platform_user
     from stonepi_auth.session import factory_admin_warning
 
-    ingest = snapshot()
+    ingest = _ingest_for(request, db)
     llm = settings.llm_config(db)
     uid = _current_user_id(request)
     session = session_from_request(request)
@@ -488,8 +510,52 @@ def healthz():
     return JSONResponse({"ok": True, "service": "newscast"})
 
 
+def _panel_headlines(db: Session, limit: int) -> dict:
+    """Car Thing panel extras for ``/api/display?items=N``: the household admin's latest stories."""
+    from datetime import datetime, timezone
+
+    from sqlalchemy import or_
+
+    from app.models import Story, User
+
+    admin = db.query(User).filter(User.role == "admin").order_by(User.id.asc()).first()
+    if admin is None:
+        return {"card": {"headline": "No stories yet", "sub": ""}, "items": [], "refresh_s": 300}
+    now = datetime.now(timezone.utc)
+    stories = (
+        db.query(Story)
+        .filter(Story.user_id == admin.id, or_(Story.expires_at.is_(None), Story.expires_at > now))
+        .order_by(Story.published_at.desc().nullslast(), Story.created_at.desc())
+        .limit(max(1, min(50, limit)))
+        .all()
+    )
+    items = []
+    for story in stories:
+        stamp = story.published_at or story.created_at
+        when = ""
+        if stamp is not None:
+            if stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=timezone.utc)
+            when = stamp.astimezone().strftime("%a %H:%M")
+        items.append(
+            {
+                "id": str(story.id),
+                "title": (story.title or "").strip()[:120],
+                "sub": " · ".join(p for p in ((story.source_name or "").strip(), when) if p),
+                "badge": "",
+                "detail": (story.summary or story.raw_excerpt or "").strip()[:1500],
+            }
+        )
+    lead = items[0] if items else None
+    return {
+        "card": {"headline": lead["title"] if lead else "No stories yet", "sub": lead["sub"] if lead else ""},
+        "items": items,
+        "refresh_s": 300,
+    }
+
+
 @public.get("/api/display")
-def display_status(db: Annotated[Session, Depends(get_db)]):
+def display_status(db: Annotated[Session, Depends(get_db)], items: int = 0):
     """Compact household stats for StonePi → TRMNL overview push."""
     from datetime import datetime, timezone
 
@@ -518,7 +584,10 @@ def display_status(db: Annotated[Session, Depends(get_db)]):
             updated = "Yesterday"
         else:
             updated = f"{seconds // 86400}d ago"
-    return JSONResponse({"ok": True, "feeds": len(feeds), "updated": updated})
+    payload = {"ok": True, "feeds": len(feeds), "updated": updated}
+    if items > 0:  # Car Thing panel lists; the plain call (Dashboard tile, TRMNL) is unchanged
+        payload.update(_panel_headlines(db, items))
+    return JSONResponse(payload)
 
 
 @public.get("/login")
@@ -1068,7 +1137,7 @@ def device_page(request: Request, db: Annotated[Session, Depends(get_db)], tab: 
 @router.get("/api/activity")
 def activity_status(request: Request, db: Annotated[Session, Depends(get_db)]):
     uid = _current_user_id(request)
-    ingest = snapshot()
+    ingest = _ingest_for(request, db)
     reader = reader_push.snapshot(db, probe=False, user_id=uid)
     recent = reader_push.recent_sync_result(db, user_id=uid)
     return JSONResponse(
@@ -1514,10 +1583,15 @@ def delete_library_file_form(file_id: int, request: Request, db: Annotated[Sessi
 
 @router.get("/api/ollama/models")
 def ollama_models(
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
     base_url: str = "",
 ):
     from app.services.summarize import list_ollama_models
+
+    # Probes an arbitrary URL from the Pi and only serves the admin-only LLM tab.
+    if not _is_admin(request):
+        return JSONResponse({"ok": False, "message": "Only the household admin can do that."}, status_code=403)
 
     url = (base_url or settings.get_value(db, "ollama_base_url")).strip()
     try:
@@ -1535,7 +1609,12 @@ def ollama_models(
 @router.post("/ingest")
 def ingest_form(request: Request):
     # manual=True: the only kind of refresh the top-bar Stop button can halt.
-    result = start_ingest(force=True, manual=True)
+    uid = _current_user_id(request)
+    if _is_admin(request):
+        result = start_ingest(force=True, manual=True, started_by=uid)
+    else:
+        # Members refresh their own sources only; the whole household is admin work.
+        result = start_ingest(force=True, manual=True, user_id=uid, started_by=uid)
     if _wants_json(request):
         return JSONResponse(result)
     return RedirectResponse("/", status_code=303)
@@ -1543,7 +1622,7 @@ def ingest_form(request: Request):
 
 @router.post("/ingest/stop")
 def ingest_stop_form(request: Request):
-    result = request_stop()
+    result = request_stop(_current_user_id(request), is_admin=_is_admin(request))
     if _wants_json(request):
         return JSONResponse(result)
     return RedirectResponse("/", status_code=303)
@@ -1588,10 +1667,7 @@ def create_feed_form(
 
     do_translate, translate_provider = parse_feed_translate_mode(translate)
     uid = _current_user_id(request)
-    session = session_from_request(request)
-    is_admin = bool(session and session.role == "admin")
-    user_row = db.get(User, uid) if uid else None
-    if not is_admin and not (user_row and user_row.can_add_custom_sources):
+    if not may_add_custom_sources(db, session_from_request(request)):
         msg = "Custom sources are not enabled for your account."
         if _wants_json(request):
             return JSONResponse({"ok": False, "message": msg}, status_code=403)
@@ -1667,6 +1743,14 @@ def save_feed_schedule(
 
     home = feed_urls.clean_http_url(homepage_url)
     rss = feed_urls.clean_http_url(rss_url)
+    from app.routers.feeds import repoints_feed
+
+    # Pointing a source (e.g. a catalog one) at a new URL is adding a custom source.
+    if repoints_feed(feed, home, rss) and not may_add_custom_sources(db, session_from_request(request)):
+        msg = "Custom sources are not enabled for your account."
+        if _wants_json(request):
+            return JSONResponse({"ok": False, "message": msg}, status_code=403)
+        return _form_error(request, msg, "/sources?tab=feeds", 403)
     err = feed_urls.required_url_for_type(wanted_type, home, rss)
     if err and feed.catalog_id:
         if item is not None:
@@ -1816,18 +1900,15 @@ def remove_catalog_form(catalog_id: str, request: Request, db: Annotated[Session
 
     uid = _current_user_id(request)
     item = find_catalog_item(catalog_id)
-    feed = None
+    query = db.query(Feed).filter(Feed.user_id == uid)
     if item:
-        feed = (
-            db.query(Feed)
-            .filter(Feed.user_id == uid)
-            .filter((Feed.catalog_id == catalog_id) | (Feed.url == item["url"]))
-            .one_or_none()
-        )
+        query = query.filter((Feed.catalog_id == catalog_id) | (Feed.url == item["url"]))
     else:
-        feed = db.query(Feed).filter(Feed.user_id == uid, Feed.catalog_id == catalog_id).one_or_none()
-    if feed:
+        query = query.filter(Feed.catalog_id == catalog_id)
+    feeds = query.all()  # catalog id and legacy URL can both match
+    for feed in feeds:
         db.delete(feed)
+    if feeds:
         db.commit()
     if _wants_json(request):
         return JSONResponse({"ok": True, "message": "Removed the feed."})
@@ -1933,9 +2014,12 @@ async def save_settings(
                 db.commit()
             reauth = True
 
+    # One form carries every panel, but only the submitted tab's keys are written:
+    # a save from one tab must never reset (or blank) another tab's values. Keys
+    # read household-wide (briefing, ingest, EPUB) are written by admins only.
     turning_https_on = False
     turning_https_off = False
-    if is_admin and not platform_managed:
+    if is_admin and not platform_managed and tab == "device":
         previous_https = settings.https_enabled(db)
         want_https = bool(str(form.get("https_enabled") or "").strip())
         turning_https_on = want_https and not previous_https
@@ -1951,47 +2035,49 @@ async def save_settings(
                     tab,
                 )
         settings.set_value(db, "https_enabled", "1" if want_https else "0")
-    else:
-        want_https = settings.https_enabled(db)
-    ui_lang = str(form.get("ui_lang") or settings.DEFAULT_UI_LANG).strip().lower()
-    allowed_langs = {code for code, _label in settings.UI_LANG_CHOICES}
-    if ui_lang not in allowed_langs:
-        ui_lang = settings.DEFAULT_UI_LANG
-    if is_admin:
-        settings.set_value(db, "ui_lang", ui_lang)
-    session = session_from_request(request)
-    if session and session.user_id:
-        user_settings_service.set_value(db, session.user_id, "ui_lang", ui_lang)
-        admin_row = db.get(User, session.user_id)
-        if admin_row is not None:
-            admin_row.ui_lang = ui_lang
-            db.commit()
-        label_raw = str(form.get("article_link_label") or "")
+    if tab == "device" and session and session.user_id:
+        if "ui_lang" in form:
+            ui_lang = str(form.get("ui_lang") or settings.DEFAULT_UI_LANG).strip().lower()
+            allowed_langs = {code for code, _label in settings.UI_LANG_CHOICES}
+            if ui_lang not in allowed_langs:
+                ui_lang = settings.DEFAULT_UI_LANG
+            if is_admin:
+                settings.set_value(db, "ui_lang", ui_lang)
+            user_settings_service.set_value(db, session.user_id, "ui_lang", ui_lang)
+            own_row = db.get(User, session.user_id)
+            if own_row is not None:
+                own_row.ui_lang = ui_lang
+                db.commit()
+        if "article_link_label" in form:
+            user_settings_service.set_value(
+                db,
+                session.user_id,
+                "article_link_label",
+                article_links.normalize_article_link_label(str(form.get("article_link_label") or "")),
+            )
+        # Briefing View options — default-on flags; unchecked checkboxes omit the key.
         user_settings_service.set_value(
             db,
             session.user_id,
-            "article_link_label",
-            article_links.normalize_article_link_label(label_raw),
+            "briefing_article_open_enabled",
+            "1" if str(form.get("briefing_article_open_enabled") or "").strip() else "0",
         )
-        # Briefing View options — default-on flags; unchecked checkboxes omit the key.
-        if tab == "device":
-            user_settings_service.set_value(
-                db,
-                session.user_id,
-                "briefing_article_open_enabled",
-                "1" if str(form.get("briefing_article_open_enabled") or "").strip() else "0",
-            )
-            user_settings_service.set_value(
-                db,
-                session.user_id,
-                "briefing_article_open_button",
-                "1" if str(form.get("briefing_article_open_button") or "").strip() else "0",
-            )
+        user_settings_service.set_value(
+            db,
+            session.user_id,
+            "briefing_article_open_button",
+            "1" if str(form.get("briefing_article_open_button") or "").strip() else "0",
+        )
 
     if is_admin and tab == "device":
         settings.set_value(db, "paywall_skip_enabled", "1" if str(form.get("paywall_skip_enabled") or "").strip() else "0")
+        if "instance_name" in form:
+            if instance_name.strip():
+                settings.set_value(db, "instance_name", instance_name.strip()[:80])
+            else:
+                settings.clear_value(db, "instance_name")
 
-    if is_admin:
+    if is_admin and tab == "llm":
         if clear_openai_api_key:
             settings.clear_value(db, "openai_api_key")
         elif openai_api_key.strip():
@@ -2003,68 +2089,77 @@ async def save_settings(
         if chosen_model:
             settings.set_value(db, "openai_model", chosen_model)
 
-        provider = settings.normalize_provider(llm_provider)
-        settings.set_value(db, "llm_provider", provider)
-        ollama_root = settings.normalize_ollama_root(ollama_base_url)
-        if not ollama_root.startswith(("http://", "https://")):
-            return _settings_error(request, "Ollama URL must start with http:// or https://", tab)
-        settings.set_value(db, "ollama_base_url", ollama_root)
-        if ollama_model.strip():
-            settings.set_value(db, "ollama_model", ollama_model.strip())
-        else:
-            settings.clear_value(db, "ollama_model")
-        if instance_name.strip():
-            settings.set_value(db, "instance_name", instance_name.strip()[:80])
-        else:
-            settings.clear_value(db, "instance_name")
+        if "llm_provider" in form:
+            settings.set_value(db, "llm_provider", settings.normalize_provider(llm_provider))
+        if "ollama_base_url" in form:
+            ollama_root = settings.normalize_ollama_root(ollama_base_url)
+            if not ollama_root.startswith(("http://", "https://")):
+                return _settings_error(request, "Ollama URL must start with http:// or https://", tab)
+            settings.set_value(db, "ollama_base_url", ollama_root)
+        if "ollama_model" in form:
+            if ollama_model.strip():
+                settings.set_value(db, "ollama_model", ollama_model.strip())
+            else:
+                settings.clear_value(db, "ollama_model")
 
-        settings.set_value(db, "x3_catalog_login", "1" if x3_catalog_login else "0")
-        if x3_catalog_username.strip():
-            settings.set_value(db, "x3_catalog_username", x3_catalog_username.strip()[:80])
-        else:
-            settings.clear_value(db, "x3_catalog_username")
-        settings.set_value(db, "x3_device_id", x3_device_id.strip())
-
-    settings.set_value(db, "keyword_include", keyword_include.strip())
-    settings.set_value(db, "keyword_exclude", keyword_exclude.strip())
-    if is_admin:
+    if is_admin and tab == "filters":
+        if "keyword_include" in form:
+            settings.set_value(db, "keyword_include", keyword_include.strip())
+        if "keyword_exclude" in form:
+            settings.set_value(db, "keyword_exclude", keyword_exclude.strip())
+    if is_admin and tab == "translation":
         provider = translate_provider.strip().lower()
-        if provider in settings.TRANSLATE_PROVIDER_IDS:
+        if "translate_provider" in form and provider in settings.TRANSLATE_PROVIDER_IDS:
             settings.set_value(db, "translate_provider", provider)
-    settings.set_value(db, "translate_target_lang", translate.normalize_target_lang(translate_target_lang))
+        if "translate_target_lang" in form:
+            settings.set_value(db, "translate_target_lang", translate.normalize_target_lang(translate_target_lang))
     uid = _current_user_id(request)
-    user_row = db.get(User, uid)
-    if user_row is not None:
-        try:
-            reader_config.save_reader_settings(
+    if tab == "reader":
+        user_row = db.get(User, uid)
+        if user_row is not None:
+            try:
+                reader_config.save_reader_settings(
+                    db,
+                    user_row,
+                    reader_device_value=reader_device,
+                    reader_host_value=reader_host,
+                    reader_upload_path_value=reader_upload_path,
+                    reader_push_when_online=bool(reader_push_when_online),
+                    reader_ssh_port_value=reader_ssh_port,
+                    reader_ssh_user_value=reader_ssh_user,
+                    reader_ssh_password_value=reader_ssh_password,
+                    clear_reader_ssh_password=bool(clear_reader_ssh_password),
+                    reader_firmware_value=reader_firmware,
+                    reader_keep_days_value=reader_keep_days,
+                )
+            except ValueError as exc:
+                return _settings_error(request, str(exc), tab)
+        if is_admin:
+            settings.set_value(db, "x3_catalog_login", "1" if x3_catalog_login else "0")
+            if "x3_catalog_username" in form:
+                if x3_catalog_username.strip():
+                    settings.set_value(db, "x3_catalog_username", x3_catalog_username.strip()[:80])
+                else:
+                    settings.clear_value(db, "x3_catalog_username")
+            if "x3_device_id" in form:
+                settings.set_value(db, "x3_device_id", x3_device_id.strip())
+    if is_admin and tab == "publication":
+        if "reader_title_pattern" in form:
+            settings.set_value(db, "reader_title_pattern", paper_naming.normalize_title_pattern(reader_title_pattern))
+        if "reader_category_title_pattern" in form:
+            settings.set_value(
                 db,
-                user_row,
-                reader_device_value=reader_device,
-                reader_host_value=reader_host,
-                reader_upload_path_value=reader_upload_path,
-                reader_push_when_online=bool(reader_push_when_online),
-                reader_ssh_port_value=reader_ssh_port,
-                reader_ssh_user_value=reader_ssh_user,
-                reader_ssh_password_value=reader_ssh_password,
-                clear_reader_ssh_password=bool(clear_reader_ssh_password),
-                reader_firmware_value=reader_firmware,
-                reader_keep_days_value=reader_keep_days,
+                "reader_category_title_pattern",
+                paper_naming.normalize_category_title_pattern(reader_category_title_pattern),
             )
-        except ValueError as exc:
-            return _settings_error(request, str(exc), tab)
-    if is_admin:
-        settings.set_value(db, "reader_title_pattern", paper_naming.normalize_title_pattern(reader_title_pattern))
-        settings.set_value(
-            db,
-            "reader_category_title_pattern",
-            paper_naming.normalize_category_title_pattern(reader_category_title_pattern),
-        )
-        settings.set_value(db, "reader_date_format", paper_naming.normalize_date_format(reader_date_format))
-        label = paper_naming.normalize_paper_label(reader_paper_label)
-        if label:
-            settings.set_value(db, "reader_paper_label", label)
-        else:
-            settings.clear_value(db, "reader_paper_label")
+        if "reader_date_format" in form:
+            settings.set_value(db, "reader_date_format", paper_naming.normalize_date_format(reader_date_format))
+        if "reader_paper_label" in form:
+            label = paper_naming.normalize_paper_label(reader_paper_label)
+            if label:
+                settings.set_value(db, "reader_paper_label", label)
+            else:
+                settings.clear_value(db, "reader_paper_label")
 
     if clear_x3_sync_token:
         user_settings_service.clear_value(db, uid, "x3_sync_token")
@@ -2075,7 +2170,7 @@ async def save_settings(
         if is_admin:
             settings.set_value(db, "x3_sync_token", x3_sync_token.strip())
 
-    if is_admin:
+    if is_admin and tab == "schedule":
         if ingest_interval_minutes.strip():
             try:
                 minutes = int(ingest_interval_minutes)
@@ -2083,61 +2178,66 @@ async def save_settings(
                     settings.set_value(db, "ingest_interval_minutes", str(minutes))
             except ValueError:
                 return _settings_error(request, "Refresh interval must be a number of minutes.", tab)
-        start_clock = normalize_optional_clock(ingest_active_start)
-        end_clock = normalize_optional_clock(ingest_active_end)
-        if start_clock:
-            settings.set_value(db, "ingest_active_start", start_clock)
-        else:
-            settings.clear_value(db, "ingest_active_start")
-        if end_clock:
-            settings.set_value(db, "ingest_active_end", end_clock)
-        else:
-            settings.clear_value(db, "ingest_active_end")
-    if briefing_limit.strip():
-        try:
-            limit = int(briefing_limit)
-        except ValueError:
-            return _settings_error(request, "Briefing size must be a number of stories.", tab)
-        if limit not in settings.BRIEFING_LIMIT_VALUES:
-            return _settings_error(request, "Choose 10, 20, 30, 40, or 50 stories.", tab)
-        settings.set_value(db, "briefing_limit", str(limit))
-    if briefing_min_importance.strip():
-        try:
-            minimum = int(briefing_min_importance)
-        except ValueError:
-            return _settings_error(request, "Paper importance must be a number from 1 to 5.", tab)
-        if minimum not in settings.IMPORTANCE_MIN_VALUES:
-            return _settings_error(request, "Choose a paper importance threshold from 1 to 5.", tab)
-        settings.set_value(db, "briefing_min_importance", str(minimum))
-    settings.set_value(db, "briefing_category_mix", "1" if briefing_category_mix else "0")
-    category_shares: dict[str, int] = {}
-    opds_keys: set[str] = set()
-    for category in list_categories(db):
-        raw = str(form.get(f"category_share_{category.key}", "") or "").strip()
-        if raw == "":
-            continue
-        try:
-            percent = int(raw)
-        except ValueError:
-            return _settings_error(request, f"Category share for {category.label} must be a whole number.", tab)
-        if percent < 0 or percent > 100:
-            return _settings_error(request, "Category shares must be between 0 and 100.", tab)
-        category_shares[category.key] = percent
-    explicit_total = sum(value for value in category_shares.values() if value > 0)
-    if explicit_total > 100:
-        return _settings_error(request, "Category percentages cannot add up to more than 100.", tab)
-    settings.set_value(db, "briefing_category_shares", settings.encode_category_shares(category_shares))
+        if "ingest_active_start" in form or "ingest_active_end" in form:
+            start_clock = normalize_optional_clock(ingest_active_start)
+            end_clock = normalize_optional_clock(ingest_active_end)
+            if start_clock:
+                settings.set_value(db, "ingest_active_start", start_clock)
+            else:
+                settings.clear_value(db, "ingest_active_start")
+            if end_clock:
+                settings.set_value(db, "ingest_active_end", end_clock)
+            else:
+                settings.clear_value(db, "ingest_active_end")
+        if briefing_publish_at.strip():
+            settings.set_value(db, "briefing_publish_at", normalize_publish_at(briefing_publish_at))
     if tab == "publication":
-        for category in list_categories(db):
-            if form.get(f"category_opds_{category.key}"):
-                opds_keys.add(category.key)
-        settings.set_value(db, "briefing_category_opds_keys", settings.encode_category_opds_keys(opds_keys))
+        # Per-account: the only Publication setting a member owns.
         user_settings_service.set_value(
             db,
             uid,
             "publication_include_saved",
             "1" if str(publication_include_saved or "").strip() else "0",
         )
+    if is_admin and tab == "publication":
+        if briefing_limit.strip():
+            try:
+                limit = int(briefing_limit)
+            except ValueError:
+                return _settings_error(request, "Briefing size must be a number of stories.", tab)
+            if limit not in settings.BRIEFING_LIMIT_VALUES:
+                return _settings_error(request, "Choose 10, 20, 30, 40, or 50 stories.", tab)
+            settings.set_value(db, "briefing_limit", str(limit))
+        if briefing_min_importance.strip():
+            try:
+                minimum = int(briefing_min_importance)
+            except ValueError:
+                return _settings_error(request, "Paper importance must be a number from 1 to 5.", tab)
+            if minimum not in settings.IMPORTANCE_MIN_VALUES:
+                return _settings_error(request, "Choose a paper importance threshold from 1 to 5.", tab)
+            settings.set_value(db, "briefing_min_importance", str(minimum))
+        settings.set_value(db, "briefing_category_mix", "1" if briefing_category_mix else "0")
+        category_shares: dict[str, int] = {}
+        opds_keys: set[str] = set()
+        for category in list_categories(db):
+            raw = str(form.get(f"category_share_{category.key}", "") or "").strip()
+            if raw == "":
+                continue
+            try:
+                percent = int(raw)
+            except ValueError:
+                return _settings_error(request, f"Category share for {category.label} must be a whole number.", tab)
+            if percent < 0 or percent > 100:
+                return _settings_error(request, "Category shares must be between 0 and 100.", tab)
+            category_shares[category.key] = percent
+        explicit_total = sum(value for value in category_shares.values() if value > 0)
+        if explicit_total > 100:
+            return _settings_error(request, "Category percentages cannot add up to more than 100.", tab)
+        settings.set_value(db, "briefing_category_shares", settings.encode_category_shares(category_shares))
+        for category in list_categories(db):
+            if form.get(f"category_opds_{category.key}"):
+                opds_keys.add(category.key)
+        settings.set_value(db, "briefing_category_opds_keys", settings.encode_category_opds_keys(opds_keys))
         settings.set_value(
             db,
             "epub_omit_article_links",
@@ -2166,9 +2266,7 @@ async def save_settings(
             settings.set_value(
                 db, "epub_contents_limit", str(settings.normalize_epub_contents_limit(epub_contents_limit))
             )
-    if is_admin and briefing_publish_at.strip():
-        settings.set_value(db, "briefing_publish_at", normalize_publish_at(briefing_publish_at))
-    if is_admin and not platform_managed_settings():
+    if is_admin and tab == "update" and not platform_managed_settings():
         repo = update.normalize_repo(github_repo)
         if github_repo.strip() and not repo:
             return _settings_error(request, "GitHub repository must look like owner/NewsCast.", tab)
@@ -2512,6 +2610,8 @@ def add_category_form(
     db: Annotated[Session, Depends(get_db)],
     label: Annotated[str, Form()] = "",
 ):
+    if not _is_admin(request):
+        return _form_error(request, "Only admins can change categories.", settings_path("device"), 403)
     try:
         category_service.add_category(db, label)
     except ValueError as exc:
@@ -2528,6 +2628,8 @@ def rename_category_form(
     db: Annotated[Session, Depends(get_db)],
     label: Annotated[str, Form()] = "",
 ):
+    if not _is_admin(request):
+        return _form_error(request, "Only admins can change categories.", settings_path("device"), 403)
     try:
         category_service.rename_category(db, key, label)
     except ValueError as exc:
@@ -2539,6 +2641,8 @@ def rename_category_form(
 
 @router.post("/settings/categories/{key}/delete")
 def delete_category_form(key: str, request: Request, db: Annotated[Session, Depends(get_db)]):
+    if not _is_admin(request):
+        return _form_error(request, "Only admins can change categories.", settings_path("device"), 403)
     try:
         category_service.delete_category(db, key)
     except ValueError as exc:
@@ -2554,6 +2658,8 @@ def import_package_form(
     db: Annotated[Session, Depends(get_db)],
     file: UploadFile = File(...),
 ):
+    if not _is_admin(request):
+        return _form_error(request, "Only admins can import catalog packages.", settings_path("device"), 403)
     raw = file.file.read()
     next_path = settings_path("catalog")
     try:
@@ -2571,7 +2677,9 @@ def import_package_form(
 
 
 @router.get("/catalog/packages/export")
-def export_package(db: Annotated[Session, Depends(get_db)], category: str = ""):
+def export_package(request: Request, db: Annotated[Session, Depends(get_db)], category: str = ""):
+    if not _is_admin(request):
+        return _form_error(request, "Only admins can export catalog packages.", settings_path("device"), 403)
     try:
         package = package_service.export_category(db, category, catalog_with_status(db))
     except ValueError:

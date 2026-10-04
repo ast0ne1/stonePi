@@ -387,6 +387,11 @@ body::-webkit-scrollbar-thumb:hover,
   padding: 0 var(--gutter) max(32px, calc(12px + var(--safe-bottom)));
   display: grid;
   align-content: start;
+  /* Rows always take their content's height. On phones .main is a fixed-height
+     scroller, and auto rows let an overflow:hidden child (the Search filters
+     card) shrink to almost nothing once results overflow, so the results slid
+     up over the date and other filters. */
+  grid-auto-rows: max-content;
   gap: 16px;
   overflow-x: hidden;
   overflow-y: auto;
@@ -585,6 +590,24 @@ body::-webkit-scrollbar-thumb:hover,
 
 .search-deep-hint {
   margin: 0;
+}
+
+.search-field-hint {
+  margin: 4px 0 0;
+}
+
+.search-location-chip {
+  align-self: flex-start;
+  margin-top: 6px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-results-meta .chip-btn {
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 @media (min-width: 720px) {

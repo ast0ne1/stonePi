@@ -255,12 +255,18 @@ def granted_permissions(user: User, *, enabled_only: list[str] | None = None) ->
         if allow is not None and grant.app_id not in allow:
             continue
         caps = _parse_caps(grant.capabilities)
-        known = {item["id"] for item in capabilities_for(grant.app_id)}
+        known = _capability_defaults(grant.app_id)
         if user.is_admin:
             out[grant.app_id] = {cap_id: True for cap_id in known}
         else:
-            out[grant.app_id] = {cap_id: bool(caps.get(cap_id)) for cap_id in known}
+            # A capability added after this grant was saved takes its catalog default.
+            out[grant.app_id] = {cap_id: bool(caps.get(cap_id, default)) for cap_id, default in known.items()}
     return out
+
+
+def _capability_defaults(app_id: str) -> dict[str, bool]:
+    """Catalog capabilities for an app with the value a member gets until an admin saves."""
+    return {item["id"]: bool(item.get("default", False)) for item in capabilities_for(app_id)}
 
 
 def set_grants(
@@ -279,12 +285,12 @@ def set_grants(
         if app_id not in wanted:
             db.delete(grant)
     for app_id in wanted:
-        known = {item["id"] for item in capabilities_for(app_id)}
+        known = _capability_defaults(app_id)
         caps = permissions.get(app_id) or {}
         if user.is_admin:
             payload = {cap_id: True for cap_id in known}
         else:
-            payload = {cap_id: bool(caps.get(cap_id)) for cap_id in known}
+            payload = {cap_id: bool(caps.get(cap_id, default)) for cap_id, default in known.items()}
         encoded = json.dumps(payload)
         if app_id in existing:
             existing[app_id].capabilities = encoded
@@ -470,7 +476,19 @@ def using_factory_admin(db: Session) -> bool:
     if admin is None:
         return False
     factory = (env.admin_password or "admin").strip() or "admin"
-    return passwords.verify_password(admin.password_hash, factory)
+    # argon2 is deliberately slow (~0.2-0.4 s on a Pi) and this runs on every
+    # admin page (/api/me). The answer only changes with the stored hash, so
+    # remember it per hash: a password change gives a new hash and a fresh check.
+    key = (admin.password_hash or "", factory)
+    cached = _FACTORY_CHECK.get(key)
+    if cached is None:
+        cached = passwords.verify_password(admin.password_hash, factory)
+        _FACTORY_CHECK.clear()
+        _FACTORY_CHECK[key] = cached
+    return cached
+
+
+_FACTORY_CHECK: dict[tuple[str, str], bool] = {}
 
 
 def user_payload(user: User, db: Session | None = None) -> dict:
@@ -498,9 +516,19 @@ def phone_alerts_allowed(user: User) -> bool:
 
 
 def internal_people(db: Session) -> list[dict]:
-    """Minimal roster for platform services: enabled users only, no names."""
+    """Minimal roster for platform services: enabled users only, no names.
+
+    ``permissions`` lets background jobs (e.g. EventTrakr's paid social polling)
+    honour capability changes for people who have not opened the app since.
+    """
+    enabled = enabled_app_ids(db)
     return [
-        {"id": user.id, "is_admin": bool(user.is_admin), "phone_alerts": phone_alerts_allowed(user)}
+        {
+            "id": user.id,
+            "is_admin": bool(user.is_admin),
+            "phone_alerts": phone_alerts_allowed(user),
+            "permissions": granted_permissions(user, enabled_only=enabled),
+        }
         for user in list_users(db)
         if user.enabled
     ]

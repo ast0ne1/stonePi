@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import timedelta
-from threading import Thread
+from threading import Lock, Thread
 from urllib.parse import urljoin, urlparse
 
 import httpx
@@ -48,8 +48,58 @@ def host_key(url: str) -> str:
     return re.sub(r"[^a-z0-9.-]+", "-", host).strip("-.")[:80]
 
 
+# Raster types we cache and serve. SVG is refused at fetch time (it can carry
+# script), so an .svg left over from an older cache counts as not captured.
+MIMETYPES = {
+    "ico": "image/x-icon",
+    "png": "image/png",
+    "jpg": "image/jpeg",
+    "gif": "image/gif",
+    "webp": "image/webp",
+}
+
+
+def is_usable(favicon_path: str | None) -> bool:
+    """True when a stored favicon_path points at a raster file that is still in
+    the cache. Paths go stale if the cache folder is wiped or moved."""
+    if not favicon_path or "/" in favicon_path or "\\" in favicon_path:
+        return False
+    if favicon_path.rsplit(".", 1)[-1].lower() not in MIMETYPES:
+        return False
+    return (FAVICON_DIR / favicon_path).is_file()
+
+
 def cached_src(favicon_path: str | None) -> str | None:
-    return f"/favicon-cache/{favicon_path}" if favicon_path else None
+    """URL for a cached icon, or None so templates show the placeholder icon
+    instead of a broken image."""
+    return f"/favicon-cache/{favicon_path}" if is_usable(favicon_path) else None
+
+
+def _cached_for(source_url: str) -> str | None:
+    """An icon already on disk for this host (catalog and subscribed rows for
+    the same site share one file), so healing doesn't refetch it per row."""
+    key = host_key(source_url)
+    if not key:
+        return None
+    for ext in MIMETYPES:
+        name = f"{key}.{ext}"
+        if (FAVICON_DIR / name).is_file():
+            return name
+    return None
+
+
+def needs_backfill(row, now=None) -> bool:
+    """Whether backfill() would do anything for this row: its stored icon is
+    gone, or it has none and is outside the recheck cooldown."""
+    if row.favicon_path:
+        return not is_usable(row.favicon_path)
+    now = now or utcnow()
+    return not (row.favicon_checked_at and now - _aware(row.favicon_checked_at) < RECHECK_COOLDOWN)
+
+
+def _aware(dt):
+    # SQLite hands back naive datetimes even for timezone=True columns.
+    return dt.replace(tzinfo=utcnow().tzinfo) if dt.tzinfo is None else dt
 
 
 def _ext_for(content_type: str, url: str) -> str:
@@ -57,7 +107,7 @@ def _ext_for(content_type: str, url: str) -> str:
     if ct in _EXT_BY_CONTENT_TYPE:
         return _EXT_BY_CONTENT_TYPE[ct]
     path = urlparse(url).path.lower()
-    for ext in ("ico", "png", "svg", "jpg", "jpeg", "gif", "webp"):
+    for ext in ("ico", "png", "jpg", "jpeg", "gif", "webp"):
         if path.endswith("." + ext):
             return "jpg" if ext == "jpeg" else ext
     return "ico"
@@ -66,7 +116,13 @@ def _ext_for(content_type: str, url: str) -> str:
 def _looks_like_image(content: bytes, content_type: str) -> bool:
     if not content or len(content) > MAX_BYTES:
         return False
-    return not (content_type or "").lower().startswith("text/html")
+    ct = (content_type or "").lower()
+    if ct.startswith("text/html") or "svg" in ct:
+        return False
+    # SVG/HTML can carry script that would run on the StonePi origin if opened directly;
+    # keep raster icons only, whatever the server claims the type is.
+    head = content[:512].lstrip().lower()
+    return not head.startswith((b"<svg", b"<?xml", b"<!doctype", b"<html")) and b"<svg" not in head
 
 
 def _find_link_icons(html: str, base_url: str) -> list[str]:
@@ -124,16 +180,21 @@ def fetch_favicon(source_url: str) -> str | None:
 def backfill(db: Session, rows: list) -> int:
     """Fetch favicons for any of the given rows (CatalogSource/EventSource
     instances) that don't have one yet and aren't within the recheck
-    cooldown. Commits as it goes. Returns how many were newly captured."""
+    cooldown. A stored path whose file has gone missing (or is a now-refused
+    SVG) is cleared and refetched straight away, ignoring the cooldown.
+    Commits as it goes. Returns how many were newly captured."""
     now = utcnow()
     updated = 0
     for row in rows:
         if row.favicon_path:
-            continue
-        if row.favicon_checked_at and now - row.favicon_checked_at < RECHECK_COOLDOWN:
+            if is_usable(row.favicon_path):
+                continue
+            logger.info("Favicon: cached icon %s is missing; refetching for %s", row.favicon_path, row.url)
+            row.favicon_path = None
+        elif row.favicon_checked_at and now - _aware(row.favicon_checked_at) < RECHECK_COOLDOWN:
             continue
         row.favicon_checked_at = now
-        path = fetch_favicon(row.url)
+        path = _cached_for(row.url) or fetch_favicon(row.url)
         if path:
             row.favicon_path = path
             updated += 1
@@ -141,10 +202,17 @@ def backfill(db: Session, rows: list) -> int:
     return updated
 
 
+_backfill_lock = Lock()
+
+
 def backfill_all_async() -> None:
     """Kick off a background pass covering the catalog and every user's
     subscribed sources, so app startup itself doesn't block on network
-    calls. Cooldown in backfill() keeps repeat restarts cheap."""
+    calls. Cooldown in backfill() keeps repeat restarts cheap. A no-op while
+    a pass is already running (startup and page loads can both ask)."""
+
+    if not _backfill_lock.acquire(blocking=False):
+        return
 
     def _run() -> None:
         from app.db import SessionLocal
@@ -165,5 +233,11 @@ def backfill_all_async() -> None:
                 )
         except Exception:
             logger.exception("Favicon backfill failed")
+        finally:
+            _backfill_lock.release()
 
-    Thread(target=_run, daemon=True).start()
+    try:
+        Thread(target=_run, daemon=True).start()
+    except Exception:
+        _backfill_lock.release()
+        raise

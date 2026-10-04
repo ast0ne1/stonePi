@@ -1,10 +1,32 @@
 # Changelog — Dashboard
 
-## Unreleased
+## 0.1.9 — 2026-10-04
+
+_Platform 0.1.9._
+
+### Added
+- Signed `POST /api/internal/units/restart` (service-to-service; the Car Thing panel's System screen). Only catalog `stonepi-*` units; Dashboard restarts itself after replying. Logged with the caller.
+- Platform updates also overlay `apps/carthing` (`PLATFORM_SERVICE_APP_IDS`).
+- **Library** tile with live status ("Installing Wikipedia · 71%") through a new catalog flag, `live_status`; Backup summary shows partial runs (Library content that didn't fit).
+
+### Changed
+- Users → new person form starts each app permission from its catalog default.
+- Health banner and app states update live: every few seconds while something is starting or down, easing to 20 s when all is clear, paused in background tabs; Services start/stop/restart triggers an immediate re-check (rate-limited for CPU).
+- Library tile keeps its standard description; it shows progress only while a download runs.
+- Settings → Vault: new **Data providers** group with **Bright Data API key (EventTrakr)** (`BRIGHTDATA_API_KEY`, moved out of NewsCast and re-described) and **Bright Data API key (PriceWatch)** (`PRICEWATCH_BRIGHTDATA_API_KEY`, for PriceWatch 0.0.7 trust scores).
 
 ### Fixed
+- A session ended elsewhere (password change, account disabled, signed out on another device, restore) goes to sign-in and back to the page instead of a "Not signed in" banner; while Auth restarts, pages show "Auth is restarting — retrying…" and reload on their own.
+- Home re-order shows Saving… / Saved and reports failures (expired page, signed out, Auth errors) instead of silently looking saved; a drop made during a save is no longer lost; a failed save puts the previous order back; re-ordering pauses while Auth restarts.
+- Home no longer waits on a slow or stopped app: live tile status is fetched in the background and shows the last known line.
 - Health no longer returns an internal error when Notify's data folder is unreadable (`Path.is_file()` raised `PermissionError` outside the try); the Notify line shows as not configured instead.
 - Settings → Network → exposure shows a message instead of an error page if the flag can't be saved.
+
+### Security
+- Settings → Vault refuses a Recover password shorter than 12 characters.
+- Services start/stop/restart/logs go through the validated root helper `stonepi-service-helper` instead of wildcard `systemctl`/`journalctl` sudo rules.
+- Settings → Vault → Recover password writes root-only `recover.passwd` through the backup helper (password on stdin) and never stores it in the Vault; any old Vault copy is deleted.
+- Factory-password banner no longer quotes `admin / admin`.
 
 ## 0.1.8 — 2026-09-29
 

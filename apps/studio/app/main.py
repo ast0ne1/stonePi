@@ -1,8 +1,10 @@
 from fastapi import FastAPI
+from stonepi_auth.platform_lock import add_platform_lock
 from stonepi_auth.brand import mount_brand_fonts
 from fastapi.staticfiles import StaticFiles
 
 from app.config import ROOT_DIR, env
+import app.routes as _app_routes
 from app.routes import router
 from stonepi_auth.prefix import clean_prefix
 
@@ -21,3 +23,6 @@ mount_brand_fonts(app)  # /assets/fonts when reached directly (run-dev); nginx s
 if _prefix:
     app.mount(f"{_prefix}/static", StaticFiles(directory=_static), name="static_prefixed")
 app.include_router(router)
+
+# A platform install without a session secret locks instead of running solo.
+platform_lock = add_platform_lock(app, lambda: _app_routes._session_secret())

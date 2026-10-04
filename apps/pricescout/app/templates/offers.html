@@ -63,7 +63,7 @@
 {% if not offers %}
 <div class="empty card stack">
   <h2>No offers yet</h2>
-  <p class="hint">Use the red Refresh button in the header to pull the latest eTilbudsavis deals, or wait for the automatic refresh.</p>
+  <p class="hint">{% if can_refresh %}Use the red Refresh button in the header to pull the latest eTilbudsavis deals, or wait for the automatic refresh.{% else %}Offers appear after the automatic refresh. Ask someone who manages sources to refresh sooner.{% endif %}</p>
   <a class="btn btn-primary btn-with-icon" href="/sources">{{ icon("sources") }} Open Sources</a>
 </div>
 {% else %}

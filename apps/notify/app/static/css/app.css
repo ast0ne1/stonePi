@@ -1391,3 +1391,126 @@ details.alerts-section[open] > summary .section-heading::after { transform: rota
 .switch input:disabled + span { opacity: .75; }
 .switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
 .about-link { text-align: center; margin-top: 8px; }
+
+/* ── Displays → Car Thing ─────────────────────────────────────────── */
+.carthing-summary { margin-bottom: 18px; }
+.ct-status { display: flex; align-items: center; gap: 8px; margin: 0; }
+.ct-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+.ct-dot.on { background: var(--ok); }
+.ct-pin { border-top: 1px solid var(--line); padding-top: 14px; }
+.ct-pin h3 { margin: 0; font-size: 1rem; }
+.ct-configs { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.ct-configs li {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px;
+}
+.ct-configs li.is-editing { border-color: var(--accent); }
+.ct-configs form { margin: 0; }
+.ct-config-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.ct-badge {
+  font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+  background: var(--accent); color: var(--accent-ink);
+}
+.ct-badge.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+.ct-config-tools { display: grid; gap: 8px; }
+.ct-snapshots { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.ct-snapshots li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ct-snapshots form { margin: 0; }
+.ct-editor-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.ct-editor-head .section-heading { margin: 0; }
+.ct-layout { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1000px) {
+  .ct-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); align-items: start; }
+  .ct-device-wrap { position: sticky; top: calc(var(--topbar-height) + 12px); }
+}
+.ct-tabs { flex-wrap: wrap; }
+.ct-order { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ct-order li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ct-order-btns { display: flex; gap: 4px; }
+.ct-order-btns .btn { min-width: 40px; padding: 4px 10px; }
+.ct-pages { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ct-pages li {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 4px 6px 4px 4px; border: 1px solid var(--line); border-radius: 12px;
+}
+.ct-pages li.is-on { border-color: var(--accent); }
+.ct-page-pick {
+  flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px;
+  min-height: var(--tap); padding: 6px 8px; border: 0; background: none; color: inherit;
+  font: inherit; text-align: left; cursor: pointer; border-radius: 8px;
+}
+.ct-page-pick strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.ct-page-pick:focus-visible { outline: 2px solid var(--accent); }
+.ct-page-name { display: grid; gap: 4px; max-width: 320px; }
+.ct-widgets li { flex-wrap: wrap; }
+.ct-widgets li .check { flex: 1 1 160px; }
+.ct-widgets select { width: auto; min-width: 120px; }
+.ct-controls { width: 100%; border-collapse: collapse; }
+.ct-controls th { text-align: left; font-weight: 500; padding: 4px 8px 4px 0; width: 45%; }
+.ct-controls td { padding: 4px 0; }
+.ct-controls select { width: 100%; }
+.ct-controls tr.kind-long th, .ct-controls tr.kind-touch th { color: var(--muted); }
+.ct-controls tr.is-picked th { color: var(--accent); }
+.ct-controls tr.is-picked select { outline: 2px solid var(--accent); }
+.ct-actions { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 2px 12px; }
+.ct-actions legend { grid-column: 1 / -1; }
+.ct-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.ct-grid label, .ct-pane > label { display: grid; gap: 4px; }
+.ct-swatches { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ct-swatch {
+  width: 36px; height: 36px; border-radius: 10px; border: 2px solid var(--line); cursor: pointer; padding: 0;
+}
+.ct-swatch.wide { width: 92px; height: 52px; color: #f5f1e8; font-size: 0.8rem; display: flex; align-items: flex-end; padding: 4px 6px; }
+.ct-swatch.is-on { outline: 3px solid var(--accent); outline-offset: 2px; }
+.ct-bg-thumb { width: 240px; max-width: 100%; aspect-ratio: 5 / 3; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); }
+.ct-faces { display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.ct-face { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+.ct-face:has(input:checked) { border-color: var(--accent); }
+.ct-geo { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.ct-device { width: 100%; }
+/* Labels around the drawing, never over it. The top row's columns follow the drawing's
+   640-unit width: margin to preset 1, four presets (90 each), M, then the dial. */
+.ct-callouts {
+  display: grid; align-items: end; gap: 0;
+  grid-template-columns: minmax(0, 62fr) repeat(4, minmax(0, 90fr)) minmax(0, 64fr) minmax(0, 154fr);
+  margin-bottom: 6px;
+}
+.ct-callouts > .ct-co:first-child { grid-column: 2; }
+.ct-co {
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 1px;
+  min-width: 0; margin: 0 1px; padding: 3px 2px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--card); color: var(--ink); font: 500 0.7rem/1.2 var(--chrome); text-align: center; cursor: pointer;
+}
+.ct-co b { font-weight: 700; color: var(--muted); }
+.ct-co span {
+  max-width: 100%; overflow: hidden; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
+.ct-co:hover, .ct-co.is-hot { border-color: var(--accent); }
+.ct-co.is-hot b { color: var(--accent); }
+.ct-co:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ct-co-dial { display: grid; gap: 3px; min-width: 0; margin-left: 6px; }
+.ct-co-dial .ct-co { flex-direction: row; justify-content: flex-start; gap: 6px; margin: 0; padding: 2px 6px; }
+.ct-co-dial .ct-co span { display: block; white-space: nowrap; text-overflow: ellipsis; text-align: left; }
+.ct-device-body { position: relative; }
+.ct-under { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-top: 6px; }
+.ct-pager { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.ct-pager span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9rem; }
+.ct-pager .btn { min-width: var(--tap); padding: 4px 10px; flex: none; }
+/* Back sits under the drawing's back button (x 528-640 of 640). */
+.ct-co-back { flex: none; width: 17.5%; min-width: 72px; margin: 0; }
+.ct-drawing { display: block; width: 100%; height: auto; }
+.ct-body { fill: #24272b; stroke: #3a3e44; stroke-width: 2; }
+.ct-bezel { fill: #000; }
+.ct-ctl rect, .ct-ctl circle { fill: #3a3e44; stroke: #50555c; stroke-width: 2; cursor: pointer; }
+.ct-knob { fill: #34383d; stroke: #50555c; stroke-width: 2; }
+.ct-knob-ridge { stroke: #4a4f56; stroke-width: 2; pointer-events: none; }
+.ct-hit { fill: transparent; cursor: pointer; }
+.ct-hit:hover, .ct-ctl:hover rect, .ct-ctl:hover circle { fill: color-mix(in srgb, var(--accent) 35%, #3a3e44); }
+[data-input].is-hot rect, [data-input].is-hot circle, rect[data-input].is-hot { fill: var(--accent); }
+.ct-device.is-mapping .ct-ctl rect, .ct-device.is-mapping .ct-ctl circle, .ct-device.is-mapping .ct-knob { stroke: var(--accent); }
+.ct-ctl:focus-visible, .ct-hit:focus-visible { outline: 2px solid var(--accent); }
+/* Screen: 480×288 at (44, 96) in the drawing's 640×394 view (y from 16); the 800×480 panel is scaled to fit. */
+.ct-screen { position: absolute; left: 6.875%; top: 20.305%; width: 75%; height: 73.096%; overflow: hidden; border-radius: 4px; background: #000; }
+.ct-screen iframe { width: 800px; height: 480px; border: 0; transform-origin: 0 0; display: block; }
+.ct-device-hint { margin-top: 8px; }

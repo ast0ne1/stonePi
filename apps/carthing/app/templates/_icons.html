@@ -1,0 +1,20 @@
+{# Small stroke icons (weather + UI). Inline SVG: no icon font, no extra requests. #}
+{% macro icon(name, cls="ico") -%}
+<svg class="{{ cls }}" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+{%- if name == "sun" -%}<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
+{%- elif name == "moon" -%}<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>
+{%- elif name == "partly" -%}<path d="M8 3v1.5M3.5 8H2M4.4 4.4l1 1M12 4.4l-1 1"/><path d="M5.2 11a4 4 0 0 1 6.6-3.6"/><path d="M8 20h9a4 4 0 0 0 .5-8 6 6 0 0 0-11.3 1.5A3.3 3.3 0 0 0 8 20z"/>
+{%- elif name == "cloud" -%}<path d="M7 19h10a4.5 4.5 0 0 0 .6-9 6 6 0 0 0-11.5 1.8A3.6 3.6 0 0 0 7 19z"/>
+{%- elif name == "fog" -%}<path d="M4 10h16M3 14h18M5 18h14M7 6h10"/>
+{%- elif name == "rain" -%}<path d="M7 15h10a4.5 4.5 0 0 0 .6-9 6 6 0 0 0-11.5 1.8A3.6 3.6 0 0 0 7 15z"/><path d="M8 18l-1 3M12 18l-1 3M16 18l-1 3"/>
+{%- elif name == "snow" -%}<path d="M7 14h10a4.5 4.5 0 0 0 .6-9 6 6 0 0 0-11.5 1.8A3.6 3.6 0 0 0 7 14z"/><path d="M8 18h.01M12 20h.01M16 18h.01M10 22h.01M14 22h.01"/>
+{%- elif name == "storm" -%}<path d="M7 15h10a4.5 4.5 0 0 0 .6-9 6 6 0 0 0-11.5 1.8A3.6 3.6 0 0 0 7 15z"/><path d="M13 13l-3 5h4l-3 5"/>
+{%- elif name == "chevron" -%}<path d="M9 6l6 6-6 6"/>
+{%- elif name == "restart" -%}<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>
+{%- endif -%}
+</svg>
+{%- endmacro %}
+
+{% macro weather_inline(w) -%}
+{% if w %}<span class="wx">{{ icon(w.icon) }}<span class="wx-t">{{ w.temp if w.temp is not none else "–" }}{{ w.unit }}</span></span>{% endif %}
+{%- endmacro %}

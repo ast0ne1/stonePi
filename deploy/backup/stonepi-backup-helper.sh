@@ -8,7 +8,7 @@
 #   stonepi-backup-helper backup-now local|usb
 #   stonepi-backup-helper local-schedule
 #   stonepi-backup-helper local-schedule-status
-#   stonepi-backup-helper recover-passwd-set PASSWORD
+#   stonepi-backup-helper recover-passwd-set   (password on stdin)
 #   stonepi-backup-helper recover-passwd-clear
 #   stonepi-backup-helper failover-on|failover-off|failover-status
 set -euo pipefail
@@ -159,7 +159,12 @@ PY
       LOCAL_ROOT="${LOCAL_ROOT:-/var/backups/stonepi}"
       LABEL="${LABEL:-STONEPI-BACKUP}"
       UUID="${UUID:-}"
-      APPS="${APPS:-stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch}"
+      APPS="${APPS:-stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library}"
+      if [[ " $APPS " != *" stonepi-library "* ]] && systemctl cat stonepi-library.service >/dev/null 2>&1; then
+        APPS="$APPS stonepi-library"
+      fi
+      # Owned by Library → Settings → Backup (stonepi-library-helper); keep it.
+      INCLUDE_LIBRARY_CONTENT="${INCLUDE_LIBRARY_CONTENT:-0}"
       cat > "$CONF" <<EOF
 LABEL=$LABEL
 UUID=$UUID
@@ -169,6 +174,7 @@ LOCAL_CADENCE=$LOCAL_CADENCE
 LOCAL_WEEKDAY=$LOCAL_WEEKDAY
 LOCAL_TIME=$LOCAL_TIME
 LOCAL_ROOT=$LOCAL_ROOT
+INCLUDE_LIBRARY_CONTENT=$INCLUDE_LIBRARY_CONTENT
 EOF
       chmod 644 "$CONF"
     fi
@@ -211,14 +217,20 @@ EOF
     fi
     ;;
   recover-passwd-set|recovery-passwd-set)
-    PW="${2:-}"
-    if [[ -z "$PW" ]]; then
-      echo "Usage: stonepi-backup-helper recover-passwd-set PASSWORD" >&2
+    # Password on stdin keeps it out of ps/argv; the argv form stays for older Dashboards.
+    if [[ $# -ge 2 ]]; then
+      PW="$2"
+    else
+      IFS= read -r PW || true
+    fi
+    if [[ -z "$PW" || "$PW" == *$'\r'* ]]; then
+      echo "Usage: echo PASSWORD | stonepi-backup-helper recover-passwd-set" >&2
       exit 1
     fi
     mkdir -p /etc/stonepi
-    printf 'stonepi:%s\n' "$PW" > /etc/stonepi/recover.passwd
-    chmod 600 /etc/stonepi/recover.passwd
+    ( umask 077; printf 'stonepi:%s\n' "$PW" > /etc/stonepi/recover.passwd.tmp )
+    chown root:root /etc/stonepi/recover.passwd.tmp
+    mv -f /etc/stonepi/recover.passwd.tmp /etc/stonepi/recover.passwd
     rm -f /etc/stonepi/recovery.passwd
     echo "recover-passwd=set"
     ;;

@@ -49,14 +49,18 @@
   </div>
 {%- endmacro %}
 
+{% set can_manage = current_user.can('can_manage_sources') %}
+{% set can_social = current_user.can('can_use_social') %}
 <section class="hero">
   <div class="hero-row hero-row-inline">
     <h1>Sources</h1>
     <div class="row-actions">
+      {% if can_manage %}
       <a href="#add-custom-source" class="btn btn-outline btn-with-icon" data-open-sheet="add-custom-source">
         {{ icon('plus') }}
         <span>Add</span>
       </a>
+      {% endif %}
       <a href="/sources/social" class="btn btn-outline btn-with-icon">
         {{ icon('search') }}
         <span>Instagram</span>
@@ -67,8 +71,10 @@
     <p class="page-status-text" data-source-sync-status>
       {% if ingest_state.running %}
         {{ ingest_state.progress or "A sync is running" }} — this can take a few minutes.
-      {% else %}
+      {% elif can_manage %}
         Tap a source to edit category and schedule. Sync updates that source only.
+      {% else %}
+        Sync updates that source only.
       {% endif %}
     </p>
     <button type="button" class="btn btn-outline btn-stop" data-sync-stop-btn title="Stop refresh after the current source"{% if not ingest_state.running %} hidden{% endif %}>
@@ -76,6 +82,9 @@
       <span>Stop</span>
     </button>
   </div>
+  {% if not can_manage %}
+  <p class="form-hint" data-cap-hint="can_manage_sources">Adding, removing and editing sources is off for you. Ask an admin to allow “Manage sources” in StonePi → Users.</p>
+  {% endif %}
 </section>
 
 <section class="source-group">
@@ -89,8 +98,9 @@
         <details class="source-row-details">
           <summary class="source-row-summary">
             <div class="source-row-summary-inner">
-              {% if src.favicon_path %}
-              <img class="source-row-icon" src="/favicon-cache/{{ src.favicon_path }}" alt="" width="40" height="40" />
+              {% set src_icon = favicon_src(src.favicon_path) %}
+              {% if src_icon %}
+              <img class="source-row-icon" src="{{ src_icon }}" alt="" width="40" height="40" />
               {% else %}
               <span class="source-row-icon-fallback" aria-hidden="true">{{ icon('sources') }}</span>
               {% endif %}
@@ -107,7 +117,7 @@
                   Pending{% if src.last_fetched_at %} · {{ src.last_fetched_at|format_datetime }}{% else %} · Never fetched{% endif %}
                   {% endif %}
                 </p>
-                <p class="source-row-hint">Tap for settings</p>
+                {% if can_manage %}<p class="source-row-hint">Tap for settings</p>{% endif %}
               </div>
               <span class="source-row-chevron" aria-hidden="true">
                 <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
@@ -115,6 +125,7 @@
             </div>
           </summary>
           <div class="source-row-panel">
+            {% if can_manage %}
             <div class="source-row-actions">
               <form method="post" action="/sources/toggle/{{ src.id }}">
                 <button type="submit" class="btn btn-outline btn-sm">
@@ -155,6 +166,9 @@
               </div>
               <button type="submit" class="btn btn-outline btn-sm btn-with-icon">{{ icon('check') }} Save schedule</button>
             </form>
+            {% else %}
+            <p class="form-hint">Ask an admin to allow “Manage sources” to change this source.</p>
+            {% endif %}
           </div>
         </details>
         <button type="button" class="icon-btn icon-btn-quiet{% if ingest_state.running %} is-busy{% endif %}" data-sync-source-btn="{{ src.id }}" data-source-name="{{ src.name }}" aria-label="Sync {{ src.name }}" title="Sync now" {% if ingest_state.running %}disabled{% endif %}>
@@ -167,11 +181,15 @@
   {% else %}
   <div class="card empty-state">
     <h3>No sources yet</h3>
+    {% if can_manage %}
     <p class="form-hint">Pick from the catalog below or add a custom URL.</p>
     <div class="row-actions" style="margin-top: 12px;">
       <button type="button" class="btn btn-primary btn-sm" data-open-sheet="add-custom-source">Add custom source</button>
       <a class="btn btn-outline btn-sm" href="#catalog-sources">Browse catalog</a>
     </div>
+    {% else %}
+    <p class="form-hint">Ask an admin to allow “Manage sources” so you can add some.</p>
+    {% endif %}
   </div>
   {% endif %}
 </section>
@@ -184,8 +202,9 @@
     <li class="catalog-row">
       <div class="catalog-row-main">
         <div class="source-row-identity">
-          {% if cat.favicon_path %}
-          <img class="source-row-icon" src="/favicon-cache/{{ cat.favicon_path }}" alt="" width="40" height="40" />
+          {% set cat_icon = favicon_src(cat.favicon_path) %}
+          {% if cat_icon %}
+          <img class="source-row-icon" src="{{ cat_icon }}" alt="" width="40" height="40" />
           {% else %}
           <span class="source-row-icon-fallback" aria-hidden="true">{{ icon('sources') }}</span>
           {% endif %}
@@ -203,6 +222,9 @@
         <div class="catalog-row-action">
           {% if cat.url in subscribed_urls %}
           <span class="badge text-ok" style="border-color: var(--ok);">{{ icon('check') }} Added</span>
+          {% elif not can_manage %}
+          {% elif 'facebook.com' in cat.url|lower and not can_social %}
+          <span class="form-hint">Needs “Instagram &amp; Facebook”</span>
           {% else %}
           <form method="post" action="/sources/catalog/subscribe/{{ cat.id }}">
             <button type="submit" class="btn btn-primary btn-sm btn-with-icon">{{ icon('plus') }} Add</button>
@@ -215,10 +237,11 @@
   </ul>
 </section>
 
+{% if can_manage %}
 <div class="sheet" hidden data-sheet="add-custom-source" id="add-custom-source">
   <div class="sheet-card card">
     <h2>Add custom source</h2>
-    <p class="hint">Website URL, Eventbrite/Meetup page, Facebook events, or an .ics calendar feed.</p>
+    <p class="hint">Website URL, Eventbrite/Meetup page, {% if can_social %}Facebook events, {% endif %}or an .ics calendar feed.</p>
 
     <form method="post" action="/sources/add" class="stack sources-add-form" data-schedule-form>
       <div class="sources-add-fields">
@@ -271,4 +294,5 @@
     </form>
   </div>
 </div>
+{% endif %}
 {% endblock %}

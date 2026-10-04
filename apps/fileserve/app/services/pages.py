@@ -546,8 +546,19 @@ def create_page(
     return page
 
 
+# FileServe sits under /files on the StonePi origin; alert links are portal-relative.
+PLATFORM_PREFIX = "/files"
+
+
 def emit_publication_created(page: Page) -> bool:
-    """Tell the household a new publication is live (no owner: household event)."""
+    """Tell the household a new publication is live (no owner: household event).
+
+    Only an admin's pages are household news; a member's page stays theirs to share.
+    """
+    owner = getattr(page, "owner", None)
+    if owner is None or not getattr(owner, "is_admin", False):
+        return False
+    public_path = getattr(page, "public_path", "") or (f"/{page.slug}" if page.slug else "/")
     try:
         from stonepi_contracts import EventEnvelope, emit_event
 
@@ -560,7 +571,7 @@ def emit_publication_created(page: Page) -> bool:
                 summary=f"New publication “{page.title}” is available.",
                 severity="success",
                 dedupe_key=f"fileserve:page:{page.id}",
-                url=f"/files/{page.slug}" if page.slug else "/files/",
+                url=f"{PLATFORM_PREFIX}{public_path}",
                 data={"page_id": page.id, "slug": page.slug, "title": page.title},
             )
         )

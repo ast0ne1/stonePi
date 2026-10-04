@@ -36,7 +36,7 @@
 
     <main class="main">
       {% if using_factory_admin and active == 'alerts' %}
-      <p class="banner banner-muted">Factory login is still <strong>admin / admin</strong>. Change it under <a href="{{ stonepi_home_url }}/settings?tab=general">StonePi → Settings → General</a>.</p>
+      <p class="banner banner-muted">The admin account still uses its first-run password. Change it under <a href="{{ stonepi_home_url }}/settings?tab=general">StonePi → Settings → General</a>.</p>
       {% endif %}
       {% if error %}<p class="banner">{{ error }}</p>{% endif %}
       {% if message %}<p class="banner banner-ok">{{ message }}</p>{% endif %}

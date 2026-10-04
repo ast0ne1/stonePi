@@ -53,7 +53,8 @@
           type="checkbox"
           name="perm_{{ app.id }}_{{ cap.id }}"
           value="1"
-          {% if person_perms.get(cap.id) or is_admin %}checked{% endif %}
+          {# Not granted yet (or a new person): start from the catalog default. #}
+          {% if is_admin or (person_perms[cap.id] if cap.id in person_perms else cap.default) %}checked{% endif %}
           {% if app.id == 'studio' and cap.id == 'can_publish' %}data-studio-can-publish{% endif %}
         />
         <span>{{ cap.label }}</span>

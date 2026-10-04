@@ -295,6 +295,9 @@ input, select, textarea { font-size: 16px; }
   padding: 0 var(--gutter) 32px;
   display: grid;
   align-content: start;
+  /* Rows take their content's height: a scrolling row (chip strips) would
+     otherwise be squeezed to nothing once the page overflows. */
+  grid-auto-rows: max-content;
   gap: 16px;
   overflow-x: hidden;
   overflow-y: auto;
@@ -1115,7 +1118,9 @@ html.sheet-open body { overflow: hidden; }
   margin: 0 0 14px;
   min-width: 0;
 }
-.chips-with-action .now-sport-chips {
+.chips-with-action.is-stacked { margin-bottom: 4px; }
+.chips-with-action .now-sport-chips,
+.chips-with-action .chips.league-chips {
   flex: 1 1 auto;
   min-width: 0;
   margin: 0;
@@ -1233,7 +1238,17 @@ a.filter-picker-option:hover:not(.is-active),
 .chip-btn.is-active .chip-sport-icon {
   filter: brightness(1.15);
 }
-.league-chips { margin-bottom: 12px; }
+/* League filters: one swipeable row on phones, like the sport chips; wraps
+   from the tablet tier up (see .main grid-auto-rows for the clipping fix). */
+.chips.league-chips {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  margin-bottom: 12px;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+.league-chips .chip-btn { flex: 0 0 auto; white-space: nowrap; }
 
 .now-section { margin: 0 0 20px; }
 .now-section-label {
@@ -1440,7 +1455,8 @@ a.listing-row-inner:focus-visible {
 }
 
 @media (min-width: 720px) {
-  .now-sport-chips {
+  .now-sport-chips,
+  .chips.league-chips {
     flex-wrap: wrap;
     overflow-x: visible;
   }

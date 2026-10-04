@@ -24,12 +24,21 @@ def sent(monkeypatch):
 
 
 def test_publication_created_is_household(sent):
-    page = SimpleNamespace(id=4, slug="trip", title="Trip plan")
+    admin = SimpleNamespace(is_admin=True)
+    page = SimpleNamespace(id=4, slug="trip", title="Trip plan", owner=admin, public_path="/trip")
     assert pages_svc.emit_publication_created(page) is True
     event = sent[0]
     assert event["id"] == "fileserve.publication_created"
     assert event["audience"] == "household"
+    assert event["url"] == "/files/trip"
     assert not event.get("user")
+
+
+def test_member_page_is_not_household_news(sent):
+    member = SimpleNamespace(is_admin=False)
+    page = SimpleNamespace(id=5, slug="notes", title="Notes", owner=member, public_path="/u/sam/notes")
+    assert pages_svc.emit_publication_created(page) is False
+    assert sent == []
 
 
 # -- pages -----------------------------------------------------------------------

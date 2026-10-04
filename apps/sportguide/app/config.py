@@ -28,6 +28,20 @@ FOOTBALL_LEAGUES: tuple[str, ...] = (
     "Other",
 )
 
+RUGBY_LEAGUES: tuple[str, ...] = (
+    "NRL",
+    "NRLW",
+    "Super Rugby",
+    "Internationals",
+    "Other",
+)
+
+# Sports with a second-level league filter on Now.
+SPORT_LEAGUES: dict[str, tuple[str, ...]] = {
+    "football": FOOTBALL_LEAGUES,
+    "rugby": RUGBY_LEAGUES,
+}
+
 COMMON_TIMEZONES: tuple[str, ...] = (
     "Australia/Melbourne",
     "Australia/Sydney",

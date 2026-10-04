@@ -14,6 +14,7 @@ from app.services.scrapers.residentadvisor import ResidentAdvisorExtractor, with
 from app.services.scrapers.songkick import with_date_window as with_songkick_date_window
 from app.services.scrapers.bandsintown import with_date_window as with_bandsintown_date_window
 from app.services.scrapers.brugbyen import BrugbyenExtractor, with_date_window as with_brugbyen_date_window
+from app.services import brightdata
 from app.services.scrapers import brightdata_facebook
 
 SAMPLE_JSONLD = """
@@ -627,7 +628,7 @@ def test_brightdata_facebook_fetch_events_parses_records():
     }
     assert post_kwargs["json"] == {
         "input": [{"url": "https://www.facebook.com/events/search/?q=Copenhagen"}],
-        "limit_per_input": None,
+        "limit_per_input": brightdata_facebook.SEARCH_LIMIT,
     }
 
     assert len(events) == 1
@@ -734,6 +735,33 @@ def test_brightdata_facebook_raises_on_http_error():
     with patch("app.services.scrapers.brightdata_facebook.httpx.Client", return_value=mock_client):
         with pytest.raises(brightdata_facebook.BrightDataError):
             brightdata_facebook.fetch_events("fake-key", "https://www.facebook.com/events/search/?q=Copenhagen")
+    # The job never started, so its reserved records go back to the shared limit.
+    assert brightdata.usage()["used"] == 0
+
+
+FB_SEARCH = "https://www.facebook.com/events/search/?q=Copenhagen"
+FB_RECORD = {"title": "Cached Concert", "event_start_time": "2026-09-20T19:00:00.000Z", "url": "https://www.facebook.com/events/1"}
+
+
+def test_brightdata_facebook_search_is_cached_and_metered():
+    mock_client = _make_mock_client(post_response=_mock_response([FB_RECORD, FB_RECORD]))
+    with patch("app.services.scrapers.brightdata_facebook.httpx.Client", return_value=mock_client):
+        first = brightdata_facebook.fetch_events("fake-key", FB_SEARCH)
+        second = brightdata_facebook.fetch_events("fake-key", FB_SEARCH)  # another user / "Sync all"
+    assert mock_client.post.call_count == 1
+    assert [e.title for e in second] == [e.title for e in first]
+    usage = brightdata.usage()
+    assert usage["used"] == 2 and usage["by_use"] == {"eventtrakr/facebook": 2}
+
+
+def test_brightdata_facebook_skips_call_when_limit_reached():
+    brightdata.set_limit(brightdata_facebook.SEARCH_LIMIT - 1)
+    mock_client = _make_mock_client(post_response=_mock_response([FB_RECORD]))
+    with patch("app.services.scrapers.brightdata_facebook.httpx.Client", return_value=mock_client):
+        with pytest.raises(brightdata.BrightDataBudgetError):
+            brightdata_facebook.fetch_events("fake-key", FB_SEARCH)
+    assert mock_client.post.call_count == 0
+    assert brightdata.usage()["used"] == 0
 
 
 def test_ics_feed_extractor():

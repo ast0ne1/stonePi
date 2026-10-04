@@ -9,6 +9,7 @@
 
 <section class="card stack" id="add-notice">
   <h2>Add notice</h2>
+  {% if can_post_notices %}
   <form method="post" action="/notice" class="stack">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <label>
@@ -17,6 +18,9 @@
     </label>
     <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("pin") }} Pin notice</button>
   </form>
+  {% else %}
+  <p class="hint">{{ no_post_notices_hint }}</p>
+  {% endif %}
 </section>
 
 <section class="card stack" id="notices">

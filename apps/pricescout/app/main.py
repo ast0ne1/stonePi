@@ -5,11 +5,13 @@ import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from stonepi_auth.platform_lock import add_platform_lock
 from stonepi_auth.brand import mount_brand_fonts
 from fastapi.staticfiles import StaticFiles
 
 from app.config import ROOT_DIR, env
 from app import db
+import app.routes as _app_routes
 from app.routes import router
 from app.services import ingest
 from stonepi_auth.prefix import clean_prefix
@@ -70,3 +72,6 @@ app.mount("/favicons", StaticFiles(directory=str(_favicon.FAVICON_DIR)), name="f
 if _prefix:
     app.mount(f"{_prefix}/favicons", StaticFiles(directory=str(_favicon.FAVICON_DIR)), name="favicons_prefixed")
 app.include_router(router)
+
+# A platform install without a session secret locks instead of running solo.
+platform_lock = add_platform_lock(app, lambda: _app_routes._session_secret())

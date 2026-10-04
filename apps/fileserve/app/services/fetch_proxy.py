@@ -46,6 +46,9 @@ def _blocked_ip(address: str) -> bool:
         return True
     if ip.is_unspecified or ip.is_multicast or ip.is_reserved:
         return True
+    # The Pi's own loopback services (Kiwix, internal app ports) and link-local are never fetch targets.
+    if ip.is_loopback or ip.is_link_local:
+        return True
     if ip == ipaddress.ip_address("169.254.169.254"):
         return True
     if is_public_exposure():
@@ -77,18 +80,28 @@ def validate_fetch_url(raw: str) -> str:
     return value
 
 
+MAX_REDIRECTS = 5
+
+
 def fetch_url(raw: str) -> tuple[bytes, str]:
     url = validate_fetch_url(raw)
-    with httpx.Client(timeout=TIMEOUT, follow_redirects=True, headers=HEADERS) as client:
-        with client.stream("GET", url) as response:
-            response.raise_for_status()
-            chunks: list[bytes] = []
-            total = 0
-            for chunk in response.iter_bytes():
-                total += len(chunk)
-                if total > MAX_BYTES:
-                    raise ValueError("That file is larger than 15 MB.")
-                chunks.append(chunk)
-            body = b"".join(chunks)
-            content_type = response.headers.get("content-type") or "application/octet-stream"
-            return body, content_type.split(";")[0].strip()
+    # Follow redirects by hand so every hop is re-validated (a public URL must not bounce to loopback).
+    with httpx.Client(timeout=TIMEOUT, follow_redirects=False, headers=HEADERS) as client:
+        for _hop in range(MAX_REDIRECTS + 1):
+            with client.stream("GET", url) as response:
+                if response.is_redirect:
+                    location = response.headers.get("location") or ""
+                    url = validate_fetch_url(str(response.url.join(location)))
+                    continue
+                response.raise_for_status()
+                chunks: list[bytes] = []
+                total = 0
+                for chunk in response.iter_bytes():
+                    total += len(chunk)
+                    if total > MAX_BYTES:
+                        raise ValueError("That file is larger than 15 MB.")
+                    chunks.append(chunk)
+                body = b"".join(chunks)
+                content_type = response.headers.get("content-type") or "application/octet-stream"
+                return body, content_type.split(";")[0].strip()
+    raise ValueError("Too many redirects.")

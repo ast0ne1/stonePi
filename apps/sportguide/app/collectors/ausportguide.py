@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 from app.collectors.base import ListingRow
 from app.collectors.channels import channel_from_icon_src, channels_from_icon_srcs
-from app.timeutil import normalize_sport
+from app.timeutil import normalize_rugby_league, normalize_sport
 
 logger = logging.getLogger("sportguide.ausportguide")
 
@@ -282,7 +282,10 @@ def fetch_listings() -> list[ListingRow]:
             _extract_channels(blob),
             _extract_channels(title),
         )
-        league = {"afl": "AFL", "cricket": "Cricket", "rugby": "Rugby"}.get(sport, "")
+        if sport == "rugby":
+            league = normalize_rugby_league(title)
+        else:
+            league = {"afl": "AFL", "cricket": "Cricket"}.get(sport, "")
         existing = rows_by_id.get(eid)
         if existing:
             existing.channels = _merge_channels(existing.channels, channels)

@@ -1,0 +1,19 @@
+{% from "_icons.html" import icon %}
+<section class="screen list" data-screen="app" data-app="{{ mini }}" data-url="v/app/{{ mini }}">
+  <header class="bar">
+    <span class="bar-title">{{ label }}</span>
+    <span class="bar-meta">{% if items %}{{ items|length }}{% endif %}</span>
+    <span class="bar-time" data-clock-small></span>
+  </header>
+  <ol class="rows">
+    {% for it in items %}
+    <li><button class="row{% if it.level %} level-{{ it.level }}{% endif %}" data-focus data-go="v/item/{{ mini }}?id={{ it.id|string|urlencode }}">
+      <span class="row-main"><strong>{{ it.title }}</strong>{% if it.sub %}<span>{{ it.sub }}</span>{% endif %}</span>
+      {% if it.badge %}<span class="badge">{{ it.badge }}</span>{% endif %}
+      {{ icon("chevron", "ico row-go") }}
+    </button></li>
+    {% else %}
+    <li class="empty">{% if data.ok %}Nothing here right now.{% else %}{{ label }} isn't answering.{% endif %}</li>
+    {% endfor %}
+  </ol>
+</section>

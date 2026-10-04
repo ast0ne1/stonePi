@@ -896,16 +896,25 @@ function showFlash(kind, text) {
 
 (function launcherOrder() {
   const form = document.querySelector("[data-launcher-form]");
-  if (!form) return;
+  // Read-only while Auth restarts: Home can't load the saved order, so don't save over it.
+  if (!form || form.hasAttribute("data-launcher-readonly")) return;
   const grid = form.querySelector("[data-launcher-grid]");
   const orderInput = form.querySelector("[data-launcher-order]");
   const toggle = document.querySelector("[data-launcher-edit-toggle]");
   const lede = document.querySelector("[data-launcher-lede]");
   const editBar = form.querySelector("[data-launcher-edit-bar]");
   const cancel = form.querySelector("[data-launcher-cancel]");
+  const status = form.querySelector("[data-launcher-status]");
+  const statusDefault = status ? status.textContent : "";
   const ledeDefault = lede ? lede.textContent : "";
   let editing = false;
+  // One save in flight at a time; a drop made meanwhile sets `pending` and the
+  // latest order is sent when the current save finishes (never dropped).
   let saving = false;
+  let pending = false;
+  // Last order the server confirmed — restored on screen if a save fails.
+  let savedIds = (orderInput?.value || "").split(",").filter(Boolean);
+  let statusTimer = 0;
   let dragTile = null;
   let persistTimer = 0;
   let longPressTimer = 0;
@@ -970,21 +979,90 @@ function showFlash(kind, text) {
     persistTimer = window.setTimeout(() => persist(), 180);
   }
 
-  function persist() {
+  function setStatus(text, kind) {
+    if (!status) return;
+    window.clearTimeout(statusTimer);
+    status.textContent = text;
+    status.classList.toggle("is-error", kind === "error");
+    status.classList.toggle("is-ok", kind === "ok");
+    if (kind === "ok") {
+      statusTimer = window.setTimeout(() => {
+        status.textContent = statusDefault;
+        status.classList.remove("is-ok");
+      }, 2500);
+    }
+  }
+
+  function restoreOrder(ids) {
+    const byId = new Map(tiles().map((tile) => [tile.dataset.appId, tile]));
+    ids.forEach((id) => {
+      const tile = byId.get(id);
+      if (tile) grid.appendChild(tile);
+    });
+    syncOrderField();
+    syncChrome();
+  }
+
+  function sameOrder(a, b) {
+    return a.length === b.length && a.every((id, i) => id === b[i]);
+  }
+
+  async function persist() {
+    window.clearTimeout(persistTimer);
+    persistTimer = 0;
     const ids = syncOrderField();
-    if (!ids.length || saving) return;
+    if (!ids.length) return;
+    if (saving) {
+      pending = true;
+      return;
+    }
+    if (sameOrder(ids, savedIds)) {
+      if (!editing) setStatus(statusDefault);
+      return;
+    }
     saving = true;
+    pending = false;
+    setStatus("Saving…");
     const fd = new FormData(form);
     fd.set("order", ids.join(","));
-    fetch(formUrl(form), {
-      method: "POST",
-      body: fd,
-      headers: { Accept: "application/json", "X-Requested-With": "fetch" },
-    })
-      .catch(() => {})
-      .finally(() => {
-        saving = false;
+    let error = "";
+    let loginUrl = "";
+    try {
+      const res = await fetch(formUrl(form), {
+        method: "POST",
+        body: fd,
+        credentials: "same-origin",
+        headers: { Accept: "application/json", "X-Requested-With": "fetch" },
       });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        savedIds = ids;
+      } else {
+        error = data.error || "Dashboard did not confirm the save";
+        loginUrl = data.login_url || "";
+      }
+    } catch {
+      error = "StonePi could not be reached";
+    } finally {
+      saving = false;
+    }
+    if (error) {
+      // Never leave an unsaved order on screen: put back what the server has.
+      pending = false;
+      restoreOrder(savedIds);
+      setStatus("Not saved", "error");
+      const reason = error.replace(/[.\s]+$/, "");
+      showFlash("error", "App order not saved — " + reason + ". Your previous order is back; try again.");
+      if (loginUrl) window.setTimeout(() => window.location.assign(loginUrl), 1500);
+      return;
+    }
+    if (pending) {
+      pending = false;
+      persist();
+      return;
+    }
+    if (editing) setStatus("Saved", "ok");
+    else showFlash("ok", "App order saved");
   }
 
   function placeBefore(target, before) {
@@ -1100,8 +1178,18 @@ function showFlash(kind, text) {
     schedulePersist();
   });
 
-  toggle?.addEventListener("click", () => setEditing(!editing));
-  cancel?.addEventListener("click", () => setEditing(false));
+  // Leaving edit mode flushes a drop that's still waiting on its debounce; the
+  // save carries on and reports through a flash once the edit bar is gone.
+  function finishEditing() {
+    if (persistTimer) persist();
+    setEditing(false);
+  }
+
+  toggle?.addEventListener("click", () => (editing ? finishEditing() : setEditing(true)));
+  cancel?.addEventListener("click", finishEditing);
+  document.addEventListener("keydown", (event) => {
+    if (editing && event.key === "Escape") finishEditing();
+  });
   form.addEventListener("submit", (event) => {
     if (!editing) return;
     event.preventDefault();
@@ -1311,12 +1399,20 @@ function showFlash(kind, text) {
     }
   }
 
+  // Each fresh poll runs the Tailscale CLI on the Pi: every 4 s while you
+  // finish signing in, and give up after 5 minutes (reload to check again).
   function startPoll() {
     if (pollTimer) return;
+    const startedAt = Date.now();
     pollTimer = setInterval(() => {
+      if (Date.now() - startedAt > 5 * 60 * 1000) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+        return;
+      }
       if (document.hidden) return;
       fetchStatus({ fresh: true }).then(applyStatus).catch(() => {});
-    }, 2000);
+    }, 4000);
   }
 
   const wantedForm = panel.querySelector("[data-ts-wanted-form]");
@@ -1624,3 +1720,179 @@ if (settingsShell) {
     }
   }
 }
+
+/* "Auth is restarting — retrying…": reload with backoff until Auth answers. */
+(function authWaitRetry() {
+  const box = document.querySelector("[data-auth-wait]");
+  if (!box) return;
+  const target = box.getAttribute("data-retry-url") || window.location.pathname;
+  const eta = box.querySelector("[data-auth-wait-eta]");
+  const KEY = "stonepi-auth-wait";
+  let attempt = 0;
+  try {
+    const prev = JSON.parse(sessionStorage.getItem(KEY) || "null");
+    // Same page within the last minute: keep backing off; otherwise start fresh.
+    if (prev && prev.url === target && Date.now() - prev.at < 60000) attempt = prev.n + 1;
+    sessionStorage.setItem(KEY, JSON.stringify({ url: target, n: attempt, at: Date.now() }));
+  } catch {
+    /* private mode: fixed delay */
+  }
+  const delay = Math.min(3000 * Math.pow(1.5, attempt), 15000);
+  let left = Math.ceil(delay / 1000);
+  const tick = () => {
+    if (eta) eta.textContent = " in " + left + " s";
+    left -= 1;
+  };
+  tick();
+  const timer = window.setInterval(tick, 1000);
+  window.setTimeout(() => {
+    window.clearInterval(timer);
+    window.location.replace(target);
+  }, delay);
+})();
+
+/* Health page: keep the banner and per-app states current without a reload.
+   Polls every 3 s while anything is starting/down, eases off when nothing changes,
+   20 s once all clear; pauses while the tab is hidden. */
+(function healthPoller() {
+  const live = document.querySelector("[data-health-live]");
+  if (!live) return;
+  const url = live.getAttribute("data-health-poll-url") || "/api/overview/watch";
+  const FAST = 3000;
+  const SLOW = 20000;
+  let delay = live.getAttribute("data-health-settled") === "true" ? SLOW : FAST;
+  let timer = 0;
+  let lastPrint = "";
+  let inFlight = null;
+  let stopped = false;
+
+  function el(tag, cls, text) {
+    const node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function renderBanner(data) {
+    live.replaceChildren();
+    if (!data.ready) {
+      const aside = el("aside", "overview-alert is-attention");
+      aside.setAttribute("role", "status");
+      const body = el("div");
+      body.append(el("p", "overview-alert-level", "checking…"), el("p", "overview-alert-title", "Gathering host and app health"));
+      aside.append(body);
+      live.append(aside);
+      return;
+    }
+    if (data.level === "healthy") return;
+    const aside = el("aside", "overview-alert is-" + data.level);
+    aside.setAttribute("role", "status");
+    const body = el("div");
+    body.append(el("p", "overview-alert-level", data.level), el("p", "overview-alert-title", data.summary || ""));
+    if (data.summary_detail) body.append(el("p", "overview-alert-detail", data.summary_detail));
+    aside.append(body);
+    if (data.checked_at) {
+      aside.append(el("p", "overview-alert-checked", "Checked " + String(data.checked_at).slice(0, 19).replace("T", " ") + " UTC"));
+    }
+    live.append(aside);
+  }
+
+  function stateLabel(card) {
+    if (!card.enabled) return ["Disabled", "off", "is-off"];
+    if (card.health_ok) return ["Healthy", "ok", "is-ok"];
+    const unit = card.unit_status || "";
+    if (unit === "activating" || unit === "reloading") return ["Starting", "warn", "is-bad"];
+    if (unit === "deactivating") return ["Stopping", "warn", "is-bad"];
+    return ["Down", "bad", "is-bad"];
+  }
+
+  function renderCards(data) {
+    (data.cards || []).forEach((card) => {
+      const node = document.querySelector('[data-health-card="' + CSS.escape(card.id) + '"]');
+      if (!node) return;
+      const [label, dot, statusCls] = stateLabel(card);
+      node.classList.toggle("is-disabled", !card.enabled);
+      node.classList.toggle("is-unhealthy", card.enabled && !card.health_ok);
+      const status = node.querySelector("[data-health-status]");
+      if (status) {
+        status.classList.remove("is-off", "is-ok", "is-bad");
+        status.classList.add(statusCls);
+      }
+      const dotEl = node.querySelector("[data-health-dot]");
+      if (dotEl) dotEl.className = "dot " + dot;
+      const labelEl = node.querySelector("[data-health-label]");
+      if (labelEl) labelEl.textContent = label;
+      const unitEl = node.querySelector("[data-health-unit]");
+      if (unitEl && card.unit_status) unitEl.textContent = card.unit_status === "local" ? "local process" : card.unit_status;
+    });
+    const stat = document.querySelector('[data-health-count="stat"]');
+    if (stat) stat.textContent = data.healthy_count + " / " + data.total;
+    const head = document.querySelector('[data-health-count="head"]');
+    if (head) head.textContent = data.healthy_count + " of " + data.total + " responding";
+  }
+
+  function schedule(ms) {
+    window.clearTimeout(timer);
+    if (stopped || document.hidden) return;
+    timer = window.setTimeout(poll, ms);
+  }
+
+  async function poll() {
+    if (stopped || document.hidden) return;
+    inFlight = new AbortController();
+    try {
+      const res = await fetch(url, {
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { Accept: "application/json", "X-Requested-With": "fetch" },
+        signal: inFlight.signal,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401 && data.login_url) {
+        stopped = true;
+        window.location.assign(data.login_url);
+        return;
+      }
+      if (!res.ok || !data.ok) throw new Error("poll failed");
+      // Fingerprint everything we paint (not checked_at): unchanged + unsettled eases off to 20 s.
+      const print = JSON.stringify([data.ready, data.level, data.summary, data.summary_detail, data.cards]);
+      const changed = print !== lastPrint;
+      lastPrint = print;
+      renderBanner(data);
+      renderCards(data);
+      if (data.settled) delay = SLOW;
+      else if (changed || data.transitional) delay = FAST;
+      else delay = Math.min(SLOW, Math.round(delay * 1.5));
+    } catch (err) {
+      if (err && err.name === "AbortError") return;
+      // Dashboard itself restarting, or a blip: try again a little later.
+      delay = Math.min(SLOW, Math.max(FAST, delay * 2));
+    } finally {
+      inFlight = null;
+    }
+    schedule(delay);
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      window.clearTimeout(timer);
+    } else {
+      // Back on the tab: catch up straight away.
+      delay = FAST;
+      schedule(0);
+    }
+  });
+  window.addEventListener("pagehide", () => {
+    stopped = true;
+    window.clearTimeout(timer);
+    if (inFlight) inFlight.abort();
+  });
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted && stopped) {
+      stopped = false;
+      delay = FAST;
+      schedule(0);
+    }
+  });
+  schedule(delay === SLOW ? SLOW : FAST);
+})();

@@ -1,0 +1,118 @@
+{# Page widgets. Sizes: small (the Home card), half (one half of the page), full (the page).
+   Large widgets keep every tap target at 52px or more. #}
+{% from "_icons.html" import icon %}
+
+{% macro hour_label(h, config) -%}
+{% if config.clock.hour_format == "12" %}{{ (h % 12) or 12 }}{{ "am" if h < 12 else "pm" }}{% else %}{{ "%02d"|format(h) }}:00{% endif %}
+{%- endmacro %}
+
+{% macro meter(label, value, unit, hi, warn, bad) -%}
+{% set pct = ((value / hi * 100) if value is not none else 0)|round|int %}
+<div class="meter{% if value is not none and value >= bad %} is-bad{% elif value is not none and value >= warn %} is-warn{% endif %}">
+  <span class="meter-label">{{ label }}</span>
+  <strong class="meter-value">{{ value if value is not none else "–" }}<small>{{ unit if value is not none else "" }}</small></strong>
+  <span class="meter-bar"><i style="width:{{ [pct, 100]|min }}%"></i></span>
+</div>
+{%- endmacro %}
+
+{% macro small_card(w) -%}
+<button class="card w w-small{% if w.level %} level-{{ w.level }}{% endif %}" data-focus data-go="v/app/{{ w.id }}" data-app="{{ w.id }}">
+  <span class="card-label">{{ w.label }}{% if w.badge %} <span class="badge">{{ w.badge }}</span>{% endif %}</span>
+  <strong class="card-head">{{ w.headline }}</strong>
+  {% if w.sub %}<span class="card-sub">{{ w.sub }}</span>{% endif %}
+</button>
+{%- endmacro %}
+
+{% macro head(w, title) -%}
+<button class="w-head{% if w.level %} level-{{ w.level }}{% endif %}" data-focus data-go="v/app/{{ w.id }}" data-app="{{ w.id }}">
+  <span class="card-label">{{ title or w.label }}</span>
+  {% if w.badge %}<span class="badge">{{ w.badge }}</span>{% endif %}
+  {{ icon("chevron", "ico w-go") }}
+</button>
+{%- endmacro %}
+
+{% macro app_large(w) -%}
+<div class="card w w-{{ w.size }} w-app">
+  {{ head(w) }}
+  {% if w["items"] %}
+  <ol class="w-rows">
+    {% for it in w["items"] %}
+    <li><button class="w-row{% if it.level %} level-{{ it.level }}{% endif %}" data-focus data-go="v/item/{{ w.id }}?id={{ it.id|string|urlencode }}">
+      <span class="row-main"><strong>{{ it.title }}</strong>{% if it.sub %}<span>{{ it.sub }}</span>{% endif %}</span>
+      {% if it.badge %}<span class="badge">{{ it.badge }}</span>{% endif %}
+    </button></li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p class="w-empty">{% if w.ok %}{{ w.headline }}{% else %}{{ w.label }} isn't answering.{% endif %}</p>
+  {% endif %}
+</div>
+{%- endmacro %}
+
+{% macro system_large(w) -%}
+{% set s = w.stats %}
+<div class="card w w-{{ w.size }} w-system">
+  {{ head(w, "System" ~ (" · " ~ s.hostname if s.hostname else "")) }}
+  <div class="meters">
+    {{ meter("CPU", s.cpu, "%", 100, 70, 90) }}
+    {{ meter("Memory", s.mem, "%", 100, 75, 90) }}
+    {{ meter("Temp", s.temp, "°C", 85, 65, 78) }}
+    {{ meter("Disk", s.disk, "%", 100, 80, 90) }}
+  </div>
+  <p class="w-line">
+    {% if s.total %}<span class="{{ 'bad' if w.down else 'good' }}">{{ s.up }}/{{ s.total }} services up</span>{% endif %}
+    {% if s.uptime %}<span>Up {{ s.uptime }}</span>{% endif %}
+    {% if s.backup %}<span class="w-backup{{ '' if s.backup_ok else ' bad' }}">Backup {{ s.backup }}</span>{% endif %}
+  </p>
+  {% if w.size == "full" %}
+  <ul class="svc">
+    {% for it in w.down + (w.services|rejectattr("level", "equalto", "down")|list) %}
+    <li class="svc-{{ it.level or 'up' }}"><i></i>{{ it.title }}</li>
+    {% endfor %}
+  </ul>
+  {% elif w.down %}
+  <p class="w-down"><strong>Down:</strong> {{ w.down|map(attribute="title")|join(", ") }}</p>
+  {% elif not w.ok %}
+  <p class="w-down">System info isn't answering.</p>
+  {% endif %}
+</div>
+{%- endmacro %}
+
+{% macro clock(w, config, weather) -%}
+<div class="card w w-{{ w.size }} w-clock">
+  <div class="wface face-{{ config.clock.face }}"><div class="clock" data-clock data-face="{{ config.clock.face }}"></div></div>
+  <div class="wclock-meta">
+    <span data-date></span>
+    {% if weather %}<span class="wx-now">{{ icon(weather.icon) }} {{ weather.temp if weather.temp is not none else "–" }}{{ weather.unit }}</span>{% endif %}
+  </div>
+  {% if weather and w.size != "small" %}
+  <div class="fc">
+    <div class="fc-now">
+      <span>{{ weather.label }}</span>
+      {% if weather.high is not none %}<span class="soft">H {{ weather.high }}° · L {{ weather.low }}°</span>{% endif %}
+      {% if weather.place and w.size == "full" %}<span class="soft">{{ weather.place }}</span>{% endif %}
+    </div>
+    {% if weather.hours %}
+    <ol class="fc-row fc-hours">
+      {% for h in weather.hours %}<li><span>{{ hour_label(h.hour, config) }}</span>{{ icon(h.icon) }}<strong>{{ h.temp }}°</strong></li>{% endfor %}
+    </ol>
+    {% endif %}
+    {% if weather.days and w.size == "full" %}
+    <ol class="fc-row fc-days">
+      {% for d in weather.days %}<li><span>{{ d.day }}</span>{{ icon(d.icon) }}<strong>{{ d.high }}°</strong><span class="soft">{{ d.low }}°</span></li>{% endfor %}
+    </ol>
+    {% endif %}
+  </div>
+  {% elif not weather and w.size != "small" %}
+  <p class="w-empty soft">Set a weather location in Notify → Car Thing → Look.</p>
+  {% endif %}
+</div>
+{%- endmacro %}
+
+{% macro widget(w, config, weather) -%}
+{% if w.kind == "clock" %}{{ clock(w, config, weather) }}
+{% elif w.size == "small" %}{{ small_card(w) }}
+{% elif w.kind == "system" %}{{ system_large(w) }}
+{% else %}{{ app_large(w) }}
+{% endif %}
+{%- endmacro %}

@@ -1,6 +1,23 @@
 # Changelog — Recover
 
-## Unreleased
+## 0.1.9 — 2026-10-04
+
+_Platform 0.1.9._
+
+### Added
+- Dashboard button beside Refresh and Sign out (portal Home; the same host on port 80 when Recover is opened on :8099).
+- `stonepi-library` in the console's service list (status, restart, logs).
+
+### Security
+- Trusts X-Real-IP / X-Forwarded-Host only from loopback requests carrying nginx's `X-StonePi-Proxy` token (constant-time check, re-read when the token file changes); other local callers are keyed on the socket peer, so forging X-Real-IP no longer dodges the per-address login lockout. A missing token file means no request counts as proxied.
+- CSRF tokens on every form; sign-in rate-limited per IP and overall; restore paths resolved against the backup roots (no `..` or symlink escapes).
+- Password lives only in root-only `/etc/stonepi/recover.passwd`; any Vault copy is moved there on startup and deleted from the Vault. Port 8099 accepts LAN and tailnet addresses only.
+
+### Fixed
+- Sign out works for admins who came in with their portal session (they were sent straight back in): it signs out of the portal too, through Auth when it's up or by clearing the portal cookies, and shows "Signed out.".
+
+### Changed
+- Phone layout: one-line header with 44px tap targets, one-line service rows with full-size Restart/Stop, no gap under backups, phone card padding applies, 16px login gutter, long names wrap, Logs/Network output full width.
 
 ## 0.1.8 — 2026-09-29
 

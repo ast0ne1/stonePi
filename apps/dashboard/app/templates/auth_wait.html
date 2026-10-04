@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Retrying · StonePi{% endblock %}
+{% block content %}
+{# Auth didn't answer (restarting after an update or a Services restart). Retry on our own. #}
+<aside class="overview-alert is-attention" role="status" data-auth-wait data-retry-url="{{ retry_url }}">
+  <div>
+    <p class="overview-alert-level">Auth is restarting</p>
+    <p class="overview-alert-title">Retrying<span data-auth-wait-eta></span>…</p>
+    <p class="overview-alert-detail">Sign-in and accounts are coming back. This page reloads on its own.</p>
+  </div>
+</aside>
+<div class="row-actions">
+  <a class="btn btn-primary" href="{{ retry_url }}" data-auth-wait-now>Try now</a>
+  <a class="btn btn-ghost" href="/">Back to apps</a>
+</div>
+<noscript><meta http-equiv="refresh" content="5;url={{ retry_url }}" /></noscript>
+{% endblock %}

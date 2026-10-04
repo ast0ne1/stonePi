@@ -292,17 +292,19 @@ def login_page(request: Request, db: Annotated[Session, Depends(get_db)], next: 
 
 
 @router.post("/login")
-async def login_submit(
+def login_submit(
     request: Request,
     db: Annotated[Session, Depends(get_db)],
     username: Annotated[str, Form()] = "",
     password: Annotated[str, Form()] = "",
     next: Annotated[str, Form()] = "/",
+    csrf_token: Annotated[str, Form()] = "",
 ):
+    # Sync on purpose: argon2 runs in FastAPI's thread pool, not on the event
+    # loop every other Auth request (/api/me from each app) waits on.
     nxt = _resolve_next(next, request)
     name = username.strip()
-    form = await request.form()
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), str(form.get("csrf_token") or "")):
+    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
         return _login_template(
             request,
             {

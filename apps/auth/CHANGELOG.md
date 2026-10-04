@@ -1,6 +1,17 @@
 # Changelog — Auth
 
-## Unreleased
+## 0.1.9 — 2026-10-04
+
+_Platform 0.1.9. Picks up `stonepi_auth` 0.1.1._
+
+### Added
+- `stonepi_auth.platform_lock`: one shared "lock a platform install with no session secret" middleware (Pinboard, Notify, PriceScout, SportGuide, Studio), with the secret check cached for 5 s instead of read on every request.
+- Shared Auth roster helper (`stonepi_auth.roster`) for background jobs; `has_capability` uses the catalog default for permissions missing from older cookies; catalog: FileServe, Pinboard permissions, PriceWatch/Studio defaults, PriceScout "Offer alerts" retired.
+- App permissions can declare a catalog `default`, applied to grants saved before the permission existed and to new people; the internal roster carries per-app permissions (no names) so background jobs honour revokes.
+- The Library app in the catalog (`/library/`, capability *Manage content*), so it appears in Users → app access.
+
+### Security
+- Login banner no longer says `admin / admin`: fresh installs get a random first admin password (root-only `/etc/stonepi/initial-admin.txt`).
 
 ## 0.1.8 — 2026-09-29
 

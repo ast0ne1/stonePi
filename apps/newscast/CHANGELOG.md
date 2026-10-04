@@ -1,6 +1,24 @@
 ﻿# Changelog
 
-## Unreleased
+## 0.0.7 — 2026-10-04
+
+### Added
+- `/api/display?items=N` (loopback) adds `card` + `items` for the Car Thing panel: the latest headlines with their summaries. The plain call is unchanged.
+
+### Security
+- Household-wide settings (keyword filters, translate target, Briefing size, importance, category mix, OPDS, X3/EPUB layout) are admin-only and hidden for members; saving one settings tab no longer resets values on other tabs.
+- Sources API: members list, edit and remove only their own sources; pointing a source at a new URL needs "Add custom sources"; catalog package import/export, categories and Ollama model lookup are admin-only.
+- Admin-only routes now really require the household admin (`require_admin` only checked sign-in); a NewsCast admin role follows StonePi, so someone demoted there becomes a member here.
+- Remote SVG favicons are no longer cached (previously cached ones are purged) and `/favicons` is served with a locked-down CSP and nosniff.
+- Feed, article and favicon fetches refuse loopback and link-local addresses, and private ones unless `NEWSCAST_ALLOW_PRIVATE_FEEDS=1`, on every redirect hop.
+- Listens on `127.0.0.1` by default.
+
+### Changed
+- Members' Refresh only updates their own sources and they can stop only a refresh they started; status shows only their sources unless they can view status. Scheduled refreshes skip custom sources of people StonePi removed from NewsCast or who lost "Add custom sources".
+
+### Fixed
+- Settings warns before you leave a tab with unsaved edits (Save, Discard or Stay), marks those tabs with a dot and asks before you close the page. Fixes a script error (`hostInput`) that stopped Settings tab switching from working.
+- Unsubscribing from a catalog source no longer fails when two rows match.
 
 ## 0.0.6 — 2026-09-29
 

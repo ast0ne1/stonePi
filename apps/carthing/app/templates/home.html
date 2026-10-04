@@ -1,0 +1,35 @@
+{% from "_icons.html" import weather_inline %}
+{% from "_widgets.html" import widget %}
+<section class="screen home" data-screen="home" data-page="{{ page.index }}" data-url="v/home?page={{ page.number }}">
+  <header class="strip">
+    {% if has_clock %}
+    <span class="strip-name">{{ page.name }}</span>
+    {% else %}
+    <span class="strip-time" data-clock-small></span>
+    <span class="strip-date" data-date></span>
+    {% endif %}
+    {% if dots|length > 1 %}
+    <nav class="dots" aria-label="Pages">
+      {% for d in dots %}
+      <span class="dot{% if d.number == page.number %} on{% endif %}"{% if d.allowed %} data-page-go="{{ d.number }}"{% endif %} title="{{ d.name }}"><i></i></span>
+      {% endfor %}
+    </nav>
+    {% endif %}
+    {% if not has_clock %}{{ weather_inline(weather) }}{% endif %}
+  </header>
+  {% if layout.count %}
+  <div class="page lay-{{ layout.kind }}{% if layout.kind == 'grid' %} cards cards-{{ layout.count }}{% endif %}">
+    {% if layout.kind == "grid" %}
+    {% for w in layout.cols[0] %}{{ widget(w, config, weather) }}{% endfor %}
+    {% else %}
+    {% for col in layout.cols %}
+    <div class="col col-{{ col|length }}">
+      {% for w in col %}{{ widget(w, config, weather) }}{% endfor %}
+    </div>
+    {% endfor %}
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="empty">Nothing on this page yet. Add widgets in Notify → Displays → Car Thing.</p>
+  {% endif %}
+</section>

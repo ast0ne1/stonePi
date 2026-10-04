@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, Iterator
 
 from app import teams
-from app.config import DATA_DIR, DB_PATH
+from app.config import DATA_DIR, DB_PATH, SPORT_LEAGUES
 
 
 def _utc_now() -> str:
@@ -58,15 +58,22 @@ def init_db() -> None:
         )
         for sid, name in (
             ("ausportguide", "AusSportGuide"),
-            ("wheresthematch", "WheresTheMatch"),
+            ("wheresthematch", "timezone.football + WheresTheMatch"),
         ):
             conn.execute(
                 """
                 INSERT INTO sources (id, name, enabled) VALUES (?, ?, 1)
-                ON CONFLICT(id) DO NOTHING
+                ON CONFLICT(id) DO UPDATE SET name = excluded.name
                 """,
                 (sid, name),
             )
+        # Rugby used to store a flat "Rugby" league; split it until the next refresh replaces rows.
+        from app.timeutil import normalize_rugby_league
+
+        for rid, title in conn.execute(
+            "SELECT id, title FROM listings WHERE sport = 'rugby' AND league IN ('', 'Rugby')"
+        ).fetchall():
+            conn.execute("UPDATE listings SET league = ? WHERE id = ?", (normalize_rugby_league(title), rid))
 
 
 @contextmanager
@@ -211,12 +218,10 @@ def query_listings(
         clauses.append("sport = ?")
         params.append(sport)
     if league and league != "all":
-        if league == "Other":
-            clauses.append(
-                "sport = 'football' AND league NOT IN ("
-                "'Premier League','La Liga','Serie A','Bundesliga','Ligue 1',"
-                "'Champions League','Europa League','Conference League')"
-            )
+        named = [x for x in SPORT_LEAGUES.get(sport or "", ()) if x != "Other"]
+        if league == "Other" and named:
+            clauses.append(f"league NOT IN ({','.join('?' * len(named))})")
+            params.extend(named)
         else:
             clauses.append("league = ?")
             params.append(league)

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
 {% from "_filter_icon.html" import filter_icon %}
+{% from "_trust.html" import trust_badge, trust_fields %}
 {% block title %}{{ watch.product_name }} · PriceWatch{% endblock %}
 {% block content %}
 <section class="hero">
@@ -26,6 +27,7 @@
   </div>
 </section>
 
+{% if can_manage_watches %}
 <div class="btn-row watch-actions">
   {% if watch.status != 'paused' %}
   <form method="post" action="/watches/{{ watch.id }}/check" data-busy-form>
@@ -61,21 +63,39 @@
     <button class="btn btn-ghost btn-with-icon" type="submit">{{ icon("trash") }} Delete</button>
   </form>
 </div>
+{% else %}
+<p class="hint">You can view this watch. Changing, checking or adding watches needs “Manage watches” from a StonePi admin.</p>
+{% endif %}
 
 {% if watch.last_error %}<p class="banner">{{ watch.last_error }}</p>{% endif %}
 
 <div class="watch-panels">
-  {% if watch.strike %}
+  {% if strike_offer %}
+  {% set s = strike_offer %}
   <section class="card stack strike-card watch-panel-span">
     <h2 class="section-heading">{{ filter_icon("strike") }} Strike found</h2>
-    <p class="strike-price">{{ format_price(watch.strike.product_price, watch.currency) }} <span class="hint">at {{ watch.strike.retailer }}</span></p>
+    <p class="strike-price">{{ format_price(s.watch_price if s.watch_price is not none else s.product_price, watch.currency) }} <span class="hint">at {{ s.retailer }}</span> {{ trust_badge(s.trust) }}</p>
     <p class="hint">
-      Target ≤ {{ format_price(watch.target_price, watch.currency) }}
-      {% if watch.strike.availability %} · {{ watch.strike.availability|replace('_', ' ') }}{% endif %}
-      {% if watch.strike.found_at %} · found {{ watch.strike.found_at[:16]|replace('T', ' ') }}{% endif %}
+      Target ≤ {{ format_price(watch.target_price, watch.currency) }}{% if watch.include_delivery %} incl. delivery{% endif %}
+      {% if s.availability %} · {{ s.availability|replace('_', ' ') }}{% endif %}
+      {% if s.found_at %} · found {{ s.found_at[:16]|replace('T', ' ') }}{% endif %}
     </p>
-    {% if watch.strike.product_url %}
-    <a class="btn btn-primary btn-with-icon" href="{{ watch.strike.product_url }}" target="_blank" rel="noopener noreferrer">{{ icon("external") }} View offer</a>
+    {% if s.product_url %}
+    <a class="btn btn-primary btn-with-icon" href="{{ s.product_url }}" target="_blank" rel="noopener noreferrer">{{ icon("external") }} View offer</a>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if low_rated %}
+  <section class="card stack low-rated-card watch-panel-span">
+    <h2 class="section-heading">{{ filter_icon("info") }} Cheaper, low-rated</h2>
+    <p class="strike-price">{{ format_price(low_rated.watch_price if low_rated.watch_price is not none else low_rated.product_price, watch.currency) }} <span class="hint">at {{ low_rated.retailer }}</span> {{ trust_badge(low_rated.trust) }}</p>
+    <p class="hint">
+      Under your target, but {% if low_rated.trust.score is not none and low_rated.trust.counts %}below your {{ "%.1f"|format(watch.min_trust_score) }} minimum{% elif low_rated.trust.score is not none %}with too few reviews to count{% else %}with no rating{% endif %}, so it isn’t a strike.
+      {% if watch.low_rated_mode == 'warn' and can_use_alerts %}This watch sends a warning alert for it.{% elif watch.low_rated_mode == 'warn' %}No alert for it: strike alerts are off for your account.{% else %}No alert for it: this watch is set to ignore low-rated shops.{% endif %}
+    </p>
+    {% if low_rated.product_url %}
+    <a class="btn btn-secondary btn-with-icon" href="{{ low_rated.product_url }}" target="_blank" rel="noopener noreferrer">{{ icon("external") }} View offer</a>
     {% endif %}
   </section>
   {% endif %}
@@ -84,11 +104,47 @@
     <h2 class="section-heading">{{ filter_icon("target") }} Target</h2>
     <dl class="fact-list">
       <div><dt>Target</dt><dd>≤ {{ format_price(watch.target_price, watch.currency) }}</dd></div>
+      <div><dt>Compared on</dt><dd>{% if watch.include_delivery %}Total incl. delivery{% else %}Product price{% endif %}</dd></div>
       <div><dt>Current lowest</dt><dd>{{ format_price(watch.current_lowest, watch.currency) }}</dd></div>
       <div><dt>Historical lowest</dt><dd>{{ format_price(historical_lowest, watch.currency) }}</dd></div>
+      <div><dt>Minimum score</dt><dd>{% if watch.min_trust_score is not none %}{{ "%.1f"|format(watch.min_trust_score) }}+{% if watch.require_rating %}, rating required{% endif %} · {% if watch.low_rated_mode == 'warn' %}warn{% else %}ignore{% endif %} low-rated{% else %}Any{% endif %}</dd></div>
       <div><dt>Condition</dt><dd>{{ condition_labels.get(watch.condition, watch.condition) }}{% if watch.in_stock_required %}, in stock{% endif %}</dd></div>
       <div><dt>Schedule</dt><dd>{{ schedule_labels.get(watch.schedule_minutes, 'Every ' ~ watch.schedule_minutes ~ ' min') }} · {{ watch.market }}</dd></div>
     </dl>
+    {% if can_manage_watches %}
+    <details class="edit-watch">
+      <summary class="btn btn-secondary btn-with-icon">{{ icon("check") }} Edit</summary>
+      <form method="post" action="/watches/{{ watch.id }}/edit" class="stack edit-watch-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <label>
+          Target price ({{ watch.currency }})
+          <input name="target_price" type="number" inputmode="numeric" step="1" min="1" required value="{{ watch.target_price|round|int }}" />
+        </label>
+        <label>
+          Condition
+          <select name="condition">
+            {% for c in condition_options %}
+            <option value="{{ c.id }}" {% if c.id == watch.condition %}selected{% endif %}>{{ c.label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="check">
+          <input type="checkbox" name="in_stock_required" value="1" {% if watch.in_stock_required %}checked{% endif %} />
+          In stock required
+        </label>
+        {{ trust_fields(watch, trust_settings, min_score_options, can_use_alerts) }}
+        <label>
+          Check
+          <select name="schedule_minutes">
+            {% for s in schedule_options %}
+            <option value="{{ s.minutes }}" {% if s.minutes == watch.schedule_minutes %}selected{% endif %}>{{ s.label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("check") }} Save and check</button>
+      </form>
+    </details>
+    {% endif %}
   </section>
 
   <section class="card stack">
@@ -115,16 +171,19 @@
     <ul class="offer-list">
       {% for o in offers %}
       {% set total = o.total_price if o.total_price is not none else o.product_price %}
-      <li class="offer-row{% if total is not none and total <= watch.target_price %} is-hit{% endif %}">
+      <li class="offer-row{% if o.is_hit and not o.below_minimum %} is-hit{% endif %}{% if o.below_minimum %} is-below-min{% endif %}">
         <div class="offer-copy">
-          {% if o.product_url %}
-          <a class="offer-retailer" href="{{ o.product_url }}" target="_blank" rel="noopener noreferrer">{{ o.retailer }}</a>
-          {% else %}
-          <span class="offer-retailer">{{ o.retailer }}</span>
-          {% endif %}
+          <span class="offer-line">
+            {% if o.product_url %}
+            <a class="offer-retailer" href="{{ o.product_url }}" target="_blank" rel="noopener noreferrer">{{ o.retailer }}</a>
+            {% else %}
+            <span class="offer-retailer">{{ o.retailer }}</span>
+            {% endif %}
+            {{ trust_badge(o.trust) }}
+          </span>
           <span class="hint">
             {% if o.delivery_cost is not none %}{{ format_price(o.product_price, watch.currency) }} + {{ format_price(o.delivery_cost, watch.currency) }} delivery{% else %}Delivery not listed{% endif %}
-            · {{ (o.availability or 'stock unknown')|replace('_', ' ') }}
+            · {{ (o.availability or 'stock unknown')|replace('_', ' ') }}{% if o.below_minimum %} · <strong>below your minimum</strong>{% endif %}
           </span>
         </div>
         <strong class="offer-total">{{ format_price(total, watch.currency) }}</strong>

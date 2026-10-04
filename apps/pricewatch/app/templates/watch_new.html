@@ -1,13 +1,14 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
 {% from "_filter_icon.html" import filter_icon %}
+{% from "_trust.html" import trust_fields %}
 {% block title %}Add watch · PriceWatch{% endblock %}
 {% block content %}
 <section class="hero">
-  {% if selected %}<a class="settings-back" href="/watches/new{% if q %}?q={{ q|urlencode }}{% endif %}">&larr; Results</a>{% endif %}
+  {% if selected %}<a class="settings-back" href="/compare?{{ {'q': q, 'product_id': selected.product_id, 'source_id': selected.source_id or source_id, 'name': selected.name, 'manufacturer': selected.manufacturer or '', 'variant': selected.variant or '', 'image_url': selected.image_url or '', 'product_url': selected.product_url or ''}|urlencode }}">&larr; Compare</a>{% endif %}
   <h1>{% if selected %}Set your target{% else %}Add a watch{% endif %}</h1>
   <div class="page-status">
-    <p class="page-status-text">{% if selected %}Pick the price you’d pay and how often to check.{% else %}Search for a product, then pick the exact model.{% endif %}</p>
+    <p class="page-status-text">{% if selected %}Pick the price you’d pay and how often to check.{% else %}Search for a product to compare every retailer, then watch it.{% endif %}</p>
   </div>
 </section>
 
@@ -29,7 +30,7 @@
   <ul class="group-card">
     {% for h in hits %}
     <li class="watch-row">
-      <a class="watch-row-link" href="/watches/new?q={{ q|urlencode }}&product_id={{ h.product_id }}&source_id={{ h.source_id }}">
+      <a class="watch-row-link" href="/compare?{{ {'q': q, 'product_id': h.product_id, 'source_id': h.source_id, 'name': h.name, 'manufacturer': h.manufacturer or '', 'variant': h.variant or '', 'image_url': h.image_url or '', 'product_url': h.product_url or ''}|urlencode }}">
         {% if h.image_url %}
         <img class="watch-thumb" src="{{ h.image_url }}" alt="" width="40" height="40" loading="lazy" />
         {% else %}
@@ -99,6 +100,7 @@
     <input type="checkbox" name="in_stock_required" value="1" {% if default_in_stock %}checked{% endif %} />
     In stock required
   </label>
+  {{ trust_fields({"include_delivery": true, "min_trust_score": none, "require_rating": false, "low_rated_mode": "ignore"}, trust_settings, min_score_options, can_use_alerts) }}
   <label>
     Check
     <select name="schedule_minutes">

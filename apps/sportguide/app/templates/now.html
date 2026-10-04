@@ -15,10 +15,10 @@
   </button>
 </div>
 
-<div class="chips-with-action">
+<div class="chips-with-action{% if leagues %} is-stacked{% endif %}">
   <div class="chips now-sport-chips" role="list" aria-label="Sport filter">
     {% for s in sports %}
-    <a class="chip-btn{% if sport == s.id %} is-active{% endif %}" href="/?sport={{ s.id }}{% if s.id == 'football' and league and league != 'all' %}&league={{ league|urlencode }}{% endif %}" role="listitem">
+    <a class="chip-btn{% if sport == s.id %} is-active{% endif %}" href="/?sport={{ s.id }}{% if s.id == sport and league != 'all' %}&league={{ league|urlencode }}{% endif %}" role="listitem">
       {% if s.id == 'all' %}
       {{ icon("grid") }}
       {% else %}
@@ -33,21 +33,25 @@
   </button>
 </div>
 
-{% if sport == 'football' %}
-<div class="chips settings-chips league-chips" role="tablist" aria-label="Football leagues">
-  <a class="chip-btn{% if league == 'all' %} is-active{% endif %}" href="/?sport=football&league=all">All leagues</a>
-  {% for L in leagues %}
-  {% if L != 'all' %}
-  <a class="chip-btn{% if league == L %} is-active{% endif %}" href="/?sport=football&league={{ L|urlencode }}">{{ L }}</a>
-  {% endif %}
-  {% endfor %}
+{% set sport_meta = sports|selectattr("id", "equalto", sport)|first %}
+{% if leagues %}
+<div class="chips-with-action">
+  <div class="chips settings-chips league-chips" role="tablist" aria-label="{{ sport_meta.label }} leagues">
+    <a class="chip-btn{% if league == 'all' %} is-active{% endif %}" href="/?sport={{ sport }}&league=all">All leagues</a>
+    {% for L in leagues %}
+    <a class="chip-btn{% if league == L %} is-active{% endif %}" href="/?sport={{ sport }}&league={{ L|urlencode }}">{{ L }}</a>
+    {% endfor %}
+  </div>
+  <button class="chips-action" type="button" data-open-sheet="leagues" aria-label="Choose league" title="Choose league">
+    {{ icon("sliders") }}
+  </button>
 </div>
 {% endif %}
 
 {% if not has_data %}
 <div class="empty card stack">
   <h2>No schedule yet</h2>
-  <p class="hint">Pull today’s listings from AusSportGuide and WheresTheMatch. Use the red Refresh button in the header, or refresh a source on Sources.</p>
+  <p class="hint">Pull today’s listings from AusSportGuide, timezone.football and WheresTheMatch. Use the red Refresh button in the header, or refresh a source on Sources.</p>
   <a class="btn btn-primary btn-with-icon" href="/sources">{{ icon("sources") }} Open Sources</a>
 </div>
 {% elif not listings %}
@@ -92,7 +96,7 @@
     <h2>Sport</h2>
     <div class="filter-picker" role="listbox" aria-label="Sport">
       {% for s in sports %}
-      <a class="filter-picker-option{% if sport == s.id %} is-active{% endif %}" href="/?sport={{ s.id }}{% if s.id == 'football' and league and league != 'all' %}&league={{ league|urlencode }}{% endif %}" role="option" aria-selected="{{ 'true' if sport == s.id else 'false' }}">
+      <a class="filter-picker-option{% if sport == s.id %} is-active{% endif %}" href="/?sport={{ s.id }}{% if s.id == sport and league != 'all' %}&league={{ league|urlencode }}{% endif %}" role="option" aria-selected="{{ 'true' if sport == s.id else 'false' }}">
         {% if s.id == 'all' %}
         {{ icon("grid") }}
         {% else %}
@@ -102,28 +106,34 @@
       </a>
       {% endfor %}
     </div>
-    {% if sport == 'football' %}
-    <h2>League</h2>
-    <div class="filter-picker" role="listbox" aria-label="Football league">
-      <a class="filter-picker-option{% if league == 'all' %} is-active{% endif %}" href="/?sport=football&league=all" role="option" aria-selected="{{ 'true' if league == 'all' else 'false' }}">
-        {{ icon("grid") }}
-        <span>All leagues</span>
-      </a>
-      {% for L in leagues %}
-      {% if L != 'all' %}
-      <a class="filter-picker-option{% if league == L %} is-active{% endif %}" href="/?sport=football&league={{ L|urlencode }}" role="option" aria-selected="{{ 'true' if league == L else 'false' }}">
-        <img class="chip-sport-icon" src="/static/img/sports/football.svg" alt="" width="18" height="18" />
-        <span>{{ L }}</span>
-      </a>
-      {% endif %}
-      {% endfor %}
-    </div>
-    {% endif %}
     <div class="btn-row">
       <button class="btn btn-ghost" type="button" data-close-sheet>Cancel</button>
     </div>
   </div>
 </div>
+
+{% if leagues %}
+<div class="sheet" hidden data-sheet="leagues">
+  <div class="sheet-card card stack">
+    <h2>League</h2>
+    <div class="filter-picker" role="listbox" aria-label="{{ sport_meta.label }} league">
+      <a class="filter-picker-option{% if league == 'all' %} is-active{% endif %}" href="/?sport={{ sport }}&league=all" role="option" aria-selected="{{ 'true' if league == 'all' else 'false' }}">
+        {{ icon("grid") }}
+        <span>All leagues</span>
+      </a>
+      {% for L in leagues %}
+      <a class="filter-picker-option{% if league == L %} is-active{% endif %}" href="/?sport={{ sport }}&league={{ L|urlencode }}" role="option" aria-selected="{{ 'true' if league == L else 'false' }}">
+        <img class="chip-sport-icon" src="/static/img/sports/{{ sport_meta.image }}" alt="" width="18" height="18" />
+        <span>{{ L }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" type="button" data-close-sheet>Cancel</button>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <div class="sheet" hidden data-sheet="now-help">
   <div class="sheet-card card stack">
