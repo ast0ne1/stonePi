@@ -122,15 +122,23 @@ Something broken on an existing Pi? **[stonepi-install.vercel.app/recover](https
 
 On Windows, `scripts\run-dev.bat` creates per-app virtualenvs and starts everything on `127.0.0.1` with shared sign-in:
 
-| Port | App | | Port | App |
-|------|-----|-|------|-----|
-| 8010 | Dashboard | | 8005 | Studio |
-| 8011 | Auth | | 8006 | PriceScout |
-| 8012 | Notify (Car Thing editor at `/notify/displays/carthing`) | | 8007 | SportGuide |
-| 8001 | NewsCast | | 8008 | PriceWatch |
-| 8002 | FileServe | | 8009 | Library (no Kiwix on Windows) |
-| 8003 | EventTrakr | | 8013 | Car Thing panel (preview) |
-| 8004 | Pinboard | | | |
+| | Port | App | Notes |
+|-|------|-----|-------|
+| **System** | 8010 | Dashboard | |
+| | 8011 | Auth | |
+| | 8012 | Notify | Car Thing editor at `/notify/displays/carthing` |
+| | 8013 | Car Thing panel | Preview; with `adb` on PATH it also drives a plugged-in Car Thing |
+| **Home apps** | 8001 | NewsCast | |
+| | 8002 | FileServe | |
+| | 8003 | EventTrakr | |
+| | 8004 | Pinboard | |
+| | 8005 | Studio | |
+| | 8006 | PriceScout | |
+| | 8007 | SportGuide | |
+| | 8008 | PriceWatch | |
+| | 8009 | Library | No Kiwix on Windows |
+
+Recover (`:8099` on the Pi) isn't started in dev.
 
 Each app and package has a `tests/` folder (`python -m pytest -q` with the `packages/*` folders on `PYTHONPATH`). Releases: build with `python scripts/build_release_zips.py --all` and follow [deploy/RELEASE.md](deploy/RELEASE.md); versions and notes are in [CHANGELOG.md](CHANGELOG.md). System apps and the Car Thing share the platform version; Home apps have their own.
 
