@@ -4,7 +4,7 @@
 
 StonePi is a private hub for your home on one Raspberry Pi. It brings you the news you want on your e-reader, shows what's on locally and in sport, finds supermarket deals, watches prices, keeps Wikipedia offline, hosts your household's files and small sites, and pushes useful updates to your phone, a wall display or a desk panel. Everything sits behind one shared sign-in, on your own network, set up once and left running.
 
-**Set up a Pi: [stonepi-install.vercel.app](https://stonepi-install.vercel.app)** — one command on stock Raspberry Pi OS (64-bit) for a Raspberry Pi 4 or 5.
+> **Set up a Pi: [stonepi-install.vercel.app](https://stonepi-install.vercel.app)** — one command on stock Raspberry Pi OS (64-bit) for a Raspberry Pi 4 or 5.
 
 ## Screenshots
 
