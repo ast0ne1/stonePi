@@ -1,11 +1,5 @@
 # Changelog — Recover
 
-## Unreleased
-
-### Fixed
-- Phone overscroll no longer shows a mismatched band: the page background covers the whole root and rubber-band scrolling is off.
-- Upgrades restart Recover (installer fix), so the new version, Dashboard button and Sign out take effect without a reboot.
-
 ## 0.1.9 — 2026-10-04
 
 _Platform 0.1.9._
@@ -20,6 +14,8 @@ _Platform 0.1.9._
 - Password lives only in root-only `/etc/stonepi/recover.passwd`; any Vault copy is moved there on startup and deleted from the Vault. Port 8099 accepts LAN and tailnet addresses only.
 
 ### Fixed
+- Phone overscroll no longer shows a mismatched band: the page background covers the whole root and rubber-band scrolling is off.
+- Upgrades restart Recover (installer fix), so the new version, Dashboard button and Sign out take effect without a reboot.
 - Sign out works for admins who came in with their portal session (they were sent straight back in): it signs out of the portal too, through Auth when it's up or by clearing the portal cookies, and shows "Signed out.".
 
 ### Changed

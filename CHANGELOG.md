@@ -2,11 +2,6 @@
 
 Platform version lives in [`VERSION`](VERSION). App zips use each app’s `__version__` (see `scripts/build_release_zips.py`).
 
-## Unreleased
-
-### Fixed
-- **Upgrades restart Recover and the failover monitor.** The installer only ran `enable --now`, which leaves a running unit on its old code, so after an update Recover kept showing the old version and its new Dashboard button and Sign out didn't work until a reboot.
-
 ## 0.1.9 — 2026-10-04
 
 Fresh-install fixes, the new **Library** app, **PriceWatch** retailer trust scores, a **Jungle** source for EventTrakr, football channels from two guides in **SportGuide**, and a security review of all of it. 
@@ -53,6 +48,7 @@ Fresh-install fixes, the new **Library** app, **PriceWatch** retailer trust scor
 - **Release builds** come from an LF export of the tag (`git -c core.autocrlf=false archive …`); see `deploy/RELEASE.md`.
 
 ### Fixed
+- **Upgrades restart Recover and the failover monitor.** The installer only ran `enable --now`, which leaves a running unit on its old code, so after an update Recover kept showing the old version and its new Dashboard button and Sign out didn't work until a reboot.
 - **CPU readings** (Car Thing, Dashboard, TRMNL) are the use since the last reading instead of a fresh 0.12 s sample that mostly read 0–3%.
 - **Car Thing editor:** button and dial labels sat on the device drawing and overran at desktop widths; they now sit around it.
 - **Upgrades from early setups:** apps whose env file lacked `STONEPI_DATA_DIR` kept files under `/opt/stonepi/apps/<app>/data` (FileServe hosted pages, NewsCast favicons); once the installer added the key they read `/var/lib/stonepi/<app>` and existing FileServe pages returned Not Found. The installer now copies those files across once (never overwriting, no databases/secrets/keys; the `/opt` copy is kept).
