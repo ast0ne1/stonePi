@@ -9,12 +9,12 @@ StonePi is a private hub for your home on one Raspberry Pi. It brings you the ne
 ## Screenshots
 
 <p align="center">
+  <img src="docs/screenshots/login.jpg" alt="The shared sign-in" width="250" />
   <img src="docs/screenshots/home.jpg" alt="Home: a greeting and every app one tap away" width="250" />
   <img src="docs/screenshots/health.jpg" alt="Health: apps, users, disk, backup, memory and temperature" width="250" />
-  <img src="docs/screenshots/services.jpg" alt="Services: each app's route and port, with on and off switches" width="250" />
 </p>
 <p align="center">
-  <img src="docs/screenshots/login.jpg" alt="The shared sign-in" width="250" />
+  <img src="docs/screenshots/services.jpg" alt="Services: each app's route and port, with on and off switches" width="250" />
   <img src="docs/screenshots/users.jpg" alt="Users: household accounts" width="250" />
   <img src="docs/screenshots/settings.jpg" alt="Settings: General, Network, Vault, Displays, Phone alerts, Automations" width="250" />
 </p>
