@@ -19,7 +19,7 @@ StonePi is a private hub for your home on one Raspberry Pi. It brings you the ne
   <img src="docs/screenshots/settings.jpg" alt="Settings: General, Network, Vault, Displays, Phone alerts, Automations" width="250" />
 </p>
 
-*Home, Health and Services; sign-in, Users and Settings. Every page works on a phone, in light or dark.*
+*Sign-in, Home and Health; Services, Users and Settings. Every page works on a phone, in light or dark.*
 
 ## Apps
 
