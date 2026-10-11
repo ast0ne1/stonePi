@@ -125,6 +125,7 @@ def _csrf_response(request: Request, name: str, ctx: dict) -> HTMLResponse:
             session_cookie=request.cookies.get(COOKIE_NAME),
             home_url=ctx["stonepi_home_url"],
             enabled=bool(_session_secret()),
+            app_id="sportguide",
         ),
     )
     response = templates.TemplateResponse(request, name, ctx)
@@ -446,7 +447,7 @@ def settings_page(
     }
     panel_labels = {item[0]: item[1] for item in _SG_SECTIONS.get(tab, ())}
     if settings_hub:
-        title, lede = "Settings", "City, teams to watch, and approaching alerts."
+        title, lede = "Settings", "Sources, city, teams to watch, and approaching alerts."
     elif settings_level == "list":
         title, lede = tab_titles[tab], "Choose a section."
     else:
@@ -465,7 +466,12 @@ def settings_page(
             "settings_panel": settings_panel,
             "settings_title": title,
             "settings_sections": _SG_SECTIONS.get(tab, ()),
+            # Settings opens on the app's own configuration: Sources (its own page).
+            "settings_hub_links": {"sources": "/sources"},
             "settings_groups": (
+                ("sources", "Sources", (
+                    ("sources", "Sources", "Where listings come from, and refresh.", "sources"),
+                )),
                 ("guide", "Guide", (
                     ("general", "General", "City and timezone.", "general"),
                     ("watch", "Teams to Watch", "Your teams and nations.", "star"),

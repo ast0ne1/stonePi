@@ -1,14 +1,5 @@
 const THEME_KEY = "stonepi-theme";
-const PALETTE_KEY = "stonepi-palette";
 const LEGACY_THEME_KEYS = ["newscast-theme", "fileserve-theme", "eventtrakr-theme"];
-const LEGACY_PALETTE_KEYS = ["newscast-palette", "fileserve-palette", "eventtrakr-palette"];
-const PALETTES = ["default", "ocean", "forest", "slate"];
-const THEME_COLORS = {
-  default: { light: "#f3eee4", dark: "#12100d" },
-  ocean: { light: "#e7eef5", dark: "#0c141c" },
-  forest: { light: "#eef1e6", dark: "#10140d" },
-  slate: { light: "#ececee", dark: "#121314" },
-};
 
 function readCookie(name) {
   const match = document.cookie.match(
@@ -51,52 +42,19 @@ function resolvedTheme(pref) {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-function savedPalette() {
-  const value = readShared(PALETTE_KEY, LEGACY_PALETTE_KEYS, "default");
-  return PALETTES.includes(value) ? value : "default";
-}
-
-function applyTheme(pref, palette) {
+// Theme buttons (Settings → Appearance and the avatar menu) are handled by the shared
+// header script (data-sp-theme); this keeps System in step with the OS setting.
+function applyTheme(pref) {
   const theme = resolvedTheme(pref);
-  const chosen = palette || savedPalette();
   document.documentElement.dataset.theme = theme;
   document.documentElement.dataset.themePref = pref;
-  document.documentElement.dataset.palette = chosen;
   document.documentElement.style.colorScheme = theme;
   const meta = document.querySelector("[data-theme-color]");
-  if (meta) meta.setAttribute("content", THEME_COLORS[chosen][theme]);
-  document.querySelectorAll("[data-theme-set]").forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.themeSet === pref);
-  });
-  document.querySelectorAll("[data-palette-set]").forEach((button) => {
-    const on = button.dataset.paletteSet === chosen;
-    button.classList.toggle("is-active", on);
-    button.setAttribute("aria-pressed", on ? "true" : "false");
-  });
-  const status = document.querySelector("[data-palette-status]");
-  if (status) {
-    const label = chosen.charAt(0).toUpperCase() + chosen.slice(1);
-    status.textContent = `Using ${label} — saved for this browser (no Save button).`;
-  }
+  const color = getComputedStyle(document.documentElement).getPropertyValue("--theme-meta").trim();
+  if (meta && color) meta.setAttribute("content", color);
 }
 
-const savedTheme = readShared(THEME_KEY, LEGACY_THEME_KEYS, "system");
-applyTheme(savedTheme);
-document.querySelectorAll("[data-theme-set]").forEach((button) => {
-  button.addEventListener("click", () => {
-    const pref = button.dataset.themeSet || "system";
-    persistPref(THEME_KEY, pref);
-    applyTheme(pref, savedPalette());
-  });
-});
-document.querySelectorAll("[data-palette-set]").forEach((button) => {
-  button.addEventListener("click", () => {
-    const palette = button.dataset.paletteSet || "default";
-    persistPref(PALETTE_KEY, palette);
-    const pref = readCookie(THEME_KEY) || localStorage.getItem(THEME_KEY) || "system";
-    applyTheme(pref, palette);
-  });
-});
+applyTheme(readShared(THEME_KEY, LEGACY_THEME_KEYS, "system"));
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
   if (readShared(THEME_KEY, LEGACY_THEME_KEYS, "system") === "system") applyTheme("system");
 });
@@ -335,32 +293,106 @@ document.querySelectorAll("form[data-confirm]").forEach((form) => {
   });
 });
 
-(function vaultForm() {
-  const form = document.querySelector("[data-vault-form]");
-  if (!form) return;
-  const select = form.querySelector("[data-vault-key]");
-  const customWrap = form.querySelector("[data-vault-custom]");
-  const customInput = form.querySelector("[data-vault-custom-input]");
-  const blurb = form.querySelector("[data-vault-blurb]");
+(function vaultPage() {
+  const page = document.querySelector("[data-vault]");
+  if (!page) return;
 
-  function sync() {
-    const value = select?.value || "";
-    const isCustom = value === "__custom__";
-    if (customWrap) customWrap.hidden = !isCustom;
-    if (customInput) {
-      customInput.required = isCustom;
-      if (!isCustom) customInput.value = "";
-    }
-    const option = select?.selectedOptions?.[0];
-    const text = option?.dataset?.blurb || "";
-    if (blurb) {
-      blurb.hidden = !text || isCustom || !value;
-      blurb.textContent = text;
-    }
+  function closeRow(row) {
+    const form = row.querySelector("[data-vault-edit-form]");
+    const toggle = row.querySelector("[data-vault-edit]");
+    if (!form || form.hidden) return;
+    form.hidden = true;
+    form.reset();
+    toggle?.setAttribute("aria-expanded", "false");
   }
 
-  select?.addEventListener("change", sync);
-  sync();
+  // One edit field open at a time, right under its row.
+  page.addEventListener("click", (event) => {
+    const edit = event.target.closest("[data-vault-edit]");
+    const cancel = event.target.closest("[data-vault-cancel]");
+    if (edit) {
+      const row = edit.closest("[data-vault-row]");
+      const form = row?.querySelector("[data-vault-edit-form]");
+      if (!form) return;
+      const opening = form.hidden;
+      page.querySelectorAll("[data-vault-row]").forEach(closeRow);
+      if (opening) {
+        form.hidden = false;
+        edit.setAttribute("aria-expanded", "true");
+        form.querySelector("input[name='value']")?.focus();
+      }
+    } else if (cancel) {
+      const row = cancel.closest("[data-vault-row]");
+      if (row) {
+        closeRow(row);
+        row.querySelector("[data-vault-edit]")?.focus();
+      }
+    }
+  });
+
+  page.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    const row = event.target.closest?.("[data-vault-row]");
+    if (row) {
+      closeRow(row);
+      row.querySelector("[data-vault-edit]")?.focus();
+    }
+  });
+
+  // All / Missing / Set: hide rows, then groups left empty.
+  const filters = page.querySelectorAll("[data-vault-filter]");
+  const empty = page.querySelector("[data-vault-empty]");
+  function applyFilter(kind) {
+    filters.forEach((btn) => btn.setAttribute("aria-pressed", String(btn.dataset.vaultFilter === kind)));
+    let shown = 0;
+    page.querySelectorAll("[data-vault-group]").forEach((group) => {
+      let visible = 0;
+      group.querySelectorAll("[data-vault-row]").forEach((row) => {
+        const show = kind === "all" || row.dataset.vaultState === kind;
+        row.hidden = !show;
+        if (show) visible += 1;
+        else closeRow(row);
+      });
+      group.hidden = visible === 0;
+      shown += visible;
+    });
+    if (empty) {
+      empty.hidden = shown > 0;
+      empty.textContent = kind === "set" ? "No secrets set yet." : "Nothing missing — every secret is set.";
+    }
+  }
+  filters.forEach((btn) => btn.addEventListener("click", () => applyFilter(btn.dataset.vaultFilter)));
+
+  // Custom secret: inline panel on desktop, a popup sheet below 1024px (CSS decides the look).
+  const custom = page.querySelector("[data-vault-custom]");
+  const customOpen = page.querySelector("[data-vault-custom-open]");
+  const popup = window.matchMedia("(max-width: 1023px)");
+  function setCustom(open) {
+    if (!custom) return;
+    custom.hidden = !open;
+    customOpen?.setAttribute("aria-expanded", String(open));
+    const lock = open && popup.matches;
+    document.documentElement.classList.toggle("sheet-open", lock);
+    document.body.classList.toggle("sheet-open", lock);
+    if (open) custom.querySelector("input[name='custom_key']")?.focus();
+    else custom.querySelector("form")?.reset();
+  }
+  function closeCustom() {
+    setCustom(false);
+    customOpen?.focus();
+  }
+  customOpen?.addEventListener("click", () => setCustom(Boolean(custom?.hidden)));
+  custom?.querySelectorAll("[data-vault-custom-close]").forEach((btn) => btn.addEventListener("click", closeCustom));
+  // Tap on the dimmed backdrop (the sheet wrapper itself) closes the popup.
+  custom?.addEventListener("click", (event) => {
+    if (event.target === custom && popup.matches) closeCustom();
+  });
+  custom?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeCustom();
+  });
+  popup.addEventListener?.("change", () => {
+    if (custom && !custom.hidden) setCustom(true);
+  });
 })();
 
 (function flashBanner() {
@@ -904,6 +936,7 @@ function showFlash(kind, text) {
   const lede = document.querySelector("[data-launcher-lede]");
   const editBar = form.querySelector("[data-launcher-edit-bar]");
   const cancel = form.querySelector("[data-launcher-cancel]");
+  const resetDefault = form.querySelector("[data-launcher-default]");
   const status = form.querySelector("[data-launcher-status]");
   const statusDefault = status ? status.textContent : "";
   const ledeDefault = lede ? lede.textContent : "";
@@ -1187,6 +1220,14 @@ function showFlash(kind, text) {
 
   toggle?.addEventListener("click", () => (editing ? finishEditing() : setEditing(true)));
   cancel?.addEventListener("click", finishEditing);
+  // Back to the platform's default order (apps this person can't open are simply absent).
+  resetDefault?.addEventListener("click", () => {
+    const ids = (resetDefault.dataset.defaultOrder || "").split(",").filter(Boolean);
+    if (!ids.length) return;
+    const shown = new Set(tiles().map((tile) => tile.dataset.appId));
+    restoreOrder(ids.filter((id) => shown.has(id)));
+    persist();
+  });
   document.addEventListener("keydown", (event) => {
     if (editing && event.key === "Escape") finishEditing();
   });
@@ -1751,8 +1792,8 @@ if (settingsShell) {
   const urlPanel = url.searchParams.get("panel");
   const hash = (window.location.hash || "").replace(/^#/, "");
   const hashPanel =
-    hash === "account-password" || hash === "view-options" || hash === "appearance" || hash === "app-colours" || hash === "remote-access"
-      ? { "account-password": "password", "view-options": "view", appearance: "appearance", "app-colours": "app-colours", "remote-access": "remote" }[hash]
+    hash === "account-password" || hash === "view-options" || hash === "appearance" || hash === "welcome" || hash === "remote-access"
+      ? { "account-password": "password", "view-options": "view", appearance: "appearance", welcome: "appearance", "remote-access": "remote" }[hash]
       : null;
 
   if (initialHub) {

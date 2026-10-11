@@ -32,8 +32,10 @@ def test_settings_groups_cover_visible_tabs(monkeypatch):
         for _gid, _label, rows in _settings_groups_for(admin)
         for key, _tab_label, _sub in rows
     }
-    assert grouped == {key for key, _ in SETTINGS_TABS}
-    assert len(SETTINGS_GROUPS) == 3
+    # Plus the Sources pages, which Settings opens on.
+    assert grouped == {key for key, _ in SETTINGS_TABS} | {"sources", "instagram"}
+    assert SETTINGS_GROUPS[0][0] == "sources"
+    assert len(SETTINGS_GROUPS) == 4
 
 
 def test_settings_groups_hide_platform_tabs(monkeypatch):

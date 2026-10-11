@@ -4,6 +4,7 @@ from app.services.schedule import (
     feed_interval_minutes,
     feed_is_due,
     normalize_optional_clock,
+    paper_prep_clock,
     within_active_hours,
 )
 from app.services.settings import format_interval_short
@@ -116,3 +117,61 @@ def test_custom_feed_ignores_active_hours():
         active_end="12:00",
         local_now=datetime(2026, 9, 14, 3, 0),
     )
+
+
+def _fetched(local_naive: datetime) -> datetime:
+    """Stored like the app stores it: UTC, from a local wall-clock time."""
+    return local_naive.astimezone().astimezone(timezone.utc)
+
+
+def test_paper_prep_clock_is_thirty_minutes_before_publish():
+    assert paper_prep_clock("06:30") == "06:00"
+    assert paper_prep_clock("00:10") == "00:00"  # never wraps to the previous day
+    assert paper_prep_clock("") == ""
+
+
+def test_paper_prep_fetches_before_publish_despite_daily_interval():
+    # 2026-10-10: once-a-day refresh last ran 07:02 yesterday, paper at 06:30.
+    feed = FakeFeed(last_fetched_at=_fetched(datetime(2026, 10, 9, 7, 2)))
+    before = datetime(2026, 10, 10, 5, 57)
+    at_prep = datetime(2026, 10, 10, 6, 2)
+    assert not feed_is_due(feed, 1440, _fetched(before), local_now=before, prep_at="06:00")
+    assert feed_is_due(feed, 1440, _fetched(at_prep), local_now=at_prep, prep_at="06:00")
+
+
+def test_paper_prep_skips_sources_already_fetched_today():
+    feed = FakeFeed(last_fetched_at=_fetched(datetime(2026, 10, 10, 5, 2)))
+    assert not feed_is_due(feed, 1440, local_now=datetime(2026, 10, 10, 6, 2), prep_at="06:00")
+
+
+def test_paper_prep_covers_custom_sources_and_ignores_active_hours():
+    feed = FakeFeed(schedule_mode="custom", interval_minutes=1440, last_fetched_at=_fetched(datetime(2026, 10, 9, 9, 0)))
+    assert feed_is_due(
+        feed, 60, local_now=datetime(2026, 10, 10, 6, 2), prep_at="06:00", active_start="09:00", active_end="17:00"
+    )
+
+
+def test_manual_refresh_yesterday_does_not_delay_the_paper():
+    # Refresh tapped at 09:00 yesterday restarts the 24 hours, but prep still runs at 06:00.
+    feed = FakeFeed(last_fetched_at=_fetched(datetime(2026, 10, 9, 9, 0)))
+    assert feed_is_due(feed, 1440, local_now=datetime(2026, 10, 10, 6, 2), prep_at="06:00")
+
+
+def test_daily_refresh_time_anchors_once_a_day():
+    feed = FakeFeed(last_fetched_at=_fetched(datetime(2026, 10, 9, 5, 4)))
+    assert not feed_is_due(feed, 1440, local_now=datetime(2026, 10, 10, 4, 57), daily_at="05:00")
+    assert feed_is_due(feed, 1440, local_now=datetime(2026, 10, 10, 5, 2), daily_at="05:00")
+    # Already fetched after today's 05:00: not due again until tomorrow, even 24h+ later in the day.
+    feed.last_fetched_at = _fetched(datetime(2026, 10, 10, 5, 2))
+    assert not feed_is_due(feed, 1440, local_now=datetime(2026, 10, 10, 23, 0), daily_at="05:00")
+
+
+def test_daily_refresh_time_does_not_drift_after_a_late_fetch():
+    # Yesterday's fetch ran late (09:00); today still refreshes at 05:00, not 09:00.
+    feed = FakeFeed(last_fetched_at=_fetched(datetime(2026, 10, 9, 9, 0)))
+    assert feed_is_due(feed, 1440, local_now=datetime(2026, 10, 10, 5, 2), daily_at="05:00")
+
+
+def test_daily_refresh_time_only_applies_to_once_a_day():
+    feed = FakeFeed(last_fetched_at=datetime.now(timezone.utc) - timedelta(minutes=10))
+    assert not feed_is_due(feed, 60, daily_at="05:00")

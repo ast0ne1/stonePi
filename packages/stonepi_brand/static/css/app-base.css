@@ -1,0 +1,116 @@
+/* StonePi app base: loaded AFTER each app's app.css (stonepi/head.html → brand_tail).
+   Normalises the classes every app shares (.btn, .icon-btn, inputs, .card, .banner,
+   .status-pill, .chip) to the design system's shape and colour roles. Layout, spacing
+   and app-specific variants stay in app.css (more specific selectors still win). */
+
+body { font-family: var(--font-sans); background: var(--canvas); color: var(--text); }
+h1, h2, h3 { font-family: var(--font-display); color: var(--text); }
+code, kbd, samp, pre { font-family: var(--font-mono); }
+a { color: var(--link); }
+
+/* Buttons: radius-md, control type; one primary (Sand on dark, Basalt on light). */
+.btn {
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-weight: 600;
+  transition: background-color var(--duration-fast) ease-out, border-color var(--duration-fast) ease-out, color var(--duration-fast) ease-out;
+}
+.btn-primary { background: var(--primary); color: var(--primary-ink); border-color: transparent; }
+.btn-primary:hover:not(:disabled) { background: var(--primary-hover); color: var(--primary-ink); }
+.btn-secondary, .btn-ghost { border: 1px solid var(--border-control); background: var(--surface-raised); color: var(--text); }
+.btn-secondary:hover:not(:disabled), .btn-ghost:hover:not(:disabled) { background: var(--surface-hover); color: var(--text); }
+.btn-danger { background: var(--danger); color: var(--on-signal); border-color: transparent; }
+.btn-danger:hover:not(:disabled) { background: var(--danger); filter: brightness(1.08); }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
+
+.icon-btn {
+  border-radius: var(--radius-md);
+  border-color: var(--border);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+}
+.icon-btn:hover { color: var(--text); border-color: var(--border-control); background: var(--surface-raised); }
+.icon-btn svg { stroke-width: 1.5; }
+.icon-btn-danger:hover, .sign-out:hover { color: var(--danger-text); background: var(--tint-rust-bg); }
+
+/* Inputs: control border (3:1), raised ground, focus ring. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]),
+select,
+textarea {
+  border-radius: var(--radius-md);
+  border-color: var(--border-control);
+  background-color: var(--surface-raised);
+  color: var(--text);
+  font-family: var(--font-sans);
+}
+input::placeholder, textarea::placeholder { color: var(--text-faint); }
+input[type="checkbox"], input[type="radio"], input[type="range"] { accent-color: var(--primary); }
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Cards: raised surface, hairline, radius-lg. No lift on hover. */
+.card { background: var(--surface-raised); border-color: var(--border); border-radius: var(--radius-lg); box-shadow: none; }
+
+/* Banners and flashes: status tints with their -text partner. */
+.banner, .flash-error { background: var(--tint-rust-bg); color: var(--danger-text); border-color: transparent; border-radius: var(--radius-md); }
+.banner-ok, .flash-ok { background: var(--tint-moss-bg); color: var(--success-text); }
+.banner-muted { background: var(--tint-stone-bg); color: var(--text); }
+.banner a, .flash a { color: inherit; text-decoration: underline; }
+
+/* Status: dot + word, tint grounds (StatusBadge). */
+.status-pill { border-radius: var(--radius-pill); border-color: transparent; background: var(--tint-stone-bg); color: var(--text-muted); font-family: var(--font-sans); font-weight: 600; }
+.status-pill.status-ok, .status-pill.is-ok, .status-pill.ok { background: var(--tint-moss-bg); color: var(--success-text); }
+.status-pill.status-warn, .status-pill.status-busy, .status-pill.is-warn, .status-pill.warn { background: var(--tint-ember-bg); color: var(--warning-text); }
+.status-pill.status-bad, .status-pill.is-bad, .status-pill.is-error, .status-pill.bad, .status-pill.error { background: var(--tint-rust-bg); color: var(--danger-text); }
+.status-ok .status-dot { background: var(--success); }
+.status-warn .status-dot, .status-busy .status-dot { background: var(--warning); }
+.status-bad .status-dot { background: var(--danger); }
+
+.chip { border-radius: var(--radius-pill); border-color: var(--border); color: var(--text-muted); }
+
+/* Bottom sheets / dialogs float: radius-xl, overlay shadow, dimmed backdrop. */
+.sheet-card { border-radius: var(--radius-xl); background: var(--surface-raised); border-color: var(--border); box-shadow: var(--shadow-overlay); }
+
+::selection { background: color-mix(in srgb, var(--brand-sand) 40%, transparent); }
+
+/* Header: app icon (28px fixed artwork) + app name in title-3. */
+.brand { font-family: var(--font-display); font-size: 17px; line-height: 24px; font-weight: 600; letter-spacing: 0; color: var(--text); gap: var(--space-2); }
+.brand > img.brand-mark { width: 28px; height: 28px; border-radius: var(--radius-icon); fill: none; stroke: none; flex: 0 0 auto; }
+
+/* Top bar on every app: matte surface, hairline, no glass. */
+.topbar { background: var(--surface); border-bottom: 1px solid var(--border); -webkit-backdrop-filter: none; backdrop-filter: none; }
+/* Bottom bar / rail: surface, active tab text with a Sand icon. */
+.nav { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.nav a.is-active, .nav a[aria-current="page"] { color: var(--text); background: var(--surface-hover); }
+.nav a.is-active svg, .nav a[aria-current="page"] svg { color: var(--accent-text); }
+
+/* Links: inline links are Sky; a title that is a link reads as a title. */
+.text-link { color: var(--link); }
+:is(h1, h2, h3) a.text-link, :is(h1, h2, h3) > a:only-child { color: var(--text); text-decoration: none; }
+:is(h1, h2, h3) a.text-link:hover, :is(h1, h2, h3) > a:only-child:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* Phones: the app icon in the header is never smaller than the header's buttons. */
+@media (max-width: 719px) {
+  .topbar .brand > img.brand-mark,
+  .topbar .sp-lockup img { width: 40px; height: 40px; }
+}
+@media (max-width: 420px) {
+  .topbar .brand > img.brand-mark,
+  .topbar .sp-lockup img { width: 36px; height: 36px; }
+}
+
+/* Header Refresh (the app's primary action) is the same size as the other header buttons. */
+.topbar .btn-refresh { height: 40px; min-height: 40px; min-width: 40px; border-radius: var(--radius-md); }
+@media (max-width: 719px) {
+  /* Icon-only on phones; the label stays for screen readers. */
+  .topbar .btn-refresh { width: 40px; padding: 0; }
+  .topbar .btn-refresh span {
+    display: block; position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+  }
+}
+@media (max-width: 420px) {
+  .topbar .btn-refresh { width: 36px; height: 36px; min-height: 36px; min-width: 36px; }
+}

@@ -39,21 +39,12 @@
     var pref = readPref("stonepi-theme", ["newscast-theme", "fileserve-theme", "eventtrakr-theme"], "system");
     var dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     var theme = pref === "system" ? (dark ? "dark" : "light") : pref;
-    var palette = readPref(
-      "stonepi-palette",
-      ["newscast-palette", "fileserve-palette", "eventtrakr-palette"],
-      "default"
-    );
-    if (!/^(default|ocean|forest|slate)$/.test(palette)) palette = "default";
     try {
-      localStorage.setItem("stonepi-palette", palette);
       localStorage.setItem("stonepi-theme", pref);
     } catch (e) {}
-    writeCookie("stonepi-palette", palette);
     writeCookie("stonepi-theme", pref);
     document.documentElement.dataset.theme = theme;
     document.documentElement.dataset.themePref = pref;
-    document.documentElement.dataset.palette = palette;
     document.documentElement.style.colorScheme = theme;
 
     document.documentElement.dataset.viewHome = readView(

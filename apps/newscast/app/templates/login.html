@@ -7,12 +7,13 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="{{ homescreen_name or 'NewsCast' }}" />
-    <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.svg" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <title>{{ t("Sign in") }} · NewsCast</title>
     {% include "_theme_boot.html" %}
-    <link rel="stylesheet" href="/assets/fonts/fonts.css?v={{ fonts_rev }}" />
+    {% from "stonepi/head.html" import brand_head, brand_tail %}
+    {{ brand_head("newscast", fonts_rev) }}
     <link rel="stylesheet" href="/static/css/app.css?v={{ app_version }}-{{ asset_rev }}" />
+    {{ brand_tail(fonts_rev) }}
   </head>
   <body class="login-body">
     <div class="login-shell">

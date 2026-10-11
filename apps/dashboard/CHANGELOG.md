@@ -1,5 +1,26 @@
 # Changelog — Dashboard
 
+## 0.2.0 — 2026-10-11
+
+### Changed
+- **Home on phones fits on one screen** (iPhone 13 mini included): Cards become a 3-across home-screen grid of app icons with their names, the greeting is tighter, and nothing needs scrolling. List and Icons layouts from View options still apply.
+- **Alias:** Home greets you by your alias (the account's display name) exactly as set, never your username or full name. Set your own under Settings → General → Appearance ("Your name on Home"); admins can edit anyone's on Users (it was only settable when an account was created).
+- **New look** (StonePi design system): Home shows the date, your welcome message and Your apps as cards with the app icons; Settings → General → Appearance has Theme and the welcome message (palettes and App colours removed); Health widgets with meters; fixed app icons on Health, Services, Users and Updates; new sidebar and header.
+- **Shared StonePi header:** the name pill, the light/dark/system buttons and the sign-out icon are replaced by the same app switcher and avatar menu as every app (appearance and Log out live in the avatar menu).
+- **Bell opens a small panel:** an overview of your alerts across all apps (what's on, grouped by app, and your last five notifications with whether each reached your phone), or, with nothing set up or switched on, a message and a button to Notifications. A dot marks a new alert since you last opened it.
+
+### Fixed
+- **Health said "ntfy off" while Phone alerts worked.** It still looked for a household ntfy topic, which went away when topics became per person; it now follows Notify's own connected switch. The Notify card also says whether the Car Thing panel is on, alongside TRMNL. Memory, Temperature, Uptime, Notify, Hardware & time and Recent errors get their own icons instead of the shared placeholder.
+- **Users: one tap on User on your own page demoted you** (the Role switch autosaves). Your own Role switch is now locked, Disable and Delete are hidden on your own page, and a save without a role field no longer counts as "User".
+- **Personal alerts page moved to `/me/notifications`.** Browsers that visited before the Notifications → Notify rename had cached a permanent redirect from `/notifications` to Notify, so the bell (and typing the address) opened Notify's admin page on `stonepi.home`/`stonepi.local` but not on the IP. The bell and all links use the new address; the old one now sends a temporary redirect to it.
+
+### Added
+- Home → Reorder: **Default order** puts the tiles back in the platform order and saves it.
+
+### Changed
+- **Settings → Vault redesigned as one list.** Each secret appears once (status, env var name and action on the same row) instead of across Credential status, the add form and Stored secrets. **Add value** / **Replace** opens a password field under that row; no dropdown. A summary shows "x of y secrets set" with **All / Missing / Set** filters, and each group (Platform, AI, NewsCast, Data providers, Calendars) has its own count. The household ntfy token and TRMNL webhooks link to **Phone alerts** / **Displays** instead of being edited here. **Custom secret** has its own button (inline on desktop, a popup on phone and tablet); custom keys, extra Display webhooks and legacy keys are listed under **Other stored secrets**.
+- Default Home order (anyone who hasn't reordered): NewsCast, EventTrakr, SportGuide, PriceScout, PriceWatch, Pinboard, Library, FileServe, Studio (`DEFAULT_LAUNCHER_ORDER` in `stonepi_auth`; catalog order is unchanged).
+
 ## 0.1.9 — 2026-10-04
 
 _Platform 0.1.9._

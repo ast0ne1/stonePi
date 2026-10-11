@@ -24,16 +24,7 @@ if (typeof ResizeObserver === "function") {
 }
 
 const THEME_KEY = "stonepi-theme";
-const PALETTE_KEY = "stonepi-palette";
 const LEGACY_THEME_KEYS = ["newscast-theme", "fileserve-theme", "eventtrakr-theme"];
-const LEGACY_PALETTE_KEYS = ["newscast-palette", "fileserve-palette", "eventtrakr-palette"];
-const PALETTES = ["default", "ocean", "forest", "slate"];
-const THEME_COLORS = {
-  default: { light: "#f3eee4", dark: "#12100d" },
-  ocean: { light: "#e7eef5", dark: "#0c141c" },
-  forest: { light: "#eef1e6", dark: "#10140d" },
-  slate: { light: "#ececee", dark: "#121314" },
-};
 
 function readCookie(name) {
   const match = document.cookie.match(
@@ -76,20 +67,15 @@ function resolvedTheme(pref) {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-function savedPalette() {
-  const value = readShared(PALETTE_KEY, LEGACY_PALETTE_KEYS, "default");
-  return PALETTES.includes(value) ? value : "default";
-}
 
-function applyTheme(pref, palette) {
+function applyTheme(pref) {
   const theme = resolvedTheme(pref);
-  const chosen = palette || savedPalette();
   document.documentElement.dataset.theme = theme;
   document.documentElement.dataset.themePref = pref;
-  document.documentElement.dataset.palette = chosen;
   document.documentElement.style.colorScheme = theme;
   const meta = document.querySelector("[data-theme-color]");
-  if (meta) meta.setAttribute("content", THEME_COLORS[chosen][theme]);
+  var color = getComputedStyle(document.documentElement).getPropertyValue("--theme-meta").trim();
+    if (meta && color) meta.setAttribute("content", color);
 }
 
 const savedTheme = readShared(THEME_KEY, LEGACY_THEME_KEYS, "system");
@@ -220,7 +206,9 @@ function applyIngestStatus(data) {
   }
   if (ingestWasRunning && !running && document.querySelector("[data-briefing-list]")) {
     ingestWasRunning = false;
-    window.location.reload();
+    refreshBriefingList().then((ok) => {
+      if (!ok) window.location.reload();
+    });
     return;
   }
   ingestWasRunning = running;
@@ -262,7 +250,7 @@ function setActivityBanner(text, { busy = false, error = false, reader = "" } = 
   banner.classList.toggle("is-error", error);
 }
 
-const QUEUE_STATES = ["is-waiting", "is-sending", "is-retry", "is-sent", "is-failed"];
+const QUEUE_STATES = ["is-waiting", "is-sending", "is-retry", "is-missed", "is-sent", "is-failed"];
 
 function applyQueueStatus(reader) {
   // Reader → Send → Queue: refresh each row's status line in place. Rows that have left
@@ -312,12 +300,11 @@ function applyActivity(data) {
   if (activityState.ingestKey && activityState.ingestKey !== ingestKey && activityState.ingestRunning && !ingest.running) {
     if (ingest.last_error) toast(ingest.last_error, "error");
     else if (ingest.last_message) toast(ingest.last_message, "ok");
-    const created = Number(ingest.last_new_stories || 0);
-    const onBriefing = /^\/(\?|$)/.test(window.location.pathname + window.location.search) || window.location.pathname === "/";
-    if (created > 0 && onBriefing) {
-      window.setTimeout(() => window.location.reload(), 600);
-    }
+    // The Briefing's list is swapped in place by applyIngestStatus when the run ends.
   }
+  const savedSoFar = Number(ingest.new_so_far || 0);
+  if (ingest.running && savedSoFar > activityState.newSoFar) refreshBriefingList();
+  activityState.newSoFar = ingest.running ? savedSoFar : 0;
   activityState.ingestRunning = Boolean(ingest.running);
   activityState.ingestKey = ingestKey;
 
@@ -368,6 +355,8 @@ const activityState = {
   ingestRunning: Boolean(document.querySelector("[data-refresh]")?.classList.contains("is-busy")),
   ingestKey: "",
   recentKey: "",
+  // Stories the running refresh has saved that this page already shows.
+  newSoFar: 0,
 };
 let ingestWasRunning = activityState.ingestRunning;
 let activityTimer = null;
@@ -477,49 +466,54 @@ document.querySelectorAll("select[data-autosubmit]").forEach((select) => {
   });
 });
 
-document.querySelectorAll("form").forEach((form) => {
-  if (form.dataset.bound || form.dataset.native != null) return;
-  form.dataset.bound = "1";
-  form.addEventListener("submit", async (event) => {
-    if (form.method.toLowerCase() !== "post") return;
-    event.preventDefault();
-    if (form.dataset.confirm) {
-      const ok = await askConfirm({
-        title: form.dataset.confirm,
-        body: form.dataset.confirmDetail || "",
-        okLabel: form.dataset.confirmOk || t("Remove"),
-      });
-      if (!ok) return;
-    }
-    const body = new FormData(form);
-    const button = form.querySelector("[type=submit]");
-    const originalLabel = button?.textContent;
-    showFormError(form, "");
-    if (button) {
-      button.disabled = true;
-      if (form.dataset.busyLabel) button.textContent = form.dataset.busyLabel;
-    }
-    try {
-      const action = form.getAttribute("action") || form.action;
-      const data = await send(action, { method: "POST", body });
-      if (data.reauth) {
-        window.location.href = withPrefix("/login");
-        return;
+// POST forms submit in the background and reload; bindPostForms runs again on content
+// swapped in later (the Briefing list during a refresh). data-bound keeps it to once per form.
+function bindPostForms(scope = document) {
+  scope.querySelectorAll("form").forEach((form) => {
+    if (form.dataset.bound || form.dataset.native != null) return;
+    form.dataset.bound = "1";
+    form.addEventListener("submit", async (event) => {
+      if (form.method.toLowerCase() !== "post") return;
+      event.preventDefault();
+      if (form.dataset.confirm) {
+        const ok = await askConfirm({
+          title: form.dataset.confirm,
+          body: form.dataset.confirmDetail || "",
+          okLabel: form.dataset.confirmOk || t("Remove"),
+        });
+        if (!ok) return;
       }
-      toastAfterReload(data.message || "Saved", "ok");
-      document.querySelectorAll("[data-filter-root]").forEach((root) => writeStoredFilters(root));
-      window.location.reload();
-    } catch (error) {
-      showFormError(form, error.message);
-      toast(error.message, "error");
-    } finally {
+      const body = new FormData(form);
+      const button = form.querySelector("[type=submit]");
+      const originalLabel = button?.textContent;
+      showFormError(form, "");
       if (button) {
-        button.disabled = false;
-        if (originalLabel) button.textContent = originalLabel;
+        button.disabled = true;
+        if (form.dataset.busyLabel) button.textContent = form.dataset.busyLabel;
       }
-    }
+      try {
+        const action = form.getAttribute("action") || form.action;
+        const data = await send(action, { method: "POST", body });
+        if (data.reauth) {
+          window.location.href = withPrefix("/login");
+          return;
+        }
+        toastAfterReload(data.message || "Saved", "ok");
+        document.querySelectorAll("[data-filter-root]").forEach((root) => writeStoredFilters(root));
+        window.location.reload();
+      } catch (error) {
+        showFormError(form, error.message);
+        toast(error.message, "error");
+      } finally {
+        if (button) {
+          button.disabled = false;
+          if (originalLabel) button.textContent = originalLabel;
+        }
+      }
+    });
   });
-});
+}
+bindPostForms();
 
 function findSheet(name) {
   if (name) {
@@ -597,27 +591,39 @@ function applyFilterPick(option) {
   closeSheetEl(sheet);
 }
 
-document.querySelectorAll("[data-open-sheet]").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    const name = btn.getAttribute("data-open-sheet") || "";
-    const sheet = findSheet(name);
-    if (name === "filters") syncFilterPicker(sheet);
-    openSheetEl(sheet);
+function bindSheetOpeners(scope = document) {
+  scope.querySelectorAll("[data-open-sheet]").forEach((btn) => {
+    if (btn.dataset.sheetBound) return;
+    btn.dataset.sheetBound = "1";
+    btn.addEventListener("click", () => {
+      const name = btn.getAttribute("data-open-sheet") || "";
+      const sheet = findSheet(name);
+      if (name === "filters") syncFilterPicker(sheet);
+      openSheetEl(sheet);
+    });
   });
-});
+}
 
-document.querySelectorAll("[data-sheet]").forEach((sheet) => {
+function bindSheet(sheet) {
   sheet.querySelectorAll("[data-close-sheet]").forEach((closeBtn) => {
+    if (closeBtn.dataset.sheetBound) return;
+    closeBtn.dataset.sheetBound = "1";
     closeBtn.addEventListener("click", () => closeSheetEl(sheet));
   });
+  sheet.querySelectorAll("[data-filter-pick]").forEach((option) => {
+    if (option.dataset.sheetBound) return;
+    option.dataset.sheetBound = "1";
+    option.addEventListener("click", () => applyFilterPick(option));
+  });
+  if (sheet.dataset.sheetBound) return;
+  sheet.dataset.sheetBound = "1";
   sheet.addEventListener("click", (event) => {
     if (event.target === sheet) closeSheetEl(sheet);
   });
-});
+}
 
-document.querySelectorAll("[data-filter-pick]").forEach((option) => {
-  option.addEventListener("click", () => applyFilterPick(option));
-});
+bindSheetOpeners();
+document.querySelectorAll("[data-sheet]").forEach(bindSheet);
 
 function openFeedFromHash() {
   const match = /^#feed-(\d+)$/.exec(window.location.hash || "");
@@ -632,15 +638,19 @@ function openFeedFromHash() {
 openFeedFromHash();
 window.addEventListener("hashchange", openFeedFromHash);
 
-document.querySelectorAll("[data-story-expand]").forEach((button) => {
-  button.addEventListener("click", () => {
-    const card = button.closest(".story-card");
-    if (!card) return;
-    const open = !card.classList.contains("is-expanded");
-    card.classList.toggle("is-expanded", open);
-    button.setAttribute("aria-expanded", open ? "true" : "false");
-    button.setAttribute("aria-label", open ? "Collapse story" : "Expand story");
-  });
+function setStoryExpanded(card, open) {
+  const button = card.querySelector("[data-story-expand]");
+  card.classList.toggle("is-expanded", open);
+  if (!button) return;
+  button.setAttribute("aria-expanded", open ? "true" : "false");
+  button.setAttribute("aria-label", open ? "Collapse story" : "Expand story");
+}
+
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-story-expand]");
+  if (!button) return;
+  const card = button.closest(".story-card");
+  if (card) setStoryExpanded(card, !card.classList.contains("is-expanded"));
 });
 
 document.querySelectorAll("[data-keep-days]").forEach((select) => {
@@ -650,6 +660,27 @@ document.querySelectorAll("[data-keep-days]").forEach((select) => {
     custom.hidden = select.value !== "0";
   };
   select.addEventListener("change", sync);
+  sync();
+});
+
+// AI tags follow their dropdowns as soon as they change; Save is only needed to keep it.
+// Rules look like "summarize:1;translate:llm,global" (any matching field shows the tag).
+document.querySelectorAll("[data-ai-rules]").forEach((tag) => {
+  const scope = tag.closest("[data-ai-scope]") || tag.closest("form");
+  if (!scope) return;
+  const rules = tag.dataset.aiRules
+    .split(";")
+    .filter(Boolean)
+    .map((rule) => {
+      const [name, values = ""] = rule.split(":");
+      return { field: scope.querySelector(`[name="${name}"]`), values: values.split(",") };
+    })
+    .filter((rule) => rule.field);
+  if (!rules.length) return;
+  const sync = () => {
+    tag.hidden = !rules.some(({ field, values }) => values.includes(field.value));
+  };
+  rules.forEach(({ field }) => field.addEventListener("change", sync));
   sync();
 });
 
@@ -949,7 +980,15 @@ document.querySelectorAll("[data-filter-root]").forEach((root) => {
   restoreStoredFilters(root);
 });
 
-document.querySelectorAll("[data-chip-group]").forEach((group) => {
+function bindChipGroups(scope = document) {
+  scope.querySelectorAll("[data-chip-group]").forEach((group) => {
+    if (group.dataset.chipsBound) return;
+    group.dataset.chipsBound = "1";
+    bindChipGroup(group);
+  });
+}
+
+function bindChipGroup(group) {
   const chips = group.querySelectorAll("[data-filter]");
   const root = group.closest("[data-filter-root]") || document;
   chips.forEach((chip) => {
@@ -961,7 +1000,57 @@ document.querySelectorAll("[data-chip-group]").forEach((group) => {
       requestAnimationFrame(resetFilterScroll);
     });
   });
-});
+}
+bindChipGroups();
+
+// B3: the Briefing fills in while a refresh runs. Each source is saved as it finishes;
+// when the saved count rises (and once at the end) the story list is swapped in place,
+// keeping open stories open and the chosen category, instead of reloading the page.
+let briefingSwapInFlight = false;
+async function refreshBriefingList() {
+  const root = document.querySelector("[data-briefing-list]");
+  if (!root) return false;
+  if (briefingSwapInFlight) return true;
+  briefingSwapInFlight = true;
+  try {
+    const response = await fetch(window.location.href, {
+      credentials: "same-origin",
+      headers: { Accept: "text/html" },
+    });
+    if (!response.ok) return false;
+    const doc = new DOMParser().parseFromString(await response.text(), "text/html");
+    const fresh = doc.querySelector("[data-briefing-list]");
+    if (!fresh) return false;
+    const open = new Set([...root.querySelectorAll(".story-card.is-expanded")].map((card) => card.dataset.storyId));
+    root.innerHTML = fresh.innerHTML;
+    root.querySelectorAll(".story-card").forEach((card) => {
+      if (open.has(card.dataset.storyId)) setStoryExpanded(card, true);
+    });
+    const status = document.querySelector(".page-status-text");
+    const freshStatus = doc.querySelector(".page-status-text");
+    if (status && freshStatus) status.innerHTML = freshStatus.innerHTML;
+    // The category picker lists only categories that have stories: refresh it too.
+    const freshSheet = doc.querySelector('[data-sheet="filters"]');
+    const sheet = document.querySelector('[data-sheet="filters"]');
+    if (freshSheet && sheet) {
+      sheet.innerHTML = freshSheet.innerHTML;
+      bindSheet(sheet);
+    } else if (freshSheet) {
+      const added = document.importNode(freshSheet, true);
+      document.body.appendChild(added);
+      bindSheet(added);
+    }
+    bindChipGroups(root);
+    bindSheetOpeners(root);
+    bindPostForms(root);
+    restoreStoredFilters(root);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    briefingSwapInFlight = false;
+  }
+}
 
 const settingsRoot = document.querySelector("[data-settings-tabs]");
 if (settingsRoot) {

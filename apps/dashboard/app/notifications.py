@@ -12,6 +12,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from stonepi_auth.alerts import NOTIFICATIONS_PATH
 
 from app import services
 from app.routes import _html, _require_csrf, _user_or_login
@@ -35,10 +36,17 @@ def _back(msg: str = "", err: str = "") -> RedirectResponse:
         query = f"?err={quote(err, safe='')}"
     elif msg:
         query = f"?msg={quote(msg, safe='')}"
-    return RedirectResponse(f"/notifications{query}", status_code=303)
+    return RedirectResponse(f"{NOTIFICATIONS_PATH}{query}", status_code=303)
 
 
-@router.get("/notifications", response_class=HTMLResponse)
+@router.get("/notifications")
+def notifications_old_path(request: Request):
+    # Old address (links, bookmarks). 302 so no browser caches it the way the old 308 was.
+    query = f"?{request.url.query}" if request.url.query else ""
+    return RedirectResponse(f"{NOTIFICATIONS_PATH}{query}", status_code=302)
+
+
+@router.get(NOTIFICATIONS_PATH, response_class=HTMLResponse)
 def notifications_page(request: Request):
     user, redirected = _user_or_login(request, require_dashboard=False)
     if redirected:
@@ -68,21 +76,23 @@ def notifications_page(request: Request):
             "pi_clock": datetime.now().astimezone().strftime("%H:%M"),
             "notify_destinations_url": services.notify_page_url("alerts"),
             "notify_approvals_url": services.notify_page_url("alerts#choose"),
-            **(
-                {}
-                if unreachable
-                else {
-                    "alerts_bell_state": {
-                        "show": bool(state.get("allowed") and state.get("available")),
-                        "dot": bool(state.get("allowed") and state.get("available") and state.get("needs_setup")),
-                    }
-                }
-            ),
+            "alerts_bell_state": _bell(request, user, None if unreachable else state),
         },
     )
 
 
-@router.post("/notifications")
+def _bell(request: Request, user, fresh: dict | None) -> dict:
+    """Shared header state; this page's own fresh answer decides whether the bell shows."""
+    from app import routes
+
+    bell = routes._alerts_bell(request, user)
+    if fresh is not None:
+        bell["show"] = bool(fresh.get("allowed") and fresh.get("available"))
+    return bell
+
+
+@router.post(NOTIFICATIONS_PATH)
+@router.post("/notifications")  # forms on pages loaded before the move
 async def notifications_action(request: Request):
     from stonepi_contracts import forget_alerts_status
 

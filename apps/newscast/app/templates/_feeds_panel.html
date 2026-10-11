@@ -1,4 +1,7 @@
 {% from "_filter_icon.html" import filter_chip, filter_icon %}
+{% from "_ai_tag.html" import ai_tag %}
+{% set ai_translate_rule = "translate:llm" ~ (",global" if global_translate_llm else "") %}
+{% set ai_feed_rules = "summarize:1;" ~ ai_translate_rule %}
 {% set source_next = source_next|default('/sources?tab=feeds') %}
 
 <div data-filter-root>
@@ -23,7 +26,7 @@
     <h2 class="section-label">{{ label }}</h2>
     <ul class="group-card">
       {% for feed in group_feeds %}
-      <li id="feed-{{ feed.id }}" class="feed-row {% if not feed.enabled %}is-off{% endif %}" data-filter-item data-category="{{ feed.category }}">
+      <li id="feed-{{ feed.id }}" class="feed-row {% if not feed.enabled %}is-off{% endif %}" data-ai-scope data-filter-item data-category="{{ feed.category }}">
         <div class="feed-row-layout">
           <details class="feed-settings feed-row-details">
             <summary class="feed-row-summary">
@@ -37,9 +40,10 @@
                   <h3 class="feed-row-title">{{ feed.name }}</h3>
                   <p class="feed-row-meta">
                     {{ feed.meta_line }}
-                    {% if feed.translate %} · {{ 'LLM' if feed.translate_mode == 'llm' else ('Google' if feed.translate_mode == 'google' else 'Translate') }}{% endif %}
+                    {% if feed.translate %} · {{ 'AI translate' if feed.translate_mode == 'llm' else ('Google' if feed.translate_mode == 'google' else 'Translate') }}{% endif %}
                     {% if paywall_skip_enabled and feed.paywall_skip %} · PaywallSkip{% endif %}
                     {% if feed.is_muted %} · Muted{% endif %}
+                    {% if ai_on %}{{ ai_tag("summary or translation", ai_local, rules=ai_feed_rules, show=feed.ai_summary or feed.ai_translate) }}{% endif %}
                   </p>
                   <p class="feed-row-health feed-row-health-{{ feed.health }}">
                     <span class="feed-row-health-dot" aria-hidden="true"></span>
@@ -115,6 +119,17 @@
                   </label>
                   <p class="hint schedule-span">You can keep both. Only the selected source type is fetched (active: {{ feed.url }}).</p>
                   <label>
+                    Category
+                    <select name="category">
+                      {% for key, label in category_labels.items() %}
+                      <option value="{{ key }}" {% if feed.category == key %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                      {% if feed.category not in category_labels %}
+                      <option value="{{ feed.category }}" selected>{{ feed.category }}</option>
+                      {% endif %}
+                    </select>
+                  </label>
+                  <label>
                     Schedule
                     <select name="schedule_mode" data-schedule-mode>
                       <option value="global" {% if (feed.schedule_mode or 'global') == 'global' %}selected{% endif %}>Global ({{ global_interval_label }})</option>
@@ -130,7 +145,7 @@
                     </select>
                   </label>
                   <label>
-                    Article text
+                    <span>Article text{% if ai_on %}{{ ai_tag("summary", ai_local, rules="summarize:1", show=feed.ai_summary) }}{% endif %}</span>
                     <select name="summarize">
                       <option value="1" {% if feed.summarize != false %}selected{% endif %}>Summarise</option>
                       <option value="0" {% if feed.summarize == false %}selected{% endif %}>Full article</option>
@@ -145,7 +160,7 @@
                     </select>
                   </label>
                   <label>
-                    Language
+                    <span>Language{% if ai_on %}{{ ai_tag("translation", ai_local, rules=ai_translate_rule, show=feed.ai_translate) }}{% endif %}</span>
                     <select name="translate">
                       {% for value, label in translate_modes %}
                       <option value="{{ value }}" {% if feed.translate_mode == value %}selected{% endif %}>{{ label }}</option>
@@ -153,7 +168,8 @@
                     </select>
                   </label>
                   <p class="hint schedule-span">Strict cleanup drops ads and page furniture (like “Advertisement” or “Loading”) from article text. If it finds nothing on a page it uses Standard. Applies to stories fetched from now on.</p>
-                  <p class="hint schedule-span">Global translation is currently {{ 'LLM' if global_translate_provider == 'llm' else 'Google' }} (Settings → Translation).</p>
+                  <p class="hint schedule-span">Summarise {% if ai_on %}has AI write a short summary{% else %}shows the article’s own text trimmed to about 420 characters, because AI is off{% endif %}. Full article never uses AI for the text.</p>
+                  <p class="hint schedule-span">Global translation is currently {{ 'AI' if global_translate_provider == 'llm' else 'Google' }} (Settings → Translation).{% if not ai_on %} AI is not set up, so AI translation leaves stories as published.{% endif %}</p>
                   <label class="check schedule-span">
                     <input type="checkbox" name="paywall_skip" value="1" {% if feed.paywall_skip %}checked{% endif %} {% if not paywall_skip_enabled %}disabled{% endif %} />
                     Use PaywallSkip for View article links

@@ -6,16 +6,7 @@
 
   // --- Theme & Palette Management ---
   var THEME_KEY = "stonepi-theme";
-  var PALETTE_KEY = "stonepi-palette";
   var LEGACY_THEME_KEYS = ["newscast-theme", "fileserve-theme", "eventtrakr-theme"];
-  var LEGACY_PALETTE_KEYS = ["newscast-palette", "fileserve-palette", "eventtrakr-palette"];
-  var PALETTES = ["default", "ocean", "forest", "slate"];
-  var THEME_COLORS = {
-    default: { light: "#f3eee4", dark: "#12100d" },
-    ocean: { light: "#e7eef5", dark: "#0c141c" },
-    forest: { light: "#eef1e6", dark: "#10140d" },
-    slate: { light: "#ececee", dark: "#121314" },
-  };
 
   // nginx serves this file straight from disk, so the server-side prefix rewrite never
   // touches it. Apply the app prefix (/events) to root-absolute request paths here.
@@ -72,22 +63,15 @@
     return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   }
 
-  function savedPalette() {
-    var value = readShared(PALETTE_KEY, LEGACY_PALETTE_KEYS, "default");
-    return PALETTES.indexOf(value) >= 0 ? value : "default";
-  }
-
-  function applyTheme(pref, palette) {
+  function applyTheme(pref) {
     var theme = resolvedTheme(pref);
-    var chosen = palette || savedPalette();
     document.documentElement.dataset.theme = theme;
     document.documentElement.dataset.themePref = pref;
-    document.documentElement.dataset.palette = chosen;
     document.documentElement.style.colorScheme = theme;
     persistPref(THEME_KEY, pref);
-    persistPref(PALETTE_KEY, chosen);
     var meta = document.querySelector("[data-theme-color]");
-    if (meta && THEME_COLORS[chosen]) meta.setAttribute("content", THEME_COLORS[chosen][theme]);
+    var color = getComputedStyle(document.documentElement).getPropertyValue("--theme-meta").trim();
+    if (meta && color) meta.setAttribute("content", color);
   }
 
   var savedTheme = readShared(THEME_KEY, LEGACY_THEME_KEYS, "system");

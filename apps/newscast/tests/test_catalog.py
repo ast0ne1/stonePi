@@ -228,3 +228,64 @@ def test_seed_removes_unused_disabled_catalog_stubs(monkeypatch):
     catalog_service.seed_recommended_feeds(db)
     assert db.query(Feed).filter(Feed.catalog_id == "techcrunch").one_or_none() is None
     assert db.query(Feed).filter(Feed.catalog_id == "the-verge").one() is not None
+
+
+def _seed_db(monkeypatch):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from app.models import Base, User
+    from app.services import catalog as catalog_service
+    import app.services.users as users_service
+
+    engine = create_engine("sqlite://", future=True)
+    Base.metadata.create_all(engine)
+    db = Session(engine)
+    admin = User(id=1, username="admin", role="admin", password="x")
+    db.add(admin)
+    db.commit()
+    monkeypatch.setattr(catalog_service.env, "seed_recommended_feeds", True)
+    monkeypatch.setattr(users_service, "ensure_admin_user", lambda _db: admin)
+    return db, catalog_service
+
+
+def test_restart_keeps_household_category_and_translate(monkeypatch):
+    from app.models import Feed
+
+    db, catalog_service = _seed_db(monkeypatch)
+    catalog_service.seed_recommended_feeds(db)
+    feed = db.query(Feed).first()
+    feed.category = "technology"
+    feed.translate = not feed.translate
+    db.commit()
+    chosen = (feed.category, feed.translate)
+
+    catalog_service.seed_recommended_feeds(db)  # next start
+    db.refresh(feed)
+    assert (feed.category, feed.translate) == chosen
+
+
+def test_deleted_default_source_stays_deleted(monkeypatch):
+    from app.models import Feed
+
+    db, catalog_service = _seed_db(monkeypatch)
+    catalog_service.seed_recommended_feeds(db)
+    for feed in db.query(Feed).all():
+        db.delete(feed)
+    db.commit()
+
+    catalog_service.seed_recommended_feeds(db)  # next start, even with no sources left
+    assert db.query(Feed).count() == 0
+
+
+def test_existing_install_without_marker_is_not_reseeded(monkeypatch):
+    from app.models import Feed
+    from app.services import settings
+
+    db, catalog_service = _seed_db(monkeypatch)
+    db.add(Feed(user_id=1, name="Mine", url="https://example.com/rss", type="rss", category="news"))
+    db.commit()
+
+    catalog_service.seed_recommended_feeds(db)  # first start after upgrading
+    assert [feed.name for feed in db.query(Feed).all()] == ["Mine"]
+    assert settings.get_value(db, catalog_service.DEFAULT_FEEDS_SEEDED_KEY) == "1"

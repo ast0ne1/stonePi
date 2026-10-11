@@ -1,5 +1,13 @@
 # Changelog — Studio
 
+## 0.0.8 — 2026-10-11
+
+### Changed
+- **New look** (StonePi design system): Studio icon in the header and as favicon and home-screen icon; new colours, fonts, buttons and cards in light and dark; the old palettes are gone.
+- **New shared StonePi header.** The top bar now has the notifications bell, an app switcher (grid icon) and your avatar, the same as every StonePi app. Sign out moved into the avatar menu, under **Log out**, next to Light / Dark / System appearance and Manage account.
+- **Lighter bottom bar: Projects · Settings.** Home is replaced by the app switcher in the header; Create is now a floating **+** button on the Projects page (it still opens the same Create screen, now at `/new`, with a "← Projects" link back and the Projects tab highlighted). The "Start something new" tile is gone, so the + is the one way to start.
+- **Studio opens on Projects** once you have any; the first time (no projects yet) it still opens on the Create screen.
+
 ## 0.0.7 — 2026-10-04
 
 ### Security

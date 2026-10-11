@@ -9,8 +9,10 @@
   <meta name="apple-mobile-web-app-title" content="Notify" />
   <title>{% block title %}Notify · StonePi{% endblock %}</title>
   {% include "_theme_boot.html" %}
-    <link rel="stylesheet" href="/assets/fonts/fonts.css?v={{ fonts_rev }}" />
+    {% from "stonepi/head.html" import brand_head, brand_tail %}
+    {{ brand_head("notify", fonts_rev) }}
   <link rel="stylesheet" href="/static/css/app.css?v={{ app_version }}-{{ asset_rev }}" />
+  {{ brand_tail(fonts_rev) }}
 </head>
 <body>
   {% from "_filter_icon.html" import filter_icon %}

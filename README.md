@@ -8,16 +8,18 @@ StonePi is a private hub for your home on one Raspberry Pi. It brings you the ne
 
 ## Screenshots
 
-| | |
-|:---:|:---:|
-| ![Sign in](docs/screenshots/login.jpg) | ![Home launcher](docs/screenshots/home.jpg) |
-| *Shared sign-in* | *Home — drag-to-order launcher* |
-| ![Health](docs/screenshots/health.jpg) | ![Services](docs/screenshots/services.jpg) |
-| *Health — monitor host and apps* | *Services — enable / disable apps* |
-| ![Users](docs/screenshots/users.jpg) | ![Settings](docs/screenshots/settings.jpg) |
-| *Users — household accounts* | *Settings → General* |
+<p align="center">
+  <img src="docs/screenshots/home.jpg" alt="Home: a greeting and every app one tap away" width="250" />
+  <img src="docs/screenshots/health.jpg" alt="Health: apps, users, disk, backup, memory and temperature" width="250" />
+  <img src="docs/screenshots/services.jpg" alt="Services: each app's route and port, with on and off switches" width="250" />
+</p>
+<p align="center">
+  <img src="docs/screenshots/login.jpg" alt="The shared sign-in" width="250" />
+  <img src="docs/screenshots/users.jpg" alt="Users: household accounts" width="250" />
+  <img src="docs/screenshots/settings.jpg" alt="Settings: General, Network, Vault, Displays, Phone alerts, Automations" width="250" />
+</p>
 
-More images: [docs/screenshots/](docs/screenshots/).
+*Home, Health and Services; sign-in, Users and Settings. Every page works on a phone, in light or dark.*
 
 ## Apps
 
@@ -41,7 +43,7 @@ Always on; not Home tiles.
 
 | Part | Path | Role |
 |------|------|------|
-| **[Dashboard](apps/dashboard/README.md)** | `/` | Home launcher, **Health** (host and apps, updates live), **Services** (enable, start, stop, restart, logs) and admin **Settings**: Users, Network, Vault, Updates, Backup, Automations. |
+| **[Dashboard](apps/dashboard/README.md)** | `/` | Home launcher, **Health** (host and apps, updates live), **Services** (enable, start, stop, restart, logs), **Users**, and admin **Settings**: General, Network, Vault, Automations, Updates, Backup. |
 | **[Auth](apps/auth/README.md)** | `/auth/` | One household sign-in across every app. |
 | **[Notify](apps/notify/README.md)** | `/notify/` | Where apps' updates go: TRMNL wall displays, the Car Thing panel, and ntfy phone alerts. |
 | **[Car Thing](apps/carthing/README.md)** | (USB) | A Spotify Car Thing plugged into the Pi becomes a touch-and-dial panel: pages of widgets (System, clock and weather, sport, events, news, Pinboard) that turn on a timer or by button, a clock when idle, and service restarts behind an admin PIN. Set up under Notify → Displays → Car Thing. Ships with the platform. |
@@ -60,6 +62,7 @@ Admins add people under **Users**, choose which apps each person can open, and w
 
 | App | Permission | Default for members |
 |-----|------------|---------------------|
+| (all apps) | Phone alerts: personal ntfy alerts set up from the bell | off |
 | NewsCast | Add custom feeds · View status | off · off |
 | EventTrakr | Manage sources · Instagram & Facebook (paid lookups) · Share agenda publicly · Google Calendar sync | on · **off** · on · on |
 | PriceScout | Manage sources (stores, refresh) | off |
@@ -81,12 +84,12 @@ StonePi needs only the Pi and a phone or laptop. Add what fits your household; k
 | The paper on an e-reader | **[Xteink X3 / X4](https://www.xteink.com/products/xteink-x3)** with **[CrossPoint](https://crosspointreader.com/)**, or a Kobo with **[KOReader](https://koreader.rocks/)** | NewsCast → Reader ([setup](apps/newscast/README.md#e-reader)) |
 | A wall or fridge display | **[TRMNL](https://trmnl.com/)** | Notify → Displays: one Private Plugin per screen, webhook in Vault |
 | A desk or dash control panel | **Spotify Car Thing** with ADB-enabled firmware, on USB | Notify → Displays → Car Thing |
-| Phone alerts | **[ntfy](https://ntfy.sh/)** topic (hosted or self-hosted) | Notify → Destinations (`STONEPI_NTFY_TOKEN`) |
-| AI summaries and translation in NewsCast | **[OpenAI](https://platform.openai.com/api-keys)** key or a local **[Ollama](https://ollama.com/)** model | NewsCast → LLM / Translation (`OPENAI_API_KEY`); works without, using extracted text |
+| Phone alerts | **[ntfy](https://ntfy.sh/)** topic (hosted or self-hosted) | Notify → Phone alerts (`STONEPI_NTFY_TOKEN`) |
+| AI summaries and translation in NewsCast | **[OpenAI](https://platform.openai.com/api-keys)** key or a local **[Ollama](https://ollama.com/)** model | NewsCast → Settings → AI (`OPENAI_API_KEY`); works without, using extracted text |
 | Studio | **[Anthropic](https://console.anthropic.com/)** and/or OpenAI key | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, optional `STUDIO_LLM_BASE_URL` |
 | Facebook events and Instagram in EventTrakr | **[Bright Data](https://brightdata.com/)** | `BRIGHTDATA_API_KEY` |
 | Retailer trust scores in PriceWatch | Bright Data (Trustpilot) | `PRICEWATCH_BRIGHTDATA_API_KEY` |
-| Favourites in Google Calendar | A Google Cloud OAuth client | EventTrakr → Integrations (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) |
+| Favourites in Google Calendar | A Google Cloud OAuth client | EventTrakr → Settings → Calendar Integrations (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) |
 | Supermarket food-waste deals | Salling Group API token | PriceScout |
 | Remote access | **[Tailscale](https://tailscale.com/)** (installed by the installer) | Settings → Network |
 
@@ -152,7 +155,8 @@ packages/        stonepi_auth      sign-in, app catalog and permissions, Auth ro
                  stonepi_notify    Notify routing and delivery
                  stonepi_contracts event and widget contracts
                  stonepi_update    app updates
-                 stonepi_automations, stonepi_watch, stonepi_browser, stonepi_brand
+                 stonepi_brand     design system: tokens, fonts, logos, app icons
+                 stonepi_automations, stonepi_watch, stonepi_browser
 deploy/          install.sh, systemd units, nginx, firewall, backup, helpers,
                  INSTALL.md, SECURITY.md, RELEASE.md
 scripts/         run-dev, build_release_zips.py, copy-to-sd, migrations

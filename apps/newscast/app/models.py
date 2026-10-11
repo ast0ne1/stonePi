@@ -127,6 +127,8 @@ class Story(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     importance: Mapped[int | None] = mapped_column(Integer, nullable=True)
     content_lang: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    # The feed's own thumbnail for the story, used for the paper's cover photo.
+    image_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

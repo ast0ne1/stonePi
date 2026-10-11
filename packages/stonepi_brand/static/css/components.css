@@ -1,0 +1,87 @@
+/* StonePi components: read tokens.css variables only. */
+.sp-root{font-family:var(--font-sans);color:var(--text);-webkit-font-smoothing:antialiased}
+.sp-btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);height:40px;padding:0 var(--space-4);border-radius:var(--radius-md);border:1px solid transparent;font:600 14px/20px var(--font-sans);cursor:pointer;transition:background-color .14s ease-out,border-color .14s ease-out;text-decoration:none}
+.sp-btn:focus-visible,.sp-iconbtn:focus-visible,.sp-nav-item:focus-visible,.sp-search:focus-visible,.sp-seg button:focus-visible,.sp-appcard:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.sp-btn--primary{background:var(--primary);color:var(--primary-ink)}
+.sp-btn--primary:hover{background:var(--primary-hover)}
+.sp-btn--secondary{background:var(--surface-raised);color:var(--text);border-color:var(--border-control)}
+.sp-btn--secondary:hover{background:var(--surface-hover)}
+.sp-btn--ghost{background:none;color:var(--text-muted)}
+.sp-btn--ghost:hover{background:var(--surface-hover);color:var(--text)}
+.sp-btn--danger{background:var(--danger);color:var(--on-signal)}
+.sp-btn:disabled{opacity:.45;cursor:not-allowed}
+.sp-iconbtn{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:var(--radius-md);border:1px solid var(--border);background:var(--surface-raised);color:var(--text-muted);cursor:pointer}
+.sp-iconbtn:hover{color:var(--text);border-color:var(--border-control)}
+.sp-seg{display:inline-flex;gap:2px;padding:3px;border-radius:var(--radius-pill);background:var(--surface);border:1px solid var(--border)}
+.sp-seg button{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:var(--radius-pill);border:1px solid transparent;background:none;color:var(--text-muted);cursor:pointer}
+.sp-seg button[aria-pressed="true"]{background:var(--surface-raised);border-color:var(--border-control);color:var(--text)}
+.sp-nav{display:flex;flex-direction:column;gap:2px}
+.sp-nav-item{display:flex;align-items:center;gap:var(--space-3);height:40px;padding:0 var(--space-3);border-radius:var(--radius-md);color:var(--text-muted);font:600 14px/20px var(--font-sans);text-decoration:none}
+.sp-nav-item:hover{background:var(--surface-hover);color:var(--text)}
+.sp-nav-item[aria-current="page"]{background:var(--surface-hover);color:var(--text)}
+.sp-nav-item[aria-current="page"] svg{color:var(--accent-text)}
+.sp-search{display:flex;align-items:center;gap:var(--space-2);width:100%;max-width:420px;height:40px;padding:0 var(--space-2) 0 var(--space-3);border-radius:var(--radius-md);border:1px solid var(--border);background:var(--surface-raised);color:var(--text-faint);font:400 14px/20px var(--font-sans);cursor:pointer;text-align:left}
+.sp-search:hover{border-color:var(--border-control)}
+.sp-search span{flex:1}
+.sp-kbd{font:500 12px/16px var(--font-mono);color:var(--text-muted);padding:2px 6px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface)}
+.sp-card{background:var(--surface-raised);border:1px solid var(--border);border-radius:var(--radius-lg);padding:var(--space-5)}
+.sp-appcard{display:flex;gap:var(--space-4);align-items:flex-start;background:var(--surface-raised);border:1px solid var(--border);border-radius:var(--radius-lg);padding:var(--space-5);color:var(--text);text-decoration:none;transition:border-color .14s ease-out,box-shadow .14s ease-out}
+.sp-appcard:hover{border-color:var(--border-control);box-shadow:var(--shadow-raised)}
+.sp-appcard h3{margin:0;font:600 17px/24px var(--font-display)}
+.sp-appcard p{margin:4px 0 0;font:400 13px/18px var(--font-sans);color:var(--text-muted)}
+.sp-appcard .sp-meta{display:flex;align-items:center;gap:var(--space-3);margin-top:var(--space-3);font:400 12px/16px var(--font-mono);color:var(--text-faint)}
+.sp-tile{flex:none;display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:var(--radius-md)}
+.sp-tile--sand{background:var(--tint-sand-bg);color:var(--tint-sand-fg)}
+.sp-tile--moss{background:var(--tint-moss-bg);color:var(--tint-moss-fg)}
+.sp-tile--sky{background:var(--tint-sky-bg);color:var(--tint-sky-fg)}
+.sp-tile--ember{background:var(--tint-ember-bg);color:var(--tint-ember-fg)}
+.sp-tile--amethyst{background:var(--tint-amethyst-bg);color:var(--tint-amethyst-fg)}
+.sp-tile--stone{background:var(--tint-stone-bg);color:var(--tint-stone-fg)}
+.sp-label{font:600 12px/16px var(--font-sans);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)}
+.sp-widget{background:var(--surface-raised);border:1px solid var(--border);border-radius:var(--radius-lg);padding:var(--space-5);display:flex;flex-direction:column;gap:var(--space-4)}
+.sp-widget-head{display:flex;align-items:center;justify-content:space-between}
+.sp-meter{display:flex;flex-direction:column;gap:6px}
+.sp-meter-row{display:flex;justify-content:space-between;font:400 13px/18px var(--font-sans);color:var(--text-muted)}
+.sp-meter-row b{font:500 13px/18px var(--font-mono);color:var(--text)}
+.sp-meter-track{height:6px;border-radius:var(--radius-pill);background:var(--surface-hover);overflow:hidden}
+.sp-meter-fill{height:100%;border-radius:var(--radius-pill);background:var(--brand-sand)}
+.sp-badge{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:var(--radius-pill);font:600 12px/16px var(--font-sans)}
+.sp-badge::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
+.sp-badge--ok{background:var(--tint-moss-bg);color:var(--success-text)}
+.sp-badge--warn{background:var(--tint-ember-bg);color:var(--warning-text)}
+.sp-badge--error{background:var(--tint-rust-bg);color:var(--danger-text)}
+.sp-badge--unknown{background:var(--tint-stone-bg);color:var(--text-muted)}
+
+/* ---- StonePi additions (same rules as the design system's guidelines) ---- */
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.sp-btn--danger:hover{filter:brightness(1.08)}
+.sp-btn--sm{height:32px;padding:0 var(--space-3)}
+[data-theme="light"] .sp-meter-fill{background:var(--brand-stone-deep)}
+.sp-meter-fill.is-warn{background:var(--warning)}
+.sp-meter-fill.is-danger{background:var(--danger)}
+/* Fixed app / system icon artwork (22% squircle drawn into the SVG). */
+.sp-appicon{display:block;flex:none;width:44px;height:44px;border-radius:22%}
+.sp-appicon--sm{width:28px;height:28px}
+.sp-appicon--md{width:32px;height:32px}
+.sp-appicon--lg{width:56px;height:56px}
+/* Mark + wordmark lockup (header uses the compact form). */
+.sp-lockup{display:inline-flex;align-items:center;gap:var(--space-2);color:var(--text);text-decoration:none;min-width:0}
+.sp-lockup img,.sp-lockup svg{flex:none;width:28px;height:28px}
+.sp-wordmark{font:var(--type-wordmark);letter-spacing:var(--type-wordmark-tracking);color:var(--text);white-space:nowrap}
+.sp-wordmark b{font-weight:inherit;color:var(--accent-text)}
+.sp-tagline{font:var(--type-label);letter-spacing:var(--type-label-tracking);text-transform:uppercase;color:var(--text-muted)}
+.sp-mark-light{display:none}
+[data-theme="light"] .sp-mark-light{display:block}
+[data-theme="light"] .sp-mark-dark{display:none}
+.sp-mono{font:var(--type-mono)}
+.sp-appgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--card-min),1fr));gap:var(--space-4)}
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{transition-duration:0s !important;animation-duration:0s !important;animation-iteration-count:1 !important}}
+/* Callout: a short note set apart from the text. Neutral by default; --warning for things
+   that trip people up. Outline icon + words, no emoji, no side stripe. */
+.sp-callout{display:flex;gap:var(--space-3);align-items:flex-start;padding:var(--space-3) var(--space-4);border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface-raised);color:var(--text);font:var(--type-body)}
+.sp-callout>svg{flex:none;width:20px;height:20px;margin-top:1px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;color:var(--text-muted)}
+.sp-callout--warning{background:var(--tint-ember-bg);border-color:transparent}
+.sp-callout--warning>svg{color:var(--warning-text)}
+.sp-callout p{margin:0}
+.sp-callout p+p{margin-top:var(--space-2)}
+.sp-callout strong{font-weight:600}

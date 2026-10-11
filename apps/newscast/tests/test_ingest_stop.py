@@ -1,6 +1,6 @@
 """Stop button: only a manual global refresh can be stopped; work in progress is kept or rolled back."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import create_engine
@@ -40,7 +40,8 @@ def _item(feed: Feed, n: int = 1) -> dict:
         "title": HEADLINES[feed.id],
         "url": f"https://example.com/{feed.id}/{n}",
         "excerpt": "A short excerpt for the test.",
-        "published_at": datetime(2026, 9, 29, tzinfo=timezone.utc),
+        # Relative to now: a fixed date ages past the 7-day retention and gets purged.
+        "published_at": datetime.now(timezone.utc) - timedelta(hours=1),
         "source": feed.name,
     }
 

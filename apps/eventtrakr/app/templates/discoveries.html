@@ -1,20 +1,20 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
 
-{% block title %}Discoveries · EventTrakr{% endblock %}
+{% block title %}Review · EventTrakr{% endblock %}
 
 {% block content %}
 <section class="hero">
   <div class="hero-row hero-row-inline">
-    <h1>Discoveries</h1>
-    <a href="/sources/social" class="btn btn-outline btn-with-icon">{{ icon('sources') }} <span>Accounts</span></a>
+    <h1>Review</h1>
+    <a href="/sources/social" class="btn btn-outline btn-sm btn-with-icon">{{ icon('sources') }} <span>Manage tracked accounts</span></a>
   </div>
   <div class="page-status">
-    <p class="page-status-text">Events spotted from Instagram that need a decision — or were added automatically.</p>
+    <p class="page-status-text">Events found by Instagram tracking. Approve one to turn it into an event.</p>
   </div>
 </section>
 
-<div class="chips" role="tablist" aria-label="Discovery filters" style="margin-bottom: 16px;">
+<div class="chips" role="tablist" aria-label="Review filters" style="margin-bottom: 16px;">
   <a class="chip-btn{% if status_filter == 'open' %} is-active{% endif %}" href="/discoveries?status=open">Open</a>
   <a class="chip-btn{% if status_filter == 'candidate' %} is-active{% endif %}" href="/discoveries?status=candidate">Candidates</a>
   <a class="chip-btn{% if status_filter == 'discovered' %} is-active{% endif %}" href="/discoveries?status=discovered">Auto-added</a>
@@ -53,18 +53,18 @@
       <p class="discovery-excerpt">{{ d.extracted_text[:280] }}{% if d.extracted_text|length > 280 %}…{% endif %}</p>
       {% endif %}
       {% if post and post.post_url %}
-      <p><a href="{{ post.post_url }}" target="_blank" rel="noopener">{{ icon('external-link') }} View original post</a></p>
+      <p><a class="discovery-link" href="{{ post.post_url }}" target="_blank" rel="noopener">{{ icon('external-link') }} View original post</a></p>
       {% endif %}
     </div>
     {% if d.status in ('candidate', 'discovered') %}
     <div class="row-actions discovery-actions">
       {% if not d.event_id or d.status == 'candidate' %}
       <form method="post" action="/discoveries/{{ d.id }}/confirm">
-        <button type="submit" class="btn btn-primary btn-sm btn-with-icon">{{ icon('plus') }} Add Event</button>
+        <button type="submit" class="btn btn-primary btn-sm btn-with-icon">{{ icon('check') }} Approve</button>
       </form>
       {% endif %}
       <form method="post" action="/discoveries/{{ d.id }}/ignore">
-        <button type="submit" class="btn btn-ghost btn-sm">Ignore</button>
+        <button type="submit" class="btn btn-ghost btn-sm btn-with-icon">{{ icon('close') }} Reject</button>
       </form>
     </div>
     {% endif %}
@@ -73,9 +73,13 @@
 </ul>
 {% else %}
 <div class="empty-state">
-  <p>No discoveries here yet.</p>
-  <p class="form-hint">Track Instagram accounts under Sources → Instagram, turn on tracking in Settings → Discovery, then check back after the next poll.</p>
-  <a class="btn btn-primary btn-with-icon" href="/sources/social">{{ icon('plus') }} Track an account</a>
+  {% if status_filter == 'open' %}
+  <p>You're all caught up.</p>
+  <p class="form-hint">New events from the Instagram accounts you track land here for a decision.</p>
+  <a class="btn btn-outline btn-sm btn-with-icon btn-fit" href="/sources/social">{{ icon('sources') }} Manage tracked accounts</a>
+  {% else %}
+  <p>Nothing here.</p>
+  {% endif %}
 </div>
 {% endif %}
 {% endblock %}

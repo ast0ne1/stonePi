@@ -30,7 +30,7 @@ SETTINGS_TABS = [
     ("about", "About"),
 ]
 SETTINGS_LEDES = {
-    "general": "Default location and your account password. Colour palette is under StonePi → Settings → General.",
+    "general": "Default location and your account password. Theme is under Appearance in your avatar menu.",
     "privacy": "What others can see on your public calendar and favourites.",
     "schedule": "How often sources sync across EventTrakr.",
     "notifications": "Phone alerts for your favourites and followed accounts, and how early they arrive.",
@@ -60,7 +60,14 @@ SETTINGS_HUB_SUBTEXTS = {
     "about": "Version and project links.",
 }
 SETTINGS_HUB_LEDE = "Everything that shapes your calendar, in one place."
+# Settings opens on the app's own configuration: its Sources pages (not tabs here).
+SETTINGS_HUB_LINKS = {"sources": "/sources", "instagram": "/sources/social"}
+SETTINGS_LINK_ROWS = {
+    "sources": ("Sources", "All sources and their settings."),
+    "instagram": ("Instagram tracking", "Accounts that feed Review."),
+}
 SETTINGS_GROUPS = (
+    ("sources", "Sources", ("sources", "instagram")),
     ("your_calendar", "Your calendar", ("privacy", "calendar", "notifications")),
     ("sources_sync", "Sources & sync", ("schedule", "filters", "categories", "discovery", "providers")),
     ("app", "App", ("general", "network", "users", "update", "about")),
@@ -70,6 +77,8 @@ SETTINGS_TAB_ICONS = {
     "privacy": "lock",
     "schedule": "refresh",
     "notifications": "bell",
+    "sources": "sources",
+    "instagram": "instagram",
     "filters": "filter",
     "categories": "tag",
     "calendar": "calendar",
@@ -103,8 +112,10 @@ def _settings_groups_for(user) -> list[tuple[str, str, list[tuple[str, str, str]
     for group_id, label, tab_keys in SETTINGS_GROUPS:
         rows = [
             (key, allowed[key], SETTINGS_HUB_SUBTEXTS.get(key, SETTINGS_LEDES.get(key, "")))
-            for key in tab_keys
             if key in allowed
+            else (key, *SETTINGS_LINK_ROWS[key])
+            for key in tab_keys
+            if key in allowed or key in SETTINGS_LINK_ROWS
         ]
         if rows:
             groups.append((group_id, label, rows))
@@ -184,6 +195,7 @@ def view_settings():
         settings_groups=_settings_groups_for(user),
         settings_hub=settings_hub,
         settings_hub_lede=SETTINGS_HUB_LEDE,
+        settings_hub_links=SETTINGS_HUB_LINKS,
         settings_tab_icons=SETTINGS_TAB_ICONS,
         active_tab=active_tab,
         settings_lede=SETTINGS_HUB_LEDE if settings_hub else SETTINGS_LEDES.get(active_tab, ""),

@@ -224,6 +224,7 @@ def _csrf_response(request: Request, name: str, ctx: dict) -> HTMLResponse:
             session_cookie=request.cookies.get(COOKIE_NAME),
             home_url=ctx["stonepi_home_url"],
             enabled=bool(_session_secret()),
+            app_id="pricewatch",
         ),
     )
     response = templates.TemplateResponse(request, name, ctx)
@@ -370,6 +371,7 @@ def dashboard(request: Request, msg: str | None = None, error: str | None = None
         {
             "user": user,
             "active": "watches",
+            "show_add_fab": True,
             "watches": watches,
             "watch_groups": groups,
             "counts": counts,
@@ -468,7 +470,7 @@ def watch_new_get(
         "watch_new.html",
         {
             "user": user,
-            "active": "add",
+            "active": "watches",
             "q": q or "",
             "hits": hits,
             "selected": selected,
@@ -527,7 +529,7 @@ def compare(
         "compare.html",
         {
             "user": user,
-            "active": "add",
+            "active": "watches",
             "q": q or "",
             "product": product,
             "offers": rows,

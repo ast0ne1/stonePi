@@ -15,8 +15,8 @@ npx playwright install chromium
 Set a base URL that already has a session cookie if routes require auth
 (or point at public login only):
 
-```bash
-set STONEPI_BASE_URL=http://127.0.0.1:8000
+```powershell
+$env:STONEPI_BASE_URL = "http://127.0.0.1:8010"
 npx playwright test
 ```
 

@@ -85,14 +85,15 @@
   </div>
 {%- endmacro %}
 
-{% macro role_seg(name='is_admin', admin=false, id_prefix='role') -%}
-<div class="seg" role="radiogroup" aria-label="Role">
+{#- ``locked``: your own account. Disabled radios aren't submitted, so saving never changes the role. -#}
+{% macro role_seg(name='is_admin', admin=false, id_prefix='role', locked=false) -%}
+<div class="seg{% if locked %} is-locked{% endif %}" role="radiogroup" aria-label="Role"{% if locked %} aria-disabled="true"{% endif %}>
   <label class="seg-opt">
-    <input type="radio" name="{{ name }}" value="0" {% if not admin %}checked{% endif %} data-role-seg="user" />
+    <input type="radio" name="{{ name }}" value="0" {% if not admin %}checked{% endif %} data-role-seg="user"{% if locked %} disabled{% endif %} />
     <span>User</span>
   </label>
   <label class="seg-opt">
-    <input type="radio" name="{{ name }}" value="1" {% if admin %}checked{% endif %} data-role-seg="admin" />
+    <input type="radio" name="{{ name }}" value="1" {% if admin %}checked{% endif %} data-role-seg="admin"{% if locked %} disabled{% endif %} />
     <span>Admin</span>
   </label>
 </div>
@@ -157,6 +158,7 @@
   <div class="users-detail-pane" data-users-detail-pane>
     {% for person in people %}
     {% set granted_count = apps|length if person.is_admin else (person.apps|length + (0 if 'dashboard' in person.apps else 1)) %}
+    {% set is_self = user is defined and user and person.id == user.user_id %}
     <article
       class="users-detail card{% if loop.first %} is-active{% endif %}"
       data-user-detail="{{ person.id }}"
@@ -183,6 +185,7 @@
           <button class="btn btn-ghost btn-with-icon" type="button" data-reset-password="{{ person.id }}">
             {{ svg('key') }} Reset password
           </button>
+          {% if not is_self %}
           <div class="users-more" data-users-more>
             <button class="icon-btn" type="button" data-users-more-toggle aria-expanded="false" aria-haspopup="true" aria-label="More actions">
               {{ svg('more') }}
@@ -196,6 +199,7 @@
               </button>
             </div>
           </div>
+          {% endif %}
         </div>
       </header>
 
@@ -208,13 +212,25 @@
       >
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
         <input type="hidden" name="action" value="save" />
-        <input type="hidden" name="display_name" value="{{ person.display_name }}" />
         <input type="hidden" name="enabled" value="{{ '1' if person.enabled else '0' }}" data-enabled-field />
 
         <section class="users-section">
+          <h3 class="section-label">Alias</h3>
+          <label class="users-alias">
+            <span class="visually-hidden">Alias for {{ person.username }}</span>
+            <input type="text" name="display_name" value="{{ person.display_name }}" maxlength="40" placeholder="{{ person.username }}" autocomplete="off" />
+          </label>
+          <p class="muted users-hint">A short name, e.g. Adam. Home greets them with it.</p>
+        </section>
+
+        <section class="users-section">
           <h3 class="section-label">Role</h3>
-          {{ role_seg(admin=person.is_admin) }}
+          {{ role_seg(admin=person.is_admin, locked=is_self) }}
+          {% if is_self %}
+          <p class="muted users-hint">This is you. Another admin can change your role, or disable or delete your account.</p>
+          {% else %}
           <p class="muted users-hint">Admins can manage users, services and settings.</p>
+          {% endif %}
         </section>
 
         <section class="users-section">
@@ -250,7 +266,7 @@
     <form method="post" action="{{ users_form_base|default('/users') }}" class="people-form users-create-form" data-create-form>
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       <div class="users-drawer-body">
-        <label>Display name <input name="display_name" placeholder="Jane" autocomplete="nickname" /></label>
+        <label>Alias <input name="display_name" placeholder="Jane" maxlength="40" autocomplete="nickname" /></label>
         <label>
           Username
           <input name="username" required autocapitalize="none" spellcheck="false" placeholder="jane" autocomplete="username" />

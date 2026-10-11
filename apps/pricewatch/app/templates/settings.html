@@ -51,7 +51,7 @@
 
 <div class="stack settings-panel" id="settings-panel-general" role="tabpanel" data-settings-panel="general" aria-labelledby="settings-tab-general"{% if settings_tab != 'general' %} hidden{% endif %}>
   {% if sso %}
-  <p class="hint settings-panel-span">Your password and colour palette are under <a class="text-link" href="{{ stonepi_home_url }}/settings?tab=general">StonePi → Settings → General</a>.</p>
+  <p class="hint settings-panel-span">Your password and welcome message are under <a class="text-link" href="{{ stonepi_home_url }}/settings?tab=general">StonePi → Settings → General</a>.</p>
   {% endif %}
   <form method="post" action="/settings/general" class="card stack">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />

@@ -1,0 +1,572 @@
+{#- Shared app header for every StonePi app (backlog U10 / U2).
+
+  [App logo + name]  …  [Search] [Primary action] [Bell] [App switcher] [Avatar]
+
+  The switcher's top entry is "Home" (the Dashboard), with the Dashboard icon (the StonePi mark).
+
+  Register with ``stonepi_auth.alerts.add_shared_templates(jinja_env)``; build the
+  state with ``bell_context(user, ..., app_id="<app>")``. In the top bar:
+
+    {% from "stonepi/header.html" import header_search, header_tools, header_fab %}
+    {{ header_search("/search", "Search all articles") }}   or nothing if the app has no search
+    …the app's own primary action (Refresh), at most one sp-btn--primary…
+    {{ header_tools(alerts_bell_state, logout_action="/logout", csrf_token=csrf_token) }}
+
+  and on pages with a secondary create action:
+    {{ header_fab("/add", "Add") }}
+
+  ``header_tools`` carries the styles and script for all of these, so render it on
+  every page that uses ``header_search`` or ``header_fab`` (also when nobody is
+  signed in: it then shows only what applies).
+
+  Every panel (search, notifications, switcher, avatar) is a dropdown from its
+  icon; under 560 px it opens near full-width over a dimmed backdrop. Panels
+  close on a tap outside, Esc or back. Styling uses the design-system tokens
+  (packages/stonepi_brand, linked by ``stonepi/head.html``); the switcher shows
+  the apps' fixed icons from /assets/brand/icons/.
+-#}
+
+{% macro _icon(name) -%}
+{%- if name == 'search' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
+{%- elif name == 'bell' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>
+{%- elif name == 'grid' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="1.6"/><circle cx="12" cy="6" r="1.6"/><circle cx="18" cy="6" r="1.6"/><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/><circle cx="6" cy="18" r="1.6"/><circle cx="12" cy="18" r="1.6"/><circle cx="18" cy="18" r="1.6"/></svg>
+{%- elif name == 'close' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+{%- elif name == 'plus' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+{%- elif name == 'check' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+{%- elif name == 'off' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 12h10"/></svg>
+{%- elif name == 'clock' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 2"/></svg>
+{%- elif name == 'sun' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h2M19 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>
+{%- elif name == 'moon' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 13a6 6 0 1 1-5-8.9A7 7 0 1 0 16 13z"/></svg>
+{%- elif name == 'system' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="12" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+{%- elif name == 'account' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
+{%- elif name == 'logout' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 7V5a2 2 0 0 1 2-2h7v18h-7a2 2 0 0 1-2-2v-2"/><path d="M15 12H3m0 0 3-3m-3 3 3 3"/></svg>
+{%- elif name == 'home' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5"/><path d="M7 10.5V19h10v-8.5"/></svg>
+{%- elif name == 'dashboard' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6v7H4zM14 4h6v16h-6zM4 4h6v7H4z"/></svg>
+{%- elif name == 'newscast' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5z"/><path d="M8 9h8M8 12h8M8 15h5"/></svg>
+{%- elif name == 'fileserve' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h6l2 2h6v10H5z"/><path d="M9 13h6M9 16h4"/></svg>
+{%- elif name == 'eventtrakr' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/><path d="M8 14h3M13 14h3M8 17h3"/></svg>
+{%- elif name == 'pinboard' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+{%- elif name == 'studio' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19h14M8 17V7l4-3 4 3v10"/><path d="M10 11h4M10 14h4"/></svg>
+{%- elif name == 'pricescout' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v3H4zM6 10h12v9H6z"/><path d="M9 13h6M9 16h4"/></svg>
+{%- elif name == 'sportguide' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 2"/></svg>
+{%- elif name == 'pricewatch' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/><path d="M16.5 5.5 18 4M7.5 5.5 6 4"/></svg>
+{%- elif name == 'library' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7c-2-1.5-4.7-2-8-2v13c3.3 0 6 .5 8 2 2-1.5 4.7-2 8-2V5c-3.3 0-6 .5-8 2z"/><path d="M12 7v13"/></svg>
+{%- else -%}<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="3"/></svg>
+{%- endif -%}
+{%- endmacro %}
+
+{#- Search: a header icon opening an overlay. Submitting goes to the app's own search page. -#}
+{% macro header_search(url, placeholder="Search", param="q", app="") -%}
+<div class="sp-pop sp-pop-search" data-sp-pop>
+  <button type="button" class="icon-btn sp-trigger" data-sp-trigger aria-haspopup="dialog" aria-expanded="false" aria-label="Search" title="Search">{{ _icon('search') }}</button>
+  <div class="sp-drop sp-drop-search" data-sp-drop data-sp-search{% if app %} data-sp-app="{{ app }}"{% endif %} role="dialog" aria-label="Search" hidden>
+    <form class="sp-search-form" method="get" action="{{ url }}" role="search" data-native data-sp-search-form>
+      <span class="sp-search-icon" aria-hidden="true">{{ _icon('search') }}</span>
+      <input type="search" name="{{ param }}" placeholder="{{ placeholder }}" aria-label="{{ placeholder }}" autocomplete="off" enterkeyhint="search" data-sp-search-input />
+      <button type="button" class="icon-btn" data-sp-close aria-label="Close search">{{ _icon('close') }}</button>
+    </form>
+    <div class="sp-recent" data-sp-recent hidden>
+      <div class="sp-recent-head">
+        <p class="sp-label">Recent searches</p>
+        <button type="button" class="sp-text-btn" data-sp-recent-clear>Clear</button>
+      </div>
+      <ul class="sp-recent-list" data-sp-recent-list></ul>
+    </div>
+  </div>
+</div>
+{%- endmacro %}
+
+{#- Floating "+" for a secondary create action (Add, Create, New notice).
+    ``sheet``: name of an app sheet to open instead (``data-open-sheet``); ``href`` stays the no-JS fallback. -#}
+{% macro header_fab(href, label="Add", sheet="") -%}
+<a class="sp-fab" href="{{ href }}" aria-label="{{ label }}" title="{{ label }}"{% if sheet %} data-open-sheet="{{ sheet }}"{% endif %}>{{ _icon('plus') }}<span>{{ label }}</span></a>
+{%- endmacro %}
+
+{#- Bell + panel, app switcher and avatar menu. ``local_name``: signed-in name when
+    the app runs standalone (no platform session), so Log out still has a home. -#}
+{% macro header_tools(state, logout_action="/logout", csrf_token="", local_name="") -%}
+{%- set header = (state or {}).get('header') or {} -%}
+{%- set panel = (state or {}).get('panel') -%}
+{%- set account = header.get('account') -%}
+{{ _styles() }}
+{%- if state and state.show %}
+{%- if panel %}
+<div class="sp-pop sp-pop-bell" data-sp-pop data-sp-bell data-sp-app="{{ header.app }}" data-sp-last="{{ panel.last_at }}" data-sp-seen-url="{{ panel.seen_url }}" data-sp-clear-url="{{ panel.clear_url }}">
+  <button type="button" class="icon-btn sp-trigger sp-bell{% if state.dot %} has-dot{% endif %}" data-sp-trigger aria-haspopup="dialog" aria-expanded="false" aria-label="Notifications{% if state.dot %} (new){% endif %}" title="Notifications">
+    {{ _icon('bell') }}<span class="sp-dot" aria-hidden="true"{% if not state.dot %} hidden{% endif %}></span>
+  </button>
+  <div class="sp-drop sp-drop-bell" data-sp-drop role="dialog" aria-label="{{ panel.app_name }} notifications" hidden>
+    <p class="sp-drop-title">{{ panel.title or (panel.app_name ~ ' alerts') }}</p>
+    {%- if panel.message %}
+    <p class="sp-note{% if panel.state != 'unreachable' %} sp-note-lead{% endif %}">{{ panel.message }}</p>
+    {%- endif %}
+    {%- if panel.events %}
+    {%- if panel.state == 'none_on' %}<p class="sp-label">Available</p>{% endif %}
+    <ul class="sp-alert-list">
+      {%- for ev in panel.events %}
+      <li class="{% if ev.ticked %}is-on{% elif ev.ticked is not none %}is-off{% endif %}">
+        <span class="sp-alert-mark" aria-hidden="true">{% if ev.ticked %}{{ _icon('check') }}{% elif ev.ticked is not none %}{{ _icon('off') }}{% endif %}</span>
+        <span>{{ ev.label }}</span>
+        {%- if ev.ticked is not none %}<span class="sp-visually-hidden">{{ ': on' if ev.ticked else ': off' }}</span>{% endif %}
+      </li>
+      {%- endfor %}
+    </ul>
+    {%- endif %}
+    {%- if panel.on_by_app %}
+    <div class="sp-menu-section">
+      <p class="sp-label">On for you</p>
+      <ul class="sp-on-list">
+        {%- for group in panel.on_by_app %}
+        <li><strong>{{ group.app }}</strong><span>{{ group.labels | join(', ') }}</span></li>
+        {%- endfor %}
+      </ul>
+    </div>
+    {%- endif %}
+    {%- set empty_text = "No notifications yet. When one of your apps sends you something, you'll see it here." if panel.app_name == 'StonePi' else "No alerts from " ~ panel.app_name ~ " yet. When it sends you one, you'll see it here." %}
+    {%- if panel.every_app and (panel.recent or panel.state == 'ready') %}
+    <div class="sp-last" data-sp-list>
+      <div class="sp-last-head">
+        <p class="sp-label">Recent notifications</p>
+        {%- if panel.recent %}<button type="button" class="sp-text-btn" data-sp-clear>Clear</button>{% endif %}
+      </div>
+      {%- if panel.recent %}
+      <ul class="sp-recent-alerts">
+        {%- for item in panel.recent %}
+        <li data-sp-item data-at="{{ item.at }}" data-app="{{ item.app }}">
+          <p class="sp-last-title"><span class="sp-app-tag">{{ item.app_label }}</span> {{ item.title }}</p>
+          <p class="sp-last-meta{% if not item.ok %} is-bad{% endif %}">{{ _icon('clock') }}<span>{{ item.when }}{% if item.when %} · {% endif %}{{ item.delivery }}</span></p>
+        </li>
+        {%- endfor %}
+      </ul>
+      {%- endif %}
+      <p class="sp-empty" data-sp-empty{% if panel.recent %} hidden{% endif %}>{{ empty_text }}</p>
+    </div>
+    {%- elif not panel.every_app and panel.show_last %}
+    <div class="sp-last" data-sp-list>
+      <div class="sp-last-head">
+        <p class="sp-label">Last notification</p>
+        {%- if panel.last %}<button type="button" class="sp-text-btn" data-sp-clear>Clear</button>{% endif %}
+      </div>
+      {%- if panel.last %}
+      <div data-sp-item data-at="{{ panel.last_at }}" data-app="{{ header.app }}">
+        <p class="sp-last-title">{{ panel.last.title }}</p>
+        <p class="sp-last-meta{% if not panel.last.ok %} is-bad{% endif %}">{{ _icon('clock') }}<span>{{ panel.last.when }}{% if panel.last.when %} · {% endif %}{{ panel.last.delivery }}</span></p>
+      </div>
+      {%- endif %}
+      <p class="sp-empty" data-sp-empty{% if panel.last %} hidden{% endif %}>{{ empty_text }}</p>
+    </div>
+    {%- endif %}
+    <a class="btn btn-primary sp-btn sp-btn--primary sp-wide-btn" href="{{ panel.preferences_url }}">{{ panel.button }}</a>
+  </div>
+</div>
+{%- else %}
+<a class="icon-btn sp-bell{% if state.dot %} has-dot{% endif %}{% if state.active %} is-active{% endif %}" href="{{ state.url }}" aria-label="Notifications{% if state.dot %} (not set up yet){% endif %}" title="Notifications"{% if state.active %} aria-current="page"{% endif %}>{{ _icon('bell') }}{% if state.dot %}<span class="sp-dot" aria-hidden="true"></span>{% endif %}</a>
+{%- endif %}
+{%- endif %}
+{%- if header.get('apps') %}
+<div class="sp-pop sp-pop-apps" data-sp-pop>
+  <button type="button" class="icon-btn sp-trigger" data-sp-trigger aria-haspopup="dialog" aria-expanded="false" aria-label="Switch app" title="Apps">{{ _icon('grid') }}</button>
+  <div class="sp-drop sp-drop-apps" data-sp-drop role="dialog" aria-label="Apps" hidden>
+    <a class="sp-app-dashboard{% if header.app == 'dashboard' %} is-current{% endif %}" href="{{ header.dashboard_url }}"{% if header.app == 'dashboard' %} aria-current="page"{% endif %}><img class="sp-app-img" src="/assets/brand/icons/system/dashboard.svg" width="32" height="32" alt="" /><span>Home</span></a>
+    <ul class="sp-app-grid">
+      {%- for app in header.apps %}
+      <li><a class="sp-app{% if app.current %} is-current{% endif %}" href="{{ app.url }}"{% if app.current %} aria-current="page"{% endif %}>
+        <img class="sp-app-img" src="/assets/brand/icons/apps/{{ app.id }}.svg" width="40" height="40" alt="" /><span class="sp-app-name">{{ app.name }}</span>
+      </a></li>
+      {%- endfor %}
+    </ul>
+  </div>
+</div>
+{%- endif %}
+{%- if account or local_name %}
+{%- set name = account.name if account else local_name -%}
+<div class="sp-pop sp-pop-avatar" data-sp-pop>
+  <button type="button" class="sp-trigger sp-avatar" data-sp-trigger aria-haspopup="dialog" aria-expanded="false" aria-label="Account: {{ name }}" title="{{ name }}">
+    <span aria-hidden="true">{{ account.initials if account else (local_name[:1] | upper) }}</span>
+  </button>
+  <div class="sp-drop sp-drop-avatar" data-sp-drop role="dialog" aria-label="Account" hidden>
+    <div class="sp-identity">
+      <span class="sp-avatar sp-avatar-lg" aria-hidden="true">{{ account.initials if account else (local_name[:1] | upper) }}</span>
+      <div>
+        <p class="sp-identity-name">{{ name }}</p>
+        {%- if account %}<p class="sp-identity-sub">@{{ account.username }} · {{ account.role }}</p>{% endif %}
+      </div>
+    </div>
+    <div class="sp-menu-section">
+      <p class="sp-label">Appearance</p>
+      <div class="sp-theme" role="radiogroup" aria-label="Appearance">
+        <button type="button" role="radio" aria-checked="false" data-sp-theme="light">{{ _icon('sun') }}<span>Light</span></button>
+        <button type="button" role="radio" aria-checked="false" data-sp-theme="dark">{{ _icon('moon') }}<span>Dark</span></button>
+        <button type="button" role="radio" aria-checked="false" data-sp-theme="system">{{ _icon('system') }}<span>System</span></button>
+      </div>
+    </div>
+    {%- if account and account.manage_url %}
+    <a class="sp-menu-item" href="{{ account.manage_url }}">{{ _icon('account') }}<span>Manage account</span></a>
+    {%- endif %}
+    <form method="post" action="{{ logout_action }}" class="sp-menu-logout" data-native>
+      {%- if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}" />{% endif %}
+      <button type="submit" class="sp-menu-item is-danger">{{ _icon('logout') }}<span>Log out</span></button>
+    </form>
+  </div>
+</div>
+{%- endif %}
+{{ _script() }}
+{%- endmacro %}
+
+{% macro _styles() -%}
+<style>
+  /* Shared top bar: matte surface, hairline, no glass (design system: Shared header). */
+  .topbar { background: var(--surface); border-bottom: 1px solid var(--border); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .sp-pop { position: relative; display: inline-flex; flex: 0 0 auto; }
+  :is(.sp-pop > .icon-btn, a.icon-btn.sp-bell), .sp-search-form .icon-btn { position: relative; width: 40px; height: 40px; padding: 0; display: inline-grid; place-items: center; flex: 0 0 auto; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-raised); color: var(--text-muted); cursor: pointer; text-decoration: none; transition: color var(--duration-fast) ease-out, border-color var(--duration-fast) ease-out; }
+  :is(.sp-pop > .icon-btn, a.icon-btn.sp-bell):hover { color: var(--text); border-color: var(--border-control); background: var(--surface-raised); }
+  :is(.sp-pop > .icon-btn, a.icon-btn.sp-bell) svg, .sp-search-form .icon-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  :is(.sp-pop > .icon-btn, a.icon-btn.sp-bell).is-active, .sp-trigger[aria-expanded="true"] { color: var(--text); border-color: var(--border-control); background: var(--surface-hover); }
+  .sp-bell { position: relative; }
+  .sp-dot { position: absolute; top: 8px; right: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 2px var(--surface-raised); }
+  .sp-trigger[aria-expanded="true"] .sp-dot { box-shadow: 0 0 0 2px var(--surface-hover); }
+  .sp-dot[hidden] { display: none; }
+  .sp-avatar { width: 40px; height: 40px; margin: 0; border-radius: var(--radius-pill); border: 1px solid var(--border); background: var(--tint-sand-bg); color: var(--tint-sand-fg); display: inline-grid; place-items: center; font: 600 13px/1 var(--font-sans); letter-spacing: 0.02em; cursor: pointer; padding: 0; flex: 0 0 auto; transition: border-color var(--duration-fast) ease-out; }
+  button.sp-avatar:hover, .sp-avatar[aria-expanded="true"] { border-color: var(--border-control); }
+  .sp-avatar-lg { width: 44px; height: 44px; font-size: 15px; cursor: default; }
+  .sp-drop { position: absolute; top: calc(100% + 8px); right: 0; z-index: 60; width: min(320px, calc(100vw - 24px)); max-height: min(70vh, 560px); overflow-y: auto; overscroll-behavior: contain; padding: var(--space-4); display: grid; gap: var(--space-3); background: var(--surface-raised); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-overlay); text-align: left; font: var(--type-body); }
+  .sp-drop[hidden] { display: none; }
+  .sp-drop p { margin: 0; }
+  .sp-drop svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto; }
+  .sp-drop-title { font: var(--type-title-3); }
+  .sp-label { font: var(--type-label); letter-spacing: var(--type-label-tracking); text-transform: uppercase; color: var(--text-muted); }
+  .sp-note { color: var(--text-muted); font: var(--type-small); }
+  .sp-note-lead { color: var(--text); font: var(--type-body); }
+  .sp-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .sp-alert-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+  .sp-alert-list li { display: flex; align-items: center; gap: 10px; line-height: 1.3; }
+  .sp-alert-list li.is-off { color: var(--text-muted); }
+  .sp-alert-mark { width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center; flex: 0 0 auto; background: var(--tint-stone-bg); color: var(--tint-stone-fg); }
+  .sp-alert-list li.is-on .sp-alert-mark { background: var(--tint-moss-bg); color: var(--success-text); }
+  .sp-alert-mark svg { width: 14px; height: 14px; stroke-width: 2; }
+  .sp-last { display: grid; gap: var(--space-1); padding-top: var(--space-3); border-top: 1px solid var(--border); }
+  .sp-last-title { font: var(--type-body-strong); }
+  .sp-last-meta { display: flex; align-items: flex-start; gap: 6px; color: var(--text-muted); font: var(--type-small); }
+  .sp-last-meta svg { width: 15px; height: 15px; margin-top: 1px; }
+  .sp-last-meta.is-bad { color: var(--danger-text); }
+  .sp-empty { color: var(--text-muted); font: var(--type-small); }
+  .sp-empty[hidden], [data-sp-item][hidden] { display: none; }
+  .sp-last-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+  .sp-last-head .sp-text-btn { padding: 2px 4px; }
+  .sp-on-list, .sp-recent-alerts { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+  .sp-on-list li { display: grid; gap: 1px; line-height: 1.35; }
+  .sp-on-list span { color: var(--text-muted); font: var(--type-small); }
+  .sp-recent-alerts li { display: grid; gap: 2px; }
+  .sp-app-tag { display: inline-block; margin-right: 4px; padding: 1px 8px; border-radius: var(--radius-pill); font: 600 12px/16px var(--font-sans); vertical-align: 1px; background: var(--tint-sand-bg); color: var(--tint-sand-fg); }
+  .sp-wide-btn { width: 100%; justify-content: center; text-align: center; text-decoration: none; }
+  .sp-drop .sp-btn--primary { display: inline-flex; align-items: center; height: 40px; border: 0; border-radius: var(--radius-md); background: var(--primary); color: var(--primary-ink); font: var(--type-control); }
+  .sp-drop .sp-btn--primary:hover { background: var(--primary-hover); }
+  .sp-drop-apps { width: min(340px, calc(100vw - 24px)); }
+  .sp-app-img { display: block; flex: none; border-radius: 22%; }
+  .sp-app-dashboard { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); border: 1px solid var(--border); text-decoration: none; color: var(--text); font: var(--type-control); }
+  .sp-app-dashboard .sp-app-img { width: 32px; height: 32px; }
+  .sp-app-dashboard:hover { background: var(--surface-hover); }
+  .sp-app-dashboard.is-current { background: var(--surface-hover); border-color: var(--border-control); }
+  .sp-app-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-1); }
+  .sp-app { display: grid; justify-items: center; gap: 6px; padding: var(--space-3) var(--space-1) 10px; border-radius: var(--radius-md); text-decoration: none; color: var(--text); font: 600 12px/16px var(--font-sans); border: 1px solid transparent; min-width: 0; }
+  .sp-app .sp-app-img { width: 40px; height: 40px; }
+  .sp-app:hover { background: var(--surface-hover); }
+  .sp-app.is-current { background: var(--surface-hover); border-color: var(--border); }
+  .sp-app-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sp-identity { display: flex; align-items: center; gap: var(--space-3); padding-bottom: var(--space-3); border-bottom: 1px solid var(--border); }
+  .sp-identity-name { font: var(--type-body-strong); }
+  .sp-identity-sub { color: var(--text-muted); font: var(--type-small); }
+  .sp-menu-section { display: grid; gap: var(--space-2); }
+  /* ThemeSwitch: pill segmented control. */
+  .sp-theme { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 3px; border-radius: var(--radius-pill); background: var(--surface); border: 1px solid var(--border); }
+  .sp-theme button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 var(--space-2); border: 1px solid transparent; border-radius: var(--radius-pill); background: transparent; color: var(--text-muted); font: 600 13px/1 var(--font-sans); cursor: pointer; }
+  .sp-theme button:hover { color: var(--text); }
+  .sp-theme button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .sp-theme button[aria-checked="true"] { background: var(--surface-raised); border-color: var(--border-control); color: var(--text); }
+  .sp-menu-item { display: flex; align-items: center; gap: var(--space-3); width: 100%; height: 40px; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text); font: var(--type-control); text-decoration: none; cursor: pointer; text-align: left; }
+  .sp-menu-item:hover { background: var(--surface-hover); }
+  .sp-menu-item svg { color: var(--text-muted); }
+  .sp-menu-logout { margin: 0; padding-top: var(--space-2); border-top: 1px solid var(--border); }
+  .sp-menu-item.is-danger, .sp-menu-item.is-danger svg { color: var(--danger-text); }
+  .sp-menu-item.is-danger:hover { background: var(--tint-rust-bg); }
+  .sp-drop-search { width: min(460px, calc(100vw - 24px)); border-radius: var(--radius-xl); }
+  .sp-search-form { display: flex; align-items: center; gap: var(--space-2); margin: 0; padding: 4px 4px 4px var(--space-3); border: 1px solid var(--border-control); border-radius: var(--radius-md); background: var(--surface-raised); }
+  .sp-search-form:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .sp-search-icon { color: var(--text-faint); display: inline-flex; }
+  .sp-search-form input { flex: 1 1 auto; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font: var(--type-body); padding: 8px 0; box-shadow: none; }
+  .sp-search-form input::placeholder { color: var(--text-faint); }
+  .sp-search-form input::-webkit-search-cancel-button { display: none; }
+  .sp-search-form .icon-btn { width: 32px; height: 32px; border-color: transparent; background: transparent; }
+  .sp-recent { display: grid; gap: 6px; }
+  .sp-recent[hidden] { display: none; }
+  .sp-recent-head { display: flex; align-items: center; justify-content: space-between; }
+  .sp-text-btn { border: 0; background: none; color: var(--link); font: var(--type-control); cursor: pointer; padding: 4px; }
+  .sp-text-btn:hover { text-decoration: underline; }
+  .sp-recent-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .sp-recent-list a { display: flex; align-items: center; gap: 10px; padding: var(--space-2); border-radius: var(--radius-md); color: var(--text); text-decoration: none; }
+  .sp-recent-list a:hover { background: var(--surface-hover); }
+  .sp-recent-list svg { color: var(--text-faint); }
+  /* While a panel is open the header sits above the dimmed backdrop. */
+  html.sp-panel-open .topbar { z-index: 60; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .sp-backdrop { position: fixed; inset: 0; z-index: 55; background: rgb(11 13 14 / 0.5); }
+  .sp-backdrop[hidden] { display: none; }
+  /* Secondary create: 56px floating +, primary, bottom-right above the bar. */
+  .sp-fab { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(88px + env(safe-area-inset-bottom, 0px)); z-index: 30; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-width: 56px; height: 56px; padding: 0 18px; border-radius: var(--radius-pill); background: var(--primary); color: var(--primary-ink); text-decoration: none; font: var(--type-control); box-shadow: var(--shadow-overlay); transition: background-color var(--duration-fast) ease-out; }
+  .sp-fab svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+  .sp-fab span { display: none; }
+  .sp-fab:hover { background: var(--primary-hover); }
+  /* Room under the last item so the floating + never covers its buttons. */
+  body:has(.sp-fab) .main { padding-bottom: 96px; }
+  @media (min-width: 1024px) {
+    .sp-fab { bottom: 28px; right: 28px; }
+    .sp-fab span { display: inline; }
+  }
+  @media (max-width: 559px) {
+    .sp-pop { position: static; }
+    .sp-drop, .sp-drop-search { position: fixed; top: calc(var(--topbar-height, 64px) + 6px); left: 8px; right: 8px; width: auto; max-height: calc(100dvh - var(--topbar-height, 64px) - 24px); }
+  }
+  @media (max-width: 420px) {
+    .topbar .brand { font-size: 0; gap: 0; }
+    .topbar .brand > :not(svg):not(img) { display: none; }
+    /* The Dashboard keeps its StonePi wordmark: it's the product name, not an app name. */
+    .topbar .sp-lockup { gap: var(--space-2); }
+    .topbar .sp-lockup > .sp-wordmark { display: inline; }
+    :is(.sp-pop > .icon-btn, a.icon-btn.sp-bell), .sp-avatar { width: 36px; height: 36px; }
+  }
+</style>
+{%- endmacro %}
+
+{% macro _script() -%}
+<script>
+(function () {
+  if (window.__stonepiHeader) return;
+  window.__stonepiHeader = true;
+  var MOBILE = window.matchMedia("(max-width: 559px)");
+  var open = null;
+  var pushed = false;
+  var backdrop = null;
+
+  function store(fn, fallback) { try { return fn(); } catch (e) { return fallback; } }
+  function readCookie(name) {
+    var m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
+    return m ? decodeURIComponent(m[1]) : "";
+  }
+
+  function ensureBackdrop() {
+    if (backdrop) return backdrop;
+    backdrop = document.createElement("div");
+    backdrop.className = "sp-backdrop";
+    backdrop.hidden = true;
+    backdrop.addEventListener("click", function () { close(); });
+    document.body.appendChild(backdrop);
+    return backdrop;
+  }
+
+  function hide(pop) {
+    pop.querySelector("[data-sp-drop]").hidden = true;
+    pop.querySelector("[data-sp-trigger]").setAttribute("aria-expanded", "false");
+  }
+
+  function close(fromHistory) {
+    if (!open) return;
+    hide(open);
+    open = null;
+    document.documentElement.classList.remove("sp-panel-open");
+    if (backdrop) backdrop.hidden = true;
+    if (pushed) {
+      pushed = false;
+      if (!fromHistory) history.back();
+    }
+  }
+
+  function show(pop) {
+    if (open === pop) return close();
+    if (open) hide(open);
+    open = pop;
+    document.documentElement.classList.add("sp-panel-open");
+    pop.querySelector("[data-sp-drop]").hidden = false;
+    pop.querySelector("[data-sp-trigger]").setAttribute("aria-expanded", "true");
+    if (MOBILE.matches) ensureBackdrop().hidden = false;
+    // Back closes the panel instead of leaving the page (one entry, even when switching panels).
+    if (!pushed) {
+      store(function () { history.pushState({ spPanel: true }, ""); pushed = true; });
+    }
+    if (pop.hasAttribute("data-sp-bell")) bellOpened(pop);
+    var input = pop.querySelector("[data-sp-search-input]");
+    if (input) { renderRecent(pop); setTimeout(function () { input.focus(); }, 30); }
+  }
+
+  document.addEventListener("click", function (e) {
+    var trigger = e.target.closest("[data-sp-trigger]");
+    if (trigger) { e.preventDefault(); show(trigger.closest("[data-sp-pop]")); return; }
+    if (e.target.closest("[data-sp-close]")) { close(); return; }
+    if (open && !open.contains(e.target)) close();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && open) {
+      var trigger = open.querySelector("[data-sp-trigger]");
+      close();
+      if (trigger) trigger.focus();
+    }
+  });
+  window.addEventListener("popstate", function () { if (open) close(true); });
+  MOBILE.addEventListener && MOBILE.addEventListener("change", function () { close(); });
+
+  // -- Bell: a dot means an alert since this panel was last opened -------------
+  function seenKey(app) { return "stonepi-bell-seen:" + app; }
+  function bellOpened(pop) {
+    var app = pop.getAttribute("data-sp-app") || "";
+    var last = pop.getAttribute("data-sp-last") || "";
+    var dot = pop.querySelector(".sp-dot");
+    if (dot) dot.hidden = true;
+    pop.querySelector("[data-sp-trigger]").classList.remove("has-dot");
+    store(function () { localStorage.setItem(seenKey(app), last || new Date().toISOString()); });
+    postToNotify(pop.getAttribute("data-sp-seen-url"));
+  }
+  function postToNotify(url) {
+    if (!url || !window.fetch) return;
+    var token = readCookie("stonepi_csrf");
+    if (!token) {
+      // Double-submit token for this browser if no app has set one yet.
+      token = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+      document.cookie = "stonepi_csrf=" + token + "; Path=/; SameSite=Lax; Max-Age=86400";
+    }
+    var body = new URLSearchParams();
+    body.set("csrf_token", token);
+    // Plain form post: Notify can sit on another port in local dev.
+    fetch(url, { method: "POST", body: body, mode: "no-cors", credentials: "include", keepalive: true }).catch(function () {});
+  }
+
+  // -- Clear: hide what the panel lists, for you only (Notify keeps its history) ----
+  // Clearing on the Dashboard clears every app; in an app, just that app. Also kept in
+  // this browser so a page served from the minute-long status cache stays cleared.
+  function clearedKey(app) { return "stonepi-bell-cleared:" + app; }
+  function clearedStamp(app) {
+    return Date.parse(store(function () { return localStorage.getItem(clearedKey(app)); }, "") || "");
+  }
+  function applyCleared(pop) {
+    var items = pop.querySelectorAll("[data-sp-item]");
+    if (!items.length) return;
+    var everyApp = clearedStamp("dashboard");
+    var shown = 0;
+    items.forEach(function (item) {
+      var at = Date.parse(item.getAttribute("data-at") || "");
+      var own = clearedStamp(item.getAttribute("data-app") || pop.getAttribute("data-sp-app") || "");
+      var hide = !isNaN(at) && ((!isNaN(everyApp) && at <= everyApp) || (!isNaN(own) && at <= own));
+      item.hidden = hide;
+      if (!hide) shown += 1;
+    });
+    var empty = pop.querySelector("[data-sp-empty]");
+    if (empty) empty.hidden = shown > 0;
+    var btn = pop.querySelector("[data-sp-clear]");
+    if (btn) btn.hidden = shown === 0;
+  }
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-sp-clear]");
+    if (!btn) return;
+    var pop = btn.closest("[data-sp-pop]");
+    var app = pop.getAttribute("data-sp-app") || "";
+    var now = new Date().toISOString();
+    store(function () { localStorage.setItem(clearedKey(app), now); localStorage.setItem(seenKey(app), now); });
+    applyCleared(pop);
+    postToNotify(pop.getAttribute("data-sp-clear-url"));
+    var focusTo = pop.querySelector("[data-sp-trigger]");
+    if (focusTo && document.activeElement === btn) focusTo.focus();
+  });
+  document.querySelectorAll("[data-sp-bell]").forEach(function (pop) {
+    applyCleared(pop);
+    var last = pop.getAttribute("data-sp-last");
+    var seen = store(function () { return localStorage.getItem(seenKey(pop.getAttribute("data-sp-app") || "")); }, "");
+    if (last && seen && seen >= last) {
+      var dot = pop.querySelector(".sp-dot");
+      if (dot) dot.hidden = true;
+      pop.querySelector("[data-sp-trigger]").classList.remove("has-dot");
+    }
+  });
+
+  // -- Appearance ---------------------------------------------------------------
+  function themePref() {
+    return readCookie("stonepi-theme") || store(function () { return localStorage.getItem("stonepi-theme"); }, "") || "system";
+  }
+  function markTheme() {
+    var pref = themePref();
+    document.querySelectorAll("[data-sp-theme]").forEach(function (btn) {
+      btn.setAttribute("aria-checked", btn.getAttribute("data-sp-theme") === pref ? "true" : "false");
+    });
+  }
+  function applyTheme(pref) {
+    var dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    var theme = pref === "system" ? (dark ? "dark" : "light") : pref;
+    var root = document.documentElement;
+    root.dataset.theme = theme;
+    root.dataset.themePref = pref;
+    root.style.colorScheme = theme;
+    store(function () { localStorage.setItem("stonepi-theme", pref); });
+    document.cookie = "stonepi-theme=" + encodeURIComponent(pref) + "; Path=/; SameSite=Lax; Max-Age=31536000";
+    var meta = document.querySelector("[data-theme-color]");
+    var color = getComputedStyle(root).getPropertyValue("--theme-meta").trim();
+    if (meta && color) meta.setAttribute("content", color);
+    markTheme();
+  }
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-sp-theme]");
+    if (btn) applyTheme(btn.getAttribute("data-sp-theme"));
+  });
+  markTheme();
+  // Theme switches further down the page (Settings → Appearance) render after this script.
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", markTheme);
+
+  // -- Search: recent searches, per app, in this browser -----------------------
+  function recentKey(pop) {
+    var drop = pop.querySelector("[data-sp-search]");
+    return "stonepi-recent-search:" + ((drop && drop.getAttribute("data-sp-app")) || location.pathname.split("/")[1] || "app");
+  }
+  function readRecent(pop) {
+    var list = store(function () { return JSON.parse(localStorage.getItem(recentKey(pop)) || "[]"); }, []);
+    return Array.isArray(list) ? list.filter(function (x) { return typeof x === "string" && x; }) : [];
+  }
+  function renderRecent(pop) {
+    var box = pop.querySelector("[data-sp-recent]");
+    var ul = pop.querySelector("[data-sp-recent-list]");
+    var form = pop.querySelector("[data-sp-search-form]");
+    if (!box || !ul || !form) return;
+    var items = readRecent(pop);
+    ul.innerHTML = "";
+    var name = form.querySelector("[data-sp-search-input]").name || "q";
+    items.forEach(function (q) {
+      var li = document.createElement("li");
+      var a = document.createElement("a");
+      var params = new URLSearchParams();
+      params.set(name, q);
+      a.href = form.getAttribute("action") + (form.getAttribute("action").indexOf("?") >= 0 ? "&" : "?") + params.toString();
+      a.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 2"/></svg>';
+      var span = document.createElement("span");
+      span.textContent = q;
+      a.appendChild(span);
+      li.appendChild(a);
+      ul.appendChild(li);
+    });
+    box.hidden = items.length === 0;
+  }
+  document.addEventListener("submit", function (e) {
+    var form = e.target.closest("[data-sp-search-form]");
+    if (!form) return;
+    var input = form.querySelector("[data-sp-search-input]");
+    var q = (input.value || "").trim();
+    if (!q) { e.preventDefault(); input.focus(); return; }
+    var pop = form.closest("[data-sp-pop]");
+    var items = readRecent(pop).filter(function (x) { return x.toLowerCase() !== q.toLowerCase(); });
+    items.unshift(q);
+    store(function () { localStorage.setItem(recentKey(pop), JSON.stringify(items.slice(0, 6))); });
+    pushed = false;
+  }, true);
+  document.addEventListener("click", function (e) {
+    var clear = e.target.closest("[data-sp-recent-clear]");
+    if (!clear) return;
+    var pop = clear.closest("[data-sp-pop]");
+    store(function () { localStorage.removeItem(recentKey(pop)); });
+    renderRecent(pop);
+  });
+})();
+</script>
+{%- endmacro %}

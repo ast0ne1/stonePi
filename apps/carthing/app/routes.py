@@ -367,6 +367,8 @@ def tick(request: Request):
     shown = [m for m in shown if m in MINI_LABELS]
     from app.connector import connector
 
+    if caller.kind == "device":
+        connector.note_tick()
     return {
         "ok": True,
         "rev": caller.panel.get("rev") or "",

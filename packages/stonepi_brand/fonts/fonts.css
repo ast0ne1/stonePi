@@ -1,4 +1,19 @@
-/* Self-hosted StonePi UI fonts (IBM Plex Sans + Source Serif 4 latin subsets). */
+/* Self-hosted StonePi fonts (latin subsets, SIL OFL): Sora (display), IBM Plex Sans (text),
+   IBM Plex Mono (ports, hosts, numbers). */
+@font-face {
+  font-family: "Sora";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url("./sora-latin-600-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Sora";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url("./sora-latin-700-normal.woff2") format("woff2");
+}
 @font-face {
   font-family: "IBM Plex Sans";
   font-style: normal;
@@ -21,16 +36,16 @@
   src: url("./ibm-plex-sans-latin-600-normal.woff2") format("woff2");
 }
 @font-face {
-  font-family: "Source Serif 4";
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("./ibm-plex-mono-latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono";
   font-style: normal;
   font-display: swap;
   font-weight: 500;
-  src: url("./source-serif-4-latin-500-normal.woff2") format("woff2");
-}
-@font-face {
-  font-family: "Source Serif 4";
-  font-style: normal;
-  font-display: swap;
-  font-weight: 600;
-  src: url("./source-serif-4-latin-600-normal.woff2") format("woff2");
+  src: url("./ibm-plex-mono-latin-500-normal.woff2") format("woff2");
 }

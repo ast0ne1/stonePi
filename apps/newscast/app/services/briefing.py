@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import html
 import re
 import uuid
@@ -144,13 +145,13 @@ a { color: #111; text-decoration: underline; }
 .masthead { margin: 0 0 0.75em; font-style: italic; color: #333; }
 .cover-image { margin: 0 0 1em; text-align: center; }
 .cover-img { width: 100%; height: auto; }
-.paper-title { margin: 0 0 0.25em; }
+.paper-title { font-size: 1.2em; font-weight: bold; margin: 0 0 0.25em; }
 .cover-rule { border: 0; border-top: 1px solid #111; margin: 0.9em 0 1.1em; }
 .contents-title { margin: 0.4em 0 0.55em; }
 .toc-category { margin: 0 0 1.1em; }
 .toc-category-title { margin: 0 0 0.55em; padding-bottom: 0.25em; border-bottom: 1px solid #111; }
 .toc-source { margin: 0 0 0.85em 0.75em; }
-.toc-source-title { margin: 0.7em 0 0.4em; }
+.toc-source-title { font-style: italic; margin: 0.7em 0 0.4em; }
 .toc-stories { margin: 0 0 0 0.35em; }
 .toc-story { margin: 0 0 0.85em; line-height: 1.4; }
 .toc-title { font-weight: bold; margin: 0 0 0.2em; }
@@ -186,14 +187,14 @@ a { text-decoration: none; }
 .masthead { font-style: italic; margin: 0 0 0.45em; }
 .cover-image { margin: 0 0 0.55em; text-align: center; }
 .cover-img { width: 100%; }
-.paper-title { margin: 0 0 0.2em; }
-.cover-rule { margin: 0.55em 0 0.7em; }
-.contents-title { margin: 0.25em 0 0.4em; }
-.toc-category { margin: 0 0 0.7em; }
-.toc-category-title { margin: 0 0 0.35em; }
-.toc-source { margin: 0 0 0.55em 0.65em; }
-.toc-source-title { margin: 0.45em 0 0.25em; }
-.toc-stories { margin: 0 0 0 0.25em; }
+.paper-title { font-weight: bold; margin: 0 0 0.2em; }
+.cover-rule { margin: 0.35em 0 0.35em; }
+.contents-title { margin: 0.2em 0 0.15em; }
+.toc-category { margin: 0 0 0.25em; }
+.toc-category-title { margin: 0.25em 0 0.05em; }
+.toc-source { margin: 0 0 0 0.65em; }
+.toc-source-title { font-style: italic; margin: 0; }
+.toc-stories { margin: 0.1em 0 0.35em 0.25em; }
 .toc-story { margin: 0 0 0.45em; }
 .toc-title { font-weight: bold; margin: 0 0 0.1em; }
 .toc-digest { margin: 0; }
@@ -204,7 +205,7 @@ a { text-decoration: none; }
 .plate-count { text-align: center; margin: 0; }
 .source-title { margin: 0 0 0.55em; }
 .story-block { margin: 0 0 0.6em; }
-.story-position { font-style: italic; margin: 0 0 0.15em; }
+.story-position { font-style: italic; text-align: right; margin: 0; }
 .story-title { margin: 0 0 0.25em; }
 .story-body { margin: 0; }
 .story-rule { margin: 0.9em 0; }
@@ -274,7 +275,7 @@ def _cover_contents_html(groups: list[tuple[str, str, list[dict]]], *, opts: Epu
         )
         bits.append(f'<div class="toc-category"><h3 class="toc-category-title">{html.escape(cat_heading)}</h3>')
         for src_heading, (_source, source_stories) in zip(src_headings, by_source):
-            bits.append(f'<div class="toc-source"><h4 class="toc-source-title">{html.escape(src_heading)}</h4>')
+            bits.append(f'<div class="toc-source"><p class="toc-source-title">{html.escape(src_heading)}</p>')
             if not opts.contents_stories():
                 bits.append("</div>")
                 continue
@@ -306,11 +307,19 @@ def write_epub(payload: dict, dest: Path, *, layout: EpubLayout | None = None) -
     book.set_language("en")
     book.add_author("NewsCast")
 
+    from app.services import cover_image
+
+    lead_photo = None
+    if opts.x3_screen:
+        lead = cover_image.lead_story(stories)
+        if lead and lead.get("image_url"):
+            lead_photo = cover_image.fetch_cover_photo(lead["image_url"])
     cover_bytes = render_newspaper_cover(
         heading=heading,
         date_label=date_label,
         stories=stories,
         x3_screen=opts.x3_screen,
+        lead_photo=lead_photo,
     )
     book.set_cover("cover.jpg", cover_bytes, create_page=False)
 
@@ -329,7 +338,8 @@ def write_epub(payload: dict, dest: Path, *, layout: EpubLayout | None = None) -
     groups = group_stories(stories)
     cover_bits = [
         '<div class="cover-image"><img class="cover-img" alt="Front page" src="cover.jpg"/></div>',
-        f'<h1 class="paper-title">{html.escape(heading)}</h1>',
+        # Plain text, not a heading: the readers draw h1-h4 large and bold whatever the CSS says.
+        f'<p class="paper-title">{html.escape(heading)}</p>',
         f'<p class="meta">{html.escape(date_label)}</p>',
         f'<p class="masthead">{html.escape(masthead_line(stories))}</p>',
     ]
@@ -609,6 +619,21 @@ def current_saved_stories(db: Session, user_id: int | None = None) -> list[Story
     query = db.query(Story).filter(Story.saved.is_(True)).filter(_saved_still_current())
     query = _scope_stories(query, user_id)
     return query.order_by(Story.created_at.desc()).all()
+
+
+def current_starred_stories(db: Session, user_id: int | None = None) -> list[Story]:
+    """Stories saved with the star on Briefing, for the Saved tab (newest first).
+
+    Starred stories are never purged, so they stay on Saved until unstarred. Long-reads
+    that are also starred are left out here; they already show as long-reads.
+    """
+    query = (
+        db.query(Story)
+        .filter(Story.favourited.is_(True))
+        .filter(or_(Story.saved.is_(False), Story.saved.is_(None)))
+    )
+    query = _scope_stories(query, user_id)
+    return query.order_by(_story_age().desc()).all()
 
 
 def _diverse_recent(stories: list[Story], limit: int) -> list[Story]:
@@ -1228,6 +1253,10 @@ def publish_daily_briefing(
     if created:
         payload = current_briefing_payload(db, day="today", user_id=uid, now=when)
         story_count = len(payload.get("stories") or [])
+        # Same stories = same edition (one alert); a regenerated paper with new stories alerts again.
+        edition = hashlib.sha1(
+            ",".join(sorted(str(story.get("id")) for story in payload.get("stories") or [])).encode()
+        ).hexdigest()[:16]
         payload["paper_date"] = day.isoformat()
         payload["date_label"] = format_paper_date(day, reader_date_format(db))
         payload["paper_title"] = paper_display_title(db, day)
@@ -1252,6 +1281,7 @@ def publish_daily_briefing(
                 title=instance,
                 body=f"Morning paper ready — {paper_title}",
                 user_id=uid,
+                version=edition,
             )
     return dest
 
@@ -1437,6 +1467,7 @@ def stories_payload(
                 "category": category,
                 "category_label": category_label,
                 "saved": saved,
+                "image_url": getattr(story, "image_url", None) or "",
             }
         )
     return {
@@ -1484,13 +1515,13 @@ def _story_block_html(
     total: int = 1,
 ) -> str:
     title = story.get("title") or "Untitled"
-    # "3 of 8" — your place within the source; menu entries stop at source level.
-    position_line = f'<p class="story-position">{position} of {total}</p>' if total > 1 else ""
-    byline_bits = [bit for bit in (story.get("source"), story.get("published_label")) if bit]
-    # When chapter is already the source, skip repeating source in the byline.
-    if opts.chapters_by_source:
-        byline_bits = [bit for bit in (story.get("published_label"),) if bit]
-    byline = f'<p class="byline">{html.escape(" · ".join(byline_bits))}</p>' if byline_bits else ""
+    # "3/8": your place within the source (menu entries stop at source level). Short and
+    # right-aligned so it reads as a marker; the readers ignore CSS font sizes.
+    position_line = f'<p class="story-position">{position}/{total}</p>' if total > 1 else ""
+    # No date: the file name, cover and Contents already say which day's paper this is.
+    # Source chapters already name the source, so only per-story chapters need it.
+    source = "" if opts.chapters_by_source else (story.get("source") or "")
+    byline = f'<p class="byline">{html.escape(source)}</p>' if source else ""
     url = story.get("url") or ""
     link = ""
     if url and not opts.omit_article_links:

@@ -1,5 +1,10 @@
 {% extends "base.html" %}
 {% from "_icons.html" import svg, service_icon %}
+{%- macro meter(pct) -%}
+{%- set n = pct|float -%}{%- set level = 'danger' if n > 95 else ('warn' if n > 80 else '') -%}
+<div class="sp-meter-track" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ pct }}"><div class="sp-meter-fill{% if level == 'danger' %} is-danger{% elif level == 'warn' %} is-warn{% endif %}" style="width: {{ [n, 100]|min }}%"></div></div>
+{%- if level == 'danger' %}<p class="stat-state">Almost full</p>{% elif level == 'warn' %}<p class="stat-state">Getting full</p>{% endif %}
+{%- endmacro %}
 {% block title %}Health · StonePi{% endblock %}
 {% block content %}
 <section class="hero">
@@ -59,10 +64,11 @@
     </section>
   </div>
   <div class="health-stats-row">
-    <section class="card stat{% if disk_warn %} is-warn{% endif %}">
+    <section class="card stat{% if disk_pct is not none and disk_pct|float > 95 %} is-danger{% elif disk_warn or (disk_pct is not none and disk_pct|float > 80) %} is-warn{% endif %}">
       <p class="stat-label muted"><span class="stat-icon" aria-hidden="true">{{ svg('disk') }}</span> Disk used</p>
       {% if disk_pct is not none %}
       <strong>{{ disk_pct }}%</strong>
+      {{ meter(disk_pct) }}
       {% else %}
       <strong>—</strong>
       {% endif %}
@@ -75,17 +81,18 @@
     </section>
   </div>
   <div class="health-stats-row">
-    <section class="card stat">
-      <p class="stat-label muted"><span class="stat-icon" aria-hidden="true">{{ svg('platform') }}</span> Memory</p>
+    <section class="card stat{% if mem_pct is not none and mem_pct|float > 95 %} is-danger{% elif mem_pct is not none and mem_pct|float > 80 %} is-warn{% endif %}">
+      <p class="stat-label muted"><span class="stat-icon" aria-hidden="true">{{ svg('memory') }}</span> Memory</p>
       {% if mem_pct is not none %}
       <strong>{{ mem_pct }}%</strong>
+      {{ meter(mem_pct) }}
       {% else %}
       <strong>—</strong>
       {% endif %}
       <p class="muted">RAM in use</p>
     </section>
     <section class="card stat">
-      <p class="stat-label muted"><span class="stat-icon" aria-hidden="true">{{ svg('platform') }}</span> Temperature</p>
+      <p class="stat-label muted"><span class="stat-icon" aria-hidden="true">{{ svg('temperature') }}</span> Temperature</p>
       {% if temp_c is not none %}
       <strong>{{ temp_c }}°C</strong>
       {% else %}
@@ -96,16 +103,17 @@
   </div>
   <div class="health-stats-row">
     <section class="card stat">
-      <p class="stat-label muted"><span class="stat-icon" aria-hidden="true">{{ svg('platform') }}</span> Uptime</p>
+      <p class="stat-label muted"><span class="stat-icon" aria-hidden="true">{{ svg('uptime') }}</span> Uptime</p>
       <strong>{{ uptime or '—' }}</strong>
       <p class="muted">Since last boot</p>
     </section>
     <section class="card stat{% if not notifications_ok %} is-warn{% endif %}">
-      <p class="stat-label muted"><span class="stat-icon" aria-hidden="true">{{ svg('platform') }}</span> Notify</p>
+      <p class="stat-label muted"><span class="stat-icon" aria-hidden="true">{{ svg('notify') }}</span> Notify</p>
       <strong>{% if notifications_ok %}OK{% else %}Down{% endif %}</strong>
       <p class="muted">
         ntfy {% if destinations.ntfy.configured %}on{% else %}off{% endif %}
         · TRMNL {% if destinations.trmnl.configured %}on ({{ destinations.trmnl.displays }} display{{ '' if destinations.trmnl.displays == 1 else 's' }}){% else %}off{% endif %}
+        · Car Thing {% if destinations.carthing and destinations.carthing.enabled %}on{% else %}off{% endif %}
       </p>
     </section>
   </div>
@@ -114,7 +122,7 @@
 {% if hardware is defined or ntp is defined %}
 <section class="card remote-access-card">
   <p class="stat-label muted remote-access-title">
-    <span class="stat-icon" aria-hidden="true">{{ svg('platform') }}</span>
+    <span class="stat-icon" aria-hidden="true">{{ svg('chip') }}</span>
     Hardware &amp; time
   </p>
   <div class="remote-access-cols">
@@ -240,7 +248,7 @@
 {% if journal_errors is defined and journal_errors.appliance and journal_errors.entries %}
 <section class="card remote-access-card">
   <p class="stat-label muted remote-access-title">
-    <span class="stat-icon" aria-hidden="true">{{ svg('platform') }}</span>
+    <span class="stat-icon" aria-hidden="true">{{ svg('error') }}</span>
     Recent errors
   </p>
   <pre class="muted" style="max-height:10rem;overflow:auto;font-size:0.8rem;white-space:pre-wrap;">{% for line in journal_errors.entries[-8:] %}{{ line }}

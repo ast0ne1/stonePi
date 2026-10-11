@@ -259,3 +259,20 @@ def test_builtin_icons_come_from_stored_material_pngs():
     assert (CATEGORY_ICON_DIR / "LICENSE-material-symbols.txt").exists()
     # Custom categories reuse the World News newspaper.
     assert render_category_icon("my-custom-topic") == render_category_icon("news")
+
+
+def test_front_page_headings_and_story_dates(tmp_path: Path):
+    dest = tmp_path / "paper.epub"
+    write_epub(_sample_payload(), dest, layout=EpubLayout())
+    files = _read(dest)
+    cover = files["EPUB/cover.xhtml"]
+    # The readers draw headings large and bold whatever the CSS says, so the paper
+    # title and source lines are plain text; categories keep their heading.
+    assert '<p class="paper-title">NewsCast briefing</p>' in cover
+    assert 'class="meta"' in cover and 'class="masthead"' in cover  # date + story overview stay
+    assert '<h3 class="toc-category-title">1. World News</h3>' in cover
+    assert '<p class="toc-source-title">1.1 BBC World</p>' in cover
+    assert "<h4" not in cover
+    stories = "".join(text for name, text in files.items() if "/source-" in name)
+    assert "1/2" in stories and "BBC one" in stories
+    assert "29 Sep 2026" not in stories and 'class="byline"' not in stories

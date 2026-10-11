@@ -90,57 +90,51 @@
 <div class="settings-panels" data-settings-panel="general">
 <section class="card stack" data-settings-panel-card="appearance" id="appearance">
   <h2 class="section-heading">{{ svg("appearance") }} Appearance</h2>
-  <p class="muted">Tap a palette — saves on this browser. Light / Dark / Auto stay in the portal header and apply to all apps. Prefs are per hostname (e.g. <code>stonepi.home</code>).</p>
-  <div class="palette-picker" role="group" aria-label="Colour palette">
-    <button type="button" class="palette-option" data-palette-set="default" aria-pressed="false">
-      <span class="palette-swatch" data-swatch="default" aria-hidden="true"></span>
-      <span class="palette-name">Default</span>
-      <span class="palette-note">Warm paper</span>
-    </button>
-    <button type="button" class="palette-option" data-palette-set="ocean" aria-pressed="false">
-      <span class="palette-swatch" data-swatch="ocean" aria-hidden="true"></span>
-      <span class="palette-name">Ocean</span>
-      <span class="palette-note">Cool blue</span>
-    </button>
-    <button type="button" class="palette-option" data-palette-set="forest" aria-pressed="false">
-      <span class="palette-swatch" data-swatch="forest" aria-hidden="true"></span>
-      <span class="palette-name">Forest</span>
-      <span class="palette-note">Moss and sage</span>
-    </button>
-    <button type="button" class="palette-option" data-palette-set="slate" aria-pressed="false">
-      <span class="palette-swatch" data-swatch="slate" aria-hidden="true"></span>
-      <span class="palette-name">Slate</span>
-      <span class="palette-note">Grey, plain</span>
-    </button>
+  <div class="appearance-theme">
+    <div>
+      <h3 class="appearance-sub">Theme</h3>
+      <p class="muted">The same choice as Appearance in your avatar menu. Saved for this browser, in every app.</p>
+    </div>
+    <div class="sp-theme appearance-switch" role="radiogroup" aria-label="Theme">
+      <button type="button" role="radio" aria-checked="false" data-sp-theme="light">{{ svg('sun') }}<span>Light</span></button>
+      <button type="button" role="radio" aria-checked="false" data-sp-theme="dark">{{ svg('moon') }}<span>Dark</span></button>
+      <button type="button" role="radio" aria-checked="false" data-sp-theme="system">{{ svg('system') }}<span>System</span></button>
+    </div>
   </div>
-  <p class="muted" data-palette-status>Using Default — saved for this browser (no Save button).</p>
-</section>
-
-<section class="card stack" id="app-colours" data-settings-panel-card="app-colours">
-  <h2 class="section-heading">{{ svg("appearance") }} App colours</h2>
-  <p class="muted">Accent colour for each app tile on Home, Health, and Services. Saved for the household (not just this browser).</p>
-  <form method="post" action="/settings/app-colours" class="stack">
+  {%- set w = welcome or {'mode': 'time', 'text': ''} %}
+  {%- set first = (w.name if w.name is defined and w.name else (user.display_name or user.username)) %}
+  <form method="post" action="/settings/welcome" class="stack welcome-form" id="welcome" data-welcome-form>
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    <ul class="app-color-list">
-      {% for item in app_color_items or [] %}
-      <li class="app-color-row">
-        {{ service_icon(item.id, item.color) }}
-        <label class="app-color-label" for="color-{{ item.id }}">{{ item.name }}</label>
-        <input
-          type="color"
-          id="color-{{ item.id }}"
-          name="color_{{ item.id }}"
-          value="{{ item.color }}"
-          data-app-color-default="{{ item.default }}"
-          data-app-color-swatch
-          aria-label="{{ item.name }} tile colour"
-        />
-      </li>
-      {% endfor %}
-    </ul>
+    <fieldset class="welcome-options">
+      <legend class="appearance-sub">Welcome message</legend>
+      <p class="muted">What Home greets you with. Just for you, on every device.</p>
+      <label class="welcome-alias">Your name on Home
+        <input type="text" name="display_name" maxlength="40" value="{{ first }}" placeholder="Adam" autocomplete="nickname" required />
+        <span class="muted">Your alias: a short name, e.g. Adam. Others see it on Users.</span>
+      </label>
+      <label class="welcome-option">
+        <input type="radio" name="welcome_mode" value="time"{% if w.mode == 'time' %} checked{% endif %} />
+        <span><strong>Time of day</strong><span class="muted">Good morning, {{ first }} · good afternoon · good evening</span></span>
+      </label>
+      <label class="welcome-option">
+        <input type="radio" name="welcome_mode" value="hello"{% if w.mode == 'hello' %} checked{% endif %} />
+        <span><strong>Hello</strong><span class="muted">Hello, {{ first }}</span></span>
+      </label>
+      <label class="welcome-option">
+        <input type="radio" name="welcome_mode" value="custom"{% if w.mode == 'custom' %} checked{% endif %} data-welcome-custom />
+        <span><strong>Your own</strong><span class="muted">Up to 60 characters; {name} becomes your name</span></span>
+      </label>
+      <label class="welcome-text">
+        <span class="visually-hidden">Your own welcome message</span>
+        <input type="text" name="welcome_text" maxlength="60" value="{{ w.text }}" placeholder="Welcome home, {name}" autocomplete="off" data-welcome-text />
+      </label>
+      <label class="welcome-option">
+        <input type="radio" name="welcome_mode" value="none"{% if w.mode == 'none' %} checked{% endif %} />
+        <span><strong>None</strong><span class="muted">No greeting; Your apps sit at the top</span></span>
+      </label>
+    </fieldset>
     <div class="row-actions">
-      <button type="submit" class="btn btn-primary btn-with-icon" name="action" value="save">{{ svg('check') }} Save app colours</button>
-      <button type="submit" class="btn btn-ghost btn-with-icon" name="action" value="reset">{{ svg('refresh') }} Reset defaults</button>
+      <button type="submit" class="btn btn-primary btn-with-icon">{{ svg('check') }} Save welcome message</button>
     </div>
   </form>
 </section>
@@ -393,87 +387,118 @@
 {% endif %}
 
 {% if settings_tab == 'vault' %}
-<div class="settings-panels">
-<section class="card stack">
-  <h2 class="section-heading">{{ svg("vault") }} Credential status</h2>
-  <p class="muted">Configured vs missing — values are never shown. Manage phone alerts in <a href="{{ notify_url('alerts') }}">Phone alerts</a> and TRMNL webhooks on each <a href="{{ notify_url('displays') }}">Display</a> (both linked from the Settings hub).</p>
-  {% if vault_matrix %}
-  <ul class="vault-list">
-    {% for item in vault_matrix %}
-    <li class="vault-row">
-      <div class="vault-row-text">
+{% macro vault_row(item) -%}
+<li class="vault-item" id="vault-{{ item.id }}" data-vault-row data-vault-state="{{ 'set' if item.configured else 'missing' }}">
+  <div class="vault-item-main">
+    <span class="vault-status{% if item.configured %} is-set{% endif %}" aria-hidden="true">{% if item.configured %}{{ svg('check') }}{% endif %}</span>
+    <div class="vault-item-text">
+      <div class="vault-item-title">
         <strong>{{ item.label }}</strong>
-        {% if item.configured %}<span class="chip">Configured</span>{% else %}<span class="chip">Missing</span>{% endif %}
-        <span class="muted">{{ item.group }}</span>
-        <code>{{ item.id }}</code>
+        {% if item.configured %}<span class="chip vault-chip is-set">Set</span>{% elif item.optional %}<span class="chip chip-quiet">Optional</span>{% else %}<span class="chip vault-chip is-missing">Missing</span>{% endif %}
       </div>
-    </li>
-    {% endfor %}
-  </ul>
-  {% endif %}
-</section>
-
-<section class="card stack">
-  <h2 class="section-heading">{{ svg("plus") }} Add or update a secret</h2>
-  <p class="muted">Pick a known setting from the list, or choose <strong>Custom key</strong> for something else. Values are encrypted on disk and preferred over installer <code>.env</code> when set.</p>
-  <form method="post" action="/settings/vault" class="stack" data-vault-form>
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    <label>
-      Setting
-      <select name="key" data-vault-key>
-        <option value="">Choose a setting…</option>
-        {% for group in vault_catalog %}
-        <optgroup label="{{ group.group }}">
-          {% for item in group['items'] %}
-          <option value="{{ item.id }}" data-blurb="{{ item.blurb }}">{{ item.label }}</option>
-          {% endfor %}
-        </optgroup>
-        {% endfor %}
-        <option value="__custom__">Custom key…</option>
-      </select>
-    </label>
-    <p class="muted vault-blurb" data-vault-blurb hidden></p>
-    <label data-vault-custom hidden>
-      Custom key
-      <input type="text" name="custom_key" autocomplete="off" spellcheck="false" placeholder="MY_CUSTOM_KEY" data-vault-custom-input />
-    </label>
-    <label>
-      Value
-      <input type="password" name="value" autocomplete="new-password" spellcheck="false" placeholder="Paste the secret here" />
-    </label>
-    <div class="row-actions">
-      <button class="btn btn-primary btn-with-icon" type="submit" name="action" value="set">{{ svg('check') }} Save secret</button>
+      <div class="vault-item-meta"><code>{{ item.id }}</code>{% if item.hint %}<span>{{ item.hint }}</span>{% endif %}</div>
     </div>
-  </form>
-</section>
-
-<section class="card stack">
-  <h2 class="section-heading">{{ svg("vault") }} Stored secrets</h2>
-  {% if vault_keys %}
-  <ul class="vault-list">
-    {% for item in vault_keys %}
-    <li class="vault-row">
-      <div class="vault-row-text">
-        <strong>{{ item.label }}</strong>
-        {% if item.known %}<span class="chip">Known</span>{% else %}<span class="chip">Custom</span>{% endif %}
-        <code>{{ item.id }}</code>
-      </div>
+    <div class="vault-item-actions">
+      {% if item.owner_url %}
+      <a class="vault-owner-link" href="{{ item.owner_url }}">Set in {{ item.owner_label }} <span aria-hidden="true">&rarr;</span></a>
+      {% else %}
+      <button type="button" class="btn {{ 'btn-ghost' if item.configured or item.optional else 'btn-primary' }}" data-vault-edit aria-expanded="false" aria-controls="vault-form-{{ item.id }}">{{ 'Replace' if item.configured else 'Add value' }}</button>
+      {% if item.configured %}
       <form method="post" action="/settings/vault" data-confirm="Remove {{ item.label }}?" data-confirm-detail="Apps that need this secret will fall back to .env or empty until you add it again." data-confirm-ok="Remove">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
         <input type="hidden" name="key" value="{{ item.id }}" />
         <input type="hidden" name="action" value="delete" />
         <button class="icon-btn" type="submit" aria-label="Remove {{ item.label }}" title="Remove">{{ svg('trash') }}</button>
       </form>
-    </li>
-    {% endfor %}
-  </ul>
-  {% else %}
-  <div class="empty-state">
-    <h3>No secrets yet</h3>
-    <p class="muted">Use the form above to store the first one.</p>
+      {% endif %}
+      {% endif %}
+    </div>
   </div>
+  {% if not item.owner_url %}
+  <form method="post" action="/settings/vault" class="vault-edit" id="vault-form-{{ item.id }}" data-vault-edit-form hidden>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="key" value="{{ item.id }}" />
+    <input type="hidden" name="action" value="set" />
+    <label class="vault-edit-label" for="vault-value-{{ item.id }}">{{ 'New value' if item.configured else 'Value' }} for {{ item.label }}</label>
+    <div class="vault-edit-row">
+      <input id="vault-value-{{ item.id }}" type="password" name="value" required autocomplete="new-password" spellcheck="false" placeholder="{{ item.placeholder or 'Paste the secret here' }}"{% if item.id == 'STONEPI_RECOVER_PASSWORD' %} minlength="12"{% endif %} />
+      <button class="btn btn-primary" type="submit">Save</button>
+      <button class="btn btn-ghost" type="button" data-vault-cancel>Cancel</button>
+    </div>
+    <p class="vault-edit-note">{% if item.blurb %}{{ item.blurb }} {% endif %}{% if item.id != 'STONEPI_RECOVER_PASSWORD' %}Encrypted on the Pi and used instead of the installer .env; apps pick it up within a minute.{% endif %}</p>
+  </form>
   {% endif %}
+</li>
+{%- endmacro %}
+<div class="settings-panels vault-page" data-vault>
+<section class="card vault-summary">
+  <div class="vault-summary-top">
+    <p class="vault-count"><span class="vault-count-num">{{ vault.set }} of {{ vault.total }}</span> secrets set</p>
+    <div class="vault-filters" role="group" aria-label="Show secrets">
+      <button type="button" class="vault-filter" data-vault-filter="all" aria-pressed="true">All <span>{{ vault.total }}</span></button>
+      <button type="button" class="vault-filter" data-vault-filter="missing" aria-pressed="false">Missing <span>{{ vault.missing }}</span></button>
+      <button type="button" class="vault-filter" data-vault-filter="set" aria-pressed="false">Set <span>{{ vault.set }}</span></button>
+    </div>
+    <button type="button" class="btn btn-ghost btn-with-icon vault-custom-btn" data-vault-custom-open aria-expanded="false" aria-controls="vault-custom">{{ svg('plus') }} Custom secret</button>
+  </div>
+  <div class="vault-progress" role="progressbar" aria-label="Secrets set" aria-valuemin="0" aria-valuemax="{{ vault.total }}" aria-valuenow="{{ vault.set }}">
+    <span style="width: {{ ((vault.set / vault.total * 100) if vault.total else 0)|round(1) }}%"></span>
+  </div>
 </section>
+
+<div class="vault-custom-sheet" data-vault-custom hidden>
+<section class="card stack vault-custom" id="vault-custom" role="dialog" aria-labelledby="vault-custom-title">
+  <header class="vault-custom-head">
+    <h2 class="section-heading" id="vault-custom-title">{{ svg('plus') }} Custom secret</h2>
+    <button class="icon-btn vault-custom-x" type="button" data-vault-custom-close aria-label="Close">{{ svg('close') }}</button>
+  </header>
+  <p class="muted">For a key no app above asks for. Use the env var name the app reads.</p>
+  <form method="post" action="/settings/vault" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="action" value="set" />
+    <label>
+      Key
+      <input type="text" name="custom_key" required autocomplete="off" spellcheck="false" placeholder="MY_CUSTOM_KEY" />
+    </label>
+    <label>
+      Value
+      <input type="password" name="value" required autocomplete="new-password" spellcheck="false" placeholder="Paste the secret here" />
+    </label>
+    <div class="row-actions">
+      <button class="btn btn-primary" type="submit">Save</button>
+      <button class="btn btn-ghost" type="button" data-vault-custom-close>Cancel</button>
+    </div>
+  </form>
+</section>
+</div>
+
+{% for group in vault.groups %}
+<section class="card vault-group" data-vault-group>
+  <header class="vault-group-head">
+    <h2>{{ group.title }}</h2>
+    {% if group.sub %}<span class="muted">{{ group.sub }}</span>{% endif %}
+    <span class="vault-group-count">{{ group.set }} of {{ group.rows|length }} set</span>
+  </header>
+  <ul class="vault-items">
+    {% for item in group.rows %}{{ vault_row(item) }}{% endfor %}
+  </ul>
+</section>
+{% endfor %}
+
+{% if vault.other %}
+<section class="card vault-group" data-vault-group>
+  <header class="vault-group-head">
+    <h2>Other stored secrets</h2>
+    <span class="muted">Custom keys, extra Displays, legacy</span>
+    <span class="vault-group-count">{{ vault.other|length }} stored</span>
+  </header>
+  <ul class="vault-items">
+    {% for item in vault.other %}{{ vault_row(item) }}{% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<p class="muted vault-empty" data-vault-empty hidden>Nothing missing — every secret is set.</p>
 </div>
 {% endif %}
 

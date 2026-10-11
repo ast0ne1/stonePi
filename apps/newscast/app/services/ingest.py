@@ -19,7 +19,7 @@ from app.services.dedupe import canonicalize_url, cluster_key, content_hash, is_
 from app.services.filters import feed_keyword_lists, story_passes_filters
 from app.services import net_guard
 from app.services.health import record_fetch
-from app.services.schedule import feed_is_due, feed_is_muted
+from app.services.schedule import feed_is_due, feed_is_muted, paper_prep_clock
 from app.services.scrape import (
     article_candidates,
     discover_rss,
@@ -51,6 +51,9 @@ class IngestState:
     last_finished_at: datetime | None = None
     last_error: str | None = None
     last_new_stories: int = 0
+    # Stories saved so far by the refresh that is running (each source commits as it goes),
+    # so the Briefing can show them before the whole refresh finishes.
+    new_so_far: int = 0
     last_message: str = "Idle"
     last_feed_stats: list[dict] = []
     # Global refresh started from the Refresh button: the only kind the UI can stop.
@@ -248,6 +251,37 @@ def _is_known(title: str, published_at: datetime | None, url: str, digest: str, 
     return False
 
 
+_IMG_SRC_RE = re.compile(r"<img\s[^>]*?src=['\"]([^'\"]+)", re.IGNORECASE)
+
+
+def _entry_image_url(entry) -> str:
+    """The feed's own picture for an entry: media thumbnail/content, image enclosure, or first <img>."""
+    candidates: list[tuple[int, str]] = []
+    for item in list(getattr(entry, "media_thumbnail", None) or []) + list(getattr(entry, "media_content", None) or []):
+        url = (item.get("url") or "").strip()
+        kind = (item.get("type") or item.get("medium") or "image").lower()
+        if url and "image" in kind:
+            try:
+                width = int(item.get("width") or 0)
+            except (TypeError, ValueError):
+                width = 0
+            candidates.append((width, url))
+    for link in getattr(entry, "links", None) or []:
+        if (link.get("rel") == "enclosure") and (link.get("type") or "").lower().startswith("image/"):
+            candidates.append((0, (link.get("href") or "").strip()))
+    if candidates:
+        # Largest declared size wins; a few hundred pixels is plenty for the cover.
+        candidates.sort(key=lambda pair: pair[0], reverse=True)
+        url = candidates[0][1]
+    else:
+        html_bits = " ".join(
+            [getattr(entry, "summary", "") or ""] + [part.get("value", "") for part in getattr(entry, "content", None) or []]
+        )
+        match = _IMG_SRC_RE.search(html_bits)
+        url = match.group(1).strip() if match else ""
+    return url if url.startswith(("http://", "https://")) and len(url) <= 1000 else ""
+
+
 def _items_from_parsed(parsed, feed: Feed) -> list[dict]:
     items = []
     for entry in parsed.entries[: env.max_stories_per_feed]:
@@ -264,6 +298,7 @@ def _items_from_parsed(parsed, feed: Feed) -> list[dict]:
                 "excerpt": summary,
                 "published_at": published,
                 "source": feed.name,
+                "image_url": _entry_image_url(entry),
             }
         )
     return items
@@ -485,6 +520,88 @@ def revoked_custom_feed_owners(db: Session, feeds: list[Feed]) -> set[int]:
     return revoked
 
 
+def _save_source_stories(
+    db: Session,
+    feed: Feed,
+    candidates: list[dict],
+    saved_titles: list[str],
+    llm,
+    score_importance,
+    summarize_with_config,
+    on_added=None,
+) -> int:
+    """Summarise, score and add one source's new stories; returns how many were added.
+
+    ``saved_titles`` holds this account's stories already saved in the running refresh:
+    a candidate that matches one of them is the same story from another source and is
+    skipped (the first source keeps it). ``on_added`` runs after each story is added, so
+    a Stop part-way through a source still counts (and keeps) what was summarised.
+    Committed by the caller.
+    """
+    category = getattr(feed, "category", None) or "news"
+    added = 0
+    for item in candidates:
+        if any(is_duplicate_title(item["title"], seen) for seen in saved_titles):
+            continue
+        _check_stop()
+        excerpt = item.get("excerpt") or ""
+        if item.get("summarize", True):
+            try:
+                summary = summarize_with_config(item["title"], excerpt, item["source"], llm, db=db)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("summarize failed for %s: %s", item["title"], exc)
+                from app.services.summarize import fallback_summary
+
+                summary = fallback_summary(item["title"], excerpt)
+        else:
+            summary = excerpt.strip() or item["title"]
+        importance = score_importance(
+            item["title"],
+            excerpt,
+            source=item["source"],
+            category=category,
+            config=llm,
+            db=db,
+        )
+        db.add(
+            Story(
+                user_id=int(item.get("user_id") or 1),
+                title=item["title"],
+                summary=summary,
+                source_name=item["source"],
+                canonical_url=item["url"],
+                published_at=item["published_at"],
+                content_hash=item["content_hash"],
+                cluster_key=item["cluster_key"],
+                raw_excerpt=excerpt[:4000],
+                importance=importance,
+                content_lang=item.get("content_lang"),
+                image_url=item.get("image_url") or None,
+            )
+        )
+        saved_titles.append(item["title"])
+        added += 1
+        if on_added is not None:
+            on_added()
+    return added
+
+
+def _note_feed(feed: Feed, stats: dict) -> None:
+    """The Sources page's per-feed line for the refresh that just ran ("3 new", a reason or an error)."""
+    feed.last_new_count = int(stats.get("new") or 0)
+    note = stats.get("error") or stats.get("reason") or ""
+    if stats.get("new"):
+        note = f"{stats['new']} new"
+    elif note and stats.get("undated") and "undated" not in note:
+        note = f"{note}; {stats['undated']} undated (All only)"
+    fallback = int(stats.get("strict_fallback") or 0)
+    if fallback:
+        # Strict cleanup found no article text on some pages and used Standard.
+        extra = f"strict: {fallback} page{'' if fallback == 1 else 's'} used standard"
+        note = extra if stats.get("new") else (f"{note}; {extra}" if note else extra)
+    feed.last_ingest_note = (note or None) and str(note)[:240]
+
+
 def run_ingest(
     db: Session,
     force: bool = True,
@@ -505,6 +622,7 @@ def run_ingest(
     state.progress = "Starting"
     state.last_started_at = utcnow()
     state.last_error = None
+    state.new_so_far = 0
     created = 0
 
     try:
@@ -512,6 +630,8 @@ def run_ingest(
         global_minutes = settings.get_int(db, "ingest_interval_minutes", env.ingest_interval_minutes)
         active_start = settings.get_value(db, "ingest_active_start")
         active_end = settings.get_value(db, "ingest_active_end")
+        daily_at = settings.get_value(db, "ingest_daily_at")
+        prep_at = paper_prep_clock(briefing.briefing_publish_at(db))
         urls_by_user: dict[int, set[str]] = {}
         hashes_by_user: dict[int, set[str]] = {}
         titles_by_user: dict[int, list[tuple[str, datetime | None]]] = {}
@@ -552,6 +672,8 @@ def run_ingest(
                         global_minutes,
                         active_start=active_start,
                         active_end=active_end,
+                        daily_at=daily_at,
+                        prep_at=prep_at,
                     )
                 ]
         global_include = settings.get_value(db, "keyword_include")
@@ -562,13 +684,23 @@ def run_ingest(
             state.last_new_stories = 0
             return {"ok": True, "created": 0, "message": state.last_message}
 
-        candidates: list[dict] = []
+        from app.services.importance import score_importance
+        from app.services.summarize import summarize_with_config
+
+        def _count_added() -> None:
+            nonlocal created
+            created += 1
+
         feed_stats: list[dict] = []
+        # Titles saved during this run, per account. The first source to bring a story keeps
+        # it; the same story from a later source is skipped (clustering across sources).
+        saved_titles: dict[int, list[str]] = {}
         for feed in feeds:
             _check_stop()
             state.progress = feed.name
             uid = int(getattr(feed, "user_id", None) or 1)
             urls, hashes, titles = _lookup_for(uid)
+            candidates: list[dict] = []
             stats = {
                 "feed_id": feed.id,
                 "name": feed.name,
@@ -599,7 +731,6 @@ def run_ingest(
                 translate_feed = bool(getattr(feed, "translate", False))
                 strict_feed = (getattr(feed, "text_cleanup", None) or "standard") == "strict"
                 include, exclude = feed_keyword_lists(feed, global_include, global_exclude)
-                before = len(candidates)
                 for item in items:
                     if not item.get("published_at"):
                         stats["undated"] += 1
@@ -658,15 +789,6 @@ def run_ingest(
                     urls.add(item["url"])
                     hashes.add(item["content_hash"])
                     titles.append((item["title"], item["published_at"]))
-                stats["new"] = len(candidates) - before
-                if stats["parsed"] == 0:
-                    stats["reason"] = "no items in feed"
-                elif stats["new"] == 0 and stats["duplicates"] == stats["parsed"]:
-                    stats["reason"] = "already in library"
-                elif stats["new"] == 0 and stats["filtered"]:
-                    stats["reason"] = "filtered by keywords"
-                elif stats["new"] == 0:
-                    stats["reason"] = "no new stories"
             except IngestStopped:
                 raise
             except httpx.HTTPStatusError as exc:
@@ -685,69 +807,34 @@ def run_ingest(
                     status = status or 200
                 record_fetch(feed, status_code=status, item_count=0)
                 logger.warning("feed %s failed: %s", feed.name, exc)
+            # Save this source's new stories before the next one, so the Briefing fills in
+            # as the refresh goes instead of all at once at the end.
+            new_here = _save_source_stories(
+                db,
+                feed,
+                candidates,
+                saved_titles.setdefault(uid, []),
+                llm,
+                score_importance,
+                summarize_with_config,
+                on_added=_count_added,
+            )
+            stats["new"] = new_here
+            if not stats.get("error"):
+                if stats["parsed"] == 0:
+                    stats["reason"] = "no items in feed"
+                elif new_here == 0 and (stats["duplicates"] or candidates):
+                    stats["reason"] = "already in library"
+                elif new_here == 0 and stats["filtered"]:
+                    stats["reason"] = "filtered by keywords"
+                elif new_here == 0:
+                    stats["reason"] = "no new stories"
+            _note_feed(feed, stats)
             feed_stats.append(stats)
             db.add(feed)
-
-        clusters: dict[str, dict] = {}
-        for item in candidates:
-            matched = None
-            cluster_namespace = f"{item.get('user_id', 1)}:"
-            for key, chosen in clusters.items():
-                if not key.startswith(cluster_namespace):
-                    continue
-                if is_duplicate_title(item["title"], chosen["title"]):
-                    matched = key
-                    break
-            if matched:
-                if len(item.get("excerpt") or "") > len(clusters[matched].get("excerpt") or ""):
-                    item["cluster_key"] = clusters[matched]["cluster_key"]
-                    clusters[matched] = item
-                continue
-            clusters[f"{cluster_namespace}{item['cluster_key'] or item['url']}"] = item
-
-        from app.services.importance import score_importance
-        from app.services.summarize import summarize_with_config
-
-        feed_by_name = {feed.name: feed for feed in feeds}
-        for item in clusters.values():
-            _check_stop()
-            excerpt = item.get("excerpt") or ""
-            if item.get("summarize", True):
-                try:
-                    summary = summarize_with_config(item["title"], excerpt, item["source"], llm, db=db)
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("summarize failed for %s: %s", item["title"], exc)
-                    from app.services.summarize import fallback_summary
-
-                    summary = fallback_summary(item["title"], excerpt)
-            else:
-                summary = excerpt.strip() or item["title"]
-            feed = feed_by_name.get(item["source"])
-            category = getattr(feed, "category", None) or "news"
-            importance = score_importance(
-                item["title"],
-                excerpt,
-                source=item["source"],
-                category=category,
-                config=llm,
-                db=db,
-            )
-            db.add(
-                Story(
-                    user_id=int(item.get("user_id") or 1),
-                    title=item["title"],
-                    summary=summary,
-                    source_name=item["source"],
-                    canonical_url=item["url"],
-                    published_at=item["published_at"],
-                    content_hash=item["content_hash"],
-                    cluster_key=item["cluster_key"],
-                    raw_excerpt=excerpt[:4000],
-                    importance=importance,
-                    content_lang=item.get("content_lang"),
-                )
-            )
-            created += 1
+            db.commit()
+            # Only committed stories count: the Briefing reloads its list when this goes up.
+            state.new_so_far = created
 
         if feed_id is not None:
             translated = _backfill_translations(
@@ -757,36 +844,6 @@ def run_ingest(
         else:
             translated = _backfill_translations(db)
         _purge_old_stories(db)
-        db.commit()
-        # Reconcile "new" count after clustering (candidates may collapse).
-        created_by_source: dict[str, int] = {}
-        for item in clusters.values():
-            name = item.get("source") or ""
-            created_by_source[name] = created_by_source.get(name, 0) + 1
-        feeds_by_id = {feed.id: feed for feed in feeds}
-        for stats in feed_stats:
-            stats["new"] = created_by_source.get(stats["name"], 0)
-            if stats["parsed"] and stats["new"] == 0 and not stats["reason"]:
-                if stats["duplicates"]:
-                    stats["reason"] = "already in library"
-                elif stats["filtered"]:
-                    stats["reason"] = "filtered by keywords"
-                else:
-                    stats["reason"] = "no new stories"
-            feed_row = feeds_by_id.get(stats.get("feed_id"))
-            if feed_row is not None:
-                feed_row.last_new_count = int(stats.get("new") or 0)
-                note = stats.get("error") or stats.get("reason") or ""
-                if stats.get("new"):
-                    note = f"{stats['new']} new"
-                elif note and stats.get("undated") and "undated" not in note:
-                    note = f"{note}; {stats['undated']} undated (All only)"
-                fallback = int(stats.get("strict_fallback") or 0)
-                if fallback:
-                    # Strict cleanup found no article text on some pages and used Standard.
-                    extra = f"strict: {fallback} page{'' if fallback == 1 else 's'} used standard"
-                    note = extra if stats.get("new") else (f"{note}; {extra}" if note else extra)
-                feed_row.last_ingest_note = (note or None) and str(note)[:240]
         db.commit()
         if feed_id is not None and feed_stats:
             row = feed_stats[0]
@@ -910,6 +967,7 @@ def snapshot() -> dict:
         "last_finished_label": state.last_finished_at.astimezone().strftime("%H:%M") if state.last_finished_at else "",
         "last_error": state.last_error,
         "last_new_stories": state.last_new_stories,
+        "new_so_far": state.new_so_far if state.running else 0,
         "last_message": state.last_message,
         "last_feed_stats": list(state.last_feed_stats or []),
     }

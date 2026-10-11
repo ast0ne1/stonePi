@@ -2,6 +2,85 @@
 
 Platform version lives in [`VERSION`](VERSION). App zips use each app’s `__version__` (see `scripts/build_release_zips.py`).
 
+## 0.2.0 — 2026-10-11
+
+**A new look.** StonePi gets its own design system across every app, with one shared header, app icons, light and dark themes, and a Home that greets you by name and fits on a phone screen. Also: the NewsCast Briefing fills in during a refresh, a Clear button in the bell, TRMNL plans per Display, steadier Car Thing links, and a fix for admins locking themselves out.
+
+### Added
+- **New look: the StonePi design system** (backlog F6; spec `ideation/ui-refresh.md`). StonePi's own identity replaces the warm-paper palettes and the red accent across every app, both themes (Dark, Light, System).
+  - **`packages/stonepi_brand` is the single source of the look:** self-hosted Sora (titles), IBM Plex Sans (text) and IBM Plex Mono (ports, versions, numbers); `tokens.css` generated from the design system's `tokens.json` by `build_tokens.py` (never hand-edited); `components.css` and `app-base.css` (shared buttons, inputs, cards, banners, status pills); the StonePi mark in five variants; fixed app and system icons with favicon, home-screen and PWA sizes (`render_icons.py`). Served at `/assets/brand/` by nginx and by `stonepi_auth.brand` in run-dev; every page links it through `stonepi/head.html`.
+  - **Matte, calm, colour only for meaning:** no wallpaper, glass, blur or gradients, no coloured side stripes; Sand primary buttons on dark, Basalt on light; Rust only for errors and destructive actions; status is always dot + word.
+  - **Icons:** each app has a fixed icon (its category colour, one Sand piece) in its header, the app switcher, Home, Services, Users, Updates and as its favicon and home-screen icon. Dashboard uses the StonePi mark.
+  - **Shared header restyled:** matte top bar, design-system icon buttons, Rust bell dot, the switcher with the app icons, pill theme switch in the avatar menu.
+  - **Dashboard Home:** the date, a welcome message and **Your apps** as cards with the app icons (Cards, List and Icons layouts all kept). The welcome message is per person, in Settings → General → Appearance: Time of day (default, by your browser's clock), Hello, your own text (up to 60 characters, `{name}` for your name) or none. Stored in Auth (`PUT /api/me/welcome`).
+  - **Health** stats are widgets with meters that turn amber above 80 % and red above 95 % and say so in words.
+  - **Removed:** the colour palettes (Default, Ocean, Forest, Slate) and **App colours** (`/settings/app-colours`); saved choices are ignored, icons have fixed colours now.
+  - **Car Thing screen:** design-system palette and fonts (served by the panel service, cached by the device), Sand accent, Basalt background and Sora clock for **new** configs; saved configs keep their colours. App icons on page widgets; the StonePi mark on the pairing and restart screens.
+  - **TRMNL:** the title bar shows the StonePi mark instead of TRMNL's icon. **Re-paste the universal template into TRMNL for every Display** (Notify → Displays → the Display → template) to get it; the screen keeps working with the old template until you do.
+  - **Install site:** same lockup, tokens and fonts; small-cut mark as favicon.
+  - The X3 / NewsCast reader paper is unchanged.
+  - **Docs:** new phone-sized screenshots in `docs/screenshots/` (Home, Health, Services, sign-in, Users, Settings), shown three to a row in the README. READMEs brought up to date: Notify's Phone alerts (was Destinations), the platform Phone alerts permission (was NewsCast's ntfy flag), NewsCast's AI tab and bottom bar, EventTrakr's settings tabs, TRMNL plans, palettes and App colours removed, and two app READMEs' broken sign-in images.
+- **Shared app header and bottom bar in every app** (backlog U2, U6, U10; spec `ideation/stonepi-navigation-plan.md`). One component in `stonepi_auth` (`stonepi/header.html`, `stonepi_auth.header`) gives every app the same header, left to right: app logo, search, the app's primary action (Refresh in NewsCast, EventTrakr, PriceScout, SportGuide and PriceWatch), the bell, the app switcher and your avatar. Each app only supplies its logo, search page, primary action and tabs, so the coming restyle (F6) changes one header instead of nine.
+  - **App switcher** (grid icon) replaces the Home tab: **Home** (the Dashboard, with the house icon), then the nine apps in Home order, the current one highlighted.
+  - **Avatar menu:** who's signed in, light/dark/system, Manage account (Dashboard → Settings → Your password) and Log out in red below a divider. The sign-in page has its own light/dark switch.
+  - **Bell panel, per app:** which of that app's alerts you have on, the last alert it sent you (what, when, whether it reached your phone) and **Preferences** (`/me/notifications`). A dot marks a new alert from that app since you last opened its panel. With nothing set up, or none of that app's alerts on, the panel says so first, with a button to set them up. The bell itself still only appears once an admin has phone alerts on. On the **Dashboard** the bell's panel is an overview across every app: the alerts you have on, grouped by app, and your last five notifications with whether each reached your phone. Notify gains `/api/me/apps/{app}`; `stonepi_contracts.app_alerts_status` caches it per person and app for a minute.
+  - **Bottom bars** carry 2–4 destinations with Settings last; Home leaves every bar, Search moves to the header (NewsCast, PriceScout, EventTrakr), Sources moves into Settings (NewsCast, PriceScout, SportGuide, EventTrakr), and Add/Create/New notice become a floating **+**. EventTrakr goes from 8 tabs to 4. Panels open as dropdowns, near full-width over a dimmed backdrop on phones, and close on a tap outside, Esc or Back; under ~420 px the header shows only the app logo.
+- **Car Thing Sleep action** (backlog U8): a mappable action that goes straight to the dimmed screensaver, or turns the backlight off where the panel controls it; any input wakes it. New configs map it to swipe up. Car Thing configs now record the actions they knew about (`actions_known`, `stonepi_display`), so an action added later is allowed in older allow-lists instead of silently blocked.
+- **Car Thing:** swipes now register on the device (the panel claimed touch gestures from the browser, which had been cancelling them as scrolls; lists still scroll). Swipe left/right turn pages by default. Notify's editor groups Touch gestures in Controls, shows swipe callouts under the drawing, and draws arrow zones on its screen while mapping.
+- **Car Thing drop-outs fixed at the cause:** the panel service ran `adb reverse --list` every 30 s, and on the Car Thing's firmware that takes ADB down along with the whole USB link, so the panel froze ~30 s after every takeover (12 times in a row across three ports). It no longer lists: the panel's 15 s check-ins prove the link, and the reverse is only re-created (plainly) after 45 s without one.
+- **Car Thing link:** when the USB link to the Pi drops, the panel shows a "Lost connection to StonePi · reconnecting…" bar instead of looking frozen, retries every 3 s and reloads its view when the link is back. The udev rule keeps the Car Thing out of USB autosuspend. The panel service now logs connects, takeover steps and disconnects (quiet on routine HTTP polling).
+- **TRMNL push limits** (`stonepi_display`): per-Display Standard / TRMNL+ plan with the documented payload and hourly limits, unchanged-screen skips and 429 back-off.
+- **Alerts bell** opens the personal alerts page at its new address, `/me/notifications` (`stonepi_auth` / `stonepi_contracts`), fixing browsers stuck on a cached pre-rename redirect to Notify.
+- **Dashboard:** Home → Reorder has **Default order**, which resets the tiles to the platform order.
+- **Notify event** `newscast.push_missed` ("Not delivered to reader", personal) in `stonepi_contracts`; pre-approved on fresh installs, existing installs approve it once in Notify → Events.
+
+### Changed
+- **Install site:** the nine apps as cards with their icons, and the Home screen beside the title (light or dark to match the visitor's setting), and a "Made for your phone" row of NewsCast, EventTrakr and SportGuide (light, captured from a real StonePi). Displays are named as TRMNL and Car Thing. Install page: no emoji or exclamation marks; one Callout style (warning for the invisible-password note, neutral for the rest); the two passwords explained once in step 1; a "read the script first" link beside the install command (`/install.sh` now served as plain text). New **Callout** component (`.sp-callout`, `.sp-callout--warning`) in `stonepi_brand` components.css.
+- **Dashboard on phones** keeps the **StonePi** wordmark in its header (apps still show just their icon on narrow phones).
+- **Bell panel: Clear.** Each panel has a **Clear** link that hides what it lists, for you only: nothing is deleted and Notify → History still has every delivery. Clearing on the Dashboard clears every app; inside an app it clears just that app. New alerts show again as they arrive (`stonepi_notify` `bell_cleared.json`, Notify `POST /api/me/apps/{app}/clear`, shared header).
+- **Phones (new look):** the app icon in every header is the same size as the header buttons (40 px, 36 px on narrow phones), and Refresh matches them (icon-only on phones, labelled for screen readers). The bell panel's empty state reads "No notifications yet. When one of your apps sends you something, you'll see it here."
+- **Home tile order** by default: NewsCast, EventTrakr, SportGuide, PriceScout, PriceWatch, Pinboard, Library, FileServe, Studio (`stonepi_auth.DEFAULT_LAUNCHER_ORDER`). People who reordered keep theirs.
+- **NewsCast:** new installs start with BBC World as the only feed. **Daily refresh at** (Settings → Schedule) runs the Once-a-day refresh at a fixed time; a **reader auto-push window** looks for the e-reader for 30 minutes after something is queued; the X3 cover shows the lead story's photo; paper alerts go out once per edition. Details in [apps/newscast/CHANGELOG.md](apps/newscast/CHANGELOG.md).
+- **Dashboard → Settings → Vault** is one list: each secret once, with its status, env var name and action on one row.
+
+### Fixed
+- **NewsCast: the Briefing fills in during a refresh.** Each source's new stories are saved as soon as that source is done, and the Briefing swaps its list in place, keeping open stories and your filter, instead of waiting for every source and reloading. When two sources carry the same story, the first keeps it. Also: the morning paper no longer publishes late, and sources are no longer reseeded on every start.
+- **Health said "ntfy off"** while phone alerts worked; it now follows Notify's per-person setup.
+- **Bell panel said "Couldn't reach Notify" when Notify was fine but slow** (e.g. just after a restart). The bell now keeps showing its last good answer for up to 15 minutes, waits a little longer on its first look, and if it truly can't check it says "Couldn't load your alerts just now" instead of implying Notify is down (`stonepi_contracts`, `stonepi_auth`).
+- **Admins could lock themselves out** by switching their own role to User on Dashboard → Users (it autosaves), even as the only admin. Auth now keeps at least one enabled admin and refuses self-demotion, self-disable and self-delete; the Dashboard locks your own role switch.
+
+### App versions in this cut
+
+Platform: **0.2.0**
+
+| System (ships with platform) | Version |
+|-----|---------|
+| dashboard | 0.2.0 |
+| auth | 0.2.0 |
+| notify | 0.2.0 |
+| recover | 0.2.0 |
+| carthing | 0.2.0 |
+
+| Apps | Version |
+|-----|---------|
+| newscast | 0.0.8 |
+| fileserve | 0.0.8 |
+| eventtrakr | 0.0.8 |
+| pinboard | 0.0.8 |
+| studio | 0.0.8 |
+| pricescout | 0.0.8 |
+| sportguide | 0.0.8 |
+| pricewatch | 0.0.8 |
+| library | 0.0.8 |
+
+| Packages | Version | Why |
+|----------|---------|-----|
+| stonepi_auth | 0.2.0 | design system serving (`brand`), shared head and restyled header, bell Clear, alias and welcome, `DEFAULT_LAUNCHER_ORDER` |
+| stonepi_contracts | 0.1.2 | bell keeps its last good answer when Notify is slow; `newscast.push_missed` event |
+| stonepi_display | 0.5.0 | TRMNL plans per Display, push skips and back-off; Car Thing Sleep action, `actions_known`, Sand/Basalt defaults; StonePi mark in TRMNL's title bar |
+| stonepi_notify | 0.1.1 | bell Clear (`bell_cleared.json`); personal test notifications recorded |
+| stonepi_brand | (static files) | the design system: tokens, fonts, logos, app and system icons, components |
+
 ## 0.1.9 — 2026-10-04
 
 Fresh-install fixes, the new **Library** app, **PriceWatch** retailer trust scores, a **Jungle** source for EventTrakr, football channels from two guides in **SportGuide**, and a security review of all of it. 

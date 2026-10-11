@@ -5,7 +5,7 @@ pages of widgets (small cards, half- or full-page System, mini-app lists and Clo
 or on a timer), small list → detail views of System, SportGuide, EventTrakr, NewsCast and Pinboard, a clock
 screensaver, and restarting StonePi services behind an admin PIN.
 
-Set it up in **Notify → Displays → Car Thing**. Plan and decisions: [`ideation/carthing-plan.md`](../../ideation/carthing-plan.md).
+Set it up in **Notify → Displays → Car Thing**.
 
 ## How it reaches the device
 

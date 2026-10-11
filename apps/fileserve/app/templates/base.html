@@ -7,14 +7,16 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="{{ homescreen_name or 'FileServe' }}" />
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.svg') }}" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <title>{% block title %}FileServe{% endblock %}</title>
     {% include "_theme_boot.html" %}
-    <link rel="stylesheet" href="/assets/fonts/fonts.css?v={{ fonts_rev }}" />
+    {% from "stonepi/head.html" import brand_head, brand_tail %}
+    {{ brand_head("fileserve", fonts_rev) }}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ asset_rev }}" />
+    {{ brand_tail(fonts_rev) }}
   </head>
   <body>
+    {% from "stonepi/header.html" import header_tools, header_fab %}
     <div class="app">
       <header class="topbar">
         <div class="brand-row">
@@ -22,14 +24,7 @@
         </div>
         <div class="topbar-actions">
           <p class="status-pill">{{ page_count }} page{% if page_count != 1 %}s{% endif %}</p>
-          {% from "stonepi/alerts.html" import alerts_bell %}
-          {{ alerts_bell(alerts_bell_state) }}
-          <form method="post" action="{{ url_for('logout') }}" data-native>
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-            <button class="icon-btn sign-out" type="submit" aria-label="Sign out" title="Sign out">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 7V5a2 2 0 0 1 2-2h7v18h-7a2 2 0 0 1-2-2v-2"/><path d="M15 12H3m0 0 3-3m-3 3 3 3"/></svg>
-            </button>
-          </form>
+          {{ header_tools(alerts_bell_state, logout_action=url_for('logout'), csrf_token=csrf_token, local_name=local_user_name) }}
         </div>
       </header>
 
@@ -52,23 +47,16 @@
       </main>
 
       <nav class="nav" aria-label="Main">
-        <a href="{{ stonepi_home_url or '/' }}">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5"/><path d="M7 10.5V19h10v-8.5"/></svg>
-          <span>Home</span>
-        </a>
-        <a href="{{ url_for('pages_list') }}" class="{% if active == 'pages' %}is-active{% endif %}">
+        <a href="{{ url_for('pages_list') }}" class="{% if active in ('pages', 'add') %}is-active{% endif %}">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4.5" width="13" height="16" rx="1.6"/><path d="M8 9h5.5M8 12h5.5M8 15h3.5"/><path d="M9 3.5h11v15.5"/></svg>
           <span>Pages</span>
-        </a>
-        <a href="{{ url_for('add_page') }}" class="{% if active == 'add' %}is-active{% endif %}">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-          <span>Add</span>
         </a>
         <a href="{{ url_for('settings_page') }}" class="{% if active == 'settings' %}is-active{% endif %}">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           <span>Settings</span>
         </a>
       </nav>
+      {% if active == 'pages' and can_publish_pages %}{{ header_fab(url_for('add_page'), "Add") }}{% endif %}
     </div>
     <div class="sheet" hidden data-confirm-sheet>
       <div class="sheet-card card">

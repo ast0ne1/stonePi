@@ -570,11 +570,11 @@ sudo bash deploy/install.sh --hostname stonepi</pre>
         </div>
         <div class="card">
           <h2>Do these now</h2>
-          <label class="check"><input type="checkbox" data-check="first-pass" /><span>Change admin password under <strong>Users</strong> (banner stays until you do)</span></label>
-          <label class="check"><input type="checkbox" data-check="first-tiles" /><span>Confirm launcher tiles: NewsCast, FileServe, EventTrakr, Pinboard, Studio</span></label>
-          <label class="check"><input type="checkbox" data-check="first-order" /><span>Optional: Home → <strong>Edit order</strong> — drag tiles to place, then Done</span></label>
-          <label class="check"><input type="checkbox" data-check="first-watch" /><span>Optional: <strong>Overview</strong> — apps show Healthy, and the alert banner only appears when something needs attention</span></label>
-          <label class="check"><input type="checkbox" data-check="first-display" /><span>Optional: <strong>Notifications → Destinations</strong> — TRMNL webhook, then Displays for Status wall / Household, Copy markup into the plugin, Push now</span></label>
+          <label class="check"><input type="checkbox" data-check="first-pass" /><span>Change the admin password under <strong>Settings → General → Your password</strong> (banner stays until you do)</span></label>
+          <label class="check"><input type="checkbox" data-check="first-tiles" /><span>Confirm Home shows your apps: NewsCast, EventTrakr, SportGuide, PriceScout, PriceWatch, Pinboard, Library, FileServe, Studio</span></label>
+          <label class="check"><input type="checkbox" data-check="first-order" /><span>Optional: Home → <strong>Reorder</strong> — drag tiles to place, then Done</span></label>
+          <label class="check"><input type="checkbox" data-check="first-watch" /><span>Optional: <strong>Health</strong> — apps show Healthy, and the alert banner only appears when something needs attention</span></label>
+          <label class="check"><input type="checkbox" data-check="first-display" /><span>Optional: <strong>Notify → Displays</strong> — add a TRMNL Display, paste its webhook and the universal template into the plugin, Push now. Phone alerts are under <strong>Notify → Phone alerts</strong></span></label>
           <label class="check"><input type="checkbox" data-check="first-vault" /><span>Optional: <strong>Settings → Vault</strong> — add OpenAI / Anthropic keys for Studio or NewsCast AI</span></label>
           <label class="check"><input type="checkbox" data-check="first-exposure" /><span>Leave <strong>Settings → Network → Network exposure</strong> on Home network unless you intend to go public</span></label>
           <p class="note">Default is trusted LAN. Flip to Internet-facing only when you put StonePi behind a tunnel or public HTTPS — apps tighten on the next request, no restart. Details: <code>deploy/SECURITY.md</code>.</p>

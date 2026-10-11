@@ -19,10 +19,6 @@ Household “put it on a URL” without cloud hosting — HTML, PDF, Word, or mu
 - **Studio** posts zips to `POST /api/studio/publish` (same session + CSRF).
 - Under StonePi, bind is loopback; nginx serves `/files/`. Per-app HTTPS is for **solo** runs only.
 
-<p align="center">
-  <img src="docs/screenshots/login.png?v=0.0.0.5" alt="FileServe sign-in screen on a phone" width="280" />
-</p>
-
 ## What it does
 
 - Hosts one HTML, PDF, Word, or zip site per public path
@@ -33,15 +29,16 @@ Household “put it on a URL” without cloud hosting — HTML, PDF, Word, or mu
 - Replace the file later without changing the path
 - Label, description, and path on Add / Edit; path defaults from the label
 - Public `/browse` listing of enabled, non-expired titles
-- Themes / palettes shared with other StonePi apps
+- Shared StonePi design system (light, dark or system theme)
 
 ## Web UI
 
 | Tab | What it is for |
 | --- | --- |
-| **Pages** | Labels, paths, QR, search/sort, Enable/Disable, Open, Edit, download/print, Remove |
-| **Add** | Upload `.html` / `.pdf` / `.docx` / `.zip`, or **Add from URL** (pack into a Site zip) |
-| **Settings** | Appearance and password; Users/Backup/Update when solo |
+| **Pages** | Labels, paths, QR, search/sort, Enable/Disable, Open, Edit, download/print, Remove. The floating **+** opens Add: upload `.html` / `.pdf` / `.docx` / `.zip`, or **Add from URL** (pack into a Site zip) |
+| **Settings** | Password; Users/Backup/Update when solo (theme is in the avatar menu) |
+
+The header carries the shared StonePi tools: notifications bell, app switcher (replaces the old Home tab) and the avatar menu (appearance, account, Log out).
 
 ## Paths
 

@@ -54,7 +54,7 @@
   <div class="chips-with-action">
     <div class="chips" data-chip-group>
       {{ filter_chip("all", "All", true) }}
-      {{ filter_chip("favourites", "Favourites") }}
+      {{ filter_chip("favourites", "Saved") }}
       {% for key, label in category_labels.items() %}
         {% if stories | selectattr('category', 'equalto', key) | list %}
         {{ filter_chip(key, label) }}
@@ -70,12 +70,12 @@
   {% if stories %}
     <ol class="story-list">
       {% for story in stories %}
-      <li class="card story-card" data-category="{{ story.category }}" data-favourited="{{ '1' if story.favourited else '0' }}">
+      <li class="card story-card" data-story-id="{{ story.id }}" data-category="{{ story.category }}" data-favourited="{{ '1' if story.favourited else '0' }}">
         <div class="story-kicker">
           <div class="story-kicker-meta">
             {% if story.favicon %}<img class="source-icon" src="{{ story.favicon }}" alt="" width="28" height="28">{% endif %}
             <p class="chip chip-source {% if story.feed_type == 'webpage' %}chip-source-scrape{% else %}chip-source-rss{% endif %}">{{ story.source_name }}{% if story.category %} · <span class="story-section">{{ category_labels.get(story.category, story.category) }}</span>{% endif %}</p>
-            <span class="chip chip-quiet story-kind">{{ 'Summarise' if story.is_summary else 'Full article' }}</span>
+            {% if story.is_summary and ai_on %}<span class="chip chip-ai story-kind story-kind-ai" title="Summary written by AI ({{ 'local model' if ai_local else 'cloud model' }})">AI summary</span>{% else %}<span class="chip chip-quiet story-kind">{{ 'Excerpt' if story.is_summary else 'Full article' }}</span>{% endif %}
           </div>
           {% set when = story.published_at or story.created_at %}
           {% if when %}
@@ -101,13 +101,13 @@
           <div class="story-card-favs">
           <form method="post" action="/stories/{{ story.id }}/longread" class="fav-form">
             <input type="hidden" name="day" value="{{ briefing_day }}" />
-            <button class="fav-btn {% if story.saved %}is-on{% endif %}" type="submit" aria-pressed="{{ 'true' if story.saved else 'false' }}" aria-label="{{ 'Already a long-read' if story.saved else 'Save as a long-read' }}" title="{{ 'On Saved' if story.saved else 'Save as a long-read' }}">
+            <button class="fav-btn {% if story.saved %}is-on{% endif %}" type="submit" aria-pressed="{{ 'true' if story.saved else 'false' }}" aria-label="{{ 'Already a long-read on Saved' if story.saved else 'Keep the full article as a long-read' }}" title="{{ 'Long-read on Saved' if story.saved else 'Keep the full article as a long-read' }}">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v17l-6-3.4L6 21z"/></svg>
             </button>
           </form>
           <form method="post" action="/stories/{{ story.id }}/favourite" class="fav-form">
             <input type="hidden" name="day" value="{{ briefing_day }}" />
-            <button class="fav-btn {% if story.favourited %}is-on{% endif %}" type="submit" aria-pressed="{{ 'true' if story.favourited else 'false' }}" aria-label="{{ 'Remove from favourites' if story.favourited else 'Favourite this story' }}" title="{{ 'Remove from favourites' if story.favourited else 'Keep this story' }}">
+            <button class="fav-btn {% if story.favourited %}is-on{% endif %}" type="submit" aria-pressed="{{ 'true' if story.favourited else 'false' }}" aria-label="{{ 'Remove from Saved' if story.favourited else 'Save to Saved' }}" title="{{ 'Remove from Saved' if story.favourited else 'Save to Saved' }}">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.6 14.6 10h6.8l-5.5 4.2 2.1 6.6L12 16.8 6 20.8l2.1-6.6L2.6 10h6.8z"/></svg>
             </button>
           </form>
@@ -134,7 +134,7 @@
     <h2>Category</h2>
     <div class="filter-picker" role="listbox" aria-label="Category">
       <button class="filter-picker-option" type="button" role="option" data-filter-pick="all">{{ filter_icon("all") }}<span>All</span></button>
-      <button class="filter-picker-option" type="button" role="option" data-filter-pick="favourites">{{ filter_icon("favourites") }}<span>Favourites</span></button>
+      <button class="filter-picker-option" type="button" role="option" data-filter-pick="favourites">{{ filter_icon("favourites") }}<span>Saved</span></button>
       {% for key, label in category_labels.items() %}
         {% if stories | selectattr('category', 'equalto', key) | list %}
         <button class="filter-picker-option" type="button" role="option" data-filter-pick="{{ key }}">{{ filter_icon(key) }}<span>{{ label }}</span></button>
@@ -173,7 +173,7 @@
     <h2>Briefing filters</h2>
     <div class="help-sheet-body">
       <p><strong>Today</strong> and <strong>Yesterday</strong> use publish date on this Pi’s local calendar. The calendar button picks any other day in the last {{ retention_days }} days, and everything in retention is under <strong>All</strong>. Undated stories only appear on All.</p>
-      <p><strong>Favourites</strong> keeps starred stories within the selected day. Category chips hide stories from other categories.</p>
+      <p><strong>Saved</strong> shows the stories you starred within the selected day; all of them are on the Saved tab. Category chips hide stories from other categories.</p>
       <p><strong>Generate</strong> freezes the current Briefing into today’s paper for your reader.</p>
     </div>
     <div class="btn-row">

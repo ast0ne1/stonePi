@@ -9,6 +9,7 @@
   var view = document.getElementById("view");
   var saver = document.getElementById("saver");
   var toastEl = document.getElementById("toast");
+  var offlineEl = document.getElementById("offline");
 
   var KEYS = {
     "1": "preset1", "2": "preset2", "3": "preset3", "4": "preset4",
@@ -320,6 +321,7 @@
       case "next_app": return cycleApp(1);
       case "prev_app": return cycleApp(-1);
       case "screensaver": return showSaver();
+      case "sleep": return sleep();
       case "brightness_up": bright = Math.min(1, bright + 0.2); return applyLevel(true);
       case "brightness_down": bright = Math.max(0.2, bright - 0.2); return applyLevel(true);
       case "restart": return openApp("system");
@@ -333,6 +335,7 @@
   var bright = 1;
   var forceQuiet = false;
   var backlight = false;
+  var asleep = false; // Sleep action: screensaver at its darkest until the next input
   var appliedKey = "";
 
   function mins(text) { var p = String(text).split(":"); return (+p[0]) * 60 + (+p[1]); }
@@ -347,6 +350,11 @@
     if (mode === "active") return { level: Math.round(bright * 100), off: false, quiet: false };
     var quiet = inQuiet(), q = cfg.idle.quiet_hours;
     if (quiet && q.mode === "off") return { level: 0, off: true, quiet: true };
+    // Sleep: backlight off where we control it, otherwise the dimmest of the idle levels.
+    if (asleep) {
+      if (backlight) return { level: 0, off: true, quiet: quiet };
+      return { level: Math.min(cfg.idle.dim_level, quiet ? q.level : 100), off: false, quiet: quiet };
+    }
     if (quiet) return { level: q.level, off: false, quiet: true };
     var idle = (Date.now() - lastInput) / 1000;
     var dimAt = cfg.idle.screensaver_after_s + cfg.idle.dim_after_s;
@@ -410,12 +418,19 @@
       applyLevel(true);
     }).catch(function () {});
   }
+  function sleep() {
+    asleep = true;
+    if (mode === "saver") return applyLevel(true);
+    var shown = showSaver();
+    return shown && shown.then ? shown.then(function () { applyLevel(true); }) : applyLevel(true);
+  }
   function refreshSaver() {
     fetch("v/saver", { credentials: "same-origin" }).then(function (r) { return r.ok ? r.text() : null; }).then(function (html) {
       if (html !== null && mode === "saver") { saver.innerHTML = html; paintTime(true); }
     }).catch(function () {});
   }
   function wake() {
+    asleep = false;
     mode = "active";
     saver.hidden = true;
     view.hidden = false;
@@ -469,6 +484,11 @@
   document.addEventListener("pointerdown", function (e) {
     touch = { x: e.clientX, y: e.clientY, t: Date.now(), target: e.target };
   });
+  // The browser took the gesture over (native scroll in a list): not a tap or a swipe.
+  document.addEventListener("pointercancel", function () {
+    touch = null;
+    lastInput = Date.now();
+  });
   document.addEventListener("pointerup", function (e) {
     if (!touch) return;
     var dx = e.clientX - touch.x, dy = e.clientY - touch.y, dt = Date.now() - touch.t, start = touch.target;
@@ -519,6 +539,7 @@
   function fail(what, err) {
     var msg = String((err && err.message) || err);
     var network = err instanceof TypeError && /fetch|network/i.test(msg);
+    if (network) setOnline(false);
     toast(network ? "StonePi isn’t answering." : "Panel error: " + msg);
     report(what + (network ? " (network): " : ": ") + msg + (err && err.stack ? " | " + err.stack : ""));
   }
@@ -529,11 +550,29 @@
     report("unhandled: " + String(e.reason && e.reason.message || e.reason));
   });
 
-  // ── Check in with the Pi every 15 s ────────────────────────────────────
+  // ── Check in with the Pi every 15 s (every 3 s while the link is down) ──
+  // The panel reaches the Pi only through the USB link (adb reverse). When that drops the
+  // screen keeps its last page, so a banner says so, and the view reloads once it's back.
+  var online = true;
+  var TICK_MS = 15000, RETRY_MS = 3000;
+  function setOnline(up) {
+    if (up === online) return;
+    online = up;
+    offlineEl.hidden = up;
+    if (up) {
+      toastEl.hidden = true;
+      if (mode === "saver") refreshSaver();
+      else load(current, false, focusIndex);
+    }
+  }
   var frev = "";
   function tick() {
-    fetch("tick", { credentials: "same-origin" }).then(function (r) {
+    var ctrl = typeof AbortController === "function" ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 8000) : null;
+    fetch("tick", { credentials: "same-origin", signal: ctrl ? ctrl.signal : undefined }).then(function (r) {
+      clearTimeout(timer);
       if (r.status === 403) { location.reload(); return null; }
+      setOnline(true);
       return r.ok ? r.json() : null;
     }).then(function (t) {
       if (!t) return;
@@ -546,7 +585,13 @@
         else if (screenKind() === "home" || screenKind() === "app") load(current, false, focusIndex);
       }
       frev = t.frev;
-    }).catch(function () {});
+    }).catch(function () {
+      clearTimeout(timer);
+      setOnline(false);
+    });
+  }
+  function scheduleTick() {
+    setTimeout(function () { tick(); scheduleTick(); }, online ? TICK_MS : RETRY_MS);
   }
 
   // Page rotation: only while nobody is using the panel. Any input pauses it; after
@@ -577,7 +622,7 @@
       if (inQuiet() && Date.now() - loadedAt > 20 * 3600 * 1000) location.reload();
     }
   }, 1000);
-  setInterval(tick, 15000);
+  scheduleTick();
 
   // Notify's editor drives the preview (buttons on the drawing, "show screensaver", ...).
   if (cfg.preview) {

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
+{% block fab %}{% from "stonepi/header.html" import header_fab %}{{ header_fab("/new", "Create") }}{% endblock %}
 {% block title %}Projects · Studio{% endblock %}
 {% block main_class %} main-create{% endblock %}
 {% block content %}
@@ -24,15 +25,6 @@
 </section>
 
 <ul class="project-grid">
-  {% if view != "all" %}
-  <li>
-    <a class="project-card project-new" href="/">
-      <span class="project-new-plus" aria-hidden="true">{{ icon("plus") }}</span>
-      <strong>Start something new</strong>
-      <span class="hint">A game, a story or a handy app</span>
-    </a>
-  </li>
-  {% endif %}
   {% for p in projects %}
   {% set kind = p.kind or 'spa' %}
   <li>
@@ -73,6 +65,6 @@
 {% include "_rename_sheet.html" %}
 {% endif %}
 {% if not projects %}
-<p class="hint">{% if view == "all" %}No projects{% if owner_filter %} from this person{% endif %} yet.{% else %}Nothing here yet. Press <strong>Start something new</strong> to make your first one.{% endif %}</p>
+<p class="hint">{% if view == "all" %}No projects{% if owner_filter %} from this person{% endif %} yet.{% else %}Nothing here yet. Tap <strong>+</strong> to make your first one.{% endif %}</p>
 {% endif %}
 {% endblock %}

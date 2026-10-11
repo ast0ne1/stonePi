@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .bell import cleared_at, last_alert, mark_cleared, mark_seen, recent_alerts, seen_at, unseen
 from .destinations import (
     DEFAULT_NTFY_SERVER,
     VAULT_NTFY_TOKEN_KEY,
@@ -50,22 +51,29 @@ __all__ = [
     "generate_topic",
     "get_subscription",
     "in_quiet_hours",
+    "last_alert",
     "ingest_event",
     "load_destinations",
     "load_history",
     "load_needs_review",
     "load_prefs",
     "load_subscriptions",
+    "mark_cleared",
+    "mark_seen",
     "normalize_approval",
     "plan_recipients",
     "publish_ntfy",
+    "recent_alerts",
+    "cleared_at",
     "redact_topic",
     "roster",
     "rotate_topic",
     "save_destinations",
     "save_prefs",
     "save_subscription",
+    "seen_at",
     "send_test_notification",
     "start_scheduler",
+    "unseen",
     "vault_ntfy_token",
 ]

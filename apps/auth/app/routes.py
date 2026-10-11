@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session
 from app.config import ROOT_DIR, env, resolve_cockpit_url
 from app.db import get_db, init_db
 from app import __asset_rev__, __version__, users as users_svc
-from stonepi_auth.brand import fonts_rev
+from stonepi_auth.alerts import add_shared_templates
+from stonepi_auth.brand import brand_color, fonts_rev, manifest_icons
 from stonepi_auth import COOKIE_NAME, clear_cookie, encode_session, set_cookie
 from stonepi_auth.csrf import csrf_from_request, csrf_ok, csrf_ok_request, set_csrf_cookie
 from stonepi_auth.http import client_ip, portal_home_url, request_is_https
@@ -22,6 +23,7 @@ from stonepi_auth.session import COOKIE_MAX_AGE, CSRF_COOKIE, safe_next
 logger = logging.getLogger("stonepi.auth")
 templates = Jinja2Templates(directory=str(ROOT_DIR / "app" / "templates"))
 templates.env.globals.update(app_version=__version__, asset_rev=__asset_rev__, fonts_rev=fonts_rev())
+add_shared_templates(templates.env)
 router = APIRouter()
 
 LOGIN_WINDOW_SECONDS = 15 * 60
@@ -67,15 +69,12 @@ def _theme_ctx(request: Request) -> dict[str, str]:
     pref = (request.cookies.get("stonepi-theme") or "system").strip().lower()
     if pref not in {"light", "dark", "system"}:
         pref = "system"
-    palette = (request.cookies.get("stonepi-palette") or "default").strip().lower()
-    if palette not in {"default", "ocean", "forest", "slate"}:
-        palette = "default"
     if pref in {"light", "dark"}:
         theme = pref
     else:
         # Prefer light for SSR when system; boot script corrects from prefers-color-scheme.
         theme = "light"
-    return {"theme_pref": pref, "theme": theme, "palette": palette}
+    return {"theme_pref": pref, "theme": theme}
 
 
 def _request_origin(request: Request) -> str:
@@ -260,7 +259,6 @@ def root(request: Request, db: Annotated[Session, Depends(get_db)]):
 @router.get("/manifest.webmanifest")
 def manifest(request: Request):
     home = portal_home_url(request, env.public_origin)
-    icon = "/static/icons/apple-touch-icon.svg"
     return JSONResponse(
         {
             "name": "StonePi",
@@ -269,16 +267,9 @@ def manifest(request: Request):
             "start_url": home,
             "scope": home,
             "display": "standalone",
-            "background_color": "#f3eee4",
-            "theme_color": "#f3eee4",
-            "icons": [
-                {
-                    "src": icon,
-                    "sizes": "180x180",
-                    "type": "image/svg+xml",
-                    "purpose": "any",
-                }
-            ],
+            "background_color": brand_color("canvas"),
+            "theme_color": brand_color("surface"),
+            "icons": manifest_icons("dashboard"),
         },
         media_type="application/manifest+json",
         headers={"Cache-Control": "no-cache"},
@@ -400,6 +391,34 @@ async def api_set_launcher_order(request: Request, db: Annotated[Session, Depend
     return {"ok": True, "launcher_order": result}
 
 
+@router.patch("/api/me")
+async def api_update_me(request: Request, db: Annotated[Session, Depends(get_db)]):
+    """Your own alias (display name): what Home greets you with and what others see."""
+    user = current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not signed in")
+    _require_api_csrf(request)
+    body = await request.json()
+    if not isinstance(body, dict) or "display_name" not in body:
+        raise HTTPException(status_code=400, detail="Nothing to change")
+    alias = " ".join(str(body.get("display_name") or "").split())[: users_svc.DISPLAY_NAME_MAX]
+    user = users_svc.update_user(db, user, display_name=alias)
+    return users_svc.user_payload(user, db)
+
+
+@router.put("/api/me/welcome")
+async def api_set_welcome(request: Request, db: Annotated[Session, Depends(get_db)]):
+    user = current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not signed in")
+    _require_api_csrf(request)
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Expected a JSON object")
+    result = users_svc.set_welcome(db, user, body.get("mode"), body.get("text"))
+    return {"ok": True, "welcome": result}
+
+
 @router.post("/api/me/password")
 async def api_change_password(request: Request, db: Annotated[Session, Depends(get_db)]):
     from stonepi_auth.session import decode_session
@@ -478,14 +497,21 @@ async def api_create_user(request: Request, db: Annotated[Session, Depends(get_d
     return users_svc.user_payload(user, db)
 
 
+# An admin can't lock themselves out: another admin has to remove their role,
+# disable or delete their account.
+SELF_LOCKOUT_MESSAGE = "You can't remove your own admin access. Ask another admin to do it."
+
+
 @router.patch("/api/users/{user_id}")
 async def api_update_user(user_id: str, request: Request, db: Annotated[Session, Depends(get_db)]):
-    require_admin(request, db)
+    actor = require_admin(request, db)
     _require_api_csrf(request)
     user = users_svc.get_user(db, user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     body = await request.json()
+    if user.id == actor.id and (body.get("is_admin") is False or body.get("enabled") is False):
+        raise HTTPException(status_code=400, detail=SELF_LOCKOUT_MESSAGE)
     try:
         user = users_svc.update_user(
             db,
@@ -505,11 +531,13 @@ async def api_update_user(user_id: str, request: Request, db: Annotated[Session,
 
 @router.delete("/api/users/{user_id}")
 def api_delete_user(user_id: str, request: Request, db: Annotated[Session, Depends(get_db)]):
-    require_admin(request, db)
+    actor = require_admin(request, db)
     _require_api_csrf(request)
     user = users_svc.get_user(db, user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
+    if user.id == actor.id:
+        raise HTTPException(status_code=400, detail=SELF_LOCKOUT_MESSAGE)
     try:
         users_svc.delete_user(db, user)
     except ValueError as exc:

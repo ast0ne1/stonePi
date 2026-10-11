@@ -30,7 +30,11 @@ WEBAPP = "/usr/share/qt-superbird-app/webapp"
 DEVICE_DIR = "/tmp/stonepi-panel"
 MARKER = "stonepi-panel.txt"
 POLL_S = 3.0
-REVERSE_CHECK_S = 30.0
+# Never run `adb reverse --list` on a timer: on the Car Thing's firmware it takes ADB down,
+# and the whole USB link with it, which is why the panel dropped ~30 s after every takeover.
+# The panel's own 15 s check-ins prove the link instead; only after this long without one
+# is the reverse re-created (plain `adb reverse`, which is safe).
+LINK_SILENCE_S = 45.0
 CTROOT_TEMPLATE = ROOT_DIR / "app" / "templates" / "ctroot" / "index.html"
 
 
@@ -53,6 +57,11 @@ class Connector:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self.last_error = ""
+        self.last_tick = 0.0  # monotonic time of the device panel's last check-in
+
+    def note_tick(self) -> None:
+        """The device panel reached us, so its `adb reverse` link is working."""
+        self.last_tick = time.monotonic()
 
     # ── adb plumbing ────────────────────────────────────────────────────────
 
@@ -143,11 +152,10 @@ class Connector:
         if not device.injected:
             self._inject(device, token_hash)
             return
-        if now - device.reverse_checked > REVERSE_CHECK_S:
+        if now - max(self.last_tick, device.reverse_checked) > LINK_SILENCE_S:
             device.reverse_checked = now
-            _, out = self._run(["-s", device.serial, "reverse", "--list"], timeout=10)
-            if f"tcp:{env.port}" not in out:
-                self._run(["-s", device.serial, "reverse", f"tcp:{env.port}", f"tcp:{env.port}"])
+            logger.info("%s: no check-in from the panel for %ds, re-creating the link", device.serial, LINK_SILENCE_S)
+            self._run(["-s", device.serial, "reverse", f"tcp:{env.port}", f"tcp:{env.port}"])
 
     def _inject(self, device: Device, token_hash: str) -> None:
         from app import state
@@ -179,18 +187,23 @@ class Connector:
             page = page.replace("__PORT__", str(env.port)).replace("__TOKEN__", token)
             (root / "index.html").write_text(page, encoding="utf-8")
             (root / MARKER).write_text(hash_token(token)[:16], encoding="utf-8")
+            # Each takeover step is logged, so a drop-out can be matched to what we were doing.
+            logger.info("%s: taking over the screen (stop Chromium, push panel, bind-mount)", serial)
             self._shell(serial, "supervisorctl stop chromium")
             self._shell(serial, f"mountpoint -q {WEBAPP} && umount {WEBAPP}")
             self._shell(serial, f"rm -rf {DEVICE_DIR}")
             rc, out = self._run(["-s", serial, "push", str(root), DEVICE_DIR], timeout=60)
             if rc != 0:
                 self.last_error = f"adb push failed: {out.strip()[:160]}"
+                logger.warning("%s: %s", serial, self.last_error)
                 self._shell(serial, "supervisorctl start chromium")
                 return
             rc, out = self._shell(serial, f"mount --bind {DEVICE_DIR} {WEBAPP}")
+            logger.info("%s: panel mounted (rc=%s), starting Chromium", serial, rc)
             self._shell(serial, "supervisorctl start chromium")
         if rc != 0:
             self.last_error = f"mount failed: {out.strip()[:160]}"
+            logger.warning("%s: %s", serial, self.last_error)
             return
         device.injected = True
         device.level = None

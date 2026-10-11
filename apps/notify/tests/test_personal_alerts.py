@@ -221,6 +221,21 @@ def test_me_test_goes_to_own_topic(fresh):
     topic = client.put("/api/me/subscription", json={"enabled": True}, headers=H).json()["subscription"]["topic"]
     assert client.post("/api/me/test", headers=H).json()["ok"] is True
     assert fresh["sent"][-1]["topic"] == topic
+    assert fresh["sent"][-1]["user"] == ALICE
+
+
+def test_me_test_shows_in_your_recent_notifications(fresh, monkeypatch):
+    """A personal test is recorded as delivered to you, so the Dashboard bell lists it."""
+    from stonepi_notify import ntfy as ntfy_mod
+
+    monkeypatch.setattr(stonepi_notify, "deliver_ntfy", ntfy_mod.deliver_ntfy)
+    monkeypatch.setattr(ntfy_mod, "publish_ntfy", lambda **kw: {"ok": True, "message": "Sent."})
+    client = alice()
+    client.put("/api/me/subscription", json={"enabled": True}, headers=H)
+    assert client.post("/api/me/test", headers=H).json()["ok"] is True
+    recent = client.get("/api/me/apps/dashboard").json()["recent"]
+    assert recent and recent[0]["title"] == "StonePi" and recent[0]["app_label"] == "Notify" and recent[0]["ok"]
+    assert client_for(BOB, username="bob").get("/api/me/apps/dashboard").json()["recent"] == []
 
 
 def test_me_rotate_changes_topic():
@@ -327,9 +342,10 @@ def test_connect_own_server_needs_address():
 def test_checklist_shows_progress_and_next_step():
     stonepi_notify.save_prefs({"events": {}})
     html = admin().get("/alerts").text
-    assert "Setup · 2 of 4 done" in html  # connected; Alice already has phone alerts
+    assert "Setup · 1 of 3 done" in html  # connected; who can use alerts is optional, not a step
     assert "Approve all except admin-only" in html
-    assert "1 of 2 household members" in html
+    assert "2 of 3 household members" in html  # admin counts (always on) + Alice
+    assert '<li class="is-optional">' in html and ">?</span>" in html
     assert "Not set up on your phone yet" in html
 
 
@@ -420,3 +436,108 @@ def test_admin_pages_link_back_to_dashboard_settings():
         assert m.group(1).endswith("/settings"), (path, m.group(1))
     html = c.get("/displays/dashboard").text
     assert '<a class="settings-back" href="/displays">&larr; Displays</a>' in html
+
+
+# -- /api/me/apps/{app}: the header bell panel -----------------------------------
+
+
+def _deliver_to(uid: str, event_id: str, *, ok: bool = True, title: str = "Lamp hit £40") -> None:
+    stonepi_notify.append_history(
+        channel="ntfy",
+        ok=ok,
+        title=title,
+        source=event_id.split(".")[0],
+        event_id=event_id,
+        deliveries=[{"kind": "user", "user": uid, "topic": "stonepi-…", "ok": ok, "silent": False, "message": "" if ok else "HTTP 500"}],
+    )
+
+
+def _approve(*event_ids: str) -> None:
+    prefs = stonepi_notify.load_prefs()
+    prefs.setdefault("events", {}).update({e: {"approved": True} for e in event_ids})
+    stonepi_notify.save_prefs(prefs)
+
+
+def test_app_panel_lists_this_apps_alerts_and_ticks():
+    _approve("pricewatch.target_reached", "pricewatch.price_drop", "newscast.publication_available")
+    stonepi_notify.enable_subscription(ALICE, username="alice")
+    stonepi_notify.save_subscription(ALICE, {"events": {"pricewatch.target_reached": True}})
+    body = alice().get("/api/me/apps/pricewatch").json()
+    assert body["enabled"] is True and body["needs_setup"] is False
+    assert [(e["id"], e["ticked"]) for e in body["events"]] == [
+        ("pricewatch.target_reached", True),
+        ("pricewatch.price_drop", False),
+    ]
+    assert body["last"] is None and body["unseen"] is False
+
+
+def test_app_panel_last_alert_is_your_own_delivery_from_that_app():
+    _deliver_to(ALICE, "pricewatch.target_reached", title="Mine")
+    _deliver_to(BOB, "pricewatch.price_drop", title="Bob's")
+    _deliver_to(ALICE, "newscast.publication_available", title="Other app")
+    body = alice().get("/api/me/apps/pricewatch").json()
+    assert body["last"]["title"] == "Mine" and body["last"]["ok"] is True
+    assert body["unseen"] is True
+
+
+def test_app_panel_seen_clears_the_dot_until_the_next_alert():
+    client = alice()
+    _deliver_to(ALICE, "pricewatch.target_reached")
+    assert client.post("/api/me/apps/pricewatch/seen").status_code == 403  # CSRF
+    res = client.post("/api/me/apps/pricewatch/seen", data={"csrf_token": CSRF})
+    assert res.status_code == 200 and res.json()["seen_at"]
+    assert client.get("/api/me/apps/pricewatch").json()["unseen"] is False
+    _deliver_to(ALICE, "pricewatch.price_drop", ok=False)
+    body = client.get("/api/me/apps/pricewatch").json()
+    assert body["unseen"] is True and body["last"]["ok"] is False and body["last"]["message"] == "HTTP 500"
+
+
+def test_app_panel_needs_sign_in_and_a_known_app():
+    assert client_for(None).get("/api/me/apps/pricewatch").status_code == 401
+    assert alice().get("/api/me/apps/nope").status_code == 404
+    assert alice().post("/api/me/apps/nope/seen", headers=H).status_code == 404
+
+
+def test_app_panel_without_phone_alerts_permission_is_empty():
+    body = client_for(BOB, username="bob").get("/api/me/apps/pricewatch").json()
+    assert body["allowed"] is False and body["events"] == [] and body["last"] is None
+
+
+def test_dashboard_scope_covers_every_app_with_recent_alerts():
+    _approve("pricewatch.target_reached", "newscast.publication_available")
+    stonepi_notify.enable_subscription(ALICE, username="alice")
+    _deliver_to(ALICE, "newscast.publication_available", title="Paper")
+    _deliver_to(ALICE, "pricewatch.target_reached", title="Lamp")
+    _deliver_to(BOB, "pricewatch.target_reached", title="Not mine")
+    body = alice().get("/api/me/apps/dashboard").json()
+    assert {e["app"] for e in body["events"]} == {"pricewatch", "newscast"}
+    assert [(r["title"], r["app_label"]) for r in body["recent"]] == [("Lamp", "PriceWatch"), ("Paper", "NewsCast")]
+    assert body["last"]["title"] == "Lamp" and body["unseen"] is True
+
+
+def test_clear_hides_panel_entries_for_you_only_and_keeps_history():
+    import time
+
+    _approve("pricewatch.target_reached", "newscast.publication_available")
+    stonepi_notify.enable_subscription(ALICE, username="alice")
+    _deliver_to(ALICE, "newscast.publication_available", title="Paper")
+    _deliver_to(ALICE, "pricewatch.target_reached", title="Lamp")
+    _deliver_to(BOB, "pricewatch.target_reached", title="Bob's lamp")
+    client = alice()
+    assert client.post("/api/me/apps/pricewatch/clear").status_code == 403  # CSRF
+    assert client.post("/api/me/apps/nope/clear", data={"csrf_token": CSRF}).status_code == 404
+    time.sleep(0.01)
+    # Clearing PriceWatch hides just PriceWatch's alerts (there and on the Dashboard).
+    assert client.post("/api/me/apps/pricewatch/clear", data={"csrf_token": CSRF}).json()["ok"] is True
+    assert client.get("/api/me/apps/pricewatch").json()["last"] is None
+    assert [r["title"] for r in client.get("/api/me/apps/dashboard").json()["recent"]] == ["Paper"]
+    # Bob's panel is untouched; Notify's history still has every delivery.
+    bob_titles = [e["title"] for e in stonepi_notify.load_history()]
+    assert {"Paper", "Lamp", "Bob's lamp"} <= set(bob_titles)
+    # Clearing the Dashboard clears every app; something new shows again.
+    client.post("/api/me/apps/dashboard/clear", data={"csrf_token": CSRF})
+    assert client.get("/api/me/apps/dashboard").json()["recent"] == []
+    assert client.get("/api/me/apps/newscast").json()["last"] is None
+    time.sleep(0.01)
+    _deliver_to(ALICE, "newscast.publication_available", title="Tomorrow's paper")
+    assert client.get("/api/me/apps/dashboard").json()["recent"][0]["title"] == "Tomorrow's paper"

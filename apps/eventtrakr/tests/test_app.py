@@ -52,7 +52,7 @@ def test_app_routes():
     assert b'data-settings-panel="general"' in res.data
     # Palette moved to the portal; General points there instead of an in-app picker.
     assert "Settings → General".encode() in res.data
-    assert b"olour palette" in res.data
+    assert b"avatar menu" in res.data
 
 
 def test_favourite_api_and_public_agenda():

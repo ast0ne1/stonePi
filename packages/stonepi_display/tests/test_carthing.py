@@ -32,14 +32,14 @@ def test_normalize_drops_unknown_and_disallowed():
     assert cfg["id"] == "kitchen-panel"
     # A single Home (schema 1) becomes page 1, small cards
     assert cfg["pages"] == [{"name": "Home", "widgets": [{"id": "newscast", "size": "small"}, {"id": "system", "size": "small"}]}]
-    # home + back are always allowed; page actions didn't exist in schema 1, so they're allowed too
-    assert set(cfg["allowed_actions"]) == {"home", "back", "select", "open:newscast", *carthing.PAGE_ACTION_IDS}
+    # home + back are always allowed; page actions and Sleep didn't exist yet, so they're allowed too
+    assert set(cfg["allowed_actions"]) == {"home", "back", "select", "open:newscast", "sleep", *carthing.PAGE_ACTION_IDS}
     assert cfg["controls"]["preset1"] == "open:newscast"
     assert cfg["controls"]["preset2"] is None  # not allowed → unmapped
     assert "nope" not in cfg["controls"]
     assert cfg["clock"]["face"] == "digital_bold"
     assert cfg["clock"]["color"] == "#ABCDEF"
-    assert cfg["clock"]["accent"] == "#FF7A1A"
+    assert cfg["clock"]["accent"] == "#C7BBA8"  # Sand: design-system default (F6)
     assert cfg["clock"]["seconds"] is True
     assert cfg["idle"]["screensaver_after_s"] == 10
     assert cfg["idle"]["quiet_hours"]["from"] == "22:30"
@@ -48,7 +48,7 @@ def test_normalize_drops_unknown_and_disallowed():
 
 def test_image_background_needs_asset_id():
     cfg = carthing.normalize_config({"idle": {"background": {"type": "image", "value": "../etc/passwd"}}})
-    assert cfg["idle"]["background"] == {"type": "gradient", "value": "midnight"}
+    assert cfg["idle"]["background"] == {"type": "solid", "value": "#0B0D0E"}
     cfg = carthing.normalize_config({"idle": {"background": {"type": "image", "value": "0123456789abcdef"}}})
     assert cfg["idle"]["background"]["type"] == "image"
 
@@ -177,7 +177,7 @@ def test_old_export_imports_and_new_export_is_marked(store: Path):
 
 def test_schema_2_allow_list_is_respected():
     cfg = carthing.normalize_config({"pages": [{"name": "A", "widgets": []}], "allowed_actions": ["select"]})
-    assert set(cfg["allowed_actions"]) == {"home", "back", "select"}
+    assert set(cfg["allowed_actions"]) == {"home", "back", "select", "sleep"}  # Sleep is newer than this list
     cfg = carthing.normalize_config(
         {"pages": [], "allowed_actions": ["next_page", "page:2"], "controls": {"swipe_left": "next_page", "preset1": "page:2", "preset2": "page:9"}}
     )
@@ -239,3 +239,43 @@ def test_page_widget_ids_in_page_order():
         {"pages": [{"widgets": ["newscast", "clock"]}, {"widgets": ["system", {"id": "newscast", "size": "half"}]}]}
     )
     assert carthing.page_widget_ids(cfg) == ["newscast", "clock", "system"]
+
+
+# -- Sleep (backlog U8) ---------------------------------------------------------
+
+
+def test_sleep_is_a_screen_action_and_new_configs_map_it_to_swipe_up():
+    assert {"id": "sleep", "label": "Sleep", "group": "Screen"} in carthing.ACTIONS
+    cfg = carthing.default_config()
+    assert cfg["controls"]["swipe_up"] == "sleep" and "sleep" in cfg["allowed_actions"]
+    assert cfg["actions_known"] == list(carthing.ACTION_IDS)
+
+
+def test_allow_list_saved_before_sleep_existed_allows_it_but_keeps_mappings():
+    old = {"pages": [{"name": "A", "widgets": []}], "allowed_actions": ["select"], "controls": {"swipe_up": None}}
+    cfg = carthing.normalize_config(old)
+    assert "sleep" in cfg["allowed_actions"]
+    assert cfg["controls"]["swipe_up"] is None  # existing setups keep their own mapping
+
+
+def test_unticking_sleep_sticks_once_the_config_knows_about_it():
+    saved = carthing.normalize_config(carthing.default_config())
+    saved["allowed_actions"] = [a for a in saved["allowed_actions"] if a != "sleep"]
+    again = carthing.normalize_config(saved)
+    assert "sleep" not in again["allowed_actions"]
+    assert again["controls"]["swipe_up"] is None  # a forbidden action is unmapped
+
+
+def test_saved_colours_survive_new_defaults():
+    """F6: Sand / Basalt are defaults for new configs only; saved choices are kept."""
+    saved = {
+        "clock": {"color": "#F5F1E8", "accent": "#FF7A1A"},
+        "look": {"theme": "light", "accent": "#FF7A1A"},
+        "idle": {"background": {"type": "gradient", "value": "midnight"}},
+    }
+    cfg = carthing.normalize_config(saved)
+    assert (cfg["clock"]["color"], cfg["clock"]["accent"]) == ("#F5F1E8", "#FF7A1A")
+    assert (cfg["look"]["theme"], cfg["look"]["accent"]) == ("light", "#FF7A1A")
+    assert cfg["idle"]["background"] == {"type": "gradient", "value": "midnight"}
+    fresh = carthing.normalize_config({})
+    assert fresh["look"]["accent"] == "#C7BBA8" and fresh["idle"]["background"]["type"] == "solid"

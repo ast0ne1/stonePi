@@ -5,6 +5,7 @@ import threading
 from pathlib import Path
 from typing import Callable
 
+from .bell import configure_bell
 from .destinations import configure as configure_destinations
 from .history import configure_history
 from .ingest import PeopleFn, configure_ingest
@@ -31,6 +32,7 @@ def configure(
     configure_history(data)
     configure_ingest(data, people_fn=people_fn)
     configure_subscriptions(data)
+    configure_bell(data)
     _push_fn = push_trmnl_fn
 
 

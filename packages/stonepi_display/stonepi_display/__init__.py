@@ -2,6 +2,7 @@ from .capabilities_render import enrich_widget_for_destination, present_interact
 from .displays import (
     BUILTIN_DASHBOARD_ID,
     TRMNL_DEFAULTS,
+    TRMNL_TIERS,
     available_widgets,
     configure_displays,
     delete_display,
@@ -10,6 +11,7 @@ from .displays import (
     migrate_from_legacy_display_json,
     normalize_display,
     save_displays,
+    trmnl_tier,
     update_trmnl_status,
     upsert_display,
 )
@@ -17,6 +19,7 @@ from .grid import DEVICE_GRIDS, allowed_sizes, device_grid, footprint, layout_ro
 from .push import (
     PAYLOAD_LIMIT_BYTES,
     display_payload,
+    payload_limit,
     get_webhook,
     push_display,
     push_due,
@@ -38,6 +41,7 @@ __all__ = [
     "PREVIEW_SCREENS",
     "SAMPLE_VARIABLES",
     "TRMNL_DEFAULTS",
+    "TRMNL_TIERS",
     "UNIVERSAL_TEMPLATE",
     "WIDGET_SNIPPETS",
     "allowed_sizes",
@@ -47,6 +51,7 @@ __all__ = [
     "delete_display",
     "device_grid",
     "display_payload",
+    "payload_limit",
     "enrich_widget_for_destination",
     "footprint",
     "get_display",
@@ -65,6 +70,7 @@ __all__ = [
     "save_displays",
     "set_webhook",
     "snippet_keys",
+    "trmnl_tier",
     "update_trmnl_status",
     "upsert_display",
     "webhook_key",

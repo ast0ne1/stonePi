@@ -185,6 +185,7 @@ def _page(request: Request, name: str, ctx: dict) -> HTMLResponse:
             session_cookie=request.cookies.get(COOKIE_NAME),
             home_url=ctx["stonepi_home_url"],
             enabled=bool(session_secret()),
+            app_id="library",
         ),
     )
     response = templates.TemplateResponse(request, name, ctx)

@@ -10,6 +10,7 @@ from app import notifications, routes, services
 from stonepi_auth.session import CSRF_COOKIE, PlatformUser
 
 CSRF = "csrf-abc"
+_REAL_ALERTS_BELL = routes._alerts_bell  # the env fixture swaps in a stand-in
 
 
 def _user(*, is_admin=False, perms=None):
@@ -92,24 +93,24 @@ def env(monkeypatch):
 
 def test_not_allowed(env):
     env["state"] = _state(allowed=False, needs_setup=False)
-    html = env["client"].get("/notifications").text
+    html = env["client"].get("/me/notifications").text
     assert "aren't turned on for your account" in html
-    assert 'class="icon-btn alerts-bell' not in html  # bell hidden without phone alerts
+    assert 'class="icon-btn sp-bell' not in html  # bell hidden without phone alerts
 
 
 def test_household_off_admin_gets_notify_link(env):
     env["user"] = _user(is_admin=True)
     env["state"] = _state(available=False, needs_setup=False)
-    html = env["client"].get("/notifications").text
+    html = env["client"].get("/me/notifications").text
     assert "aren't turned on for the household yet" in html
     assert "/alerts" in html  # Notify's Phone alerts page: /notify/alerts behind nginx, Notify's port in dev
 
 
 def test_household_off_member_has_no_notify_link(env):
     env["state"] = _state(available=False, needs_setup=False)
-    html = env["client"].get("/notifications").text
+    html = env["client"].get("/me/notifications").text
     assert "/notify/settings" not in html
-    assert 'class="icon-btn alerts-bell' not in html  # bell hidden until household alerts are on
+    assert 'class="icon-btn sp-bell' not in html  # bell hidden until household alerts are on
 
 
 def test_bell_status_hidden_while_household_alerts_off(monkeypatch):
@@ -122,16 +123,16 @@ def test_bell_status_hidden_while_household_alerts_off(monkeypatch):
     assert status == {"show": False, "dot": False}
 
 
-def test_not_set_up_shows_turn_on_and_bell_dot(env):
-    html = env["client"].get("/notifications").text
+def test_not_set_up_shows_turn_on_and_bell(env):
+    html = env["client"].get("/me/notifications").text
     assert "Turn on personal alerts" in html
-    assert "alerts-bell has-dot" in html
+    assert "sp-bell" in html
     assert 'aria-current="page"' in html
 
 
 def test_enabled_shows_qr_link_choices_and_quiet_hours(env):
     env["state"] = ENABLED
-    html = env["client"].get("/notifications").text
+    html = env["client"].get("/me/notifications").text
     assert "<svg" in html.split('class="alerts-qr"', 1)[1][:400]
     assert "ntfy://ntfy.sh/stonepi-alice-abcdefghijklmnop" in html
     assert 'name="event_pricewatch.price_drop" value="1" checked' in html
@@ -139,17 +140,17 @@ def test_enabled_shows_qr_link_choices_and_quiet_hours(env):
     assert "checked" not in unticked
     assert 'value="pricewatch.price_drop,pricewatch.target_reached"' in html
     assert 'value="22:30"' in html and 'value="06:45"' in html
-    assert "has-dot" not in html
+    assert "sp-bell" in html  # the bell's dot now means a new alert (stonepi_auth tests), not "not set up"
 
 
 def test_notify_unreachable(env, monkeypatch):
     monkeypatch.setattr(services, "notify_request", lambda *a, **k: (503, {"message": "Notify is not reachable."}))
-    html = env["client"].get("/notifications").text
+    html = env["client"].get("/me/notifications").text
     assert "can't be loaded right now" in html
 
 
 def _post(env, **form):
-    return env["client"].post("/notifications", data={"csrf_token": CSRF, **form}, follow_redirects=False)
+    return env["client"].post("/me/notifications", data={"csrf_token": CSRF, **form}, follow_redirects=False)
 
 
 def test_turn_on(env):
@@ -201,8 +202,15 @@ def test_csrf_required(env):
 
 def test_signed_out_redirects_to_login(env):
     env["user"] = None
-    response = env["client"].get("/notifications", follow_redirects=False)
+    response = env["client"].get("/me/notifications", follow_redirects=False)
     assert response.status_code == 303
+
+
+def test_old_path_redirects_temporarily(env):
+    # Not permanent: the old nginx 308 to Notify is what got stuck in browsers.
+    response = env["client"].get("/notifications?msg=hi", follow_redirects=False)
+    assert response.status_code == 302
+    assert response.headers["location"] == "/me/notifications?msg=hi"
 
 
 # -- shared bell status helper -------------------------------------------------
@@ -269,3 +277,29 @@ def test_notify_settings_url_dev_and_nginx(monkeypatch):
     assert services.notify_settings_url("prefs") == "http://127.0.0.1:8012/settings?tab=prefs"
     monkeypatch.setattr(services, "app_public_url", lambda item: "/notify/")
     assert services.notify_settings_url() == "/notify/settings"
+
+
+def test_dashboard_bell_opens_overview_panel(env, monkeypatch):
+    import stonepi_contracts
+
+    seen = {}
+
+    def fake_status(user_id, app_id, **kw):
+        seen["app"] = app_id
+        return {
+            "show": True, "dot": True, "reachable": True, "allowed": True, "available": True,
+            "enabled": True, "needs_setup": False, "seen_at": None,
+            "events": [{"id": "pricewatch.target_reached", "label": "Target price reached", "app": "pricewatch",
+                        "app_label": "PriceWatch", "ticked": True}],
+            "last": None,
+            "recent": [{"title": "Lamp hit £40", "at": "2026-10-10T08:00:00+00:00", "app": "pricewatch",
+                        "app_label": "PriceWatch", "ok": True, "silent": False, "message": ""}],
+        }
+
+    monkeypatch.setattr(routes, "_alerts_bell", _REAL_ALERTS_BELL)
+    monkeypatch.setattr(stonepi_contracts, "app_alerts_status", fake_status)
+    html = env["client"].get("/me/notifications").text
+    assert seen["app"] == "dashboard"
+    assert 'data-sp-bell data-sp-app="dashboard"' in html  # a panel, not a link straight to the page
+    assert "On for you" in html and "Lamp hit £40" in html
+    assert "Switch app" in html and "Log out" in html

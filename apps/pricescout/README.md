@@ -16,9 +16,9 @@ Compare this week’s tilbuds across Netto, Lidl, 365discount, føtex, and Kvick
 ## What it does
 
 - **Offers** — latest deals with store and category filters
-- **Search** — cross-store comparison
+- **Search** (header) — cross-store comparison
 - **Shopping List** — checklist plus best-price summary from current offers; optional **Send to Pinboard** reminder
-- **Sources** — enable/disable supermarket dealers on the shared **eTilbudsavis** feed; Refresh pulls JSON offers
+- **Sources** (Settings, first section) — enable/disable supermarket dealers on the shared **eTilbudsavis** feed; Refresh (header) pulls JSON offers
 - **Settings / About** — currency, household postcode for optional madspild (admins only), data clear, version
 
 ## Data sources

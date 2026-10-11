@@ -40,7 +40,7 @@ FEED_PROVIDER_CHOICES = (
     ("off", "As published"),
     ("global", "Translate (use global setting)"),
     ("google", "Translate with Google"),
-    ("llm", "Translate with LLM"),
+    ("llm", "Translate with AI"),
 )
 TARGET_LANGUAGES = (
     ("en", "English"),

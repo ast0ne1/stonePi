@@ -18,14 +18,14 @@ One login for the portal — no duplicate per-app password databases when `STONE
 - Sign-in / sign-out with rate limiting and CSRF protection
 - Household users and password hashes (argon2id)
 - **App grants** — which launcher apps each person may open
-- **Capabilities** — per-app flags (e.g. NewsCast ntfy, Studio LLM / publish)
+- **Capabilities** — per-app flags (e.g. Studio LLM / publish), plus the platform **Phone alerts** permission
 - Disabled-app list for the portal
 - Catalog contract used by Dashboard Users UI (`stonepi_auth.catalog`)
-- `GET /api/display` — active session count for Status wall (loopback; nginx denies at the edge)
+- `GET /api/display` — active session count for Display widgets (loopback; nginx denies at the edge)
 
 ## Factory login
 
-Default **admin** / **admin**. Change the password on Dashboard → Users as soon as you install (banner until you do).
+The installer creates **admin** with a random password, printed at the end and saved in `/etc/stonepi/initial-admin.txt` (dev and solo runs fall back to **admin** / **admin** when `ADMIN_PASSWORD` is unset). Change it under Dashboard → Settings → General → Your password; a banner shows until you do.
 
 ## Platform notes
 

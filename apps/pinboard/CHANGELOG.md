@@ -1,5 +1,15 @@
 # Changelog — Pinboard
 
+## 0.0.8 — 2026-10-11
+
+### Changed
+- **New look** (StonePi design system): Pinboard icon in the header and as favicon and home-screen icon; new colours, fonts, buttons and cards in light and dark; the old palettes are gone.
+- New shared StonePi header: notifications bell with its alerts panel, an app switcher (replaces the Home tab) and your avatar menu with appearance and Log out (replaces the sign-out button).
+- Bottom bar is now Board · Notices · Reminders · Settings.
+
+### Added
+- Floating **+** button: on Board it opens **Add to board** (reminder, or notice if you may post notices) and replaces the red Add button at the top of the page; on Notices it starts a new notice, ready to type.
+
 ## 0.0.7 — 2026-10-04
 
 ### Added

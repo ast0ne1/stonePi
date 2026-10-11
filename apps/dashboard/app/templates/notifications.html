@@ -41,7 +41,7 @@
     <li>Turn on personal alerts below, then scan the code.</li>
     <li>Send a test and pick your alerts.</li>
   </ol>
-  <form method="post" action="/notifications" class="row-actions">
+  <form method="post" action="/me/notifications" class="row-actions">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <button class="btn btn-primary btn-with-icon" type="submit" name="action" value="on">{{ svg('bell') }} Turn on personal alerts</button>
   </form>
@@ -63,14 +63,14 @@
     </div>
     <p class="hint alerts-link">Or add this link in ntfy:<br /><code>{{ subscribe.web_url }}</code></p>
     <p class="hint">Keep this private: anyone with the link can read your alerts.</p>
-    <form method="post" action="/notifications" class="row-actions">
+    <form method="post" action="/me/notifications" class="row-actions">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       <button class="btn btn-primary btn-with-icon" type="submit" name="action" value="test">{{ svg('check') }} Send test</button>
     </form>
   </div>
 
   <div class="stack">
-    <form method="post" action="/notifications" class="card stack alerts-card">
+    <form method="post" action="/me/notifications" class="card stack alerts-card">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       <input type="hidden" name="offered" value="{{ offered_ids|join(',') }}" />
       <h2 class="section-heading">{{ svg('list') }} Choose alerts</h2>
@@ -108,7 +108,7 @@
       {% endif %}
     </form>
 
-    <form method="post" action="/notifications" class="card stack alerts-card">
+    <form method="post" action="/me/notifications" class="card stack alerts-card">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       <h2 class="section-heading">{{ svg('eye-off') }} Quiet hours</h2>
       <p class="muted">During quiet hours alerts still arrive, but silently: no sound or vibration.</p>
@@ -130,12 +130,12 @@
     <div class="card stack alerts-card">
       <h2 class="section-heading">{{ svg('manage') }} Manage</h2>
       <div class="row-actions">
-        <form method="post" action="/notifications" data-confirm="Make a new topic?" data-confirm-detail="Your phone stops getting alerts until you scan the new code. Use this if your link was shared by mistake." data-confirm-ok="New topic">
+        <form method="post" action="/me/notifications" data-confirm="Make a new topic?" data-confirm-detail="Your phone stops getting alerts until you scan the new code. Use this if your link was shared by mistake." data-confirm-ok="New topic">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
           <input type="hidden" name="action" value="rotate" />
           <button class="btn btn-ghost btn-with-icon" type="submit">{{ svg('refresh') }} New topic</button>
         </form>
-        <form method="post" action="/notifications" data-confirm="Turn off personal alerts?" data-confirm-detail="You stop getting alerts. Your choices are kept for when you turn them back on." data-confirm-ok="Turn off">
+        <form method="post" action="/me/notifications" data-confirm="Turn off personal alerts?" data-confirm-detail="You stop getting alerts. Your choices are kept for when you turn them back on." data-confirm-ok="Turn off">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
           <input type="hidden" name="action" value="off" />
           <button class="btn btn-ghost btn-with-icon" type="submit">{{ svg('close') }} Turn off</button>

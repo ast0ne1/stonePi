@@ -17,7 +17,7 @@
     <h2 class="settings-hub-heading">{{ group_label }}</h2>
     <div class="settings-hub-card">
       {% for key, label, subtext, icon_name in rows %}
-      <a class="settings-hub-row" href="/settings?tab={{ key }}">
+      <a class="settings-hub-row" href="{{ (settings_hub_links or {}).get(key) or '/settings?tab=' ~ key }}">
         <span class="settings-hub-icon" aria-hidden="true">{{ icon(icon_name) }}</span>
         <span class="settings-hub-copy">
           <span class="settings-hub-title">{{ label }}</span>
@@ -67,9 +67,9 @@
         {% endfor %}
       </select>
     </label>
-    <p class="hint">Kick-off times on Now use this timezone. Schedule data refreshes once a day (or when you refresh Sources).</p>
+    <p class="hint">Kick-off times on Now use this timezone. Schedule data refreshes once a day (or when you refresh from the header or Settings → Sources).</p>
     {% if sso %}
-    <p class="hint">Password and colour palette are under StonePi Dashboard → Settings.</p>
+    <p class="hint">Password and welcome message are under StonePi Dashboard → Settings.</p>
     {% endif %}
     <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("check") }} Save</button>
   </form>

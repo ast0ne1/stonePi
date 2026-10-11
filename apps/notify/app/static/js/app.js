@@ -1,14 +1,5 @@
 const THEME_KEY = "stonepi-theme";
-const PALETTE_KEY = "stonepi-palette";
 const LEGACY_THEME_KEYS = ["newscast-theme", "fileserve-theme", "eventtrakr-theme"];
-const LEGACY_PALETTE_KEYS = ["newscast-palette", "fileserve-palette", "eventtrakr-palette"];
-const PALETTES = ["default", "ocean", "forest", "slate"];
-const THEME_COLORS = {
-  default: { light: "#f3eee4", dark: "#12100d" },
-  ocean: { light: "#e7eef5", dark: "#0c141c" },
-  forest: { light: "#eef1e6", dark: "#10140d" },
-  slate: { light: "#ececee", dark: "#121314" },
-};
 
 function readCookie(name) {
   const match = document.cookie.match(
@@ -51,20 +42,15 @@ function resolvedTheme(pref) {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-function savedPalette() {
-  const value = readShared(PALETTE_KEY, LEGACY_PALETTE_KEYS, "default");
-  return PALETTES.includes(value) ? value : "default";
-}
 
-function applyTheme(pref, palette) {
+function applyTheme(pref) {
   const theme = resolvedTheme(pref);
-  const chosen = palette || savedPalette();
   document.documentElement.dataset.theme = theme;
   document.documentElement.dataset.themePref = pref;
-  document.documentElement.dataset.palette = chosen;
   document.documentElement.style.colorScheme = theme;
   const meta = document.querySelector("[data-theme-color]");
-  if (meta) meta.setAttribute("content", THEME_COLORS[chosen][theme]);
+  var color = getComputedStyle(document.documentElement).getPropertyValue("--theme-meta").trim();
+    if (meta && color) meta.setAttribute("content", color);
 }
 
 applyTheme(readShared(THEME_KEY, LEGACY_THEME_KEYS, "system"));

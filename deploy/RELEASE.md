@@ -4,28 +4,27 @@ Use this after Display/Home work is verified on a clean Pi and docs match the tr
 
 ## 1. Docs (done when this list matches the repo)
 
-- [ ] Root [README.md](../README.md) — Display designs, Home drag order, Glance diagram
-- [ ] [apps/dashboard/README.md](../apps/dashboard/README.md) + [CHANGELOG.md](../apps/dashboard/CHANGELOG.md)
-- [ ] Root [CHANGELOG.md](../CHANGELOG.md) + [VERSION](../VERSION)
+- [ ] Root [README.md](../README.md) and every `apps/*/README.md`: menu names, permissions table, optional extras
+- [ ] [docs/screenshots/](../docs/screenshots/): phone-sized, light, no household names or locations ([docs/README.md](../docs/README.md))
+- [ ] Root [CHANGELOG.md](../CHANGELOG.md) + [VERSION](../VERSION); each app's `CHANGELOG.md` heading matches its `__version__`
 - [ ] [deploy/SECURITY.md](SECURITY.md) + [nginx/stonepi-public-deny-display.conf](nginx/stonepi-public-deny-display.conf)
-- [ ] [deploy/walkthrough.html](walkthrough.html) first-boot Display / Home checks
 - [ ] [`.gitignore`](../.gitignore) — no runtime `data/`, vault, or `.env` in the tree you commit
 
-## 2. Pi smoke (after overlay)
+## 2. Pi smoke (one overlay)
 
-Hard-refresh the browser after syncing code. Confirm units with `stonepi status` and that Display/Home behave as expected. Spot-check Cockpit (`https://…:9090`) and EventTrakr favourites.
+Run the release smoke overlay from Windows: `cmd /c "scripts\push-release-smoke-fixes.cmd -Apply"`. It ships the tree a tag would hold (tracked plus untracked-but-not-ignored files, LF), runs the real `deploy/install.sh` over the existing install and prints PASS/FAIL checks. Hard-refresh the browser afterwards (Ctrl+F5).
 
-## 3. Smoke test
+## 3. Smoke test (browser)
 
-1. Home — Edit order drag → Done; refresh keeps order  
-2. Notify → Displays — Status wall + Household designs; Destinations for webhook / ntfy  
-3. Copy markup → paste into TRMNL → Push now → panel updates  
-4. Health (`/overview`) shows app health (Healthy/Down) plus disk and backup; Status Services metadata not all `—` when apps respond  
-5. Health → Cockpit opens with HTTPS  
-6. EventTrakr — star an event → “Added to Favourites” (not a false “Removed”)  
-7. Open via router DNS (e.g. `http://stonepi.home/`) — login and **Back to apps** stay on that host (not bounced to `.local`); Health URLs show that host  
-8. From an app (NewsCast/EventTrakr/…) nav **Home** returns to the same host’s launcher
-9. Services — enable toggle; Route + Port visible; Health stays monitor-only
+1. Sign-in page and Home in the new look; Home greets you by your alias and every app fits on a phone screen
+2. Home → Reorder: drag, Done, refresh keeps the order; **Default order** resets it
+3. Each app: header (bell, app switcher, avatar menu with light/dark/system), bottom bar, app icon as favicon
+4. Bell: panel lists recent notifications; **Clear** hides them (Notify → History still has them)
+5. Health (`/overview`) shows every app Healthy with its version, plus disk, memory and backup; Health → Cockpit opens
+6. Notify → Displays: TRMNL Display with its plan, Push now updates the panel (re-paste the universal template once for the StonePi mark); Car Thing on/off
+7. NewsCast: Refresh fills the Briefing source by source without reloading
+8. Users: your own Role switch is locked; another account can be changed
+9. Open via router DNS (e.g. `http://stonepi.home/`): sign-in and the app switcher stay on that host
 
 ## 4. Commit (when you ask)
 

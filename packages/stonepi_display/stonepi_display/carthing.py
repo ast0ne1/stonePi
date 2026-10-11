@@ -110,6 +110,8 @@ _PAGE_ACTIONS: tuple[dict[str, str], ...] = (
 PAGE_ACTION_IDS = tuple(a["id"] for a in _PAGE_ACTIONS)
 _DEVICE_ACTIONS: tuple[dict[str, str], ...] = (
     {"id": "screensaver", "label": "Screensaver now", "group": "Screen"},
+    # Straight to the dimmed screensaver (backlight off where the panel controls it).
+    {"id": "sleep", "label": "Sleep", "group": "Screen"},
     {"id": "brightness_up", "label": "Brighter", "group": "Screen"},
     {"id": "brightness_down", "label": "Dimmer", "group": "Screen"},
     {"id": "restart", "label": "Restart a service", "group": "Admin"},
@@ -121,6 +123,11 @@ ACTIONS: tuple[dict[str, str], ...] = (
     *_DEVICE_ACTIONS,
 )
 ACTION_IDS = tuple(a["id"] for a in ACTIONS)
+# Actions added after configs started saving an allow-list. A config remembers the actions
+# that existed when it was saved (``actions_known``); anything newer is allowed by default,
+# so an older allow-list never silently forbids it. Configs saved before ``actions_known``
+# existed knew every action except these.
+ADDED_ACTIONS = frozenset({"sleep"})
 
 CLOCK_FACES: tuple[dict[str, str], ...] = (
     {"id": "digital_bold", "label": "Bold digital"},
@@ -133,7 +140,14 @@ CLOCK_FACES: tuple[dict[str, str], ...] = (
 )
 CLOCK_FACE_IDS = tuple(f["id"] for f in CLOCK_FACES)
 
+# Design-system defaults for new configs (F6); saved configs keep their own colours.
+SAND = "#C7BBA8"  # brand-sand
+STONE_TEXT = "#ECEAE6"  # text (dark theme)
+BASALT = "#0B0D0E"  # canvas (dark theme)
+
 COLOR_PRESETS: tuple[dict[str, str], ...] = (
+    {"id": "sand", "label": "Sand", "value": SAND},
+    {"id": "stone", "label": "Stone", "value": STONE_TEXT},
     {"id": "cream", "label": "Cream", "value": "#F5F1E8"},
     {"id": "white", "label": "White", "value": "#FFFFFF"},
     {"id": "amber", "label": "Amber", "value": "#FFB347"},
@@ -188,9 +202,10 @@ DEFAULT_CONTROLS: dict[str, str | None] = {
     "m_long": "screensaver",
     "back_long": "home",
     "dial_press_long": None,
-    "swipe_left": "next_app",
-    "swipe_right": "prev_app",
-    "swipe_up": None,
+    # Swipes turn pages, like a book (left = forward); any control can be remapped.
+    "swipe_left": "next_page",
+    "swipe_right": "prev_page",
+    "swipe_up": "sleep",
     "swipe_down": "screensaver",
 }
 
@@ -212,25 +227,26 @@ def default_config(config_id: str = "default", name: str = "Default") -> dict[st
         # every_s = 0: pages only change by hand. Rotation pauses while someone uses the panel.
         "rotation": {"every_s": 0, "resume_after_s": 30},
         "allowed_actions": list(ACTION_IDS),
+        "actions_known": list(ACTION_IDS),
         "controls": dict(DEFAULT_CONTROLS),
         "idle": {
             "screensaver_after_s": 60,
             "dim_after_s": 300,
             "dim_level": 25,
             "quiet_hours": {"enabled": True, "from": "22:30", "to": "06:30", "mode": "dim", "level": 5},
-            "background": {"type": "gradient", "value": "midnight"},
+            "background": {"type": "solid", "value": BASALT},
             "show": {"date": True, "weather": True, "live_line": "eventtrakr"},
         },
         "clock": {
             "face": "digital_bold",
-            "color": "#F5F1E8",
-            "accent": "#FF7A1A",
+            "color": STONE_TEXT,
+            "accent": SAND,
             "quiet_color": None,
             "hour_format": "24",
             "seconds": False,
             "date_format": "ddd d MMM",
         },
-        "look": {"theme": "dark", "accent": "#FF7A1A", "units": "metric"},
+        "look": {"theme": "dark", "accent": SAND, "units": "metric"},
         "weather": {"lat": None, "lon": None, "label": ""},
     }
 
@@ -378,6 +394,9 @@ def normalize_config(raw: Any) -> dict[str, Any]:
         if legacy:
             # Page actions didn't exist yet: an old allow-list mustn't silently forbid them.
             allowed_set |= set(PAGE_ACTION_IDS)
+        known_raw = data.get("actions_known")
+        known = {str(a) for a in known_raw} if isinstance(known_raw, list) else set(ACTION_IDS) - ADDED_ACTIONS
+        allowed_set |= set(ACTION_IDS) - known  # actions newer than this allow-list
         out["allowed_actions"] = [a for a in ACTION_IDS if a in allowed_set]
     allowed = set(out["allowed_actions"])
 
@@ -411,10 +430,10 @@ def normalize_config(raw: Any) -> dict[str, Any]:
     bg_type = _choice(bg_raw.get("type"), BACKGROUND_TYPES, idle["background"]["type"])
     bg_value = str(bg_raw.get("value") or "").strip()
     if bg_type == "solid":
-        bg_value = _color(bg_value, "#101114") or "#101114"
+        bg_value = _color(bg_value, BASALT) or BASALT
     elif bg_type == "image":
         if not _ASSET.match(bg_value):
-            bg_type, bg_value = "gradient", "midnight"
+            bg_type, bg_value = "solid", BASALT
     else:
         bg_value = bg_value if bg_value in GRADIENT_IDS else "midnight"
     idle["background"] = {"type": bg_type, "value": bg_value}

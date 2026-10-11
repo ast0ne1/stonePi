@@ -63,6 +63,10 @@ def test_member_without_post_notices_is_refused(monkeypatch):
     assert 'action="/notice"' not in html
     assert "Ask an admin to allow &#39;Post notices&#39; in StonePi → Users." in html
     assert 'href="/notices?new=1"' not in c.get("/").text
+    # Board's + still opens "Add to board", just without the notice choice.
+    board = c.get("/").text
+    assert 'data-open-sheet="add-pick"' in board and "Add notice" not in board
+    assert 'class="sp-fab"' not in c.get("/notices").text
 
 
 def test_member_with_post_notices_can_post(monkeypatch):

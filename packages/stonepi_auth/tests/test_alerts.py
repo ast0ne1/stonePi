@@ -59,8 +59,8 @@ def test_bell_hidden_unless_show():
 
 
 def test_bell_dot_and_active():
-    html = _render_bell({"show": True, "dot": True, "active": True, "url": "https://pi.local/notifications"})
-    assert 'href="https://pi.local/notifications"' in html
+    html = _render_bell({"show": True, "dot": True, "active": True, "url": "https://pi.local/me/notifications"})
+    assert 'href="https://pi.local/me/notifications"' in html
     assert "has-dot" in html and "alerts-bell-dot" in html
     assert 'aria-current="page"' in html
     assert "not set up yet" in html
@@ -87,7 +87,7 @@ def test_bell_context_asks_notify(monkeypatch):
 
     monkeypatch.setattr(stonepi_contracts, "personal_alerts_status", fake_status)
     bell = alerts.bell_context(_user(phone_alerts=True), session_cookie="tok", home_url="https://pi.local/")
-    assert bell == {"show": True, "dot": True, "url": "https://pi.local/notifications", "active": False}
+    assert bell == {"show": True, "dot": True, "url": "https://pi.local/me/notifications", "active": False}
     assert seen == {"cookie_name": COOKIE_NAME, "session_cookie": "tok", "allowed": True}
 
 
@@ -111,7 +111,7 @@ def test_card_none_when_signed_out():
 
 def test_card_for_member_with_alerts():
     card = alerts.notifications_card_context("pricewatch", _user(phone_alerts=True), home_url="https://pi.local")
-    assert card["manage_url"] == "https://pi.local/notifications"
+    assert card["manage_url"] == "https://pi.local/me/notifications"
     assert card["events"] == [
         "Target price reached",
         "Significant price drop",

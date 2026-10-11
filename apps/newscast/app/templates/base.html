@@ -7,14 +7,16 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="{{ homescreen_name or 'NewsCast' }}" />
-    <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.svg" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <title>{% block title %}NewsCast{% endblock %}</title>
     {% include "_theme_boot.html" %}
-    <link rel="stylesheet" href="/assets/fonts/fonts.css?v={{ fonts_rev }}" />
+    {% from "stonepi/head.html" import brand_head, brand_tail %}
+    {{ brand_head("newscast", fonts_rev) }}
     <link rel="stylesheet" href="/static/css/app.css?v={{ app_version }}-{{ asset_rev }}" />
+    {{ brand_tail(fonts_rev) }}
   </head>
   <body>
+    {% from "stonepi/header.html" import header_search, header_tools %}
     <div class="app">
       <header class="topbar">
         <div class="brand-row">
@@ -25,6 +27,7 @@
           <p class="status-pill {% if ingest.running %}is-busy{% elif ingest.last_error %}is-error{% endif %}" data-ingest-pill hidden>
             {% if ingest.running %}{{ t("Refreshing") }}{% elif ingest.last_error %}{{ t("Error") }}{% else %}{{ t("Idle") }}{% endif %}
           </p>
+          {{ header_search("/search", t("Search all articles"), app="newscast") }}
           <form method="post" action="/ingest" class="refresh-form">
             <button class="btn btn-primary btn-refresh{% if ingest.running %} is-busy{% endif %}" type="submit" data-refresh aria-label="{{ t('Refresh sources') }}" title="{{ t('Refresh sources') }}" {% if ingest.running %}disabled{% endif %}>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 4v6h-6"/></svg>
@@ -36,13 +39,7 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
             </button>
           </form>
-          {% from "stonepi/alerts.html" import alerts_bell %}
-          {{ alerts_bell(alerts_bell_state) }}
-          <form method="post" action="/logout" data-native>
-            <button class="icon-btn sign-out" type="submit" aria-label="{{ t('Sign out') }}" title="{{ t('Sign out') }}">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 7V5a2 2 0 0 1 2-2h7v18h-7a2 2 0 0 1-2-2v-2"/><path d="M15 12H3m0 0 3-3m-3 3 3 3"/></svg>
-            </button>
-          </form>
+          {{ header_tools(alerts_bell_state, logout_action="/logout", local_name=session_username or "") }}
         </div>
       </header>
       <a class="activity-banner {% if ingest.running %}is-busy{% elif ingest.last_error %}is-error{% endif %}" data-activity-banner aria-live="polite" hidden></a>
@@ -70,9 +67,9 @@
         {% if not llm_ready and active in ['briefing', 'settings'] %}
         <p class="banner banner-muted">
           {% if llm_provider == 'ollama' %}
-            Ollama is selected but no model is set. Refresh still works, using extracted text. Add a model on the <a href="/settings?tab=llm">LLM</a> tab.
+            AI is off: Ollama is selected but no model is set. Everything still works, using the article’s own text. Add a model on the <a href="/settings?tab=llm">AI</a> tab to use AI for summaries, scoring and translation.
           {% else %}
-            No OpenAI key yet. Refresh still works, using extracted text. Add a key on the <a href="/settings?tab=llm">LLM</a> tab, or switch to Ollama.
+            AI is off. Everything still works, using the article’s own text. To use AI for summaries, scoring and translation, add an OpenAI key or an Ollama model on the <a href="/settings?tab=llm">AI</a> tab.
           {% endif %}
         </p>
         {% endif %}
@@ -80,10 +77,6 @@
       </main>
 
       <nav class="nav" aria-label="Main">
-        <a href="{{ stonepi_home_url or '/' }}">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5"/><path d="M7 10.5V19h10v-8.5"/></svg>
-          <span>{{ t("Home") }}</span>
-        </a>
         <a href="/" class="{% if active == 'briefing' %}is-active{% endif %}">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h9a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z"/><path d="M8 4v13a3 3 0 0 0 3 3h8"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
           <span>{{ t("Briefing") }}</span>
@@ -92,19 +85,11 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v17l-6-3.4L6 21z"/></svg>
           <span>{{ t("Saved") }}</span>
         </a>
-        <a href="/search" class="{% if active == 'search' %}is-active{% endif %}">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
-          <span>{{ t("Search") }}</span>
-        </a>
         <a href="/device" class="{% if active == 'device' %}is-active{% endif %}">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>
           <span>{{ t("Reader") }}</span>
         </a>
-        <a href="/sources" class="{% if active == 'sources' %}is-active{% endif %}">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h10"/></svg>
-          <span>{{ t("Sources") }}</span>
-        </a>
-        <a href="/settings" class="{% if active == 'settings' %}is-active{% endif %}">
+        <a href="/settings" class="{% if active in ('settings', 'sources') %}is-active{% endif %}">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           <span>{{ t("Settings") }}</span>
         </a>

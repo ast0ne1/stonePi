@@ -7,7 +7,7 @@
 | On the Pi | http://stonepi.local/events/ |
 | Windows `run-dev.bat` | http://127.0.0.1:8003/ |
 
-Shared StonePi sign-in. On the Pi, **Users**, **Updates**, and **Backup** live under Dashboard Settings. Playwright Chromium is used for some web sources (Eventbrite and similar) — a **Pi 4/5** is recommended.
+Shared StonePi sign-in. On the Pi, **Users** and **Updates** live in the Dashboard. Playwright Chromium is used for some web sources (Eventbrite and similar) — a **Pi 4/5** is recommended.
 
 ## Why it’s in StonePi
 
@@ -15,8 +15,8 @@ Complements NewsCast (“what’s worth reading”) with “what’s on near us�
 
 ## Platform notes
 
-- Themes/palettes match other StonePi apps.
-- **Display / TRMNL:** `GET …/api/display` returns next favourite label and `favourites` count for Status wall / Household.
+- Shared StonePi design system; theme (light, dark or system) is in the avatar menu.
+- **Display / TRMNL:** `GET …/api/display` returns next favourite label and `favourites` count for the EventTrakr widget on TRMNL and Car Thing Displays.
 - **Vault keys:** `BRIGHTDATA_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
 - Under StonePi, bind is loopback; nginx serves `/events/`. Per-app HTTPS is for **solo** runs only.
 - Public ICS / overview behaviour tightens when exposure is **internet-facing** — see [deploy/SECURITY.md](../../deploy/SECURITY.md).
@@ -25,7 +25,7 @@ Complements NewsCast (“what’s worth reading”) with “what’s on near us�
 
 - **7-day agenda** — Today through +6d, category chips, free/price badges
 - **Source catalog + custom feeds** — Eventbrite, Meetup, ICS/webcal, community sites; keyword include/exclude; global or per-source schedule
-- **Instagram discovery** — track public accounts (Sources → Instagram); Bright Data poll + local OCR; Discoveries review queue; high-confidence auto-create (Settings → Discovery)
+- **Instagram discovery** — track public accounts (Sources → Instagram); Bright Data poll + local OCR; **Review** queue; high-confidence auto-create (Settings → Discovery)
 - **Favourites** — star events; optional Google Calendar forward; one-click Google Calendar link; `.ics` download; live **webcal** feed
 - **Public overview** — optional shareable `/u/<username>` agenda without login
 - **Search** — date + location across configured sources
@@ -44,11 +44,10 @@ Complements NewsCast (“what’s worth reading”) with “what’s on near us�
 
 ## Settings highlights
 
-- Appearance (theme + palette)
 - Privacy (public vs private overview)
 - Schedule / location defaults
 - Discovery (Instagram tracking, poll interval, OCR, auto-create, social ntfy)
-- Integrations: Bright Data key, Google OAuth client
+- Calendar Integrations (Google OAuth client) and Data Providers (Bright Data key and the shared monthly limit)
 - Network / TLS tabs matter mainly for **solo** runs
 
 ## Solo / standalone run (optional)

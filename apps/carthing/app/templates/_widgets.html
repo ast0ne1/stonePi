@@ -2,6 +2,13 @@
    Large widgets keep every tap target at 52px or more. #}
 {% from "_icons.html" import icon %}
 
+{#- The app's fixed icon (design system); System shows the StonePi mark. -#}
+{% set APP_ICON_IDS = ("newscast", "eventtrakr", "pricescout", "sportguide", "library", "pinboard", "pricewatch", "fileserve", "studio") %}
+{% macro app_icon(w) -%}
+{%- if w.id in APP_ICON_IDS -%}<img class="w-icon" src="static/brand/icons/apps/{{ w.id }}.svg" width="32" height="32" alt="">
+{%- elif w.id == "system" -%}<img class="w-icon" src="static/brand/icons/system/dashboard.svg" width="32" height="32" alt="">{%- endif -%}
+{%- endmacro %}
+
 {% macro hour_label(h, config) -%}
 {% if config.clock.hour_format == "12" %}{{ (h % 12) or 12 }}{{ "am" if h < 12 else "pm" }}{% else %}{{ "%02d"|format(h) }}:00{% endif %}
 {%- endmacro %}
@@ -17,7 +24,7 @@
 
 {% macro small_card(w) -%}
 <button class="card w w-small{% if w.level %} level-{{ w.level }}{% endif %}" data-focus data-go="v/app/{{ w.id }}" data-app="{{ w.id }}">
-  <span class="card-label">{{ w.label }}{% if w.badge %} <span class="badge">{{ w.badge }}</span>{% endif %}</span>
+  <span class="card-label">{{ app_icon(w) }}{{ w.label }}{% if w.badge %} <span class="badge">{{ w.badge }}</span>{% endif %}</span>
   <strong class="card-head">{{ w.headline }}</strong>
   {% if w.sub %}<span class="card-sub">{{ w.sub }}</span>{% endif %}
 </button>
@@ -25,7 +32,7 @@
 
 {% macro head(w, title) -%}
 <button class="w-head{% if w.level %} level-{{ w.level }}{% endif %}" data-focus data-go="v/app/{{ w.id }}" data-app="{{ w.id }}">
-  <span class="card-label">{{ title or w.label }}</span>
+  <span class="card-label">{{ app_icon(w) }}{{ title or w.label }}</span>
   {% if w.badge %}<span class="badge">{{ w.badge }}</span>{% endif %}
   {{ icon("chevron", "ico w-go") }}
 </button>

@@ -122,7 +122,7 @@ WIDGET_SNIPPETS: dict[str, str] = {
 
 TITLE_BAR = """\
 <div class="title_bar">
-  <img class="image" src="https://trmnl.com/images/plugins/trmnl--render.svg" />
+  <svg class="image" viewBox="8 8 84 84" width="26" height="26" aria-hidden="true"><polygon points="20,32 80,8 80,20 32,39.2 32,46.2 20,51" fill="#000"/><polygon points="20,56 80,32 80,44 20,68" fill="#000"/><polygon points="80,68 20,92 20,80 68,60.8 68,53.8 80,49" fill="#000"/></svg>
   <span class="title">{{ TN | default: "StonePi" }}</span>
   <span class="instance">{{ updated_at }}</span>
 </div>"""

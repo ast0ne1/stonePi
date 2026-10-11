@@ -49,7 +49,6 @@ def destinations_status() -> dict[str, Any]:
     """ntfy/TRMNL configured flags — never returns secrets."""
     path = NOTIFY_DATA / "destinations.json"
     ntfy_enabled = False
-    ntfy_topic = False
     # is_file() itself raises PermissionError when Notify's data folder is unreadable, so it
     # sits inside the try: an unreadable status file must not take the Health page down.
     try:
@@ -58,7 +57,6 @@ def destinations_status() -> dict[str, Any]:
             ntfy = data.get("ntfy") if isinstance(data, dict) else {}
             if isinstance(ntfy, dict):
                 ntfy_enabled = bool(ntfy.get("enabled"))
-                ntfy_topic = bool(str(ntfy.get("topic") or "").strip())
     except (OSError, json.JSONDecodeError):
         pass
 
@@ -76,6 +74,16 @@ def destinations_status() -> dict[str, Any]:
     except (OSError, json.JSONDecodeError):
         pass
 
+    # Car Thing panel switch (Notify -> Displays -> Car Thing); only ``enabled`` is read.
+    carthing_enabled = False
+    try:
+        device_path = NOTIFY_DATA / "carthing" / "device.json"
+        if device_path.is_file():
+            device = json.loads(device_path.read_text(encoding="utf-8"))
+            carthing_enabled = isinstance(device, dict) and bool(device.get("enabled"))
+    except (OSError, json.JSONDecodeError):
+        pass
+
     ntfy_token = False
     pushing = 0
     try:
@@ -90,7 +98,9 @@ def destinations_status() -> dict[str, Any]:
     except Exception:
         pass
 
-    ntfy_configured = ntfy_enabled and ntfy_topic
+    # Topics are per person (Notify subscriptions) since Phone alerts, so the household
+    # file has no ``topic`` any more: "connected" in Notify is just ``enabled``.
+    ntfy_configured = ntfy_enabled
     return {
         "ntfy": {
             "enabled": ntfy_enabled,
@@ -103,6 +113,7 @@ def destinations_status() -> dict[str, Any]:
             "webhook_set": pushing > 0,
             "displays": pushing,
         },
+        "carthing": {"enabled": carthing_enabled},
     }
 
 

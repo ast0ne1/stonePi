@@ -1,6 +1,20 @@
-import pytest
+import atexit
+import os
+import shutil
+import tempfile
 
-from app.services import settings
+# Tests get their own throwaway data folder and database instead of the app default
+# (./data/newscast.db), which is the same file the Windows run-dev copy uses.
+# Set before ``app`` is imported below.
+_TEST_DATA = tempfile.mkdtemp(prefix="newscast-tests-")
+os.environ["DATA_DIR"] = _TEST_DATA
+os.environ["STONEPI_DATA_DIR"] = _TEST_DATA
+os.environ["DATABASE_URL"] = "sqlite:///" + os.path.join(_TEST_DATA, "newscast.db").replace("\\", "/")
+atexit.register(shutil.rmtree, _TEST_DATA, ignore_errors=True)
+
+import pytest  # noqa: E402
+
+from app.services import settings  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

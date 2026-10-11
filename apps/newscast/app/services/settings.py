@@ -66,7 +66,7 @@ IMPORTANCE_MIN_VALUES = {value for value, _label in IMPORTANCE_MIN_CHOICES}
 DEFAULT_MIN_IMPORTANCE = 3
 TRANSLATE_PROVIDERS = [
     ("google", "Google Translate (Chrome fallback)"),
-    ("llm", "Configured LLM (OpenAI or Ollama)"),
+    ("llm", "AI (the model on the AI tab)"),
 ]
 TRANSLATE_PROVIDER_IDS = {value for value, _label in TRANSLATE_PROVIDERS}
 DEFAULT_TRANSLATE_PROVIDER = "google"
@@ -103,6 +103,33 @@ READER_KEEP_DAYS_CHOICES = [
 ]
 READER_KEEP_DAYS_VALUES = {value for value, _label in READER_KEEP_DAYS_CHOICES}
 MIN_READER_KEEP_DAYS = 2
+# Auto-push window: after something is queued, look for the reader every N seconds
+# for this long, then stop (the queue waits for Push now) and send a "not delivered" alert.
+READER_PUSH_WINDOW_CHOICES = [
+    (10, "10 minutes"),
+    (15, "15 minutes"),
+    (30, "30 minutes"),
+    (45, "45 minutes"),
+    (60, "1 hour"),
+    (90, "1.5 hours"),
+    (120, "2 hours"),
+]
+READER_PUSH_WINDOW_VALUES = {value for value, _label in READER_PUSH_WINDOW_CHOICES}
+DEFAULT_READER_PUSH_WINDOW = 30
+READER_PUSH_SCAN_CHOICES = [
+    (10, "Every 10 seconds"),
+    (15, "Every 15 seconds"),
+    (30, "Every 30 seconds"),
+    (60, "Every minute"),
+]
+READER_PUSH_SCAN_VALUES = {value for value, _label in READER_PUSH_SCAN_CHOICES}
+DEFAULT_READER_PUSH_SCAN = 15
+READER_PUSH_TRIGGERS = [
+    ("queue", "Anything queued (paper and Send files)"),
+    ("paper", "The paper only"),
+]
+READER_PUSH_TRIGGER_IDS = {value for value, _label in READER_PUSH_TRIGGERS}
+DEFAULT_READER_PUSH_TRIGGER = "queue"
 EPUB_CONTENTS_DETAILS = [
     ("full", "Titles and summaries"),
     ("titles", "Titles only"),
@@ -475,6 +502,27 @@ def epub_contents_limit(db: Session) -> int:
 def normalize_reader_firmware(value: str | None) -> str:
     key = (value or "").strip().lower()
     return key if key in READER_FIRMWARE_IDS else DEFAULT_READER_FIRMWARE
+
+
+def _normalize_choice(value: str | int | None, allowed: set[int], default: int) -> int:
+    try:
+        number = int(str(value or "").strip() or default)
+    except ValueError:
+        return default
+    return number if number in allowed else default
+
+
+def normalize_reader_push_window(value: str | int | None) -> int:
+    return _normalize_choice(value, READER_PUSH_WINDOW_VALUES, DEFAULT_READER_PUSH_WINDOW)
+
+
+def normalize_reader_push_scan(value: str | int | None) -> int:
+    return _normalize_choice(value, READER_PUSH_SCAN_VALUES, DEFAULT_READER_PUSH_SCAN)
+
+
+def normalize_reader_push_trigger(value: str | None) -> str:
+    raw = (value or "").strip().lower()
+    return raw if raw in READER_PUSH_TRIGGER_IDS else DEFAULT_READER_PUSH_TRIGGER
 
 
 def normalize_reader_keep_days(value: str | int | None) -> int:

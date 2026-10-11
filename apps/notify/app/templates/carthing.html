@@ -10,7 +10,7 @@
 {% block content %}
 <section class="hero">
   <a class="settings-back" href="/displays">&larr; Displays</a>
-  <h1>Car Thing</h1>
+  <h1 class="carthing-title"><img class="carthing-icon carthing-icon-lg" src="/assets/brand/icons/system/carthing.svg" width="40" height="40" alt="" />Car Thing</h1>
   <p class="lede">
     A touchscreen panel with a dial and buttons, plugged into the Pi by USB. Its own firmware stays untouched:
     StonePi borrows the screen while it's connected (method from <a class="text-link" href="https://github.com/trwy7/pything" rel="noopener" target="_blank">pything</a>).
@@ -169,12 +169,20 @@
       </div>
 
       <div class="ct-pane stack" data-ct-pane="controls" hidden>
-        <p class="hint">Click a button or the dial on the drawing, or pick here. Only <em>allowed</em> actions are offered.</p>
+        <p class="hint">Click a button, the dial or a swipe arrow on the drawing, or pick here. Only <em>allowed</em> actions are offered.</p>
         <table class="ct-controls">
           <tbody>
-            {% for inp in cat.inputs %}
+            {% set arrows = {"swipe_left": "&larr;", "swipe_right": "&rarr;", "swipe_up": "&uarr;", "swipe_down": "&darr;"} %}
+            {% for inp in cat.inputs if inp.kind != "touch" %}
             <tr data-ct-input-row="{{ inp.id }}" class="kind-{{ inp.kind }}">
               <th scope="row"><label for="ct-ctl-{{ inp.id }}">{{ inp.label }}</label></th>
+              <td><select id="ct-ctl-{{ inp.id }}" data-ct-control="{{ inp.id }}"></select></td>
+            </tr>
+            {% endfor %}
+            <tr class="ct-group-row"><th colspan="2" scope="rowgroup">Touch gestures <span class="muted">· swipe across the screen</span></th></tr>
+            {% for inp in cat.inputs if inp.kind == "touch" %}
+            <tr data-ct-input-row="{{ inp.id }}" class="kind-touch">
+              <th scope="row"><label for="ct-ctl-{{ inp.id }}"><span class="ct-arrow" aria-hidden="true">{{ arrows.get(inp.id, "")|safe }}</span> {{ inp.label }}</label></th>
               <td><select id="ct-ctl-{{ inp.id }}" data-ct-control="{{ inp.id }}"></select></td>
             </tr>
             {% endfor %}
@@ -338,12 +346,24 @@
           <div class="ct-screen" data-ct-screen>
             <iframe src="/carthing/panel/" title="Car Thing preview" data-ct-frame tabindex="-1"></iframe>
           </div>
+          <div class="ct-swipes" aria-label="Swipes on the screen">
+            <button type="button" class="ct-swipe ct-swipe-left" data-input="swipe_left" aria-label="Swipe left">&larr;</button>
+            <button type="button" class="ct-swipe ct-swipe-right" data-input="swipe_right" aria-label="Swipe right">&rarr;</button>
+            <button type="button" class="ct-swipe ct-swipe-up" data-input="swipe_up" aria-label="Swipe up">&uarr;</button>
+            <button type="button" class="ct-swipe ct-swipe-down" data-input="swipe_down" aria-label="Swipe down">&darr;</button>
+          </div>
         </div>
         <div class="ct-under">
           <div class="ct-pager" data-ct-pager>
             <button type="button" class="btn btn-ghost" data-ct-pager-step="-1" aria-label="Previous page in the preview">&lsaquo;</button>
             <span data-ct-pager-label>Page 1</span>
             <button type="button" class="btn btn-ghost" data-ct-pager-step="1" aria-label="Next page in the preview">&rsaquo;</button>
+          </div>
+          <div class="ct-co-swipes" role="group" aria-label="Swipes">
+            <button type="button" class="ct-co" data-input="swipe_left" title="Swipe left"><b aria-hidden="true">&larr;</b><span data-ct-label="swipe_left"></span></button>
+            <button type="button" class="ct-co" data-input="swipe_right" title="Swipe right"><b aria-hidden="true">&rarr;</b><span data-ct-label="swipe_right"></span></button>
+            <button type="button" class="ct-co" data-input="swipe_up" title="Swipe up"><b aria-hidden="true">&uarr;</b><span data-ct-label="swipe_up"></span></button>
+            <button type="button" class="ct-co" data-input="swipe_down" title="Swipe down"><b aria-hidden="true">&darr;</b><span data-ct-label="swipe_down"></span></button>
           </div>
           <button type="button" class="ct-co ct-co-back" data-input="back" title="Back button"><b>Back</b><span data-ct-label="back"></span></button>
         </div>

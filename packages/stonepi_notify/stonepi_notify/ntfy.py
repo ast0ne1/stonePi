@@ -67,10 +67,12 @@ def deliver_ntfy(
     source: str = "",
     event_id: str = "",
     topic: str | None = None,
+    user: str = "",
 ) -> dict[str, Any]:
     """Send one message and record it in history.
 
-    ``topic`` defaults to the household channel.
+    ``topic`` defaults to the household channel. ``user``: the person whose own topic
+    this is (a personal test), recorded as their delivery so their bell lists it.
     """
     cfg = load_destinations().get("ntfy") or {}
     target = topic if topic is not None else cfg.get("household_topic")
@@ -85,6 +87,20 @@ def deliver_ntfy(
     )
     if result.get("skipped"):
         return result
+    deliveries = None
+    if user:
+        from .subscriptions import redact_topic
+
+        deliveries = [
+            {
+                "kind": "personal",
+                "user": str(user),
+                "topic": redact_topic(str(target or "")),
+                "ok": bool(result.get("ok")),
+                "silent": False,
+                "message": str(result.get("message") or "")[:120],
+            }
+        ]
     append_history(
         channel="ntfy",
         ok=bool(result.get("ok")),
@@ -92,6 +108,7 @@ def deliver_ntfy(
         message=result.get("message") or "",
         source=source,
         event_id=event_id,
+        deliveries=deliveries,
     )
     return result
 

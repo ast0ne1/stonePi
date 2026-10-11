@@ -36,6 +36,7 @@ Prefer the `.cmd` form. Do not only offer the `.ps1` unless they ask.
 | `scripts/push-briefing-settings-fixes.cmd` | NewsCast + Dashboard + PriceScout app trees |
 | `scripts/push-settings-stack-fixes.cmd` | Settings hub / stacked panels (NewsCast, Dashboard, FileServe, EventTrakr, Pinboard, Studio, PriceScout, SportGuide, PriceWatch, Notify) |
 | `scripts/push-newscast-fixes.cmd` | NewsCast only |
+| `scripts/push-newscast-paper-fixes.cmd` | NewsCast app tree + Dashboard `app/` tree + `stonepi_auth` and `stonepi_contracts` `catalog.py` (Home tile order, `newscast.push_missed` event) + Notify `boot.py`; tar backup to `/var/backups`, restarts NewsCast, Notify, Dashboard, Auth, checks the event and tile order are visible |
 | `scripts/push-pricescout-fixes.cmd` | PriceScout (+ some platform wiring) |
 | `scripts/push-ux-fixes.cmd` | Multi-app flat file list (older UX overlay) |
 | `scripts/push-display-fixes.cmd` | Display-related |
@@ -50,6 +51,7 @@ Prefer the `.cmd` form. Do not only offer the `.ps1` unless they ask.
 | `scripts/push-health-layout-fixes.cmd` | Full Dashboard + Recover `app/` trees (Health tab layout, Recovery Console wording; restart both, no pip) |
 | `scripts/push-services-groups-fixes.cmd` | Dashboard Services System/Apps groups + Recover catalog (Dashboard + Auth + stonepi_auth) |
 | `scripts/push-release-smoke-fixes.cmd` | **Pre-release smoke.** Packs the tree a release tag would ship (tracked + untracked-not-ignored, release deny list, LF), then runs the real `deploy/install.sh` on the Pi and checks the hardening (sudo helper, root venvs, Recover passwd, firewall, CSP). Snapshot in `/var/backups`, log `/var/log/stonepi-release-smoke.log`; exits non-zero on any FAIL |
+| `scripts/push-design-system-fixes.cmd` | **F6 design system** (2026-10-11): every app's `app/` tree + CHANGELOG, whole `packages/stonepi_brand`, `stonepi_auth` + `stonepi_display` modules, nginx confs (`/assets/brand/`, live site TLS-aware, `nginx -t` with restore). Keeps each app tree's owner; tar backup to `/var/backups`; restarts every running app; checks `/assets/brand/` + fonts over nginx and that an enabled admin exists |
 | `scripts/push-purge-favicon-fixes.cmd` | Three files only: FileServe `main.py` + `services/pages.py` (favicon 500, expired pages), EventTrakr `services/ingest.py` (purge FK). Hash-checks Pi copies against the pre-fix versions and aborts if they differ (`-Force` overrides); restarts FileServe + EventTrakr |
 
 Prefer a **tree-based** combined script when several apps changed in one session

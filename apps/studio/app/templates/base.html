@@ -6,12 +6,15 @@
   <meta name="theme-color" content="#f3eee4" data-theme-color />
   <title>{% block title %}Studio · StonePi{% endblock %}</title>
   {% include "_theme_boot.html" %}
-    <link rel="stylesheet" href="/assets/fonts/fonts.css?v={{ fonts_rev }}" />
+    {% from "stonepi/head.html" import brand_head, brand_tail %}
+    {{ brand_head("studio", fonts_rev) }}
   <link rel="stylesheet" href="/static/css/app.css?v={{ asset_rev }}" />
+  {{ brand_tail(fonts_rev) }}
 
 </head>
 <body>
   {% from "_icons.html" import icon %}
+  {% from "stonepi/header.html" import header_tools %}
   <div class="app">
     <header class="topbar">
       <div class="brand-row">
@@ -19,14 +22,7 @@
       </div>
       <div class="topbar-actions">
         {% if user %}
-        {% from "stonepi/alerts.html" import alerts_bell %}
-        {{ alerts_bell(alerts_bell_state) }}
-        <form method="post" action="/logout" data-native>
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-          <button class="icon-btn sign-out" type="submit" aria-label="Sign out" title="Sign out">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 7V5a2 2 0 0 1 2-2h7v18h-7a2 2 0 0 1-2-2v-2"/><path d="M15 12H3m0 0 3-3m-3 3 3 3"/></svg>
-          </button>
-        </form>
+        {{ header_tools(alerts_bell_state, logout_action="/logout", csrf_token=csrf_token) }}
         {% endif %}
       </div>
     </header>
@@ -41,14 +37,6 @@
     </main>
 
     <nav class="nav" aria-label="Main">
-      <a href="{{ public_origin or 'http://127.0.0.1:8010' }}">
-        {{ icon("home") }}
-        <span>Home</span>
-      </a>
-      <a href="/" class="{% if active == 'create' %}is-active{% endif %}">
-        {{ icon("plus") }}
-        <span>Create</span>
-      </a>
       <a href="/projects" class="{% if active == 'projects' %}is-active{% endif %}">
         {{ icon("projects") }}
         <span>Projects</span>
@@ -58,6 +46,8 @@
         <span>Settings</span>
       </a>
     </nav>
+    {#- Floating "+" (header_fab) for pages with a create action: only the Projects list, never over the chat composer. -#}
+    {% block fab %}{% endblock %}
 
   </div>
   <script src="/static/js/app.js?v={{ asset_rev }}" defer></script>

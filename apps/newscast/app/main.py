@@ -1,6 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
 
+from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI
 from stonepi_auth.brand import mount_brand_fonts
@@ -30,7 +31,10 @@ class FaviconFiles(StaticFiles):
 
 
 logging.basicConfig(level=logging.INFO)
-scheduler = BackgroundScheduler()
+# The reader push ticks every few seconds on its own executor, whose per-run INFO lines
+# are muted so the journal still shows the refresh job clearly.
+scheduler = BackgroundScheduler(executors={"default": ThreadPoolExecutor(10), "reader": ThreadPoolExecutor(2)})
+logging.getLogger("apscheduler.executors.reader").setLevel(logging.WARNING)
 
 
 def _scheduled_ingest() -> None:
@@ -90,6 +94,7 @@ async def lifespan(_app: FastAPI):
         _scheduled_reader_push,
         "interval",
         seconds=reader_push.AUTO_PUSH_SECONDS,
+        executor="reader",
         id="reader_push",
         replace_existing=True,
         max_instances=1,

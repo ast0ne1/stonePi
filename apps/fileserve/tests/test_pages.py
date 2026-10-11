@@ -108,8 +108,9 @@ def test_pages_add_button_links_to_add_page(client):
     _login(client)
     html = client.get("/admin").get_data(as_text=True)
     assert 'data-add-sheet' not in html
-    assert 'href="/admin/add"' in html
-    assert "Add page" in html
+    # The floating + is the only Add control (no second button in the empty state).
+    assert 'class="sp-fab" href="/admin/add"' in html
+    assert "<span>Add page</span>" not in html
 
 
 def test_admin_requires_login(client):

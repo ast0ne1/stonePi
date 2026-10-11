@@ -106,3 +106,25 @@ def test_rss_no_summary_uses_excerpt_or_title():
         summary = (item.get("excerpt") or "").strip() or item["title"]
         assert summary
         assert item["published_at"] is not None or item["title"]
+
+
+def test_entry_image_url_prefers_feed_media_then_enclosure_then_inline_img():
+    import feedparser
+
+    from app.services.ingest import _entry_image_url
+
+    rss = """<?xml version="1.0"?><rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/"><channel>
+    <item><title>A</title><link>https://e.x/a</link>
+      <media:thumbnail url="https://img.e.x/small.jpg" width="240"/>
+      <media:content url="https://img.e.x/big.jpg" medium="image" width="976"/></item>
+    <item><title>B</title><link>https://e.x/b</link><enclosure url="https://img.e.x/b.jpg" type="image/jpeg" length="1"/></item>
+    <item><title>C</title><link>https://e.x/c</link><description>&lt;p&gt;&lt;img src="https://img.e.x/c.png"&gt;Text&lt;/p&gt;</description></item>
+    <item><title>D</title><link>https://e.x/d</link><description>No picture</description></item>
+    </channel></rss>"""
+    entries = feedparser.parse(rss).entries
+    assert [_entry_image_url(entry) for entry in entries] == [
+        "https://img.e.x/big.jpg",
+        "https://img.e.x/b.jpg",
+        "https://img.e.x/c.png",
+        "",
+    ]

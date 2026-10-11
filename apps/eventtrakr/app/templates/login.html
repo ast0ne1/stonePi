@@ -6,8 +6,10 @@
     <meta name="theme-color" content="#f3eee4" data-theme-color />
     <title>Sign in · EventTrakr</title>
     {% include "_theme_boot.html" %}
-    <link rel="stylesheet" href="/assets/fonts/fonts.css?v={{ fonts_rev }}" />
+    {% from "stonepi/head.html" import brand_head, brand_tail %}
+    {{ brand_head("eventtrakr", fonts_rev) }}
     <link rel="stylesheet" href="/static/css/app.css?v={{ app_version }}-{{ asset_rev }}" />
+    {{ brand_tail(fonts_rev) }}
   </head>
   <body class="login-body">
     <div class="login-shell">

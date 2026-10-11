@@ -8,11 +8,15 @@ from sqlalchemy.orm import Session
 from app.services import settings, user_settings
 
 logger = logging.getLogger("newscast.ntfy")
+EVENT_IDS = {
+    "publish": "newscast.publication_available",
+    "push": "newscast.push_available",
+    "missed": "newscast.push_missed",
+}
 
-USER_NTFY_KEYS = (
-    "ntfy_last_publish_notified_day",
-    "ntfy_last_push_notified_day",
-)
+# One "already sent today" marker per kind, so a "not delivered" alert never
+# swallows the "on the reader" one that follows a manual push (or the reverse).
+USER_NTFY_KEYS = tuple(f"ntfy_last_{kind}_notified_day" for kind in EVENT_IDS)
 
 
 def _today() -> date:
@@ -20,22 +24,26 @@ def _today() -> date:
 
 
 def _day_key(kind: str) -> str:
-    return "ntfy_last_publish_notified_day" if kind == "publish" else "ntfy_last_push_notified_day"
+    return f"ntfy_last_{kind}_notified_day"
 
 
-def _already_notified(db: Session, kind: str, day: date, user_id: int | None) -> bool:
+def _marker(day: date, version: str) -> str:
+    """Stored "already sent" value: the day, plus the paper version when there is one."""
+    return f"{day.isoformat()}:{version}" if version else day.isoformat()
+
+
+def _already_notified(db: Session, kind: str, day: date, user_id: int | None, version: str = "") -> bool:
+    key = _day_key(kind)
+    stored = user_settings.get_value(db, user_id, key) if user_id is not None else settings.get_value(db, key)
+    return stored.strip() == _marker(day, version)
+
+
+def _mark_notified(db: Session, kind: str, day: date, user_id: int | None, version: str = "") -> None:
     key = _day_key(kind)
     if user_id is not None:
-        return user_settings.get_value(db, user_id, key).strip() == day.isoformat()
-    return settings.get_value(db, key).strip() == day.isoformat()
-
-
-def _mark_notified(db: Session, kind: str, day: date, user_id: int | None) -> None:
-    key = _day_key(kind)
-    if user_id is not None:
-        user_settings.set_value(db, user_id, key, day.isoformat())
+        user_settings.set_value(db, user_id, key, _marker(day, version))
     else:
-        settings.set_value(db, key, day.isoformat())
+        settings.set_value(db, key, _marker(day, version))
 
 
 def _owner_auth_id(db: Session, user_id: int | None) -> str | None:
@@ -50,8 +58,13 @@ def _owner_auth_id(db: Session, user_id: int | None) -> str | None:
     return auth_user_id(getattr(user, "auth_user_id", None)) if user is not None else None
 
 
-def notify(db: Session, *, kind: str, title: str, body: str, user_id: int | None = None) -> bool:
-    """Emit a personal alert via StonePi Notify. Day-deduped; never raises into callers.
+def notify(
+    db: Session, *, kind: str, title: str, body: str, user_id: int | None = None, version: str = ""
+) -> bool:
+    """Emit a personal alert via StonePi Notify. Deduped per day; never raises into callers.
+
+    ``version`` identifies one edition of the paper: the same edition alerts once,
+    a regenerated one with different content alerts again the same day.
 
     Events go to the owner's Auth user id; without one (standalone, legacy row or a
     single-user publish with no ``user_id``) nothing is sent. Whether the person
@@ -59,17 +72,18 @@ def notify(db: Session, *, kind: str, title: str, body: str, user_id: int | None
     Dashboard Notifications page), not here.
     """
     event = (kind or "").strip().lower()
-    if event not in {"publish", "push"}:
+    if event not in EVENT_IDS:
         return False
     day = _today()
-    if _already_notified(db, event, day, user_id):
+    version = (version or "").strip()[:64]
+    if _already_notified(db, event, day, user_id, version):
         return False
     owner = _owner_auth_id(db, user_id)
     if owner is None:
         logger.debug("%s alert for user %s has no platform owner; not sent", event, user_id)
         return False
 
-    event_id = "newscast.publication_available" if event == "publish" else "newscast.push_available"
+    event_id = EVENT_IDS[event]
     try:
         from stonepi_contracts import EventEnvelope, emit_event
 
@@ -82,12 +96,12 @@ def notify(db: Session, *, kind: str, title: str, body: str, user_id: int | None
                 severity="success",
                 audience="personal",
                 user=owner,
-                dedupe_key=f"newscast:{event}:{owner}:{day.isoformat()}",
+                dedupe_key=f"newscast:{event}:{owner}:{_marker(day, version)}",
                 data={"kind": event},
             )
         )
         if ok:
-            _mark_notified(db, event, day, user_id)
+            _mark_notified(db, event, day, user_id, version)
         return bool(ok)
     except Exception as exc:  # noqa: BLE001
         logger.debug("emit_event failed: %s", exc)

@@ -96,8 +96,6 @@ def alerts_overview(user, cookies: dict[str, str]) -> dict[str, Any]:
             if u.get("enabled", True)
         ]
         household.sort(key=lambda p: (not p["is_admin"], p["name"].casefold()))
-    members = [p for p in household or [] if not p["is_admin"]]
-    members_on = sum(1 for p in members if p["phone_alerts"])
 
     sub = stonepi_notify.get_subscription(getattr(user, "user_id", "")) if user else None
     last = _last_delivery()
@@ -105,10 +103,9 @@ def alerts_overview(user, cookies: dict[str, str]) -> dict[str, Any]:
     steps = {
         "connect": enabled,
         "choose": approved > 0,
-        # Done once someone besides the admins can use alerts, or when there's nobody else.
-        "people": household is not None and (members_on > 0 or not members),
         "phone": bool(sub and sub.get("enabled") and sub.get("topic")),
     }
+    # Who can use alerts is a choice, not a setup step: shown with a "?" and not counted.
     return {
         "enabled": enabled,
         "server": str(ntfy.get("server") or NTFY_SH),
@@ -121,8 +118,8 @@ def alerts_overview(user, cookies: dict[str, str]) -> dict[str, Any]:
         "needs_review": needs_review,
         "admin_only_open": admin_only_open,
         "household": household,
-        "members": len(members),
-        "members_on": members_on,
+        # Everyone counts, admins included (they always have alerts).
+        "members": len(household or []),
         "people_on": sum(1 for p in household or [] if p["phone_alerts"]),
         "phone_ready": steps["phone"],
         "last": last,

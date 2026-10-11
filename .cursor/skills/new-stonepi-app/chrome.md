@@ -352,7 +352,7 @@ Never type a date or number after `?v=` — `packages/stonepi_auth/tests/test_pl
 
 - `__version__` in `app/__init__.py` is the only place an app's version lives. Dashboard Health / Services / Updates, the app's own Settings "Version:" line, release zips and the CHANGELOG versions table all read it.
 - System apps (Dashboard, Auth, Notify, Recover) carry the platform version (`VERSION`, e.g. `0.1.8`), then `0.1.8.N` for patches between platform cuts.
-- User apps were aligned to `0.0.6` at the 0.1.8 cut. From there each moves **independently**: an app bumps its own patch (e.g. NewsCast `0.0.7`) when it changes, and others stay put. Three-part only, no four-part versions. A new user app starts at `0.0.6`.
+- User apps share one version line, set together at each release cut (`0.0.8` at platform `0.2.0`). Between cuts an app may bump its own patch when it changes, and others stay put. Three-part only, no four-part versions. A new user app starts on the current shared user-app version.
 - Register the app in `APP_CATALOG` (`packages/stonepi_auth/stonepi_auth/catalog.py`): Updates, release zips and icons follow it automatically.
 
 ---

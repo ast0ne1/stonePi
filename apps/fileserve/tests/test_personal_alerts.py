@@ -54,8 +54,15 @@ def _client(tmp_path, monkeypatch, *, secret: str):
     monkeypatch.setattr("app.auth.env.stonepi_prefix", "")
     monkeypatch.setattr("app.main.env.stonepi_prefix", "")
     monkeypatch.setattr("app.auth._platform_session_secret", lambda: secret)
+    from stonepi_auth.header import header_context
+
     monkeypatch.setattr(
-        main, "bell_context", lambda user, **kw: {"show": bool(user) and kw.get("enabled", True), "dot": True, "url": "/notifications"}
+        main,
+        "bell_context",
+        lambda user, **kw: {
+            "show": bool(user) and kw.get("enabled", True), "dot": True, "url": "/notifications", "panel": None,
+            "header": header_context(kw["app_id"], user, home_url="http://stonepi.test"),
+        },
     )
     flask_app = main.create_app(
         {
@@ -86,18 +93,30 @@ def test_settings_notifications_tab_uses_shared_card(client):
     assert "alerts#choose" in html  # admin extras
 
 
-def test_top_bar_has_bell_before_sign_out(client):
+def test_shared_header_order_and_bottom_bar(client):
     html = client.get("/admin/settings?tab=device").get_data(as_text=True)
-    bell = html.find('class="icon-btn alerts-bell')
-    sign_out = html.find('class="icon-btn sign-out"')
-    assert 0 < bell < sign_out
-    assert "alerts-bell-dot" in html
+    bell = html.find('class="icon-btn sp-bell has-dot"')
+    switcher = html.find('aria-label="Switch app"')
+    avatar = html.find('class="sp-trigger sp-avatar"')
+    assert 0 < bell < switcher < avatar
+    assert "Log out" in html and 'class="icon-btn sign-out"' not in html
+    assert 'aria-label="Search"' not in html  # FileServe has nothing to search
+    assert 'href="http://stonepi.test/"' in html  # Dashboard, top of the switcher
+    nav = html[html.find('<nav class="nav"'):]
+    nav = nav[: nav.find("</nav>")]
+    assert [label for label in ("Home", "Pages", "Add", "Settings") if f"<span>{label}</span>" in nav] == ["Pages", "Settings"]
+
+
+def test_add_is_a_floating_button_on_pages_only(client):
+    assert 'class="sp-fab" href="/admin/add"' in client.get("/admin").get_data(as_text=True)
+    assert 'class="sp-fab"' not in client.get("/admin/settings?tab=device").get_data(as_text=True)
+    assert 'class="sp-fab"' not in client.get("/admin/add").get_data(as_text=True)
 
 
 def test_standalone_has_no_bell_or_card(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch, secret="")
     c.post("/login", data={"username": "admin", "password": "admin"})
     html = c.get("/admin/settings?tab=notifications").get_data(as_text=True)
-    assert "icon-btn sign-out" in html
-    assert "alerts-bell" not in html
+    assert 'class="sp-trigger sp-avatar"' in html and "Log out" in html  # avatar menu carries Log out
+    assert 'class="icon-btn sp-bell' not in html
     assert "Manage personal alerts" not in html

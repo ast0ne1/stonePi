@@ -17,7 +17,7 @@
     <h2 class="settings-hub-heading">{{ group_label }}</h2>
     <div class="settings-hub-card">
       {% for key, label, subtext, icon_name in rows %}
-      <a class="settings-hub-row" href="/settings?tab={{ key }}">
+      <a class="settings-hub-row" href="{{ settings_hub_links.get(key) or '/settings?tab=' ~ key }}">
         <span class="settings-hub-icon" aria-hidden="true">{{ icon(icon_name) }}</span>
         <span class="settings-hub-copy">
           <span class="settings-hub-title">{{ label }}</span>
@@ -74,7 +74,7 @@
       Postcode (for optional madspild)
       <input name="household_zip" value="{{ household_zip }}" placeholder="e.g. 2100" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" />
     </label>
-    <p class="hint">One postcode for the whole household. Used only for the optional Salling food-waste stream when a token is in Vault. Manage supermarket sources on the Sources page.</p>
+    <p class="hint">One postcode for the whole household. Used only for the optional Salling food-waste stream when a token is in Vault. Manage supermarket sources under Settings → Sources.</p>
     <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("check") }} Save</button>
   </form>
   {% else %}

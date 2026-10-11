@@ -352,6 +352,8 @@ def display_detail(request: Request, display_id: str):
                 "webhook_set": bool(stonepi_display.get_webhook(display_id)),
                 "universal_template": stonepi_display.UNIVERSAL_TEMPLATE,
                 "date_formats": [(k, label) for k, (label, _) in stonepi_display.DATE_FORMATS.items()],
+                "trmnl_tiers": stonepi_display.TRMNL_TIERS,
+                "trmnl_tier": stonepi_display.trmnl_tier(display.get("trmnl")),
             },
         ),
     )
@@ -521,6 +523,7 @@ async def displays_trmnl(request: Request, display_id: str):
     display["trmnl"] = {
         **display.get("trmnl", {}),
         "enabled": str(form.get("enabled") or "") in {"1", "on", "true"},
+        "tier": str(form.get("tier") or display["trmnl"].get("tier") or "standard"),
         "interval_minutes": str(form.get("interval_minutes") or display["trmnl"]["interval_minutes"]),
         "template": "legacy" if str(form.get("template") or "") == "legacy" else "universal",
     }
@@ -530,6 +533,8 @@ async def displays_trmnl(request: Request, display_id: str):
         from app.boot import push_one_display
 
         result = push_one_display(display_id)
+        if result.get("skipped"):  # held back by the hourly budget or a TRMNL back-off
+            return RedirectResponse(f"{back}?err={quote(str(result.get('message'))[:160])}#trmnl", status_code=303)
         if result.get("ok"):
             return RedirectResponse(f"{back}?msg=Pushed+to+TRMNL#trmnl", status_code=303)
         err = quote(str(result.get("message") or "Push failed")[:160])

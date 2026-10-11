@@ -2,9 +2,9 @@
 {% from "_icons.html" import icon as svg %}
 {% block title %}Phone alerts · Notify{% endblock %}
 
-{% macro step(done, number, title, hint, next=false) -%}
-<li class="{% if done %}is-done{% elif next %}is-next{% endif %}">
-  <span class="step-dot">{% if done %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5 10 17l9-10"/></svg>{% else %}{{ number }}{% endif %}</span>
+{% macro step(done, number, title, hint, next=false, optional=false) -%}
+<li class="{% if optional %}is-optional{% elif done %}is-done{% elif next %}is-next{% endif %}">
+  <span class="step-dot"{% if optional %} title="Optional: your choice"{% endif %}>{% if optional %}?{% elif done %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5 10 17l9-10"/></svg>{% else %}{{ number }}{% endif %}</span>
   <span class="step-copy"><strong>{{ title }}</strong><span class="hint">{{ hint }}</span></span>
   <span class="step-action">{{ caller() }}</span>
 </li>
@@ -19,7 +19,7 @@
 
 {% block content %}
 {% set o = overview %}
-{% set phone_url = (stonepi_home_url or '') ~ '/notifications' %}
+{% set phone_url = (stonepi_home_url or '') ~ '/me/notifications' %}
 <section class="hero">
   {% include "_back_to_settings.html" %}
   <h1>Phone alerts</h1>
@@ -83,7 +83,7 @@
 {% else %}
 {# ---------------- Setting up: checklist ---------------- #}
 <section class="card stack" id="setup">
-  <h2 class="section-heading">{{ filter_icon('prefs') }} Setup · {{ o.steps_done }} of 4 done</h2>
+  <h2 class="section-heading">{{ filter_icon('prefs') }} Setup · {{ o.steps_done }} of 3 done</h2>
   <ol class="checklist">
     {% call step(o.steps.connect, 1, "Connect", ('ntfy.sh' if not o.own_server else o.server)) %}{{ test_button() }}{% endcall %}
     {% call step(o.steps.choose, 2, "Choose alerts", o.approved ~ " of " ~ o.total ~ " approved" ~ (" · " ~ o.needs_review ~ " need review" if o.needs_review else ""), next=not o.steps.choose) %}
@@ -95,9 +95,9 @@
       {% endif %}
       <a class="btn btn-ghost" href="#choose">Review</a>
     {% endcall %}
-    {% set people_hint = "Couldn't load the household" if o.household is none else (o.members_on ~ " of " ~ o.members ~ " household members" if o.members else "Only admins in this household") %}
-    {% call step(o.steps.people, 3, "Who can use alerts", people_hint, next=o.steps.choose and not o.steps.people) %}<a class="btn btn-ghost" href="#people">Choose people</a>{% endcall %}
-    {% call step(o.steps.phone, 4, "Your phone", "Set up" if o.steps.phone else "Not set up on your phone yet", next=o.steps.choose and o.steps.people and not o.steps.phone) %}
+    {% set people_hint = "Couldn't load the household" if o.household is none else (o.people_on ~ " of " ~ o.members ~ " household member" ~ ("" if o.members == 1 else "s")) %}
+    {% call step(false, "", "Who can use alerts", people_hint, optional=true) %}<a class="btn btn-ghost" href="#people">Choose people</a>{% endcall %}
+    {% call step(o.steps.phone, 3, "Your phone", "Set up" if o.steps.phone else "Not set up on your phone yet", next=o.steps.choose and not o.steps.phone) %}
       <a class="btn btn-ghost btn-with-icon" href="{{ phone_url }}">{{ svg('open') }} {{ 'Open' if o.steps.phone else 'Set up my phone' }}</a>
     {% endcall %}
   </ol>

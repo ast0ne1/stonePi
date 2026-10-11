@@ -124,3 +124,21 @@ def test_unplug_forgets_device(setup):
     fake.devices = {}
     conn.poll()
     assert conn.devices == {}
+
+
+def test_link_is_never_listed_and_only_recreated_after_silence(setup, monkeypatch):
+    # `adb reverse --list` crashed ADB on the Car Thing ~30 s after every takeover.
+    conn, fake, _, _ = setup
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(connector_mod.time, "monotonic", lambda: clock["t"])
+    conn.poll()  # inject (creates the reverse once)
+    for step in range(20):  # 10 minutes of polling while the panel keeps checking in
+        clock["t"] += 30
+        conn.note_tick()
+        conn.poll()
+    assert not any("reverse --list" in c for c in fake.calls)
+    assert sum("reverse tcp:8013" in c for c in fake.calls) == 1
+    clock["t"] += 46  # panel went quiet: re-create, still without listing
+    conn.poll()
+    assert sum("reverse tcp:8013" in c for c in fake.calls) == 2
+    assert not any("reverse --list" in c for c in fake.calls)

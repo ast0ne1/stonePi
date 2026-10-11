@@ -479,6 +479,34 @@ def _sign_in(client, monkeypatch, *, admin: bool = False, manage: bool = True):
     return routes
 
 
+def test_shared_header_order_and_bottom_bar(client, monkeypatch):
+    from stonepi_auth.header import header_context
+
+    routes = _sign_in(client, monkeypatch)
+    monkeypatch.setattr(
+        routes,
+        "bell_context",
+        lambda user, **kw: {
+            "show": bool(user), "dot": True, "url": "/notifications", "panel": None,
+            "header": header_context(kw["app_id"], user, home_url="http://stonepi.test"),
+        },
+    )
+    html = client.get("/settings").text
+    bell = html.find('class="icon-btn sp-bell has-dot"')
+    switcher = html.find('aria-label="Switch app"')
+    avatar = html.find('class="sp-trigger sp-avatar"')
+    assert 0 < bell < switcher < avatar
+    assert 'aria-label="Search"' not in html  # nothing to search, no primary action
+    assert "Log out" in html and 'name="csrf_token" value="tok"' in html
+    assert 'class="icon-btn sign-out"' not in html and "Sign out" not in html
+    assert 'href="http://stonepi.test/"' in html  # Dashboard, top of the switcher
+    nav = html[html.find('<nav class="nav"'):]
+    nav = nav[: nav.find("</nav>")]
+    assert [label for label in ("Home", "Library", "Browse", "Settings") if f"<span>{label}</span>" in nav] == [
+        "Library", "Browse", "Settings",
+    ]
+
+
 def test_custom_storage_path_is_admin_only_server_side(monkeypatch):
     import app.routes as routes
 

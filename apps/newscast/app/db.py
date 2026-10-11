@@ -174,6 +174,8 @@ def _ensure_schema() -> None:
                 conn.execute(text("ALTER TABLE stories ADD COLUMN importance INTEGER"))
             if "content_lang" not in story_cols:
                 conn.execute(text("ALTER TABLE stories ADD COLUMN content_lang VARCHAR(8)"))
+            if "image_url" not in story_cols:
+                conn.execute(text("ALTER TABLE stories ADD COLUMN image_url VARCHAR(1000)"))
         if "sync_tasks" in tables:
             task_cols = _table_columns(conn, "sync_tasks")
             if "kind" not in task_cols:

@@ -241,16 +241,12 @@ def _install_platform() -> dict:
 
 
 def version_cards() -> list[dict]:
-    from app import services
-
-    colors = services.resolved_app_colors()
     cards = []
     for target in update_targets():
         app_id = target["id"]
         cards.append(
             {
                 **target,
-                "color": colors.get(app_id) or target["color"],
                 "version": current_version(app_id),
                 "check": last_check(app_id) if target["updatable"] else {},
                 "root": str(app_root(app_id)),

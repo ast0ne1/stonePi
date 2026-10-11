@@ -120,7 +120,7 @@
     root.querySelector("[data-ct-device]").classList.toggle("is-mapping", name === "controls");
     root.querySelector("[data-ct-device-hint]").textContent =
       name === "controls"
-        ? "Click a button or a part of the dial to choose what it does."
+        ? "Click a button, a part of the dial, or a swipe arrow on the screen to choose what it does."
         : "Click the buttons, click or scroll over the dial, and tap the screen to try the panel. Hold a button for its long-press. The drawing is a schematic.";
   };
   tabs.forEach((b) => b.addEventListener("click", () => setTab(b.dataset.ctTab)));
@@ -411,7 +411,8 @@
     let fired = false;
     const press = () => {
       if (tab === "controls") return selectInputRow(input);
-      if (input === "dial_cw" || input === "dial_ccw") return send("input", { id: input });
+      // Turns and swipes have no long-press: send straight away.
+      if (input === "dial_cw" || input === "dial_ccw" || input.startsWith("swipe_")) return send("input", { id: input });
       fired = false;
       timer = setTimeout(() => {
         fired = true;

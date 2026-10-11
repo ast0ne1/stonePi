@@ -1,0 +1,41 @@
+{#- Shared <head> links for every StonePi page: fonts, design tokens, components and
+  the app's fixed icon as favicon / home-screen icon (packages/stonepi_brand).
+
+    {% from "stonepi/head.html" import brand_head %}
+    {{ brand_head("newscast", fonts_rev) }}
+
+  Put it after the theme boot and before the app's own app.css, which builds on
+  the tokens; put ``brand_tail(fonts_rev)`` right after app.css. ``icon``: an app id (asset group Apps) or a system service id
+  (dashboard, auth, notify, recover). Files are served at /assets/ by nginx on
+  the Pi and by ``stonepi_auth.brand`` in run-dev.
+-#}
+{% macro brand_head(icon="dashboard", rev="") -%}
+{%- set group = 'system' if icon in ('dashboard', 'auth', 'notify', 'recover', 'carthing', 'trmnl') else 'apps' -%}
+<link rel="stylesheet" href="/assets/fonts/fonts.css?v={{ rev }}" />
+    <link rel="stylesheet" href="/assets/brand/css/tokens.css?v={{ rev }}" />
+    <link rel="stylesheet" href="/assets/brand/css/components.css?v={{ rev }}" />
+    <link rel="icon" type="image/svg+xml" href="/assets/brand/icons/{{ group }}/{{ icon }}.svg?v={{ rev }}" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/icons/png/{{ icon }}-32.png?v={{ rev }}" />
+    <link rel="apple-touch-icon" href="/assets/brand/icons/png/{{ icon }}-180.png?v={{ rev }}" />
+{%- endmacro %}
+
+{#- After the app's own app.css: shared shape/colour rules for .btn, inputs, .card… -#}
+{% macro brand_tail(rev="") -%}
+<link rel="stylesheet" href="/assets/brand/css/app-base.css?v={{ rev }}" />
+{%- endmacro %}
+
+{#- An app or system icon as an <img> (fixed artwork, same in both themes). -#}
+{% macro app_icon(icon, size=44, alt="", cls="") -%}
+{%- set group = 'system' if icon in ('dashboard', 'auth', 'notify', 'recover', 'carthing', 'trmnl') else 'apps' -%}
+<img class="sp-appicon{% if cls %} {{ cls }}{% endif %}" src="/assets/brand/icons/{{ group }}/{{ icon }}.svg" width="{{ size }}" height="{{ size }}" style="width: {{ size }}px; height: {{ size }}px" alt="{{ alt }}" />
+{%- endmacro %}
+
+{#- The StonePi mark (flat; dark and light variants swap with the theme). -#}
+{% macro mark(size=28) -%}
+<img class="sp-mark-dark" src="/assets/brand/logos/stonepi-mark-flat-dark.svg" width="{{ size }}" height="{{ size }}" alt="" /><img class="sp-mark-light" src="/assets/brand/logos/stonepi-mark-flat-light.svg" width="{{ size }}" height="{{ size }}" alt="" />
+{%- endmacro %}
+
+{#- Compact lockup: mark + "StonePi" wordmark with Pi in accent-text. -#}
+{% macro lockup(href="/", size=28) -%}
+<a class="sp-lockup brand" href="{{ href }}" aria-label="StonePi home">{{ mark(size) }}<span class="sp-wordmark">Stone<b>Pi</b></span></a>
+{%- endmacro %}

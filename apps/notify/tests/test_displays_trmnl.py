@@ -141,3 +141,19 @@ def test_layout_save_keeps_positions():
     assert response.status_code == 303
     widget = stonepi_display.get_display("dashboard")["widgets"][0]
     assert (widget["x"], widget["y"], widget["size"]) == (4, 3, "small")
+
+
+def test_trmnl_plan_saves_and_shows(fresh, monkeypatch):
+    monkeypatch.setattr(stonepi_display, "set_webhook", lambda display_id, url: fresh.__setitem__(push_mod.webhook_key(display_id), url))
+    client = admin_client()
+    page = client.get("/displays/dashboard").text
+    assert 'name="tier"' in page and "Standard · 12 pushes an hour, 5 KB" in page and "TRMNL+ · 30 pushes an hour, 10 KB" in page
+    response = client.post(
+        "/displays/dashboard/trmnl",
+        data={"csrf_token": CSRF, "enabled": "1", "tier": "plus", "interval_minutes": "5", "template": "universal"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    trmnl = stonepi_display.get_display("dashboard")["trmnl"]
+    assert trmnl["tier"] == "plus" and trmnl["interval_minutes"] == 5  # TRMNL+ allows a 5-minute interval
+    assert 'min="5"' in client.get("/displays/dashboard").text

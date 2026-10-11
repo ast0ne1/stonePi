@@ -115,8 +115,18 @@ def _builtin_dashboard(widgets: list[dict[str, Any]] | None = None) -> dict[str,
     }
 
 
+# TRMNL private-plugin limits per plan (docs.trmnl.com/go/private-plugins/webhooks).
+# TRMNL+ is billed per device, and each Display pushes to its own device's plugin,
+# so the plan is chosen per Display. ``budget`` stays a little under the hourly limit.
+TRMNL_TIERS: dict[str, dict[str, Any]] = {
+    "standard": {"label": "Standard", "per_hour": 12, "budget": 10, "payload_kb": 5, "min_interval": 10},
+    "plus": {"label": "TRMNL+", "per_hour": 30, "budget": 25, "payload_kb": 10, "min_interval": 5},
+}
+DEFAULT_TRMNL_TIER = "standard"
+
 TRMNL_DEFAULTS: dict[str, Any] = {
     "enabled": False,
+    "tier": DEFAULT_TRMNL_TIER,
     "interval_minutes": 30,
     # "universal": the plugin holds the StonePi universal template (layout
     # travels in the payload). "legacy": the plugin still holds markup pasted
@@ -126,10 +136,25 @@ TRMNL_DEFAULTS: dict[str, Any] = {
     "last_push_ok": None,
     "last_push_message": None,
     "last_push_status": None,
+    # Push bookkeeping: requests sent in the last hour (the budget), the last payload
+    # sent (unchanged ones are skipped), the last scheduled check, and a 429 back-off.
+    "push_log": [],
+    "last_payload_hash": None,
+    "last_check_at": None,
+    "backoff_until": None,
+    "last_skip_message": None,
 }
 DISPLAY_DEVICES = ("og", "v2")
-MIN_INTERVAL_MIN = 10
+MIN_INTERVAL_MIN = min(tier["min_interval"] for tier in TRMNL_TIERS.values())
 MAX_INTERVAL_MIN = 120
+
+
+def trmnl_tier(trmnl: dict[str, Any] | None) -> dict[str, Any]:
+    """Limits for a Display's TRMNL plan (Standard unless TRMNL+ was chosen)."""
+    key = str((trmnl or {}).get("tier") or "")
+    if key not in TRMNL_TIERS:
+        key = DEFAULT_TRMNL_TIER
+    return {"id": key, **TRMNL_TIERS[key]}
 
 
 def _normalize_widget(raw: dict[str, Any]) -> dict[str, Any] | None:
@@ -168,10 +193,14 @@ def _normalize_trmnl(raw: Any) -> dict[str, Any]:
         if key in data:
             out[key] = data[key]
     out["enabled"] = bool(out["enabled"])
+    out["tier"] = out["tier"] if out.get("tier") in TRMNL_TIERS else DEFAULT_TRMNL_TIER
+    floor = TRMNL_TIERS[out["tier"]]["min_interval"]
     try:
-        out["interval_minutes"] = max(MIN_INTERVAL_MIN, min(MAX_INTERVAL_MIN, int(out["interval_minutes"])))
+        out["interval_minutes"] = max(floor, min(MAX_INTERVAL_MIN, int(out["interval_minutes"])))
     except (TypeError, ValueError):
         out["interval_minutes"] = TRMNL_DEFAULTS["interval_minutes"]
+    log = out.get("push_log")
+    out["push_log"] = [str(item) for item in log][-60:] if isinstance(log, list) else []
     out["template"] = "legacy" if out.get("template") == "legacy" else "universal"
     return out
 

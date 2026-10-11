@@ -165,3 +165,26 @@ def test_normalize_article_url_rejects_empty():
         assert "full article URL" in str(exc)
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_starred_stories_show_on_saved():
+    """The star saves to Saved: starred stories are listed there; long-reads stay in their own list."""
+    from app.services.briefing import current_starred_stories
+
+    db = _session()
+    now = datetime.now(timezone.utc)
+
+    def story(key, **kw):
+        return Story(
+            title=key, summary="s", source_name="example.com", canonical_url=f"https://example.com/{key}",
+            content_hash=key, cluster_key=key, created_at=now, **kw,
+        )
+
+    db.add_all([
+        story("starred", favourited=True),
+        story("plain"),
+        story("longread", saved=True, favourited=True, expires_at=now + timedelta(days=3)),
+    ])
+    db.commit()
+    assert [s.title for s in current_starred_stories(db)] == ["starred"]
+    assert [s.title for s in current_saved_stories(db)] == ["longread"]

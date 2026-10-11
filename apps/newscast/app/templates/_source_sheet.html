@@ -48,6 +48,7 @@
           {% endfor %}
         </select>
       </label>
+      <p class="hint">{% if ai_on %}Summarise has AI write a short summary. Translate with AI also uses it.{% else %}AI is off, so Summarise shows the article’s own text trimmed, and Translate with AI leaves stories as published. Set up AI under Settings → AI.{% endif %}</p>
       <div class="btn-row">
         <button class="btn btn-primary" type="submit">Add source</button>
         <button class="btn btn-ghost" type="button" data-close-sheet>Cancel</button>

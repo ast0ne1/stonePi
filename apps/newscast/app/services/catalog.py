@@ -8,6 +8,7 @@ from app.config import env
 from app.models import CatalogApproval, Feed
 from app.services.categories import BUILTIN_LABELS, category_labels
 from app.services.favicon import src_for_feed, src_for_url
+from app.services import settings
 from app.services.packages import package_catalog_items
 
 logger = logging.getLogger("newscast.catalog")
@@ -119,6 +120,9 @@ FEED_URL_REPAIRS: dict[str, set[str]] = {
 }
 
 
+DEFAULT_FEEDS_SEEDED_KEY = "default_feeds_seeded"
+
+
 def seed_recommended_feeds(db: Session) -> None:
     if not env.seed_recommended_feeds:
         return
@@ -131,6 +135,8 @@ def seed_recommended_feeds(db: Session) -> None:
     catalog_items = load_catalog()
     catalog_by_id = {item["id"]: item for item in catalog_items}
     changed = False
+    # Installs from before this marker already have their sources: never re-add defaults.
+    already_seeded = settings.get_value(db, DEFAULT_FEEDS_SEEDED_KEY) == "1" or bool(existing)
 
     # Drop leftover catalog stubs (full-catalog seed with enabled=0, never fetched).
     # Added-then-disabled sources that have been fetched stay on Feeds.
@@ -191,19 +197,11 @@ def seed_recommended_feeds(db: Session) -> None:
                 sync_feed_urls(feed)
             except ValueError:
                 pass
-            wanted_translate = bool(item.get("translate"))
-            if bool(getattr(feed, "translate", False)) != wanted_translate:
-                feed.translate = wanted_translate
-                if wanted_translate and not (getattr(feed, "translate_provider", None) or "").strip():
-                    feed.translate_provider = "global"
-                changed = True
-            wanted_category = item.get("category", "news")
-            if feed.category != wanted_category:
-                feed.category = wanted_category
-                changed = True
+            # Category and translation are the household's choice once a source exists.
             continue
-        # Only auto-add onboarding sources. Everything else waits for Catalog → Add.
-        if not item.get("default_enabled"):
+        # Onboarding sources go in once, on a brand-new install. After that a deleted
+        # default stays deleted; everything else waits for Catalog → Add.
+        if already_seeded or not item.get("default_enabled"):
             continue
         # Prefer RSS URL for uniqueness when present (url is now the website).
         seed_key = catalog_rss_url(item) or item["url"]
@@ -227,6 +225,9 @@ def seed_recommended_feeds(db: Session) -> None:
         apply_catalog_url_pair(feed, item, item.get("type", "rss"))
         db.add(feed)
         used_urls.add(feed.url)
+        changed = True
+    if settings.get_value(db, DEFAULT_FEEDS_SEEDED_KEY) != "1":
+        settings.set_value(db, DEFAULT_FEEDS_SEEDED_KEY, "1")
         changed = True
     if changed:
         db.commit()

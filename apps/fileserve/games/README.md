@@ -22,13 +22,13 @@ Rules:
 
 ## Pack for FileServe
 
-From the repo root:
+From `apps/fileserve`:
 
 ```powershell
 python games/pack.py labyrinth
 ```
 
-Writes `dist/labyrinth.zip`. Upload that zip on **Add Page** in FileServe (type **Site**).
+Writes `apps/fileserve/dist/labyrinth.zip`. Upload that zip on **Add Page** in FileServe (type **Site**).
 
 Pack every game:
 

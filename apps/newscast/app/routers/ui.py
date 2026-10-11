@@ -31,7 +31,7 @@ from app.auth import (
     session_is_admin,
 )
 from app.config import ROOT_DIR, env
-from stonepi_auth.brand import fonts_rev
+from stonepi_auth.brand import brand_color, fonts_rev, manifest_icons
 from stonepi_auth import is_public_exposure
 from stonepi_auth.alerts import add_shared_templates, bell_context, notifications_card_context
 from stonepi_auth.http import portal_home_url
@@ -47,6 +47,7 @@ from app.services.briefing import (
     briefing_publish_at,
     canonical_briefing_day,
     current_saved_stories,
+    current_starred_stories,
     current_stories,
     format_published,
     normalize_publish_at,
@@ -59,7 +60,7 @@ from app.services.briefing import (
 from app.services.health import feed_health, feed_health_label
 from app.services.system_stats import status_health
 from app.services.delivery import delivery_status
-from app.services.schedule import feed_is_muted, normalize_optional_clock
+from app.services.schedule import PAPER_PREP_LEAD_MINUTES, feed_is_muted, normalize_optional_clock
 from app.services import saved as saved_articles
 from app.services.catalog import catalog_with_status, grouped_catalog
 from app.services import catalog as catalog_service
@@ -84,7 +85,7 @@ SETTINGS_TABS = (
     ("schedule", "Schedule"),
     ("filters", "Filters"),
     ("translation", "Translation"),
-    ("llm", "LLM"),
+    ("llm", "AI"),
     ("reader", "Reader"),
     ("notifications", "Notifications"),
     ("categories", "Categories"),
@@ -118,12 +119,12 @@ SETTINGS_SAVE_TABS = {
     "update",
 }
 SETTINGS_LEDES = {
-    "device": "Admin login, hostname, HTTPS, and the Home or Work name for this copy. Colour palette is under StonePi → Settings → General.",
+    "device": "Admin login, hostname, HTTPS, and the Home or Work name for this copy. Theme is under Appearance in your avatar menu.",
     "publication": "How the paper is named, how many stories it keeps, category mix, and which topics get their own OPDS papers.",
     "schedule": "How often sources refresh, and when today’s newspaper freezes for the reader.",
     "filters": "Words to keep or drop across every source. A feed can add more on Feeds.",
-    "translation": "Choose the language Translate feeds land in, and whether Google or your LLM does the work.",
-    "llm": "OpenAI or Ollama for short summaries and optional translation. Refresh still works without a model.",
+    "translation": "Choose the language Translate feeds land in, and whether Google or AI (the model on the AI tab) does the translating.",
+    "llm": "Optional. Connect OpenAI or Ollama to use AI for summaries, importance scoring and translation. NewsCast works fully without it.",
     "reader": "Your reader device: Xteink with CrossPoint or CrossInk, or Kobo with KOReader. Host, upload folder, and push when on Wi-Fi are per account.",
     "notifications": "Your phone alerts when your paper is published or reaches your reader.",
     "categories": "Built-in groups stay. Add a country or topic, then fill it from Catalog.",
@@ -140,7 +141,7 @@ SETTINGS_HUB_SUBTEXTS = {
     "schedule": "Refresh interval and publish time.",
     "filters": "Words to keep or drop.",
     "translation": "Target language for Translate feeds.",
-    "llm": "OpenAI or Ollama for summaries.",
+    "llm": "Optional AI: summaries, scoring, translation.",
     "reader": "Device, catalog login, and sync.",
     "notifications": "Your phone alerts.",
     "categories": "Topics that shape the paper.",
@@ -477,6 +478,12 @@ def _base_context(request: Request, db: Session, active: str) -> dict:
         "has_openai_key": llm.provider == "openai" and llm.ready,
         "llm_ready": llm.ready,
         "llm_provider": llm.provider,
+        # AI tags only show where AI is actually on: a model is set up AND the
+        # setting uses it. Hints explain where AI can be used either way.
+        "ai_on": llm.ready,
+        "ai_local": llm.provider == "ollama",
+        "ai_model_label": llm.label,
+        "global_translate_llm": settings.translate_provider(db) == "llm",
         "using_factory_admin": factory,
         "app_name": "NewsCast",
         "app_version": __version__,
@@ -501,6 +508,7 @@ def _base_context(request: Request, db: Session, active: str) -> dict:
             session_cookie=request.cookies.get(COOKIE_NAME),
             home_url=home_url,
             enabled=managed,
+            app_id="newscast",
         ),
     }
 
@@ -624,16 +632,9 @@ def web_manifest(db: Annotated[Session, Depends(get_db)]):
             "start_url": "/",
             "scope": "/",
             "display": "standalone",
-            "background_color": "#f4efe4",
-            "theme_color": "#f4efe4",
-            "icons": [
-                {
-                    "src": "/static/icons/apple-touch-icon.svg",
-                    "type": "image/svg+xml",
-                    "sizes": "any",
-                    "purpose": "any",
-                }
-            ],
+            "background_color": brand_color("canvas"),
+            "theme_color": brand_color("surface"),
+            "icons": manifest_icons("newscast"),
         },
         media_type="application/manifest+json",
     )
@@ -779,9 +780,11 @@ def toggle_favourite(
     request: Request,
     db: Annotated[Session, Depends(get_db)],
     day: Annotated[str, Form()] = "today",
+    next: Annotated[str, Form()] = "",
 ):
+    """The star: save a story to Saved (kept until unstarred), or remove it again."""
     story = _owned(db, Story, story_id, request)
-    nxt = briefing_path(day)
+    nxt = "/saved" if next == "/saved" else briefing_path(day)
     if story is None:
         if _wants_json(request):
             return JSONResponse({"ok": False, "message": "Story not found."}, status_code=404)
@@ -793,7 +796,7 @@ def toggle_favourite(
             {
                 "ok": True,
                 "favourited": story.favourited,
-                "message": "Saved to favourites." if story.favourited else "Removed from favourites.",
+                "message": "Saved. It's on the Saved tab." if story.favourited else "Removed from Saved.",
             }
         )
     return RedirectResponse(nxt, status_code=303)
@@ -874,9 +877,12 @@ def search_page(request: Request, db: Annotated[Session, Depends(get_db)], q: st
 def saved_page(request: Request, db: Annotated[Session, Depends(get_db)]):
     uid = _current_user_id(request)
     items = current_saved_stories(db, user_id=uid)
+    starred = current_starred_stories(db, user_id=uid)
     icons = favicon.map_for_feeds(db.query(Feed).filter(Feed.user_id == uid).all())
-    icons.update(favicon.map_for_stories(items))
-    for item in items:
+    icons.update(favicon.map_for_stories([*starred, *items]))
+    for item in starred:
+        item.published_label = format_published(item.published_at or item.created_at)
+    for item in [*starred, *items]:
         item.favicon = favicon.lookup(
             icons,
             item.source_name,
@@ -886,7 +892,7 @@ def saved_page(request: Request, db: Annotated[Session, Depends(get_db)]):
         )
         item.origin_label = saved_articles.saved_origin_label(getattr(item, "saved_origin", None))
     feeds_by_name = {feed.name: feed for feed in db.query(Feed).filter(Feed.user_id == uid).all()}
-    for item in items:
+    for item in [*starred, *items]:
         item.open_url = article_links.story_open_url(db, item, feeds_by_name)
         feed = feeds_by_name.get(item.source_name)
         item.feed_type = (getattr(feed, "type", None) or "rss") if feed else "rss"
@@ -896,6 +902,7 @@ def saved_page(request: Request, db: Annotated[Session, Depends(get_db)]):
         {
             **_base_context(request, db, "saved"),
             "items": items,
+            "starred": starred,
             "keep_options": saved_articles.KEEP_OPTIONS,
         },
         db=db,
@@ -953,6 +960,8 @@ def _feeds_panel_context(request: Request, db: Session) -> dict:
 
     labels = category_labels(db)
     global_interval = settings.get_int(db, "ingest_interval_minutes", env.ingest_interval_minutes)
+    llm_ready = settings.llm_config(db).ready
+    global_translate_llm = settings.translate_provider(db) == "llm"
     for feed in feeds:
         feed.is_muted = feed_is_muted(feed, now)
         feed.health = feed_health(feed, now)
@@ -969,6 +978,10 @@ def _feeds_panel_context(request: Request, db: Session) -> dict:
         article_label = "Summarise" if feed.summarize is not False else "Full article"
         cleanup = " · Strict cleanup" if (getattr(feed, "text_cleanup", None) or "standard") == "strict" else ""
         feed.meta_line = f"{type_label} · {article_label}{cleanup} · {feed.schedule_label}"
+        feed.ai_summary = llm_ready and feed.summarize is not False
+        feed.ai_translate = llm_ready and (
+            feed.translate_mode == "llm" or (feed.translate_mode == "global" and global_translate_llm)
+        )
     return {
         **_base_context(request, db, "sources"),
         "sources_tab": "feeds",
@@ -1151,6 +1164,8 @@ def activity_status(request: Request, db: Annotated[Session, Depends(get_db)]):
                 "last_message": ingest.get("last_message") or "",
                 "last_error": ingest.get("last_error") or "",
                 "last_new_stories": int(ingest.get("last_new_stories") or 0),
+                # Stories saved so far by the running refresh: the Briefing updates its list as it rises.
+                "new_so_far": int(ingest.get("new_so_far") or 0),
             },
             "reader": {
                 "pending": int(reader.get("pending") or 0),
@@ -1281,6 +1296,8 @@ def _settings_page_context(
         "global_interval": settings.get_int(db, "ingest_interval_minutes", env.ingest_interval_minutes),
         "ingest_active_start": settings.get_value(db, "ingest_active_start"),
         "ingest_active_end": settings.get_value(db, "ingest_active_end"),
+        "ingest_daily_at": settings.get_value(db, "ingest_daily_at"),
+        "paper_prep_lead_minutes": PAPER_PREP_LEAD_MINUTES,
         "briefing_limits": settings.BRIEFING_LIMITS,
         "briefing_limit": settings.briefing_limit(db),
         "importance_min_choices": settings.IMPORTANCE_MIN_CHOICES,
@@ -1715,6 +1732,7 @@ def save_feed_schedule(
     homepage_url: Annotated[str, Form()] = "",
     rss_url: Annotated[str, Form()] = "",
     text_cleanup: Annotated[str | None, Form()] = None,
+    category: Annotated[str | None, Form()] = None,
 ):
     feed = _owned(db, Feed, feed_id, request)
     if feed is None:
@@ -1804,6 +1822,8 @@ def save_feed_schedule(
     feed.keyword_exclude = keyword_exclude.strip()
     if text_cleanup is not None:
         feed.text_cleanup = normalize_text_cleanup(text_cleanup)
+    if category is not None and category.strip() in category_labels(db):
+        feed.category = category.strip()
     db.commit()
     if _wants_json(request):
         return JSONResponse({"ok": True, "message": "Source settings saved."})
@@ -1939,6 +1959,7 @@ async def save_settings(
     ingest_interval_minutes: Annotated[str, Form()] = "",
     ingest_active_start: Annotated[str, Form()] = "",
     ingest_active_end: Annotated[str, Form()] = "",
+    ingest_daily_at: Annotated[str, Form()] = "",
     briefing_limit: Annotated[str, Form()] = "",
     briefing_min_importance: Annotated[str, Form()] = "",
     briefing_category_mix: Annotated[str, Form()] = "",
@@ -1965,6 +1986,9 @@ async def save_settings(
     clear_reader_ssh_password: Annotated[str, Form()] = "",
     reader_firmware: Annotated[str | None, Form()] = None,
     reader_keep_days: Annotated[str | None, Form()] = None,
+    reader_push_window: Annotated[str | None, Form()] = None,
+    reader_push_scan: Annotated[str | None, Form()] = None,
+    reader_push_trigger: Annotated[str | None, Form()] = None,
     reader_title_pattern: Annotated[str, Form()] = "",
     reader_category_title_pattern: Annotated[str, Form()] = "",
     reader_date_format: Annotated[str, Form()] = "iso",
@@ -2131,6 +2155,9 @@ async def save_settings(
                     clear_reader_ssh_password=bool(clear_reader_ssh_password),
                     reader_firmware_value=reader_firmware,
                     reader_keep_days_value=reader_keep_days,
+                    reader_push_window_value=reader_push_window,
+                    reader_push_scan_value=reader_push_scan,
+                    reader_push_trigger_value=reader_push_trigger,
                 )
             except ValueError as exc:
                 return _settings_error(request, str(exc), tab)
@@ -2189,6 +2216,12 @@ async def save_settings(
                 settings.set_value(db, "ingest_active_end", end_clock)
             else:
                 settings.clear_value(db, "ingest_active_end")
+        if "ingest_daily_at" in form:
+            daily_clock = normalize_optional_clock(ingest_daily_at)
+            if daily_clock:
+                settings.set_value(db, "ingest_daily_at", daily_clock)
+            else:
+                settings.clear_value(db, "ingest_daily_at")
         if briefing_publish_at.strip():
             settings.set_value(db, "briefing_publish_at", normalize_publish_at(briefing_publish_at))
     if tab == "publication":

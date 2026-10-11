@@ -171,6 +171,114 @@ async def put_subscription(request: Request):
     return _payload(user, allowed)
 
 
+def _app_payload(user: PlatformUser, allowed: bool, app_id: str) -> dict[str, Any]:
+    """One app's slice for its header bell panel: your alerts there, the last one, new or not."""
+    import stonepi_notify
+    from stonepi_contracts import app_label
+
+    ntfy = stonepi_notify.load_destinations().get("ntfy") or {}
+    available = bool(ntfy.get("enabled"))
+    body: dict[str, Any] = {
+        "ok": True,
+        "app": app_id,
+        "label": "StonePi" if app_id == "dashboard" else app_label(app_id),
+        "available": available,
+        "allowed": allowed,
+        "enabled": False,
+        "needs_setup": False,
+        "events": [],
+        "last": None,
+        "recent": [],
+        "seen_at": None,
+        "unseen": False,
+    }
+    if not allowed:
+        return body
+    sub = stonepi_notify.get_subscription(user.user_id)
+    ticks = (sub or {}).get("events") or {}
+    body["enabled"] = bool(sub and sub["enabled"] and sub["topic"])
+    body["needs_setup"] = available and not (sub and sub["topic"])
+    # "dashboard" is every app: the Dashboard's bell panel.
+    body["events"] = [
+        {
+            "id": item["event"].id,
+            "label": item["event"].label,
+            "app": item["event"].app,
+            "app_label": app_label(item["event"].app),
+            "ticked": bool(ticks.get(item["event"].id)),
+        }
+        for item in _offered(user, stonepi_notify.load_prefs())
+        if app_id == "dashboard" or item["event"].app == app_id
+    ]
+    recent = [{**r, "app_label": app_label(r["app"])} for r in stonepi_notify.recent_alerts(user.user_id, app_id)]
+    last = recent[0] if recent else None
+    seen = stonepi_notify.seen_at(user.user_id, app_id)
+    body.update(last=last, recent=recent, seen_at=seen, unseen=stonepi_notify.unseen(last, seen))
+    return body
+
+
+def _known_app(app_id: str) -> bool:
+    from stonepi_contracts import APP_LABELS
+
+    return app_id in APP_LABELS or app_id == "dashboard"
+
+
+@router.get("/apps/{app_id}")
+def get_app(request: Request, app_id: str):
+    user, allowed, err = _caller(request)
+    if err is not None:
+        return err
+    if not _known_app(app_id):
+        return _error(404, "Unknown app")
+    return _app_payload(user, allowed, app_id)
+
+
+@router.post("/apps/{app_id}/seen")
+async def post_app_seen(request: Request, app_id: str):
+    """The person opened this app's bell panel: clear its dot.
+
+    Sent by the panel as a plain form post (it may come from another port in
+    local dev), so the CSRF token can also arrive as a ``csrf_token`` field.
+    """
+    import stonepi_notify
+
+    user, _allowed, err = _caller(request)
+    if err is not None:
+        return err
+    if not _known_app(app_id):
+        return _error(404, "Unknown app")
+    form_token = ""
+    if "form" in (request.headers.get("content-type") or ""):
+        form_token = str((await request.form()).get("csrf_token") or "")
+    header = request.headers.get("x-stonepi-csrf") or ""
+    if not csrf_ok_request(request.cookies, form_token=form_token, header_token=header):
+        return _error(403, "CSRF check failed")
+    return {"ok": True, "seen_at": stonepi_notify.mark_seen(user.user_id, app_id)}
+
+
+@router.post("/apps/{app_id}/clear")
+async def post_app_clear(request: Request, app_id: str):
+    """Clear this app's bell panel for the caller (``dashboard`` = every app).
+
+    Hides what the panel lists, up to now, for this person only: nothing is deleted
+    and Notify's history is untouched. Same form-post / CSRF rules as ``/seen``.
+    """
+    import stonepi_notify
+
+    user, _allowed, err = _caller(request)
+    if err is not None:
+        return err
+    if not _known_app(app_id):
+        return _error(404, "Unknown app")
+    form_token = ""
+    if "form" in (request.headers.get("content-type") or ""):
+        form_token = str((await request.form()).get("csrf_token") or "")
+    header = request.headers.get("x-stonepi-csrf") or ""
+    if not csrf_ok_request(request.cookies, form_token=form_token, header_token=header):
+        return _error(403, "CSRF check failed")
+    return {"ok": True, "cleared_at": stonepi_notify.mark_cleared(user.user_id, app_id)}
+
+
 @router.post("/test")
 def post_test(request: Request):
     import stonepi_notify
@@ -192,6 +300,7 @@ def post_test(request: Request):
         source="notify",
         event_id="notify.test_personal",
         topic=sub["topic"],
+        user=user.user_id,
     )
     if not result.get("ok"):
         return _error(502, str(result.get("message") or "Test failed")[:160])

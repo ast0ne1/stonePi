@@ -251,8 +251,8 @@ def test_write_epub_x3_layout_omits_links_and_chapters_by_source(tmp_path: Path)
         assert '<p class="plate-sources">BBC · Reuters</p>' in html_all
         assert '<p class="plate-count">3 stories</p>' in html_all
         # Position within the source, and a rule between stories.
-        assert '<p class="story-position">1 of 2</p>' in html_all
-        assert '<p class="story-position">2 of 2</p>' in html_all
+        assert '<p class="story-position">1/2</p>' in html_all
+        assert '<p class="story-position">2/2</p>' in html_all
         assert "story-rule" in html_all
         assert "First BBC" in html_all and "Second BBC" in html_all
         cover = archive.read("EPUB/cover.xhtml").decode("utf-8", errors="ignore")
@@ -308,7 +308,7 @@ def test_write_epub_toc_numbers_off(tmp_path: Path):
         assert "1. World News" not in cover
         assert '<h3 class="toc-category-title">World News</h3>' in cover
         assert "1.1 BBC" not in cover
-        assert '<h4 class="toc-source-title">BBC</h4>' in cover
+        assert '<p class="toc-source-title">BBC</p>' in cover
         nav = archive.read("EPUB/nav.xhtml").decode("utf-8", errors="ignore")
         assert "1. World News" not in nav
         body = "\n".join(

@@ -139,8 +139,15 @@ def client(monkeypatch):
 
     monkeypatch.setattr("app.services.auth._platform_session_secret", lambda: SECRET)
     monkeypatch.setattr("app.config.env.stonepi_session_secret", SECRET)
+    from stonepi_auth.header import header_context
+
     monkeypatch.setattr(
-        app_module, "bell_context", lambda user, **kw: {"show": bool(user), "dot": True, "url": "/notifications"}
+        app_module,
+        "bell_context",
+        lambda user, **kw: {
+            "show": bool(user), "dot": True, "url": "/notifications", "panel": None,
+            "header": header_context(kw["app_id"], user, home_url="http://stonepi.test"),
+        },
     )
     auth_id = str(uuid4())
     flask_app = create_app()
@@ -168,9 +175,71 @@ def test_settings_notifications_tab_uses_shared_card(client):
     assert html.find("Manage personal alerts") < html.find('name="notify_approaching_minutes"')
 
 
-def test_top_bar_has_bell_before_sign_out(client):
+def test_shared_header_order_and_bottom_bar(client):
     html = client.get("/settings?tab=general").get_data(as_text=True)
-    bell = html.find('class="icon-btn alerts-bell')
-    sign_out = html.find('class="icon-btn sign-out"')
-    assert 0 < bell < sign_out
-    assert "alerts-bell-dot" in html
+    search = html.find('aria-label="Search"')
+    refresh = html.find("data-sync-btn")
+    bell = html.find('class="icon-btn sp-bell has-dot"')
+    switcher = html.find('aria-label="Switch app"')
+    avatar = html.find('class="sp-trigger sp-avatar"')
+    assert 0 < search < refresh < bell < switcher < avatar
+    assert "Log out" in html and 'class="icon-btn sign-out"' not in html
+    assert 'href="http://stonepi.test/"' in html  # Dashboard, top of the switcher
+    nav = html[html.find('<nav class="nav"'):]
+    nav = nav[: nav.find("</nav>")]
+    assert [label for label in ("Home", "Agenda", "Faves", "Search", "Add", "Find", "Review", "Sources", "Settings") if f"<span>{label}</span>" in nav] == [
+        "Agenda", "Faves", "Review", "Settings",
+    ]
+
+
+def test_add_is_a_floating_button_on_agenda_only(client):
+    assert 'class="sp-fab" href="/add-event"' in client.get("/agenda").get_data(as_text=True)
+    assert 'class="sp-fab"' not in client.get("/settings").get_data(as_text=True)
+
+
+def test_settings_hub_opens_on_sources(client):
+    html = client.get("/settings").get_data(as_text=True)
+    assert html.find('href="/sources"') < html.find('href="/settings?tab=privacy"')
+    assert 'href="/sources/social"' in html
+
+
+def test_review_badge_counts_open_items_and_drops_on_reject(client):
+    """Writes to the shared EventTrakr database like the rest of this suite, so it removes its rows."""
+    import re
+
+    from app.models import EventDiscovery, SocialAccount, SocialPost, utcnow
+
+    client.get("/agenda")  # creates the signed-in person's local user
+    with SessionLocal() as db:
+        local = db.query(User).order_by(User.id.desc()).first()
+        account = SocialAccount(user_id=local.id, platform="instagram", username=f"v{uuid4().hex[:8]}",
+                                created_at=utcnow(), updated_at=utcnow())
+        db.add(account)
+        db.flush()
+        account_id = account.id
+        ids = []
+        for i in range(3):
+            post = SocialPost(social_account_id=account.id, external_post_id=uuid4().hex, retrieved_at=utcnow())
+            db.add(post)
+            db.flush()
+            disc = EventDiscovery(user_id=local.id, social_post_id=post.id, social_account_id=account.id, title=f"Gig {i}")
+            db.add(disc)
+            db.flush()
+            ids.append(disc.id)
+        db.commit()
+
+    def badge(html: str) -> int:
+        found = re.search(r'class="nav-badge"[^>]*>(\d+)<', html)
+        return int(found.group(1)) if found else 0
+
+    try:
+        before = badge(client.get("/agenda").get_data(as_text=True))
+        assert before >= 3
+        page = client.post(f"/discoveries/{ids[0]}/ignore", follow_redirects=True).get_data(as_text=True)
+        assert badge(page) == before - 1
+    finally:
+        with SessionLocal() as db:
+            db.query(EventDiscovery).filter(EventDiscovery.id.in_(ids)).delete(synchronize_session=False)
+            db.query(SocialPost).filter(SocialPost.social_account_id == account_id).delete(synchronize_session=False)
+            db.query(SocialAccount).filter(SocialAccount.id == account_id).delete(synchronize_session=False)
+            db.commit()

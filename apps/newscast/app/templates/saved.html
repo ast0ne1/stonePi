@@ -4,13 +4,13 @@
 {% block content %}
 <section class="hero">
   <h1>Saved</h1>
-  <p class="lede">Long-reads from Briefing and URLs you paste here. Items drop off after the expiry you set, or when you remove them.</p>
+  <p class="lede">Stories you star on Briefing stay here until you remove them. Long-reads keep the full article for your reader until the expiry you set.</p>
 </section>
 
 <form method="post" action="/saved" class="card panel saved-form" data-busy-label="Saving…">
   <div class="panel-head">
     <h2>Add article</h2>
-    <p class="hint">Paste a URL for a one-off article. Bookmarking on Briefing also lands here as a long-read.</p>
+    <p class="hint">Paste a URL to keep a one-off article as a long-read. The bookmark on Briefing also saves a story here as a long-read.</p>
   </div>
   <div class="panel-form">
     <p class="error-text" hidden data-form-error></p>
@@ -34,7 +34,36 @@
   </div>
 </form>
 
+{% if starred %}
+<h2 class="section-label">Starred</h2>
+<ul class="story-list" data-saved-starred>
+  {% for item in starred %}
+  <li class="card story-card saved-card">
+    <div class="story-kicker">
+      {% if item.favicon %}<img class="source-icon" src="{{ item.favicon }}" alt="" width="28" height="28">{% endif %}
+      <p class="chip chip-source {% if item.feed_type == 'webpage' %}chip-source-scrape{% else %}chip-source-rss{% endif %}">{{ item.source_name }}</p>
+      {% if item.published_label %}
+      <time class="chip chip-quiet story-date" datetime="{{ (item.published_at or item.created_at).isoformat() }}">{{ item.published_label }}</time>
+      {% endif %}
+    </div>
+    <h2>{{ item.title }}</h2>
+    <p class="summary">{% if item.summary|length > 280 %}{{ item.summary[:280] }}…{% else %}{{ item.summary }}{% endif %}</p>
+    <div class="btn-row">
+      <a class="text-link" href="{{ item.open_url or item.canonical_url }}" target="_blank" rel="noopener">{{ article_link_label }}</a>
+      <form method="post" action="/stories/{{ item.id }}/favourite" class="fav-form">
+        <input type="hidden" name="next" value="/saved" />
+        <button class="fav-btn is-on" type="submit" aria-pressed="true" aria-label="Remove from Saved" title="Remove from Saved">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.6 14.6 10h6.8l-5.5 4.2 2.1 6.6L12 16.8 6 20.8l2.1-6.6L2.6 10h6.8z"/></svg>
+        </button>
+      </form>
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+
 {% if items %}
+{% if starred %}<h2 class="section-label">Long-reads</h2>{% endif %}
 <ul class="story-list">
   {% for item in items %}
   <li class="card story-card saved-card">
@@ -60,10 +89,10 @@
   </li>
   {% endfor %}
 </ul>
-{% else %}
+{% elif not starred %}
 <div class="empty card">
   <h2>Nothing saved yet</h2>
-  <p>Add a URL above, or bookmark a story on Briefing. Full articles are stored here and included in the next reader briefing.</p>
+  <p>Star a story on Briefing to keep it here. To keep the full article for your reader, add a URL above or bookmark a story as a long-read.</p>
 </div>
 {% endif %}
 {% endblock %}

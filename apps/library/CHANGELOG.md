@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.8 — 2026-10-11
+
+### Changed
+- **New look** (StonePi design system): Library icon in the header and as favicon and home-screen icon; new colours, fonts, buttons and cards in light and dark; the old palettes are gone.
+- New shared StonePi header: the bell opens a Library notifications panel, a grid icon switches to the Dashboard or any other app, and your avatar holds appearance, Manage account and Log out.
+- The bottom bar is now Library · Browse · Settings; Home moved to the app switcher in the header.
+
 ## 0.0.7 — 2026-10-04 (new app)
 
 ### Fixed

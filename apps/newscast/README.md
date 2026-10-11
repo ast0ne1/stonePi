@@ -7,7 +7,7 @@
 | On the Pi | http://stonepi.local/news/ |
 | Windows `run-dev.bat` | http://127.0.0.1:8001/ |
 
-Shared StonePi sign-in (one cookie). On the Pi, **Users**, **Updates**, and **Backup** live under Dashboard Settings; NewsCast Settings keep Publication, Schedule, Sources, Reader, LLM, Translation, and Notifications.
+Shared StonePi sign-in (one cookie). On the Pi, **Users** and **Updates** live in the Dashboard; NewsCast Settings keep Publication, Schedule, Filters, Translation, AI, Reader, Notifications, Categories, Catalog and Backup/Restore.
 
 ## Why it’s in StonePi
 
@@ -15,25 +15,22 @@ Household “what’s worth reading today” without five news apps — fetch, d
 
 ## Platform notes
 
-- **Grants / capabilities:** `can_add_custom_sources`, `can_use_ntfy`, `can_view_status` (Dashboard → Users).
+- **Grants / capabilities:** `can_add_custom_sources`, `can_view_status` (Dashboard → Users). Phone alerts are a platform permission on the same page.
 - **Exposure:** home network vs internet-facing changes OPDS / X3 / sync token behaviour — see [deploy/SECURITY.md](../../deploy/SECURITY.md).
-- **Vault keys:** `OPENAI_API_KEY`, `X3_SYNC_TOKEN`, `NEWSCAST_READER_SSH_PASSWORD`, and related secrets preferred from Settings → Vault. Phone alerts use the shared **Notify** Destinations token (`STONEPI_NTFY_TOKEN`).
+- **Vault keys:** `OPENAI_API_KEY`, `X3_SYNC_TOKEN`, `NEWSCAST_READER_SSH_PASSWORD`, and related secrets preferred from Settings → Vault. Phone alerts use the shared **Notify** token (`STONEPI_NTFY_TOKEN`, Notify → Phone alerts).
 - **Display:** `GET …/api/display` for Notify → TRMNL (denied at nginx edge when public).
 - Under StonePi, apps bind loopback; nginx serves `/news/`. Per-app LAN HTTPS is for **solo** runs only.
-
-<p align="center">
-  <img src="docs/screenshots/login.png?v=0.0.0.8" alt="NewsCast sign-in screen on a phone" width="280" />
-</p>
 
 ## What it does
 
 - Fetches RSS on a schedule, or scrapes the homepage when you choose Scrape (dual-mode catalog sources can switch)
-- Deduplicates the same story across outlets
+- Saves each source as it finishes, so the Briefing fills in during a refresh without reloading
+- Deduplicates the same story across outlets (the first source in a refresh keeps it)
 - Writes a concise briefing (**OpenAI**, **Ollama**, or extracted text)
 - Optional **translation** (Google or LLM) per feed or globally
 - Scores importance; category slotting; per-category OPDS papers
 - SQLite store; unfavourited stories drop after retention days
-- Mobile-first UI (themes + palettes shared with other StonePi apps)
+- Mobile-first UI in the shared StonePi design system (light, dark or system theme)
 - Per-user feeds, papers, Send library, OPDS catalogs, ntfy topics
 - OPDS for CrossPoint / KOReader; JSON / TXT / EPUB downloads
 - Send queue for EPUB/PDF as-is; optional ntfy on publish / push
@@ -44,10 +41,10 @@ Household “what’s worth reading today” without five news apps — fetch, d
 | --- | --- |
 | **Briefing** | Today / Yesterday / All (publish date), filters, star, bookmark as long-read |
 | **Saved** | Paste a URL; scrape full text into the next briefing |
-| **Search** | Stories, favourites, Saved long-reads |
-| **Device** | Status (delivery health, OPDS, queue) and Send (upload EPUB/PDF) |
-| **Sources** | Feeds (enable/mute, schedule, scrape vs RSS, keywords) and Catalog |
-| **Settings** | General (incl. PaywallSkip), Publication, Schedule, Filters, Translation, LLM, Reader, Notifications, Categories, Catalog — Users/Backup/Update when solo |
+| **Reader** | Status (delivery health, OPDS, queue), Library and Send (upload EPUB/PDF) |
+| **Settings** | Sources (feeds: enable/mute, schedule, scrape vs RSS, keywords) and General (incl. PaywallSkip), Publication, Schedule, Filters, Translation, AI, Reader, Notifications, Categories, Catalog, Backup/Restore — Users/Update when solo |
+
+Search (stories, favourites, Saved long-reads) is in the header.
 
 ## Integrations (this app)
 
@@ -126,7 +123,7 @@ Patched firmware can poll Sync-style APIs (`/api/v1/device/tasks`, etc.). Prefer
 
 ## Notifications
 
-Phone alerts go through **StonePi Notify** (Destinations + Event prefs). Non-admins need the **Phone alerts** (`can_use_ntfy`) grant on Dashboard → Users. NewsCast emits on publish and reader push; day-dedupe stays in-app.
+Phone alerts go through **StonePi Notify** (Notify → Phone alerts). Non-admins need the **Phone alerts** permission on Dashboard → Users. NewsCast emits on publish and reader push; day-dedupe stays in-app.
 
 ## Solo / standalone run (optional)
 

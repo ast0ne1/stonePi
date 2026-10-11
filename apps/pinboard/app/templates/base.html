@@ -6,11 +6,14 @@
   <meta name="theme-color" content="#f3eee4" data-theme-color />
   <title>{% block title %}Pinboard · StonePi{% endblock %}</title>
   {% include "_theme_boot.html" %}
-    <link rel="stylesheet" href="/assets/fonts/fonts.css?v={{ fonts_rev }}" />
+    {% from "stonepi/head.html" import brand_head, brand_tail %}
+    {{ brand_head("pinboard", fonts_rev) }}
   <link rel="stylesheet" href="/static/css/app.css?v={{ asset_rev }}" />
+  {{ brand_tail(fonts_rev) }}
 </head>
 <body>
   {% from "_icons.html" import icon %}
+  {% from "stonepi/header.html" import header_tools, header_fab %}
   <div class="app">
     <header class="topbar">
       <div class="brand-row">
@@ -19,14 +22,7 @@
       <div class="topbar-actions">
         <p class="status-pill">{% if items is defined %}{{ (items.notices|length) + (items.reminders|length) }} pin{% if (items.notices|length) + (items.reminders|length) != 1 %}s{% endif %}{% else %}Pinboard{% endif %}</p>
         {% if user %}
-        {% from "stonepi/alerts.html" import alerts_bell %}
-        {{ alerts_bell(alerts_bell_state) }}
-        <form method="post" action="/logout" data-native>
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-          <button class="icon-btn sign-out" type="submit" aria-label="Sign out" title="Sign out">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 7V5a2 2 0 0 1 2-2h7v18h-7a2 2 0 0 1-2-2v-2"/><path d="M15 12H3m0 0 3-3m-3 3 3 3"/></svg>
-          </button>
-        </form>
+        {{ header_tools(alerts_bell_state, logout_action="/logout", csrf_token=csrf_token) }}
         {% endif %}
       </div>
     </header>
@@ -41,10 +37,6 @@
     </main>
 
     <nav class="nav" aria-label="Main">
-      <a href="{{ public_origin or 'http://127.0.0.1:8010' }}">
-        {{ icon("home") }}
-        <span>Home</span>
-      </a>
       <a href="/" class="{% if active == 'board' %}is-active{% endif %}">
         {{ icon("board") }}
         <span>Board</span>
@@ -62,6 +54,9 @@
         <span>Settings</span>
       </a>
     </nav>
+    {#- Board: + opens "Add to board" (reminder or notice). Notices: + starts a new notice. -#}
+    {% if active == 'board' %}{{ header_fab("/reminders?new=1", "Add", sheet="add-pick") }}
+    {%- elif active == 'notices' and can_post_notices %}{{ header_fab("/notices?new=1#add-notice", "New notice") }}{% endif %}
   </div>
 
   <div class="sheet" hidden data-confirm-sheet>

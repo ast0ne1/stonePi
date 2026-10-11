@@ -21,13 +21,15 @@ from app.services.paper_naming import day_from_briefing_path, paper_download_nam
 logger = logging.getLogger("newscast.reader_push")
 UPLOAD_TIMEOUT = httpx.Timeout(60.0, connect=5.0)
 MAX_PRUNE_PER_PUSH = 10
-# Background push: the scheduler ticks every AUTO_PUSH_SECONDS, but only probes readers
-# with something queued, and waits longer between probes while a reader stays asleep.
-AUTO_PUSH_SECONDS = 60
+# Background push: something queued opens a window (Settings → Reader, default 30 min).
+# Inside it the reader is looked for every few seconds (default 15) until it answers;
+# after it the queue waits for Push now and the owner gets one "not delivered" alert.
+# The scheduler ticks every AUTO_PUSH_SECONDS and only probes readers that are due.
+AUTO_PUSH_SECONDS = 5
 AUTO_PROBE_TIMEOUT = 1.5
-AUTO_BACKOFF_FAST_MISSES = 3
-AUTO_BACKOFF_MAX_SECONDS = 300
-AUTO_DUE_SLACK_SECONDS = 5
+AUTO_DUE_SLACK_SECONDS = 2
+# A window that closed longer ago than this (e.g. found after a restart) gets no alert.
+MISSED_ALERT_GRACE = timedelta(hours=1)
 # Uploads that fail while the reader is awake retry on later ticks, then give up.
 MAX_UPLOAD_ATTEMPTS = 5
 # Manual pushes wait this long for a push already running to the same reader.
@@ -41,6 +43,7 @@ _probes: dict[str, dict] = {}
 _push_locks: dict[str, threading.Lock] = {}
 _push_locks_guard = threading.Lock()
 _sending: set[str] = set()
+_missed_alerted: set[tuple[int, datetime]] = set()
 
 
 class ReaderConflict(RuntimeError):
@@ -512,47 +515,66 @@ def _auto_push_on(db: Session, user_id: int | None) -> bool:
     return reader_config.reader_push_enabled(db, int(user_id))
 
 
-def next_try_at(host: str) -> datetime | None:
-    """When the background push will next look for this reader (None before the first probe)."""
-    probe = last_probe(host)
-    if probe is None:
+def _as_utc(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+def push_window(
+    db: Session, user_id: int, tasks: list[SyncTask] | None = None
+) -> tuple[datetime, datetime] | None:
+    """(opened, closes) for this account's auto-push window, or None if nothing opens one.
+
+    The newest queued item opens it ("paper" trigger: the newest queued paper), so
+    queueing something new looks for the reader again.
+    """
+    from app.services import reader_config
+
+    uid = int(user_id)
+    tasks = pending_crosspoint(db, user_id=uid) if tasks is None else tasks
+    if reader_config.reader_push_trigger(db, uid) == "paper":
+        tasks = [task for task in tasks if not _is_library_task(task)]
+    created = [_as_utc(task.created_at) for task in tasks if task.created_at is not None]
+    if not created:
         return None
-    due = probe.get("next_try_at")
-    if due is not None:
-        return due
-    at = probe.get("at")
-    return at + timedelta(seconds=AUTO_PUSH_SECONDS) if at is not None else None
+    opened = max(created)
+    return opened, opened + timedelta(minutes=reader_config.reader_push_window_minutes(db, uid))
 
 
-def queue_status(task: SyncTask, host: str, *, auto_on: bool) -> tuple[str, str]:
-    """(state, short label) for one waiting task: sending, retry, or waiting."""
+def queue_status(
+    task: SyncTask, host: str, *, auto_on: bool, window: tuple[datetime, datetime] | None = None
+) -> tuple[str, str]:
+    """(state, short label) for one waiting task: sending, retry, waiting, or missed."""
     if task.task_id in _sending:
         return "sending", "Sending…"
     probe = last_probe(host)
-    next_label = _clock(next_try_at(host)) if auto_on else ""
+    looking = auto_on and window is not None and utcnow() < window[1]
     if (task.attempts or 0) > 0 and (task.error_message or "").strip():
         label = f"Failed: {task.error_message.strip()}"
-        if auto_on:
-            label += f" · will retry {next_label}" if next_label else " · will retry"
-        else:
-            label += " · Push now to retry"
+        label += " · will retry" if looking else " · Push now to retry"
         return "retry", label
+    if auto_on and window is not None and not looking:
+        return "missed", "Not delivered · turn on File Transfer, then Push now"
+    if auto_on and window is None:
+        # "The paper only" and no paper queued: nothing will look for the reader.
+        return "waiting", "Queued · goes with the next paper, or tap Push now"
     label = "Waiting for reader"
     if probe is not None and probe.get("at") is not None:
         seen = "online" if probe.get("online") else "asleep"
         label += f" · last tried {_clock(probe['at'])} ({seen})"
-    if next_label:
-        label += f" · next try {next_label}"
+    if looking:
+        label += f" · looking until {_clock(window[1])}"
     return "waiting", label
 
 
 def queue_items(db: Session, user_id: int | None = None) -> list[dict]:
     host = reader_host(db, user_id=user_id)
     auto_on = _auto_push_on(db, user_id)
+    tasks = pending_crosspoint(db, user_id=user_id)
+    window = push_window(db, int(user_id), tasks) if user_id is not None and auto_on else None
     items = []
-    for task in sorted(pending_crosspoint(db, user_id=user_id), key=_queue_display_sort_key):
+    for task in sorted(tasks, key=_queue_display_sort_key):
         name = Path(task.save_path or task.file_path).name
-        state, status_label = queue_status(task, host, auto_on=auto_on)
+        state, status_label = queue_status(task, host, auto_on=auto_on, window=window)
         items.append(
             {
                 "task_id": task.task_id,
@@ -695,6 +717,7 @@ def flush_pending(
     *,
     wait: bool = True,
     probe_timeout: float | None = None,
+    retry_seconds: int | None = None,
 ) -> dict:
     """Upload everything queued for this account, one push per reader at a time.
 
@@ -716,18 +739,20 @@ def flush_pending(
             "host": host,
         }
     try:
-        return _flush_locked(db, uid, host, probe_timeout)
+        return _flush_locked(db, uid, host, probe_timeout, retry_seconds)
     finally:
         lock.release()
 
 
-def _flush_locked(db: Session, uid: int | None, host: str, probe_timeout: float | None) -> dict:
+def _flush_locked(
+    db: Session, uid: int | None, host: str, probe_timeout: float | None, retry_seconds: int | None = None
+) -> dict:
     from app.services.delivery import briefing_day_for_task, mark_briefing_pushed
 
     dest = reader_upload_dir(db, user_id=uid) if uid is not None else reader_upload_dir(db)
     tasks = pending_crosspoint(db, user_id=uid)
     online = reader_reachable(host, timeout=probe_timeout, db=db, user_id=uid)
-    remember_probe(host, online)
+    remember_probe(host, online, retry_seconds)
     if not online:
         return {"ok": False, "online": False, "uploaded": 0, "pending": len(tasks), "host": host}
     uploaded = 0
@@ -783,6 +808,7 @@ def _flush_locked(db: Session, uid: int | None, host: str, probe_timeout: float 
                     title=instance,
                     body=f"Morning paper is on the reader — {label}",
                     user_id=getattr(task, "user_id", None),
+                    version=digest[:16],
                 )
             db.commit()
         except Exception as exc:  # noqa: BLE001
@@ -793,7 +819,7 @@ def _flush_locked(db: Session, uid: int | None, host: str, probe_timeout: float 
             ):
                 # The reader went to sleep mid-push: not the file's fault, so it keeps
                 # waiting and the rest of the queue goes out on the next try.
-                remember_probe(host, False)
+                remember_probe(host, False, retry_seconds)
                 db.commit()
                 break
             reason = str(exc)[:240]
@@ -857,44 +883,80 @@ def flush_all_enabled(db: Session) -> list[dict]:
 
 
 def auto_push(db: Session, *, now: datetime | None = None) -> list[dict]:
-    """Scheduler tick: send each account's queue as soon as its reader answers.
+    """Scheduler tick: inside each account's push window, send the queue once the reader answers.
 
-    Readers with nothing queued are never probed, a reader that stays asleep is probed
-    less often (see ``_backoff_seconds``), and a push already running to that reader is
-    left alone rather than doubled up.
+    Readers with nothing queued (or no open window) are never probed, a probe is only
+    repeated every scan interval, and a push already running to that reader is left
+    alone. When the window closes with the queue still waiting, the owner gets one
+    "not delivered" alert and the queue waits for Push now.
     """
-    when = now or utcnow()
+    from app.services import reader_config
+
+    when = _as_utc(now or utcnow())
     results: list[dict] = []
     for user in _push_users(db):
         uid = int(user.id)
-        if not pending_crosspoint(db, user_id=uid):
+        tasks = pending_crosspoint(db, user_id=uid)
+        if not tasks:
+            continue
+        window = push_window(db, uid, tasks)
+        if window is None:
+            continue
+        opened, closes = window
+        if when >= closes:
+            _alert_not_delivered(db, uid, opened, closes, when, len(tasks))
             continue
         host = reader_host(db, user_id=uid)
         if push_in_progress(host):
             continue
-        due = (last_probe(host) or {}).get("next_try_at")
-        if due is not None and when + timedelta(seconds=AUTO_DUE_SLACK_SECONDS) < due:
-            continue
-        results.append(flush_pending(db, user_id=uid, wait=False, probe_timeout=AUTO_PROBE_TIMEOUT))
+        probe = last_probe(host) or {}
+        due = probe.get("next_try_at")
+        # A probe from before this window opened doesn't delay the first look.
+        if due is not None and probe.get("at") is not None and probe["at"] >= opened:
+            if when + timedelta(seconds=AUTO_DUE_SLACK_SECONDS) < due:
+                continue
+        results.append(
+            flush_pending(
+                db,
+                user_id=uid,
+                wait=False,
+                probe_timeout=AUTO_PROBE_TIMEOUT,
+                retry_seconds=reader_config.reader_push_scan_seconds(db, uid),
+            )
+        )
     return results
 
 
-def _backoff_seconds(misses: int) -> int:
-    """Every tick for the first few misses, then doubling up to a five-minute gap."""
-    if misses <= AUTO_BACKOFF_FAST_MISSES:
-        return AUTO_PUSH_SECONDS
-    return min(AUTO_PUSH_SECONDS * 2 ** (misses - AUTO_BACKOFF_FAST_MISSES), AUTO_BACKOFF_MAX_SECONDS)
+def _alert_not_delivered(
+    db: Session, uid: int, opened: datetime, closes: datetime, when: datetime, waiting: int
+) -> None:
+    key = (uid, opened)
+    if key in _missed_alerted:
+        return
+    _missed_alerted.add(key)
+    if when - closes > MISSED_ALERT_GRACE:
+        return
+    from app.services import ntfy
+
+    instance = (settings.get_value(db, "instance_name") or "").strip() or "NewsCast"
+    items = "1 item is" if waiting == 1 else f"{waiting} items are"
+    logger.info("push window closed for user %s with %s waiting", uid, waiting)
+    ntfy.notify(
+        db,
+        kind="missed",
+        title=instance,
+        body=f"Not delivered: {items} waiting for your reader. Turn on File Transfer, then tap Push now.",
+        user_id=uid,
+    )
 
 
-def remember_probe(host: str, online: bool) -> None:
+def remember_probe(host: str, online: bool, retry_seconds: int | None = None) -> None:
     when = utcnow()
-    misses = 0 if online else int((_probes.get(host) or {}).get("misses") or 0) + 1
     _probes[host] = {
         "host": host,
         "online": bool(online),
         "at": when,
-        "misses": misses,
-        "next_try_at": None if online else when + timedelta(seconds=_backoff_seconds(misses)),
+        "next_try_at": None if online else when + timedelta(seconds=retry_seconds or AUTO_PUSH_SECONDS),
     }
 
 
@@ -906,6 +968,7 @@ def reset_probe_state() -> None:
     """Forget remembered probes and in-flight uploads (tests)."""
     _probes.clear()
     _sending.clear()
+    _missed_alerted.clear()
 
 
 def snapshot(db: Session, *, probe: bool = True, user_id: int | None = None) -> dict:

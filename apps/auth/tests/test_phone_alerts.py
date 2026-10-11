@@ -180,3 +180,42 @@ def test_names_endpoint_is_signed_and_separate(client):
     assert all(set(r) == {"id", "is_admin", "phone_alerts", "permissions"} for r in roster)
     # A signature for the roster path doesn't open the names path.
     assert client.get(path, headers=sign_internal("test-secret", "GET", roster_path)).status_code == 404
+
+
+def test_admin_cannot_lock_themselves_out(client):
+    db = SessionLocal()
+    admin_name, other_name = _name(), _name()
+    admin = users_svc.create_user(db, username=admin_name, password="password123", is_admin=True)
+    other = users_svc.create_user(db, username=other_name, password="password123", is_admin=True)
+    admin_id, other_id = admin.id, other.id
+    db.close()
+
+    _login(client, admin_name)
+    headers = {"X-StonePi-CSRF": client.cookies.get(CSRF_COOKIE)}
+    for body in ({"is_admin": False}, {"enabled": False}):
+        resp = client.patch(f"/api/users/{admin_id}", json=body, headers=headers)
+        assert resp.status_code == 400 and "your own" in resp.json()["detail"]
+    assert client.delete(f"/api/users/{admin_id}", headers=headers).status_code == 400
+    # Saving your own page with is_admin still True is fine.
+    assert client.patch(f"/api/users/{admin_id}", json={"is_admin": True, "enabled": True}, headers=headers).status_code == 200
+    # Another admin can still be demoted while one admin remains.
+    assert client.patch(f"/api/users/{other_id}", json={"is_admin": False}, headers=headers).json()["is_admin"] is False
+    client.cookies.clear()
+
+
+def test_last_enabled_admin_keeps_role():
+    db = SessionLocal()
+    # Demote every other admin first so only one is left.
+    from sqlalchemy import select
+
+    from app.models import User
+
+    keep = users_svc.create_user(db, username=_name(), password="password123", is_admin=True)
+    for other in db.execute(select(User).where(User.is_admin.is_(True), User.id != keep.id)).scalars():
+        other.is_admin = False
+    db.commit()
+    with pytest.raises(ValueError, match="at least one"):
+        users_svc.update_user(db, keep, is_admin=False)
+    db.refresh(keep)
+    assert keep.is_admin is True
+    db.close()

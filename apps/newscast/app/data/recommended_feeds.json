@@ -14,7 +14,7 @@
     "name": "The Guardian World",
     "url": "https://www.theguardian.com/world",
     "category": "news",
-    "default_enabled": true,
+    "default_enabled": false,
     "rss_url": "https://www.theguardian.com/world/rss",
     "type": "rss",
     "allow_scrape": true
@@ -34,7 +34,7 @@
     "name": "BBC Technology",
     "url": "https://www.bbc.com/news/technology",
     "category": "technology",
-    "default_enabled": true,
+    "default_enabled": false,
     "rss_url": "https://feeds.bbci.co.uk/news/technology/rss.xml",
     "type": "rss",
     "allow_scrape": true
@@ -226,7 +226,7 @@
     "rss_url": "https://hackaday.com/blog/feed/",
     "category": "technology",
     "type": "webpage",
-    "default_enabled": true,
+    "default_enabled": false,
     "allow_scrape": true
   },
   {
@@ -236,7 +236,7 @@
     "rss_url": "https://krebsonsecurity.com/feed/",
     "category": "security",
     "type": "webpage",
-    "default_enabled": true,
+    "default_enabled": false,
     "allow_scrape": true
   },
   {
@@ -246,7 +246,7 @@
     "rss_url": "https://www.itnews.com.au/RSS/rss.ashx",
     "category": "australia",
     "type": "webpage",
-    "default_enabled": true,
+    "default_enabled": false,
     "allow_scrape": true
   },
   {

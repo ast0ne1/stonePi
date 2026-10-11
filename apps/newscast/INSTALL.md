@@ -189,7 +189,7 @@ Then in SSH, the install folder is still `~/Desktop/NewsCast-pi`.
 
 - **Feeds** and **Catalog** add news sources. Non-admins only see Catalog entries the admin approved.
 - **Refresh** in the header pulls stories.
-- **Settings** is split into tabs: Device (instance name, HTTPS when not under StonePi SSO, interface language), Publication, Schedule, Filters, Translation, LLM (OpenAI or Ollama), Reader (CrossPoint or Kobo push), Notifications (StonePi Destinations), Categories, Catalog approvals, Users, Backup/Restore, Update (GitHub Releases), and About. Non-admins only see the tabs that apply to them. Appliance hostname lives under **Dashboard → Settings → Network**.
+- **Settings** is split into tabs: General (instance name, HTTPS when not under StonePi SSO, interface language), Publication, Schedule, Filters, Translation, AI (OpenAI or Ollama), Reader (CrossPoint or Kobo push), Notifications (StonePi Notify → Phone alerts), Categories, Catalog approvals, Users, Backup/Restore, Update (GitHub Releases), and About. Non-admins only see the tabs that apply to them. Appliance hostname lives under **Dashboard → Settings → Network**.
 - **Status** shows your personal OPDS URL (`/opds/u/<username>`) for the reader catalog.
 - **Search** finds stories, favourites, and Saved long-reads. Briefing has Today and Yesterday. Feeds can mute a source for 24 hours.
 - NewsCast starts by itself when the Pi is turned on.

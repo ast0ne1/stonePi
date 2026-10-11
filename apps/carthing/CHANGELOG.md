@@ -1,5 +1,13 @@
 # Changelog — Car Thing panel
 
+## 0.2.0 — 2026-10-11 (part of the platform; no separate version)
+
+### Changed
+- **New look** (StonePi design system): Basalt / Sand palette, Sora and IBM Plex fonts (served by the panel service), app icons on widgets, StonePi mark on the pairing and restart screens. New configs default to the Sand accent and a plain Basalt idle background; saved configs keep their colours.
+
+### Added
+- **Sleep action** (Controls → Screen): goes straight to the screensaver at its dimmest, with no wait for "Then dim after"; where the panel controls the real backlight it switches the screen off. Any button, dial turn or touch wakes it, like the screensaver. New configs map it to **swipe up**; existing configs keep their own mappings, and Sleep is allowed in them without re-ticking (configs now remember which actions existed when they were saved, so newer actions are never silently forbidden).
+
 ## 0.1.9 — 2026-10-04 (part of the platform; no separate version)
 
 _Ships inside platform 0.1.9. A platform service, not a catalog app: switched on in Notify → Displays → Car Thing._

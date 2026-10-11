@@ -1,5 +1,10 @@
 # Changelog — Recover
 
+## 0.2.0 — 2026-10-11
+
+### Changed
+- **New look** (StonePi design system): Recover icon in the header and as favicon, new colours, fonts, buttons and status pills; the console still works on :8099 when nginx is down (it serves the brand files itself).
+
 ## 0.1.9 — 2026-10-04
 
 _Platform 0.1.9._

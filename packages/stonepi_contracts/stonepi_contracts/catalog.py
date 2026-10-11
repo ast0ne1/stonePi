@@ -43,6 +43,8 @@ EVENT_CATALOG: tuple[EventType, ...] = (
               "Your paper is ready to read."),
     EventType("newscast.push_available", "newscast", "Paper sent to reader", AUDIENCE_PERSONAL,
               "Your paper reached your e-reader."),
+    EventType("newscast.push_missed", "newscast", "Not delivered to reader", AUDIENCE_PERSONAL,
+              "Your e-reader wasn't found while NewsCast was looking; turn on File Transfer and tap Push now."),
     EventType("eventtrakr.event_approaching", "eventtrakr", "Favourite event starting", AUDIENCE_PERSONAL,
               "A favourite event is coming up."),
     EventType("eventtrakr.social_discovered", "eventtrakr", "New event from social", AUDIENCE_PERSONAL,

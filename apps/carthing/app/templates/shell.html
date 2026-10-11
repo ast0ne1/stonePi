@@ -11,6 +11,7 @@
   <main id="view" class="view">{% include "home.html" %}</main>
   <div id="saver" class="saver" style="{{ bg_style }}" hidden></div>
   <div id="toast" class="toast" role="status" hidden></div>
+  <div id="offline" class="offline" role="alert" hidden>Lost connection to StonePi · reconnecting…</div>
   <script type="application/json" id="cfg">{{ client|client_json|safe }}</script>
   <script src="static/js/panel.js?v={{ asset_rev }}"></script>
 </body>

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="{{ theme }}" data-theme-pref="{{ theme_pref }}" data-palette="{{ palette }}">
+<html lang="en" data-theme="{{ theme }}" data-theme-pref="{{ theme_pref }}">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -7,24 +7,24 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="StonePi" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.svg" />
     <title>Authentication · StonePi</title>
     {% include "_theme_boot.html" %}
-    <link rel="stylesheet" href="/assets/fonts/fonts.css?v={{ fonts_rev }}" />
+    {% from "stonepi/head.html" import brand_head, brand_tail %}
+    {{ brand_head("auth", fonts_rev) }}
     <link rel="stylesheet" href="/static/css/app.css?v={{ asset_rev }}" />
+    {{ brand_tail(fonts_rev) }}
   </head>
   <body class="login-body status-body">
     <div class="login-shell status-shell">
       <header class="login-top status-top">
-        <p class="brand">
-          <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
-            <rect x="4" y="3.5" width="16" height="17" rx="2"/>
-            <path d="M12 7.5v9"/>
-            <path d="M8 10.5h3M8 13.5h3"/>
-            <path d="M13 10.5h3M13 13.5h3"/>
-          </svg>
-          StonePi
-        </p>
+        {% from "stonepi/head.html" import mark %}
+        <div class="login-lockup">
+          {{ mark(40) }}
+          <div>
+            <p class="sp-wordmark">Stone<b>Pi</b></p>
+            <p class="sp-tagline">The bedrock of your digital home</p>
+          </div>
+        </div>
         <form method="post" action="/logout" class="status-signout">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
           <button class="icon-btn sign-out" type="submit" aria-label="Sign out" title="Sign out">

@@ -9,17 +9,23 @@
   <meta name="apple-mobile-web-app-title" content="PriceScout" />
   <title>{% block title %}PriceScout · StonePi{% endblock %}</title>
   {% include "_theme_boot.html" %}
-    <link rel="stylesheet" href="/assets/fonts/fonts.css?v={{ fonts_rev }}" />
+    {% from "stonepi/head.html" import brand_head, brand_tail %}
+    {{ brand_head("pricescout", fonts_rev) }}
   <link rel="stylesheet" href="/static/css/app.css?v={{ asset_rev }}" />
+  {{ brand_tail(fonts_rev) }}
 </head>
 <body>
   {% from "_icons.html" import icon %}
+  {% from "stonepi/header.html" import header_search, header_tools, header_fab %}
   <div class="app">
     <header class="topbar">
       <div class="brand-row">
         <a class="brand" href="/">{% include "_brand_mark.html" %}PriceScout</a>
       </div>
       <div class="topbar-actions">
+        {% if user or not sso %}
+        {{ header_search("/search", "Search offers", app="pricescout") }}
+        {% endif %}
         {% if can_refresh %}
         <form method="post" action="/sources/refresh" class="refresh-form">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
@@ -35,15 +41,9 @@
           </button>
         </form>
         {% endif %}
-        {% if user %}
-        {% from "stonepi/alerts.html" import alerts_bell %}
-        {{ alerts_bell(alerts_bell_state) }}
-        <form method="post" action="/logout" data-native>
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-          <button class="icon-btn sign-out" type="submit" aria-label="Sign out" title="Sign out">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 7V5a2 2 0 0 1 2-2h7v18h-7a2 2 0 0 1-2-2v-2"/><path d="M15 12H3m0 0 3-3m-3 3 3 3"/></svg>
-          </button>
-        </form>
+        {% if user or not sso %}
+        {#- Solo runs (no platform session) still need header_tools: it carries the search overlay's styles and script. -#}
+        {{ header_tools(alerts_bell_state, logout_action="/logout", csrf_token=csrf_token) }}
         {% endif %}
       </div>
     </header>
@@ -58,27 +58,15 @@
     </main>
 
     <nav class="nav" aria-label="Main">
-      <a href="{{ public_origin or 'http://127.0.0.1:8010' }}">
-        {{ icon("home") }}
-        <span>Home</span>
-      </a>
       <a href="/" class="{% if active == 'offers' %}is-active{% endif %}">
         {{ icon("offers") }}
         <span>Offers</span>
-      </a>
-      <a href="/search" class="{% if active == 'search' %}is-active{% endif %}">
-        {{ icon("search") }}
-        <span>Search</span>
       </a>
       <a href="/list" class="{% if active == 'list' %}is-active{% endif %}">
         {{ icon("list") }}
         <span>List</span>
       </a>
-      <a href="/sources" class="{% if active == 'sources' %}is-active{% endif %}">
-        {{ icon("sources") }}
-        <span>Sources</span>
-      </a>
-      <a href="/settings" class="{% if active == 'settings' %}is-active{% endif %}">
+      <a href="/settings" class="{% if active in ('settings', 'sources') %}is-active{% endif %}">
         {{ icon("settings") }}
         <span>Settings</span>
       </a>

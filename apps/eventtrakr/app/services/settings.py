@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 
 from app.models import Setting, UserSetting, utcnow
 
-DEFAULT_PALETTE = "default"
 DEFAULT_THEME = "system"
 
 WEEKDAYS = [

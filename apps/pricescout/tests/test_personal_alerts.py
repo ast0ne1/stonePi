@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app import db, routes
 from app.services import notify as notify_service
+from stonepi_auth.header import header_context
 from stonepi_auth.session import COOKIE_NAME, encode_session
 
 OWNER = "7c9e6679-7425-40de-944b-e07fc1f90ae7"
@@ -45,7 +48,15 @@ def client(monkeypatch, tmp_path):
     db.init_db()
     monkeypatch.setattr(routes, "_session_secret", lambda: SECRET)
     monkeypatch.setattr(
-        routes, "bell_context", lambda user, **kw: {"show": bool(user), "dot": True, "url": "/notifications"}
+        routes,
+        "bell_context",
+        lambda user, **kw: {
+            "show": bool(user),
+            "dot": True,
+            "url": "/notifications",
+            "panel": None,
+            "header": header_context(kw["app_id"], user, home_url="http://stonepi.test"),
+        },
     )
     app = FastAPI()
     app.include_router(routes.router)
@@ -66,12 +77,32 @@ def test_settings_notifications_tab_uses_shared_card(client):
     assert "alerts#choose" in html  # admin extras
 
 
-def test_top_bar_has_bell_before_sign_out(client):
+def test_shared_header_order_and_bottom_bar(client):
     html = client.get("/settings?tab=about").text
-    bell = html.find('class="icon-btn alerts-bell')
-    sign_out = html.find('class="icon-btn sign-out"')
-    assert 0 < bell < sign_out
-    assert "alerts-bell-dot" in html
+    search = html.find('class="sp-pop sp-pop-search"')
+    refresh = html.find('class="btn btn-primary btn-refresh')
+    bell = html.find('class="icon-btn sp-bell has-dot"')
+    switcher = html.find('aria-label="Switch app"')
+    avatar = html.find('class="sp-trigger sp-avatar"')
+    assert 0 < search < refresh < bell < switcher < avatar
+    assert 'action="/search"' in html
+    assert "Log out" in html
+    assert 'class="icon-btn sign-out"' not in html
+    assert "alerts-bell" not in html
+    nav = html[html.find('<nav class="nav"'):]
+    nav = nav[: nav.find("</nav>")]
+    labels = re.findall(r"<span>([^<]+)</span>", nav)
+    assert labels == ["Offers", "List", "Settings"]
+
+
+def test_settings_starts_with_sources_and_sources_links_back(client):
+    hub = client.get("/settings").text
+    first_row = hub.find('class="settings-hub-row"')
+    assert hub.find('href="/sources"', first_row) == first_row + len('class="settings-hub-row" ')
+    sources = client.get("/sources").text
+    assert '<a class="settings-back" href="/settings">&larr; Settings</a>' in sources
+    nav = sources[sources.find('<nav class="nav"'):]
+    assert '<a href="/settings" class="is-active">' in nav
 
 
 def test_standalone_has_no_bell_or_card(monkeypatch, tmp_path):
@@ -84,4 +115,5 @@ def test_standalone_has_no_bell_or_card(monkeypatch, tmp_path):
     app.include_router(routes.router)
     html = TestClient(app).get("/settings?tab=notifications").text
     assert "Manage personal alerts" not in html
-    assert "alerts-bell" not in html
+    assert 'class="icon-btn sp-bell' not in html
+    assert 'class="sp-pop sp-pop-search"' in html  # solo runs keep header search

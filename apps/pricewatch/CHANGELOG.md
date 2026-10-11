@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.8 — 2026-10-11
+
+### Changed
+- **New look** (StonePi design system): PriceWatch icon in the header and as favicon and home-screen icon; new colours, fonts, buttons and cards in light and dark; the old palettes are gone.
+- **Shared StonePi header:** Refresh (check every active watch now) stays the one red button, followed by the bell, a new app switcher (Dashboard and every StonePi app; replaces the Home tab) and your avatar menu (appearance, manage account, Log out). The separate sign-out button is gone; Log out lives in the avatar menu.
+- **Notifications panel:** the bell opens a PriceWatch panel showing which of your alerts are on, the last alert PriceWatch sent you and a Preferences button, with a dot for new alerts.
+- **Bottom bar is now Watches · Settings.** Add moved to a floating **+** button on the Watches page (for people allowed to add watches), replacing the Add tab and the Add watch button; the add and compare pages highlight Watches.
+
 ## 0.0.7 — 2026-10-04
 
 ### Added

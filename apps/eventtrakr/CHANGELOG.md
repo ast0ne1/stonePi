@@ -1,4 +1,18 @@
-﻿# Changelog — EventTrakr
+# Changelog — EventTrakr
+
+## 0.0.8 — 2026-10-11
+
+### Changed
+- **New look** (StonePi design system): EventTrakr icon in the header and as favicon and home-screen icon; new colours, fonts, buttons and cards in light and dark; the old palettes are gone.
+- **Navigation (shared StonePi header):** the bottom bar is down from 8 tabs to 4: **Agenda · Faves · Review · Settings**. Search, Refresh, the notifications bell, the app switcher (replaces Home) and your avatar sit in the header; **Add** is a floating **+** on Agenda and Faves.
+- **Search** opens from the header as an overlay ("Search all events and articles", with your recent searches), then shows results on the search page as before.
+- **Review** (was Find): the queue of events found through Instagram tracking, with a badge counting open items, one-tap **Approve** / **Reject**, "You're all caught up" when it's empty, and **Manage tracked accounts**.
+- **Settings** opens on **Sources** and **Instagram tracking** (no longer bottom-bar tabs), followed by the existing sections. Light/dark lives in the avatar menu.
+- **Log out** moved into the avatar menu, below a divider, so it can't be hit by accident.
+- On phones and tablets, each event card's **Open** and red **Add to calendar** buttons sit together on the left, clear of the floating **+**. **Track account** (Settings → Instagram tracking) and **Manage tracked accounts** (Review) are smaller.
+
+### Fixed
+- Review's "View original post" icon had no size and filled the card as a large black shape.
 
 ## 0.0.7 — 2026-10-04
 

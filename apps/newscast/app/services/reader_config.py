@@ -21,6 +21,9 @@ READER_COPY_KEYS = (
     "reader_ssh_password",
     "reader_firmware",
     "reader_keep_days",
+    "reader_push_window",
+    "reader_push_scan",
+    "reader_push_trigger",
 )
 FIRMWARE_DETECTED_KEY = "reader_firmware_detected"
 FIRMWARE_VERSION_KEY = "reader_firmware_version"
@@ -168,6 +171,19 @@ def reader_keep_days(db: Session, user_id: int) -> int:
     return settings.normalize_reader_keep_days(_raw(db, user_id, "reader_keep_days"))
 
 
+def reader_push_window_minutes(db: Session, user_id: int) -> int:
+    return settings.normalize_reader_push_window(_raw(db, user_id, "reader_push_window"))
+
+
+def reader_push_scan_seconds(db: Session, user_id: int) -> int:
+    return settings.normalize_reader_push_scan(_raw(db, user_id, "reader_push_scan"))
+
+
+def reader_push_trigger(db: Session, user_id: int) -> str:
+    """What opens an auto-push window: "queue" (anything queued) or "paper" (the paper only)."""
+    return settings.normalize_reader_push_trigger(_raw(db, user_id, "reader_push_trigger"))
+
+
 def reader_ssh_port(db: Session, user_id: int) -> int:
     raw = _raw(db, user_id, "reader_ssh_port").strip()
     if not raw:
@@ -224,6 +240,9 @@ def save_reader_settings(
     clear_reader_ssh_password: bool = False,
     reader_firmware_value: str | None = None,
     reader_keep_days_value: str | None = None,
+    reader_push_window_value: str | None = None,
+    reader_push_scan_value: str | None = None,
+    reader_push_trigger_value: str | None = None,
 ) -> None:
     uid = int(user.id)
     device = settings.normalize_reader_device(reader_device_value)
@@ -259,6 +278,18 @@ def save_reader_settings(
     push = "1" if reader_push_when_online else "0"
     user_settings.set_value(db, uid, "reader_push_when_online", push)
     _mirror_admin_instance(db, user, "reader_push_when_online", push)
+    if reader_push_window_value is not None:
+        window = str(settings.normalize_reader_push_window(reader_push_window_value))
+        user_settings.set_value(db, uid, "reader_push_window", window)
+        _mirror_admin_instance(db, user, "reader_push_window", window)
+    if reader_push_scan_value is not None:
+        scan = str(settings.normalize_reader_push_scan(reader_push_scan_value))
+        user_settings.set_value(db, uid, "reader_push_scan", scan)
+        _mirror_admin_instance(db, user, "reader_push_scan", scan)
+    if reader_push_trigger_value is not None:
+        trigger = settings.normalize_reader_push_trigger(reader_push_trigger_value)
+        user_settings.set_value(db, uid, "reader_push_trigger", trigger)
+        _mirror_admin_instance(db, user, "reader_push_trigger", trigger)
 
     if reader_ssh_port_value.strip():
         try:
@@ -322,6 +353,12 @@ def settings_context(db: Session, user: User) -> dict:
         or ("" if device == "kobo" else _raw(db, uid, "reader_host")),
         "reader_upload_path": reader_upload_dir(db, uid, username=user.username),
         "reader_push_when_online": reader_push_enabled(db, uid),
+        "reader_push_window": reader_push_window_minutes(db, uid),
+        "reader_push_window_choices": settings.READER_PUSH_WINDOW_CHOICES,
+        "reader_push_scan": reader_push_scan_seconds(db, uid),
+        "reader_push_scan_choices": settings.READER_PUSH_SCAN_CHOICES,
+        "reader_push_trigger": reader_push_trigger(db, uid),
+        "reader_push_triggers": settings.READER_PUSH_TRIGGERS,
         "reader_ssh_port": reader_ssh_port(db, uid),
         "reader_ssh_user": reader_ssh_user(db, uid),
         "reader_ssh_password": user_settings.secret_hint(db, uid, "reader_ssh_password"),

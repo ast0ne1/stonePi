@@ -25,7 +25,7 @@ Guidelines injected every LLM turn: `app/prompts/fileserve_hosting.md` plus `kin
 
 ## What it does
 
-- **Create** (landing): pick SPA / Guide / Game, name it, Start
+- **Create** (`/new`: the floating **+** on Projects; also where you land until you have a project): pick SPA / Guide / Game, name it, Start
 - **Projects**: list and open your own work; chat, build, preview, publish. Each project belongs to the account that made it; admins also get **All projects** with a filter by person
 - Workspace files + live iframe preview
 - Emits a JSON **file map** the app applies to disk
@@ -55,7 +55,7 @@ See `.cursor/skills/studio-fileserve` and `app/prompts/`.
 
 - LLM keys: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, optional `STUDIO_LLM_BASE_URL` in Dashboard → Settings → Vault.
 - Under StonePi, nginx serves `/studio/`; apps bind loopback.
-- **Display / TRMNL:** `GET /api/display` returns project/build summary for Status wall (denied at nginx edge).
+- **Display / TRMNL:** `GET /api/display` returns project/build summary for Studio's line on TRMNL Displays (denied at nginx edge).
 
 ## Solo / standalone
 

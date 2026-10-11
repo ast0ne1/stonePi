@@ -21,7 +21,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app import __asset_rev__, __fonts_rev__, __version__
+from app import BRAND_ROOT, __asset_rev__, __fonts_rev__, __version__
 
 HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "8099"))
@@ -74,6 +74,11 @@ log = logging.getLogger("stonepi.recover")
 
 app = FastAPI(title="StonePi Recover", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
+# Fonts, tokens and icons for direct :8099 use (nginx serves /assets/ itself otherwise).
+if BRAND_ROOT is not None:
+    for _url, _sub in (("/assets/fonts", "fonts"), ("/assets/brand", "static")):
+        if (BRAND_ROOT / _sub).is_dir():
+            app.mount(_url, StaticFiles(directory=str(BRAND_ROOT / _sub)), name=f"brand_{_sub}")
 
 
 def _dev_mode() -> bool:

@@ -25,7 +25,7 @@ Enable and schedule local backups under **Dashboard → Settings → Backup**. U
    `sudo stonepi-restore /mnt/.../RaspberryPi-Backup/TIMESTAMP`
 6. Reboot.
 
-This restores `/var/lib/stonepi` (including `notify/` Displays & Destinations JSON and the vault tree), `/etc/stonepi`, and the Nginx site. Application code comes from the installer. Restore chowns app data for all catalog users including `stonepi-notify`.
+This restores `/var/lib/stonepi` (including Notify's Displays and phone-alert settings and the vault tree), `/etc/stonepi`, and the Nginx site. Application code comes from the installer. Restore chowns app data for all catalog users including `stonepi-notify`.
 
 ## Restore drill checklist
 
@@ -35,10 +35,8 @@ After restore (or periodically on a spare card), verify:
 
 1. `stonepi status` — all catalog units active (auth, dashboard, notify, apps).
 2. Open Health (`/overview`) — apps responding, disk/backup look sane.
-3. **Destinations** — `/notify/settings?tab=destinations`:
-   - ntfy topic / server still present; vault key `STONEPI_NTFY_TOKEN` configured if you used auth.
-   - TRMNL webhook still present; vault key `DISPLAY_WEBHOOK_URL` configured if you used TRMNL.
-4. Optional: send a test ntfy from Destinations (or trigger a known app event) and confirm a TRMNL push if configured.
+3. **Notify → Phone alerts** (`/notify/alerts`): ntfy server still present; vault key `STONEPI_NTFY_TOKEN` configured if you used auth.
+4. **Notify → Displays**: each TRMNL Display still has its webhook (vault `DISPLAY_WEBHOOK_URL`, `DISPLAY_WEBHOOK_URL_<ID>`). Optional: send a test notification from the bell's Preferences and **Push now** on a Display.
 5. Confirm Displays list still has the built-in Dashboard display.
 
 Vault secrets live under `/var/lib/stonepi/vault` and are included in the applications rsync; do not copy credentials into git or logs.

@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% from "_icons.html" import icon %}
 {% from "_filter_icon.html" import filter_icon %}
 {% from "_trust.html" import trust_badge %}
 {% block title %}Watches · PriceWatch{% endblock %}
@@ -7,9 +6,6 @@
 <section class="hero">
   <div class="hero-row hero-row-inline">
     <h1>Watches</h1>
-    {% if can_manage_watches %}
-    <a class="btn btn-primary btn-with-icon" href="/watches/new">{{ icon("plus") }}<span class="btn-label-full">Add watch</span><span class="btn-label-short">Add</span></a>
-    {% endif %}
   </div>
   <div class="page-status">
     <span class="page-status-dot{% if not watches %} is-muted{% elif counts.strike_found %} is-busy{% elif counts.error %} is-error{% endif %}" aria-hidden="true"></span>
@@ -27,7 +23,7 @@
 {% if not watches %}
 <div class="empty card stack">
   <h2 class="section-heading">{{ filter_icon("watches") }} No watches yet</h2>
-  <p class="hint">A watch is one product plus the price you’d pay. PriceWatch checks retailers on a schedule and pings you when an offer hits your target.</p>
+  <p class="hint">A watch is one product plus the price you’d pay. PriceWatch checks retailers on a schedule and pings you when an offer hits your target.{% if can_manage_watches %} Tap <strong>+</strong> to add one.{% endif %}</p>
 </div>
 {% else %}
 <div class="watch-groups">

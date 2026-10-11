@@ -101,8 +101,15 @@ def client(monkeypatch):
     db = _session()
     monkeypatch.setattr(auth, "_platform_session_secret", lambda: SECRET)
     monkeypatch.setattr(env, "stonepi_session_secret", SECRET)
+    from stonepi_auth.header import header_context
+
     monkeypatch.setattr(
-        ui, "bell_context", lambda user, **kw: {"show": bool(user), "dot": True, "url": "/notifications"}
+        ui,
+        "bell_context",
+        lambda user, **kw: {
+            "show": bool(user), "dot": True, "url": "/notifications", "panel": None,
+            "header": header_context(kw["app_id"], user, home_url="http://stonepi.test"),
+        },
     )
     app = FastAPI()
     app.include_router(ui.router)
@@ -132,9 +139,32 @@ def test_settings_notifications_tab_uses_shared_card(client):
     assert 'name="ntfy_notify_on_publish"' not in html  # per-person choices live on the Notifications page
 
 
-def test_top_bar_has_bell_before_sign_out(client):
+def test_shared_header_order_and_bottom_bar(client):
     html = client.get("/settings?tab=device").text
-    bell = html.find('class="icon-btn alerts-bell')
-    sign_out = html.find('class="icon-btn sign-out"')
-    assert 0 < bell < sign_out
-    assert "alerts-bell-dot" in html
+    search = html.find('aria-label="Search"')
+    refresh = html.find('action="/ingest"')
+    bell = html.find('class="icon-btn sp-bell has-dot"')
+    switcher = html.find('aria-label="Switch app"')
+    avatar = html.find('class="sp-trigger sp-avatar"')
+    assert 0 < search < refresh < bell < switcher < avatar
+    assert 'placeholder="Search all articles"' in html and 'action="/search"' in html
+    assert "Log out" in html and 'class="icon-btn sign-out"' not in html
+    assert 'href="http://stonepi.test/"' in html  # Dashboard, top of the switcher
+    nav = html[html.find('<nav class="nav"'):]
+    nav = nav[: nav.find("</nav>")]
+    labels = ("Home", "Briefing", "Saved", "Search", "Reader", "Sources", "Settings")
+    assert [label for label in labels if f"<span>{label}</span>" in nav] == ["Briefing", "Saved", "Reader", "Settings"]
+
+
+def test_settings_hub_opens_on_sources(client):
+    html = client.get("/settings").text
+    assert 0 < html.find('href="/sources"') < html.find('data-settings-hub-row=')
+
+
+def test_sources_page_sits_under_settings(client):
+    html = client.get("/sources").text
+    assert 'class="settings-back" href="/settings"' in html
+    nav = html[html.find('<nav class="nav"'):]
+    nav = nav[: nav.find("</nav>")]
+    assert 'href="/settings" class="is-active"' in nav
+

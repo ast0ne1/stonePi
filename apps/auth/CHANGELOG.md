@@ -1,5 +1,15 @@
 # Changelog — Auth
 
+## 0.2.0 — 2026-10-11
+
+### Changed
+- `PATCH /api/me` sets your own alias (display name, up to 40 characters).
+- **New look** (StonePi design system): sign-in page with the StonePi lockup and tagline, pill theme switch, new buttons and fields; Auth icon as favicon. Stores each person's Home welcome message (`PUT /api/me/welcome`).
+
+### Fixed
+- The first-run password notice on the sign-in page sent you to the Users tab; it now says Settings → General → Your password.
+- **An admin could remove their own admin role**, even as the only admin, locking the household out of Users, Services and Settings. Auth now refuses to demote the last enabled admin, and refuses to let an admin demote, disable or delete their own account (another admin has to).
+
 ## 0.1.9 — 2026-10-04
 
 _Platform 0.1.9. Picks up `stonepi_auth` 0.1.1._

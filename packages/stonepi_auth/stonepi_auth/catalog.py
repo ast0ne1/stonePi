@@ -228,7 +228,25 @@ APP_CATALOG: list[dict[str, Any]] = [
 ]
 
 APP_IDS = tuple(item["id"] for item in APP_CATALOG)
-LAUNCHER_APP_IDS = tuple(item["id"] for item in APP_CATALOG if item.get("launcher"))
+# Home tile order for anyone who hasn't reordered their own (catalog order is for ports,
+# zips and the installer, so it stays as it is). Launcher apps not listed follow, in catalog order.
+DEFAULT_LAUNCHER_ORDER = (
+    "newscast",
+    "eventtrakr",
+    "sportguide",
+    "pricescout",
+    "pricewatch",
+    "pinboard",
+    "library",
+    "fileserve",
+    "studio",
+)
+LAUNCHER_APP_IDS = tuple(
+    sorted(
+        (item["id"] for item in APP_CATALOG if item.get("launcher")),
+        key=lambda app_id: DEFAULT_LAUNCHER_ORDER.index(app_id) if app_id in DEFAULT_LAUNCHER_ORDER else len(DEFAULT_LAUNCHER_ORDER),
+    )
+)
 SYSTEM_APP_IDS = tuple(item["id"] for item in APP_CATALOG if item.get("group") == "system")
 # Apps with their own release zip / Dashboard update. System apps carry `ships_with: platform`:
 # they take the platform version and ship inside the platform zip.

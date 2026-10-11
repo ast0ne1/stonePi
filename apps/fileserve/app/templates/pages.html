@@ -11,12 +11,6 @@
     <p class="lede">Share files with everyone on your home network.</p>
     {% endif %}
   </div>
-  {% if can_publish_pages %}
-  <a class="btn btn-secondary btn-with-icon" href="{{ url_for('add_page') }}">
-    {{ icon("plus") }}
-    <span>Add page</span>
-  </a>
-  {% endif %}
 </section>
 {% if not can_publish_pages %}
 <p class="hint" data-publish-locked>{{ publish_ask_hint }}</p>
@@ -173,12 +167,7 @@
   <h2>No pages yet</h2>
   <p class="hint">Add a web page, PDF, Word document or zipped site. FileServe gives it a short link and a QR code that anyone at home can open.</p>
   {% if can_publish_pages %}
-  <div class="row-actions">
-    <a class="btn btn-primary btn-with-icon" href="{{ url_for('add_page') }}">
-      {{ icon("plus") }}
-      <span>Add page</span>
-    </a>
-  </div>
+  <p class="hint">Tap <strong>+</strong> to add one.</p>
   {% else %}
   <p class="hint" data-publish-locked>{{ publish_ask_hint }}</p>
   {% endif %}

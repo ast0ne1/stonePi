@@ -10,10 +10,13 @@
     <meta name="apple-mobile-web-app-title" content="PriceWatch" />
     <title>{% block title %}PriceWatch{% endblock %}</title>
     {% include "_theme_boot.html" %}
-    <link rel="stylesheet" href="/assets/fonts/fonts.css?v={{ fonts_rev }}" />
+    {% from "stonepi/head.html" import brand_head, brand_tail %}
+    {{ brand_head("pricewatch", fonts_rev) }}
     <link rel="stylesheet" href="/static/css/app.css?v={{ app_version }}-{{ asset_rev }}" />
+    {{ brand_tail(fonts_rev) }}
   </head>
   <body>
+    {% from "stonepi/header.html" import header_tools, header_fab %}
     <div class="app">
       <header class="topbar">
         <div class="brand-row">
@@ -30,16 +33,7 @@
             </button>
           </form>
           {% endif %}
-          {% if user %}
-          {% from "stonepi/alerts.html" import alerts_bell %}
-          {{ alerts_bell(alerts_bell_state) }}
-          <form method="post" action="/logout">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-            <button class="icon-btn sign-out" type="submit" aria-label="Sign out" title="Sign out">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 7V5a2 2 0 0 1 2-2h7v18h-7a2 2 0 0 1-2-2v-2"/><path d="M15 12H3m0 0 3-3m-3 3 3 3"/></svg>
-            </button>
-          </form>
-          {% endif %}
+          {{ header_tools(alerts_bell_state, logout_action="/logout", csrf_token=csrf_token) }}
         </div>
       </header>
 
@@ -52,25 +46,16 @@
       </main>
 
       <nav class="nav" aria-label="Main">
-        <a href="{{ stonepi_home_url or '/' }}">
-          {{ filter_icon("home") }}
-          <span>Home</span>
-        </a>
         <a href="/" class="{% if active == 'watches' %}is-active{% endif %}">
           {{ filter_icon("watches") }}
           <span>Watches</span>
         </a>
-        {% if can_manage_watches %}
-        <a href="/watches/new" class="{% if active == 'add' %}is-active{% endif %}">
-          {{ filter_icon("add") }}
-          <span>Add</span>
-        </a>
-        {% endif %}
         <a href="/settings" class="{% if active == 'settings' %}is-active{% endif %}">
           {{ filter_icon("settings") }}
           <span>Settings</span>
         </a>
       </nav>
+      {% if show_add_fab and can_manage_watches %}{{ header_fab("/watches/new", "Add") }}{% endif %}
     </div>
     <div class="sheet" hidden data-confirm-sheet>
       <div class="sheet-card card">

@@ -19,6 +19,14 @@ USERNAME_RE = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
 COOKIE_MAX_AGE = 60 * 60 * 24 * 14
 DISABLED_APPS_KEY = "disabled_apps"
 LAUNCHER_ORDER_PREFIX = "launcher_order:"
+WELCOME_PREFIX = "welcome:"
+# Home's greeting (Settings → General → Appearance): time of day by the browser's
+# clock (default), "Hello, <name>", the person's own text, or none.
+WELCOME_MODES = ("time", "hello", "custom", "none")
+WELCOME_DEFAULT = "time"
+WELCOME_TEXT_MAX = 60
+# Alias (display name): short, it greets you on Home.
+DISPLAY_NAME_MAX = 40
 
 
 def normalize_username(value: str) -> str:
@@ -178,6 +186,34 @@ def set_launcher_order(db: Session, user: User, app_ids: Iterable[str]) -> list[
     ordered = normalize_launcher_order(app_ids)
     set_setting(db, _launcher_order_key(user.id), json.dumps(ordered))
     return ordered
+
+
+def normalize_welcome(mode: object, text: object = "") -> dict[str, str]:
+    """``{"mode", "text"}`` with an allowed mode and plain text capped at 60 characters."""
+    value = str(mode or "").strip().lower()
+    if value not in WELCOME_MODES:
+        value = WELCOME_DEFAULT
+    custom = " ".join(str(text or "").split())[:WELCOME_TEXT_MAX]
+    if value == "custom" and not custom:
+        value = WELCOME_DEFAULT
+    return {"mode": value, "text": custom}
+
+
+def welcome(db: Session, user: User) -> dict[str, str]:
+    raw = get_setting(db, f"{WELCOME_PREFIX}{user.id}", "")
+    try:
+        data = json.loads(raw) if raw.strip() else {}
+    except json.JSONDecodeError:
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    return normalize_welcome(data.get("mode"), data.get("text"))
+
+
+def set_welcome(db: Session, user: User, mode: object, text: object = "") -> dict[str, str]:
+    value = normalize_welcome(mode, text)
+    set_setting(db, f"{WELCOME_PREFIX}{user.id}", json.dumps(value))
+    return value
 
 
 def enabled_app_ids(db: Session) -> list[str]:
@@ -357,6 +393,12 @@ def update_user(
         if not user.enabled:
             revoke_sessions(db, user.id)
     if is_admin is not None:
+        if user.is_admin and not is_admin:
+            others = db.execute(
+                select(User).where(User.is_admin.is_(True), User.enabled.is_(True), User.id != user.id)
+            ).scalars().first()
+            if others is None:
+                raise ValueError("Keep at least one enabled administrator.")
         user.is_admin = bool(is_admin)
     if phone_alerts is not None:
         user.phone_alerts = bool(phone_alerts)
@@ -507,6 +549,7 @@ def user_payload(user: User, db: Session | None = None) -> dict:
     }
     if db is not None:
         payload["launcher_order"] = launcher_order(db, user)
+        payload["welcome"] = welcome(db, user)
     return payload
 
 

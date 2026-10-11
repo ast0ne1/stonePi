@@ -61,8 +61,18 @@ def client(monkeypatch, tmp_path):
         monkeypatch.setattr(mod, "DATA_DIR", tmp_path, raising=False)
     db.init_db() if hasattr(db, "init_db") else None
     monkeypatch.setattr(routes, "_session_secret", lambda: SECRET)
+    from stonepi_auth.header import header_context
+
     monkeypatch.setattr(
-        routes, "bell_context", lambda user, **kw: {"show": bool(user), "dot": True, "url": "/notifications"}
+        routes,
+        "bell_context",
+        lambda user, **kw: {
+            "show": bool(user),
+            "dot": True,
+            "url": "/notifications",
+            "panel": None,
+            "header": header_context(kw["app_id"], user, home_url="http://stonepi.test"),
+        },
     )
     app = FastAPI()
     app.include_router(routes.router)
@@ -84,9 +94,22 @@ def test_settings_notifications_tab_uses_shared_card(client):
     assert "alerts#choose" in html  # admin extras
 
 
-def test_top_bar_has_bell_before_sign_out(client):
+def test_shared_header_order_and_bottom_bar(client):
     html = client.get("/settings?tab=general").text
-    bell = html.find('class="icon-btn alerts-bell')
-    sign_out = html.find('class="icon-btn sign-out"')
-    assert 0 < bell < sign_out
-    assert "alerts-bell-dot" in html
+    refresh = html.find('class="btn btn-primary btn-refresh"')
+    bell = html.find('class="icon-btn sp-bell has-dot"')
+    switcher = html.find('aria-label="Switch app"')
+    avatar = html.find('class="sp-trigger sp-avatar"')
+    assert 0 < refresh < bell < switcher < avatar
+    assert "Log out" in html and 'class="icon-btn sign-out"' not in html
+    assert "alerts-bell" not in html
+    nav = html[html.find('<nav class="nav"'):]
+    nav = nav[: nav.find("</nav>")]
+    assert [label for label in ("Home", "Watches", "Add", "Settings") if f"<span>{label}</span>" in nav] == [
+        "Watches", "Settings",
+    ]
+
+
+def test_add_is_a_floating_button_on_watches_only(client):
+    assert 'class="sp-fab" href="/watches/new"' in client.get("/").text
+    assert 'class="sp-fab"' not in client.get("/settings").text

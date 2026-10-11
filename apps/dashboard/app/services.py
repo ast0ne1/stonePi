@@ -24,8 +24,6 @@ from stonepi_auth import (
 )
 
 TIMEOUT = 1.0
-APP_COLORS_PATH = DATA_DIR / "app-colors.json"
-_HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 _AUTH_HTTP = httpx.Client(timeout=8.0, follow_redirects=False)
 
 
@@ -502,84 +500,6 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def normalize_hex_color(value: str | None, fallback: str = "") -> str:
-    raw = str(value or "").strip()
-    if _HEX_COLOR_RE.match(raw):
-        return raw.lower()
-    if re.match(r"^#[0-9a-fA-F]{3}$", raw):
-        return f"#{raw[1]*2}{raw[2]*2}{raw[3]*2}".lower()
-    return fallback.lower() if fallback else ""
-
-
-def default_app_colors() -> dict[str, str]:
-    return {
-        str(item["id"]): normalize_hex_color(str(item.get("color") or ""), "#6d645a")
-        for item in APP_CATALOG
-    }
-
-
-def load_app_color_overrides() -> dict[str, str]:
-    if not APP_COLORS_PATH.exists():
-        return {}
-    try:
-        data = json.loads(APP_COLORS_PATH.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    if not isinstance(data, dict):
-        return {}
-    known = {item["id"] for item in APP_CATALOG}
-    out: dict[str, str] = {}
-    for app_id, color in data.items():
-        key = str(app_id)
-        if key not in known:
-            continue
-        hex_color = normalize_hex_color(str(color or ""))
-        if hex_color:
-            out[key] = hex_color
-    return out
-
-
-def resolved_app_colors() -> dict[str, str]:
-    colors = default_app_colors()
-    colors.update(load_app_color_overrides())
-    return colors
-
-
-def app_color_items() -> list[dict]:
-    defaults = default_app_colors()
-    current = resolved_app_colors()
-    return [
-        {
-            "id": item["id"],
-            "name": item["name"],
-            "color": current.get(item["id"], defaults.get(item["id"], "#6d645a")),
-            "default": defaults.get(item["id"], "#6d645a"),
-        }
-        for item in APP_CATALOG
-    ]
-
-
-def save_app_colors(colors: dict[str, str], *, reset: bool = False) -> dict[str, str]:
-    """Persist per-app tile accents. Only diffs from catalog defaults are stored."""
-    APP_COLORS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    if reset:
-        if APP_COLORS_PATH.exists():
-            APP_COLORS_PATH.unlink()
-        return resolved_app_colors()
-
-    defaults = default_app_colors()
-    overrides: dict[str, str] = {}
-    for app_id, default in defaults.items():
-        hex_color = normalize_hex_color(colors.get(app_id), default)
-        if hex_color and hex_color != default:
-            overrides[app_id] = hex_color
-    if overrides:
-        APP_COLORS_PATH.write_text(json.dumps(overrides, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    elif APP_COLORS_PATH.exists():
-        APP_COLORS_PATH.unlink()
-    return resolved_app_colors()
-
-
 def catalog_apps(
     *,
     include_auth: bool = True,
@@ -597,7 +517,6 @@ def catalog_apps(
     else:
         remote = {}
 
-    color_overrides = load_app_color_overrides()
     items = []
     for item in APP_CATALOG:
         if not include_auth and item["id"] == "auth":
@@ -605,10 +524,7 @@ def catalog_apps(
         if not include_non_grantable and item.get("grants") is False:
             continue
         merged = {**item, **(remote.get(item["id"]) or {})}
-        # Household tile accents win over catalog / auth payload defaults.
-        if item["id"] in color_overrides:
-            merged["color"] = color_overrides[item["id"]]
-        elif not merged.get("color"):
+        if not merged.get("color"):
             merged["color"] = item.get("color") or ""
         merged["enabled"] = item["id"] not in disabled and merged.get("enabled", True) is not False
         items.append(merged)
@@ -780,6 +696,9 @@ def launcher_tiles(user, cookies: dict[str, str] | None = None, status: dict | N
         try:
             me = auth_request("GET", "/api/me", cookies)
             order_live = True
+            if status is not None:
+                status["welcome"] = normalize_welcome(me.get("welcome"))
+                status["display_name"] = str(me.get("display_name") or "").strip()
             saved = me.get("launcher_order")
             if isinstance(saved, list) and saved:
                 known = set(LAUNCHER_APP_IDS)
@@ -856,6 +775,58 @@ def _tile_status(item: dict) -> str:
             _TILE_REFRESHING.add(app_id)
             threading.Thread(target=_refresh_tile_status, args=(app_id, int(item["port"])), daemon=True).start()
     return cached[1] if cached else ""
+
+
+WELCOME_MODES = ("time", "hello", "custom", "none")
+WELCOME_TEXT_MAX = 60
+
+
+def normalize_welcome(value: object) -> dict[str, str]:
+    """Home greeting preference from Auth (same rules as Auth's ``normalize_welcome``)."""
+    data = value if isinstance(value, dict) else {}
+    mode = str(data.get("mode") or "").strip().lower()
+    if mode not in WELCOME_MODES:
+        mode = "time"
+    text = " ".join(str(data.get("text") or "").split())[:WELCOME_TEXT_MAX]
+    if mode == "custom" and not text:
+        mode = "time"
+    return {"mode": mode, "text": text}
+
+
+def load_welcome(cookies: dict[str, str]) -> dict[str, str]:
+    """The person's welcome preference plus ``name``: their account display name (alias), live from Auth."""
+    try:
+        me = auth_request("GET", "/api/me", cookies)
+    except Exception:  # noqa: BLE001 - Auth restarting: show the default
+        return {**normalize_welcome(None), "name": ""}
+    return {**normalize_welcome(me.get("welcome")), "name": str(me.get("display_name") or "").strip()}
+
+
+def welcome_name(user: object, live_name: str = "") -> str:
+    """Name for Home's greeting: the account's alias (display name) exactly as set.
+
+    Prefers the live value from Auth (a display name changed after sign-in shows at once);
+    falls back to the session's display name, then the username.
+    """
+    return (
+        str(live_name or "").strip()
+        or str(getattr(user, "display_name", "") or "").strip()
+        or str(getattr(user, "username", "") or "").strip()
+    )
+
+
+ALIAS_MAX = 40
+
+
+def save_alias(cookies: dict[str, str], alias: str) -> str:
+    """Your own alias (account display name) in Auth; returns what was saved."""
+    payload = auth_request("PATCH", "/api/me", cookies, json_body={"display_name": " ".join(str(alias or "").split())[:ALIAS_MAX]})
+    return str(payload.get("display_name") or "")
+
+
+def save_welcome(cookies: dict[str, str], mode: str, text: str = "") -> dict[str, str]:
+    payload = auth_request("PUT", "/api/me/welcome", cookies, json_body={"mode": mode, "text": text})
+    return normalize_welcome(payload.get("welcome"))
 
 
 def save_launcher_order(cookies: dict[str, str], order: list[str]) -> list[str]:

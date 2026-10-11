@@ -1,0 +1,5 @@
+{# Only call when AI is on (a model is set up). `rules` ("field:value,value;field:value")
+   makes the tag follow those dropdowns live, before Save; `show` is its state on load. #}
+{% macro ai_tag(uses="", local=false, rules="", show=true) -%}
+<span class="chip chip-ai" title="Uses AI{% if uses %}: {{ uses }}{% endif %} ({{ 'local model' if local else 'cloud model' }})"{% if rules %} data-ai-rules="{{ rules }}"{% endif %}{% if not show %} hidden{% endif %}>AI</span>
+{%- endmacro %}

@@ -6,6 +6,7 @@
 {% set art = {"game": "🎮", "guide": "📖", "spa": "🛠️"} %}
 {% set sparkles = {"game": ["🐉", "⭐", "🚀"], "guide": ["🌲", "🗝️", "🦉"], "spa": ["🎂", "✅", "⏰"]} %}
 <section class="hero create-hero">
+  {% if has_projects %}<a class="settings-back" href="/projects">&larr; Projects</a>{% endif %}
   <h1>What shall we make today?</h1>
   <p class="lede">Pick a kind, describe your idea, and watch it come to life. Name it later — or let the AI suggest one.</p>
 </section>

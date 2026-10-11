@@ -30,7 +30,7 @@
     <h2 class="section-label settings-hub-heading">{{ group_label }}</h2>
     <div class="group-card settings-hub-card">
       {% for key, label, subtext in rows %}
-      <a class="settings-hub-row" href="/settings?tab={{ key }}" data-settings-hub-row="{{ key }}">
+      <a class="settings-hub-row" href="{{ settings_hub_links.get(key) or '/settings?tab=' ~ key }}"{% if key not in settings_hub_links %} data-settings-hub-row="{{ key }}"{% endif %}>
         <span class="settings-hub-icon" aria-hidden="true">{{ icon(tab_icons.get(key)) }}</span>
         <span class="settings-hub-copy">
           <span class="settings-hub-title">{{ label }}</span>
@@ -56,9 +56,9 @@
 <!-- Tab: General -->
 <div class="stack settings-panel" id="settings-panel-general" role="tabpanel" data-settings-panel="general" aria-labelledby="settings-tab-general"{% if active_tab != 'general' %} hidden{% endif %}>
 {% if platform_managed %}
-<p class="form-hint">Your password and colour palette are under <a href="{{ stonepi_home_url }}/settings?tab=general">StonePi → Settings → General</a>. Admins manage household accounts on <a href="{{ stonepi_home_url }}/users">StonePi → Users</a>.</p>
+<p class="form-hint">Your password and welcome message are under <a href="{{ stonepi_home_url }}/settings?tab=general">StonePi → Settings → General</a>. Admins manage household accounts on <a href="{{ stonepi_home_url }}/users">StonePi → Users</a>.</p>
 {% else %}
-<p class="form-hint">Colour palette for all StonePi apps is set on the portal under Settings → General when StonePi SSO is enabled.</p>
+<p class="form-hint">Light, Dark or System for all StonePi apps is under Appearance in your avatar menu.</p>
 {% endif %}
 
 <div class="card">
@@ -178,7 +178,7 @@
         <option value="interval" {% if global_schedule.mode != 'weekly' %}selected{% endif %}>Simple interval</option>
         <option value="weekly" {% if global_schedule.mode == 'weekly' %}selected{% endif %}>Specific days &amp; times</option>
       </select>
-      <span class="form-hint">Sources set to "Global" on the Sources tab follow this. A source set to "Custom" can use its own interval or specific days &amp; times.</span>
+      <span class="form-hint">Sources set to "Global" under Settings → Sources follow this. A source set to "Custom" can use its own interval or specific days &amp; times.</span>
     </div>
 
     <div class="form-group" data-schedule-panel="interval" {% if global_schedule.mode == 'weekly' %}hidden{% endif %}>
@@ -256,7 +256,7 @@
   <h2 class="section-heading">{{ icon('search') }} Event Discovery</h2>
   <p class="form-hint" style="margin-bottom: 16px;">
     Track public Instagram accounts as an extra information source. Posts are polled via Bright Data (same vault key as Facebook Events).
-    Manage accounts under <a href="/sources/social">Sources → Instagram</a>. Review candidates on <a href="/discoveries">Discoveries</a>.
+    Manage accounts under <a href="/sources/social">Settings → Instagram tracking</a>. Decide on what they find in <a href="/discoveries">Review</a>.
   </p>
   {% if user.role == 'admin' %}
   <form method="post" action="/settings/discovery">
@@ -267,7 +267,7 @@
     <div class="form-group" style="margin-top: 14px;">
       <label for="social_poll_minutes">Polling interval (minutes)</label>
       <input type="number" id="social_poll_minutes" name="social_poll_minutes" class="form-control" min="15" max="1440" step="5" value="{{ social_poll_minutes }}" />
-      <span class="form-hint">Default for accounts set to Global (default 30). Each account can override under Sources → Instagram.</span>
+      <span class="form-hint">Default for accounts set to Global (default 30). Each account can override under Settings → Instagram tracking.</span>
     </div>
     <div class="form-group">
       <label for="social_posts_per_check">Posts per check</label>
@@ -331,7 +331,7 @@
 <div class="card">
   <h2 class="section-heading">{{ icon('filter') }} Global Keyword Filters</h2>
   <p class="form-hint" style="margin-bottom: 16px;">
-    Applied on top of each source's own include/exclude words (Sources tab) -- an event must pass both to show up.
+    Applied on top of each source's own include/exclude words (Settings → Sources) -- an event must pass both to show up.
     Use this to filter out a whole type of event across every source at once, for example excluding <strong>online</strong> or <strong>webinar</strong> events.
   </p>
 
@@ -368,7 +368,7 @@
 <div class="card">
   <h2 class="section-heading">{{ icon('tag') }} Event Categories</h2>
   <p class="form-hint" style="margin-bottom: 16px;">
-    Each source is assigned one of these on the Sources tab -- its events are labelled with that category, instead of whatever the source itself calls things.
+    Each source is assigned one of these under Settings → Sources -- its events are labelled with that category, instead of whatever the source itself calls things.
   </p>
 
   <ul class="category-edit-list">
@@ -472,7 +472,7 @@
 <div class="card">
   <h2 class="section-heading">{{ icon('sources') }} Facebook Events &amp; Calendar Invites</h2>
   <p class="form-hint" style="margin-bottom: 12px;">Due to Meta API privacy rules, Facebook event invites can be exported via standard .ics invites or shared directly to Facebook from each event card.</p>
-  <p style="font-size: 0.88rem; color: var(--muted);">To track events hosted on Facebook, simply paste public Facebook event URLs into your Sources tab.</p>
+  <p style="font-size: 0.88rem; color: var(--muted);">To track events hosted on Facebook, simply paste public Facebook event URLs into Settings → Sources.</p>
 </div>
 </div>
 

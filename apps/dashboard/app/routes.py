@@ -4,6 +4,7 @@ import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
@@ -15,10 +16,10 @@ from starlette.datastructures import FormData
 from app.config import ROOT_DIR, env, resolve_cockpit_url
 from app import __asset_rev__, jobs, services
 from stonepi_auth.brand import fonts_rev
-from stonepi_auth import APP_CATALOG, APP_IDS, SYSTEM_APP_IDS, login_url, logout_url
+from stonepi_auth import APP_CATALOG, APP_IDS, LAUNCHER_APP_IDS, SYSTEM_APP_IDS, login_url, logout_url
 from stonepi_auth.config import PlatformSettings
 from stonepi_auth.csrf import csrf_from_request, csrf_ok, csrf_ok_request, set_csrf_cookie
-from stonepi_auth.alerts import add_shared_templates
+from stonepi_auth.alerts import NOTIFICATIONS_PATH, add_shared_templates
 from stonepi_auth.session import COOKIE_NAME, CSRF_COOKIE
 
 templates = Jinja2Templates(directory=str(ROOT_DIR / "app" / "templates"))
@@ -106,12 +107,13 @@ def _request_host(request: Request) -> str:
 
 
 def _alerts_bell(request: Request, user) -> dict:
-    """Top-bar bell: shown to people with Phone alerts; dot until they set up."""
+    """Shared header state: the bell's all-apps panel, the app switcher and the avatar menu."""
     from stonepi_auth.alerts import bell_context
+    from stonepi_auth.http import portal_home_url
     from stonepi_auth.session import COOKIE_NAME
 
-    # Dashboard is the portal home, so the Notifications page is same-origin.
-    return bell_context(user, session_cookie=request.cookies.get(COOKIE_NAME), home_url="")
+    home = portal_home_url(request, env.public_origin) or str(request.base_url).rstrip("/")
+    return bell_context(user, session_cookie=request.cookies.get(COOKIE_NAME), home_url=home, app_id="dashboard")
 
 
 def _ctx(request: Request, user, extra: dict | None = None):
@@ -131,8 +133,8 @@ def _ctx(request: Request, user, extra: dict | None = None):
     if "alerts_bell_state" not in payload:
         payload["alerts_bell_state"] = _alerts_bell(request, user)
     payload["alerts_bell_state"] = {
-        "url": "/notifications",
         **payload["alerts_bell_state"],
+        "url": NOTIFICATIONS_PATH,
         "active": payload.get("active") == "notifications",
     }
     if "using_factory_admin" not in payload:
@@ -403,6 +405,20 @@ def _backup_summary(backup: dict) -> dict:
     }
 
 
+def _greeting_for_hour(hour: int) -> str:
+    """Time-based welcome: morning until 12:00, afternoon 12:00–17:59, evening after."""
+    if hour < 12:
+        return "Good morning"
+    if hour < 18:
+        return "Good afternoon"
+    return "Good evening"
+
+
+def _today_label() -> str:
+    now = datetime.now()
+    return f"{now.strftime('%A')} {now.day} {now.strftime('%B')}"
+
+
 @router.get("/", response_class=HTMLResponse)
 def home(request: Request):
     user, redirected = _user_or_login(request, require_dashboard=False)
@@ -422,6 +438,12 @@ def home(request: Request):
             "tiles": tiles,
             # Auth restarting: tiles show in catalog order; don't offer to save over the real one.
             "launcher_order_live": bool(launcher_status.get("order_live")),
+            "welcome": launcher_status.get("welcome") or services.normalize_welcome(None),
+            "welcome_name": services.welcome_name(user, launcher_status.get("display_name", "")),
+            # Server-side first paint; the page's script swaps in the browser's clock and locale.
+            "today_label": _today_label(),
+            "greeting_fallback": _greeting_for_hour(datetime.now().hour),
+            "launcher_default_order": list(LAUNCHER_APP_IDS),
             "using_factory_admin": _factory_admin(dict(request.cookies), user),
             "message": request.query_params.get("msg"),
             "error": request.query_params.get("err"),
@@ -978,8 +1000,6 @@ def users_update(user_id: str, request: Request, form: FormData = Depends(_form_
             permissions = services.parse_permissions_form(form, apps)
             payload = {
                 "display_name": str(form.get("display_name") or ""),
-                "enabled": form.get("enabled") == "1",
-                "is_admin": form.get("is_admin") == "1",
                 "phone_alerts": form.get("phone_alerts") == "1",
                 "apps": services.ensure_fileserve_for_studio_publish(
                     [str(value) for value in form.getlist("apps")],
@@ -987,6 +1007,12 @@ def users_update(user_id: str, request: Request, form: FormData = Depends(_form_
                 ),
                 "permissions": permissions,
             }
+            # Role and enabled only when the form carries them: a missing field (your own,
+            # locked role switch) must never read as "User" / "Disabled".
+            if form.get("is_admin") is not None:
+                payload["is_admin"] = form.get("is_admin") == "1"
+            if form.get("enabled") is not None:
+                payload["enabled"] = form.get("enabled") == "1"
             password = str(form.get("password") or "")
             if password:
                 payload["password"] = password
@@ -1046,31 +1072,29 @@ def settings_password_change(request: Request, form: FormData = Depends(_form_bo
     return redirect
 
 
-@router.post("/settings/app-colours")
-def settings_app_colours_save(request: Request, form: FormData = Depends(_form_body)):
+@router.post("/settings/welcome")
+def settings_welcome_save(request: Request, form: FormData = Depends(_form_body)):
+    """Home greeting for the signed-in person (Settings → General → Appearance)."""
     user, redirected = _user_or_login(request, require_dashboard=False)
     if redirected:
         return redirected
+    target = "/settings?tab=general&panel=appearance"
     if not _require_csrf(request, form):
-        return RedirectResponse(
-            "/settings?tab=general&panel=app-colours&err=Form+expired",
-            status_code=303,
-        )
-    if str(form.get("action") or "").strip().lower() == "reset":
-        services.save_app_colors({}, reset=True)
-        return RedirectResponse(
-            "/settings?tab=general&panel=app-colours&msg=App+colours+reset+to+defaults",
-            status_code=303,
-        )
-    colors = {
-        item["id"]: str(form.get(f"color_{item['id']}") or "")
-        for item in services.app_color_items()
-    }
-    services.save_app_colors(colors)
-    return RedirectResponse(
-        "/settings?tab=general&panel=app-colours&msg=App+colours+saved",
-        status_code=303,
-    )
+        return RedirectResponse(f"{target}&err=Form+expired#welcome", status_code=303)
+    mode = str(form.get("welcome_mode") or "").strip().lower()
+    text = str(form.get("welcome_text") or "")
+    if mode == "custom" and not " ".join(text.split()):
+        return RedirectResponse(f"{target}&err=Type+your+own+welcome+message,+or+pick+another+option#welcome", status_code=303)
+    alias = form.get("display_name")
+    try:
+        if alias is not None and " ".join(str(alias).split()):
+            services.save_alias(dict(request.cookies), str(alias))
+        services.save_welcome(dict(request.cookies), mode, text)
+    except services.AuthAPIError as exc:
+        if exc.signed_out:
+            return _login_redirect(request, "/settings?tab=general")
+        return RedirectResponse(f"{target}&err={quote(_auth_error_text(exc), safe='')}#welcome", status_code=303)
+    return RedirectResponse(f"{target}&msg=Welcome+message+saved#welcome", status_code=303)
 
 
 @router.post("/applications/availability")
@@ -1215,7 +1239,7 @@ SETTINGS_TABS = [
     ("about", "About"),
 ]
 SETTINGS_LEDES = {
-    "general": "Appearance, app colours, password, and view options. Accounts stay under Users.",
+    "general": "Appearance, welcome message, password, and view options. Accounts stay under Users.",
     "network": "Appliance hostname, home network vs internet-facing posture, and Tailscale remote access.",
     "vault": "Encrypted secrets for apps and platform services.",
     "automations": "When→then jobs: USB backup, Display push on Watch or backup.",
@@ -1225,7 +1249,7 @@ SETTINGS_LEDES = {
 }
 SETTINGS_HUB_LEDE = "Household portal settings — appearance, network, and system."
 SETTINGS_HUB_SUBTEXTS = {
-    "general": "Palette, app colours, view density, and your password.",
+    "general": "Theme, welcome message, view density, and your password.",
     "network": "Hostname, LAN vs internet-facing, Tailscale.",
     "vault": "Encrypted secrets for apps.",
     "automations": "USB backup and display jobs.",
@@ -1242,7 +1266,6 @@ SETTINGS_GROUPS = (
 SETTINGS_SECTION_PANELS = {
     "general": (
         ("appearance", "Appearance", ("appearance",)),
-        ("app-colours", "App colours", ("app-colours",)),
         ("view", "View options", ("view",)),
         ("password", "Your password", ("password",)),
     ),
@@ -1255,7 +1278,6 @@ SETTINGS_SECTION_PANELS = {
 # L2 list icons — match section-heading icons on each panel card.
 SETTINGS_PANEL_ICONS = {
     "appearance": "appearance",
-    "app-colours": "appearance",
     "view": "view",
     "password": "auth",
     "hostname": "network",
@@ -1263,8 +1285,7 @@ SETTINGS_PANEL_ICONS = {
     "remote": "remote",
 }
 SETTINGS_PANEL_SUBTEXTS = {
-    "appearance": "Palette for this browser",
-    "app-colours": "Tile accents on Home, Health, and Services",
+    "appearance": "Theme and your welcome message",
     "view": "Home, Health, and Services density",
     "password": "Change your sign-in password",
     "hostname": "LAN name for NAME.local",
@@ -1314,56 +1335,114 @@ def normalize_settings_panel(tab: str, value: str | None) -> str | None:
         return key
     return panels[0][0]
 
-# Friendly catalog for Settings → Vault (dropdown). Values are env/Vault key names.
+# Catalog for Settings → Vault. ``id`` is the env/Vault key; ``hint`` is the short line under
+# the name; ``blurb`` is the longer help shown with the edit field; ``owner`` sends the row to
+# the Notify page that sets it instead of editing it here.
 VAULT_KEY_CATALOG = [
     {
-        "group": "Platform / Outputs",
+        "group": "Platform",
+        "sub": "Sign-in · alerts · remote access",
         "items": [
-            {"id": "STONEPI_SESSION_SECRET", "label": "Session secret", "blurb": "Shared sign-in cookie secret across apps.", "required_hint": True},
-            {"id": "STONEPI_NTFY_TOKEN", "label": "Household ntfy token", "blurb": "Shared ntfy access token — configure topic under Notify → Destinations.", "required_hint": False},
-            {"id": "DISPLAY_WEBHOOK_URL", "label": "TRMNL webhook (Dashboard Display)", "blurb": "Webhook for the built-in Dashboard Display. Other Displays use DISPLAY_WEBHOOK_URL_<ID>; set them on each Display in Notify.", "required_hint": False},
-            {"id": "STONEPI_RECOVER_PASSWORD", "label": "Recover password", "blurb": "Password for /recover/ console (username stonepi), at least 12 characters. Not your portal login. Saved root-only to /etc/stonepi/recover.passwd, never the Vault.", "required_hint": False},
-            {"id": "TAILSCALE_API_KEY", "label": "Tailscale API key", "blurb": "Cloud API key to apply ACL from Settings → Network.", "required_hint": False},
-            {"id": "TAILSCALE_TAILNET", "label": "Tailscale tailnet", "blurb": "Tailnet name or id for ACL API (e.g. example.com).", "required_hint": False},
+            {"id": "STONEPI_SESSION_SECRET", "label": "Session secret", "hint": "Signs portal sign-ins", "blurb": "Shared sign-in cookie secret across apps. Changing it signs everyone out.", "required_hint": True},
+            {"id": "STONEPI_RECOVER_PASSWORD", "label": "Recover password", "hint": "Recovery console (user stonepi)", "blurb": "At least 12 characters. Not your portal login. Saved root-only to /etc/stonepi/recover.passwd, never the Vault.", "required_hint": False},
+            {"id": "STONEPI_NTFY_TOKEN", "label": "Household ntfy token", "hint": "Phone alerts", "blurb": "Shared ntfy access token.", "owner": "alerts", "required_hint": False},
+            {"id": "DISPLAY_WEBHOOK_URL", "label": "TRMNL webhook", "hint": "Dashboard Display", "blurb": "Webhook for the built-in Dashboard Display.", "owner": "displays", "required_hint": False},
+            {"id": "TAILSCALE_API_KEY", "label": "Tailscale API key", "hint": "Applies the ACL from Network", "blurb": "Cloud API key used to apply the ACL from Settings → Network.", "required_hint": False},
+            {"id": "TAILSCALE_TAILNET", "label": "Tailscale tailnet", "hint": "Tailnet name or id", "blurb": "Tailnet name or id for the ACL API (e.g. example.com).", "required_hint": False},
         ],
     },
     {
-        "group": "AI / Studio",
+        "group": "AI",
+        "sub": "NewsCast · Studio",
         "items": [
-            {"id": "OPENAI_API_KEY", "label": "OpenAI API key", "blurb": "NewsCast briefings and Studio (OpenAI models)."},
-            {"id": "ANTHROPIC_API_KEY", "label": "Anthropic API key", "blurb": "Studio chat-build when using Claude."},
-            {"id": "STUDIO_LLM_BASE_URL", "label": "Studio LLM base URL", "blurb": "Optional OpenAI-compatible endpoint for Studio."},
+            {"id": "OPENAI_API_KEY", "label": "OpenAI API key", "hint": "Briefings and Studio · starts with sk-", "blurb": "NewsCast briefings and Studio (OpenAI models).", "placeholder": "sk-…"},
+            {"id": "ANTHROPIC_API_KEY", "label": "Anthropic API key", "hint": "Studio with Claude · starts with sk-ant-", "blurb": "Studio chat-build when using Claude.", "placeholder": "sk-ant-…"},
+            {"id": "STUDIO_LLM_BASE_URL", "label": "Studio LLM base URL", "hint": "Optional, for a local model", "blurb": "Optional OpenAI-compatible endpoint for Studio.", "placeholder": "http://…", "optional": True},
         ],
     },
     {
         "group": "NewsCast",
+        "sub": "Reader sync",
         "items": [
-            {"id": "X3_SYNC_TOKEN", "label": "Reader sync token", "blurb": "CrossPoint / OPDS catalog token when internet-facing."},
-            {"id": "NEWSCAST_READER_SSH_PASSWORD", "label": "Reader SSH password", "blurb": "Optional password for reader device setup."},
+            {"id": "X3_SYNC_TOKEN", "label": "Reader sync token", "hint": "OPDS catalog when internet-facing", "blurb": "CrossPoint / OPDS catalog token when internet-facing.", "optional": True},
+            {"id": "NEWSCAST_READER_SSH_PASSWORD", "label": "Reader SSH password", "hint": "Optional, for reader setup", "blurb": "Optional password for reader device setup.", "optional": True},
         ],
     },
     {
         "group": "Data providers",
+        "sub": "EventTrakr · PriceWatch",
         "items": [
-            {"id": "BRIGHTDATA_API_KEY", "label": "Bright Data API key (EventTrakr)", "blurb": "Facebook events and social accounts in EventTrakr."},
-            {"id": "PRICEWATCH_BRIGHTDATA_API_KEY", "label": "Bright Data API key (PriceWatch)", "blurb": "Trustpilot trust scores for PriceWatch retailers."},
+            {"id": "BRIGHTDATA_API_KEY", "label": "Bright Data key — EventTrakr", "hint": "Facebook events and social accounts", "blurb": "Facebook events and social accounts in EventTrakr."},
+            {"id": "PRICEWATCH_BRIGHTDATA_API_KEY", "label": "Bright Data key — PriceWatch", "hint": "Trustpilot trust scores", "blurb": "Trustpilot trust scores for PriceWatch retailers."},
         ],
     },
     {
         "group": "Calendars",
+        "sub": "Google",
         "items": [
-            {"id": "GOOGLE_CLIENT_ID", "label": "Google client ID", "blurb": "Google Calendar OAuth client id."},
-            {"id": "GOOGLE_CLIENT_SECRET", "label": "Google client secret", "blurb": "Google Calendar OAuth client secret."},
+            {"id": "GOOGLE_CLIENT_ID", "label": "Google client ID", "hint": "From Google Cloud console", "blurb": "Google Calendar OAuth client id."},
+            {"id": "GOOGLE_CLIENT_SECRET", "label": "Google client secret", "hint": "From Google Cloud console", "blurb": "Google Calendar OAuth client secret."},
         ],
     },
     {
         "group": "Legacy (prefer Destinations)",
+        "legacy": True,
         "items": [
-            {"id": "NEWSCAST_NTFY_TOKEN", "label": "NewsCast ntfy (legacy)", "blurb": "Unused when Notify Destinations owns ntfy — prefer STONEPI_NTFY_TOKEN."},
-            {"id": "PRICEWATCH_NTFY_TOKEN", "label": "PriceWatch ntfy (legacy)", "blurb": "Unused when Notify Destinations owns ntfy — prefer STONEPI_NTFY_TOKEN."},
+            {"id": "NEWSCAST_NTFY_TOKEN", "label": "NewsCast ntfy (legacy)", "hint": "Unused — prefer the household token", "blurb": "Unused when Notify Destinations owns ntfy — prefer STONEPI_NTFY_TOKEN."},
+            {"id": "PRICEWATCH_NTFY_TOKEN", "label": "PriceWatch ntfy (legacy)", "hint": "Unused — prefer the household token", "blurb": "Unused when Notify Destinations owns ntfy — prefer STONEPI_NTFY_TOKEN."},
         ],
     },
 ]
+
+VAULT_OWNER_PAGES = {"alerts": "Phone alerts", "displays": "Displays"}
+DISPLAY_WEBHOOK_PREFIX = "DISPLAY_WEBHOOK_URL_"
+
+
+def _vault_view(stored_ids: set[str]) -> dict:
+    """Group the catalog for the Vault page; stored keys outside it land in ``other``."""
+    groups: list[dict] = []
+    catalog_ids: set[str] = set()
+    for group in VAULT_KEY_CATALOG:
+        for item in group["items"]:
+            catalog_ids.add(item["id"])
+        if group.get("legacy"):
+            continue
+        rows = []
+        for item in group["items"]:
+            owner = item.get("owner")
+            rows.append(
+                {
+                    **item,
+                    "configured": item["id"] in stored_ids,
+                    "owner_label": VAULT_OWNER_PAGES.get(owner) if owner else None,
+                    "owner_url": services.notify_page_url(owner) if owner else None,
+                }
+            )
+        groups.append(
+            {
+                "title": group["group"],
+                "sub": group.get("sub", ""),
+                "rows": rows,
+                "set": sum(1 for r in rows if r["configured"]),
+            }
+        )
+    labels = _vault_label_map()
+    other: list[dict] = []
+    for key in sorted(stored_ids - {r["id"] for g in groups for r in g["rows"]}):
+        if key.startswith(DISPLAY_WEBHOOK_PREFIX):
+            slug = key[len(DISPLAY_WEBHOOK_PREFIX):].replace("_", " ").title()
+            other.append(
+                {"id": key, "label": f"TRMNL webhook — {slug}", "hint": "Display", "configured": True,
+                 "owner_label": "Displays", "owner_url": services.notify_page_url("displays")}
+            )
+        else:
+            other.append(
+                {"id": key, "label": labels.get(key, key), "hint": "Legacy" if key in catalog_ids else "Custom",
+                 "configured": True, "owner_label": None, "owner_url": None}
+            )
+    total = sum(len(g["rows"]) for g in groups)
+    done = sum(g["set"] for g in groups)
+    return {"groups": groups, "other": other, "total": total, "set": done, "missing": total - done}
 
 
 # The Recover console runs as root; its password must not sit in the group-readable Vault.
@@ -1445,7 +1524,7 @@ def settings_page(request: Request, tab: str | None = None, panel: str | None = 
             "settings_labels": {"general": "General"},
             "message": request.query_params.get("msg") or None,
             "error": request.query_params.get("err") or None,
-            "app_color_items": services.app_color_items(),
+            "welcome": services.load_welcome(dict(request.cookies)),
             **about,
             "settings_appearance_only": True,
         }
@@ -1484,7 +1563,7 @@ def settings_page(request: Request, tab: str | None = None, panel: str | None = 
         "settings_labels": dict(SETTINGS_TABS),
         "message": request.query_params.get("msg") or None,
         "error": request.query_params.get("err") or None,
-        "app_color_items": services.app_color_items(),
+        "welcome": services.load_welcome(dict(request.cookies)) if settings_tab == "general" and not settings_hub else None,
         **about,
         "settings_appearance_only": False,
     }
@@ -1503,42 +1582,15 @@ def settings_page(request: Request, tab: str | None = None, panel: str | None = 
     elif settings_tab == "vault":
         from stonepi_vault import get_vault
 
-        extra["vault_catalog"] = VAULT_KEY_CATALOG
-        labels = _vault_label_map()
-        extra["vault_known_ids"] = sorted(labels.keys())
         stored_ids: set[str] = set()
         try:
-            vault = get_vault()
-            stored = vault.list_keys()
-            stored_ids = {str(k) for k in stored}
-            extra["vault_keys"] = [
-                {"id": key, "label": labels.get(key, key), "known": key in labels}
-                for key in stored
-                if key != RECOVER_PASSWORD_KEY
-            ]
+            stored_ids = {str(k) for k in get_vault().list_keys()}
         except Exception as exc:
-            extra["vault_keys"] = []
             extra["error"] = extra.get("error") or f"Vault unavailable: {exc}"
         stored_ids.discard(RECOVER_PASSWORD_KEY)
         if _recover_password_set():
             stored_ids.add(RECOVER_PASSWORD_KEY)
-            extra["vault_keys"].append(
-                {"id": RECOVER_PASSWORD_KEY, "label": labels.get(RECOVER_PASSWORD_KEY, RECOVER_PASSWORD_KEY), "known": True}
-            )
-        matrix: list[dict] = []
-        for group in VAULT_KEY_CATALOG:
-            if str(group.get("group") or "").startswith("Legacy"):
-                continue
-            for item in group["items"]:
-                matrix.append(
-                    {
-                        "id": item["id"],
-                        "label": item["label"],
-                        "group": group["group"],
-                        "configured": item["id"] in stored_ids,
-                    }
-                )
-        extra["vault_matrix"] = matrix
+        extra["vault"] = _vault_view(stored_ids)
     elif settings_tab == "automations":
         import stonepi_automations as automations
 

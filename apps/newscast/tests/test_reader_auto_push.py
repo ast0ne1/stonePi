@@ -1,4 +1,4 @@
-"""Background reader push: send the queue once the reader answers, back off while it sleeps."""
+"""Background reader push: inside the push window, send the queue once the reader answers."""
 
 from datetime import timedelta
 from pathlib import Path
@@ -75,7 +75,7 @@ def test_auto_push_sends_queue_when_reader_answers(tmp_path: Path, monkeypatch):
     assert items[0]["state"] == "sent" and items[0]["status_label"].startswith("Sent ")
 
 
-def test_auto_push_skips_asleep_reader_records_try_and_backs_off(tmp_path: Path, monkeypatch):
+def test_auto_push_skips_asleep_reader_and_retries_on_scan_interval(tmp_path: Path, monkeypatch):
     db = _session()
     uid = _push_user(db)
     task = _queue(db, uid, tmp_path)
@@ -88,31 +88,116 @@ def test_auto_push_skips_asleep_reader_records_try_and_backs_off(tmp_path: Path,
     db.refresh(task)
     assert task.status == "pending" and uploaded == []
     probe = reader_push.last_probe(HOST)
-    assert probe["online"] is False and probe["at"] is not None and probe["misses"] == 1
+    assert probe["online"] is False and probe["at"] is not None
     item = reader_push.queue_items(db, user_id=uid)[0]
     assert item["state"] == "waiting"
     assert "Waiting for reader · last tried" in item["status_label"] and "(asleep)" in item["status_label"]
-    assert "next try" in item["status_label"]
+    assert "looking until" in item["status_label"]
 
     # Not due yet: the next tick leaves the reader alone.
     reader_push.auto_push(db)
     assert len(probes) == 1
-    # Once the wait is over it probes again.
-    reader_push.auto_push(db, now=utcnow() + timedelta(seconds=reader_push.AUTO_PUSH_SECONDS))
+    # After the scan interval (default 15 s) it looks again; the gap never stretches.
+    reader_push.auto_push(db, now=utcnow() + timedelta(seconds=15))
+    assert len(probes) == 2
+    assert reader_push.last_probe(HOST)["next_try_at"] - reader_push.last_probe(HOST)["at"] == timedelta(seconds=15)
+
+
+def test_scan_interval_is_configurable(tmp_path: Path, monkeypatch):
+    db = _session()
+    uid = _push_user(db)
+    from app.models import User
+
+    reader_config.save_reader_settings(
+        db, db.get(User, uid), reader_device_value="xteink", reader_host_value=HOST,
+        reader_upload_path_value="/News", reader_push_when_online=True, reader_push_scan_value="30",
+    )
+    _queue(db, uid, tmp_path)
+    probes: list = []
+    _reader(monkeypatch, online=False, uploaded=[], probes=probes)
+
+    reader_push.auto_push(db)
+    reader_push.auto_push(db, now=utcnow() + timedelta(seconds=15))
+    assert len(probes) == 1
+    reader_push.auto_push(db, now=utcnow() + timedelta(seconds=30))
     assert len(probes) == 2
 
 
-def test_backoff_grows_while_asleep_and_resets_when_online():
-    assert reader_push._backoff_seconds(1) == reader_push.AUTO_PUSH_SECONDS
-    assert reader_push._backoff_seconds(reader_push.AUTO_BACKOFF_FAST_MISSES) == reader_push.AUTO_PUSH_SECONDS
-    assert reader_push._backoff_seconds(reader_push.AUTO_BACKOFF_FAST_MISSES + 1) == 2 * reader_push.AUTO_PUSH_SECONDS
-    assert reader_push._backoff_seconds(50) == reader_push.AUTO_BACKOFF_MAX_SECONDS
-    for _ in range(6):
-        reader_push.remember_probe(HOST, False)
-    assert reader_push.last_probe(HOST)["misses"] == 6
-    reader_push.remember_probe(HOST, True)
-    assert reader_push.last_probe(HOST)["misses"] == 0
-    assert reader_push.last_probe(HOST)["next_try_at"] is None
+def _age(db: Session, task: SyncTask, minutes: int) -> None:
+    task.created_at = utcnow() - timedelta(minutes=minutes)
+    db.commit()
+
+
+def _capture_alerts(monkeypatch) -> list:
+    from app.services import ntfy
+
+    alerts: list = []
+    monkeypatch.setattr(ntfy, "notify", lambda db, **kw: alerts.append(kw) or True)
+    return alerts
+
+
+def test_window_closes_alerts_once_then_waits_for_push_now(tmp_path: Path, monkeypatch):
+    db = _session()
+    uid = _push_user(db)
+    task = _queue(db, uid, tmp_path)
+    _age(db, task, 31)  # default window is 30 minutes
+    probes: list = []
+    _reader(monkeypatch, online=False, uploaded=[], probes=probes)
+    alerts = _capture_alerts(monkeypatch)
+
+    assert reader_push.auto_push(db) == []
+    reader_push.auto_push(db)
+
+    assert probes == []  # stopped looking
+    assert len(alerts) == 1 and alerts[0]["kind"] == "missed" and alerts[0]["user_id"] == uid
+    assert "Not delivered" in alerts[0]["body"]
+    item = reader_push.queue_items(db, user_id=uid)[0]
+    assert item["state"] == "missed" and "Push now" in item["status_label"]
+
+
+def test_window_that_closed_long_ago_gets_no_alert(tmp_path: Path, monkeypatch):
+    db = _session()
+    uid = _push_user(db)
+    _age(db, _queue(db, uid, tmp_path), 180)  # e.g. still queued from before a restart
+    _reader(monkeypatch, online=False, uploaded=[], probes=[])
+    alerts = _capture_alerts(monkeypatch)
+
+    reader_push.auto_push(db)
+    assert alerts == []
+
+
+def test_newly_queued_item_reopens_the_window(tmp_path: Path, monkeypatch):
+    db = _session()
+    uid = _push_user(db)
+    _age(db, _queue(db, uid, tmp_path, "old.epub"), 90)
+    probes: list = []
+    _reader(monkeypatch, online=True, uploaded=[], probes=probes)
+    _capture_alerts(monkeypatch)
+
+    reader_push.auto_push(db)
+    assert probes == []
+    _queue(db, uid, tmp_path, "new.epub")
+    reader_push.auto_push(db)
+    assert len(probes) == 1
+
+
+def test_paper_only_trigger_ignores_send_files(tmp_path: Path, monkeypatch):
+    from app.models import User
+
+    db = _session()
+    uid = _push_user(db)
+    reader_config.save_reader_settings(
+        db, db.get(User, uid), reader_device_value="xteink", reader_host_value=HOST,
+        reader_upload_path_value="/News", reader_push_when_online=True, reader_push_trigger_value="paper",
+    )
+    library = tmp_path / "library"
+    library.mkdir()
+    _queue(db, uid, library, "book.epub")
+    probes: list = []
+    _reader(monkeypatch, online=True, uploaded=[], probes=probes)
+
+    assert reader_push.auto_push(db) == []
+    assert probes == []
 
 
 def test_auto_push_does_not_double_run_while_push_in_progress(tmp_path: Path, monkeypatch):
@@ -223,3 +308,36 @@ def test_file_on_reader_from_elsewhere_fails_without_retry(tmp_path: Path, monke
 
     db.refresh(task)
     assert task.status == "failed" and task.attempts == 1
+
+
+def test_paper_only_send_files_say_how_they_go_out(tmp_path: Path, monkeypatch):
+    from app.models import User
+
+    db = _session()
+    uid = _push_user(db)
+    reader_config.save_reader_settings(
+        db, db.get(User, uid), reader_device_value="xteink", reader_host_value=HOST,
+        reader_upload_path_value="/News", reader_push_when_online=True, reader_push_trigger_value="paper",
+    )
+    library = tmp_path / "library"
+    library.mkdir()
+    _queue(db, uid, library, "book.epub")
+    item = reader_push.queue_items(db, user_id=uid)[0]
+    assert item["state"] == "waiting" and "next paper" in item["status_label"] and "Push now" in item["status_label"]
+
+
+def test_push_window_settings_copy_to_new_accounts():
+    from app.models import User
+
+    db = _session()
+    admin = users.create_user(db, username="admin", password="pass1", role="admin")
+    reader_config.save_reader_settings(
+        db, admin, reader_device_value="xteink", reader_host_value=HOST, reader_upload_path_value="/News",
+        reader_push_when_online=True, reader_push_window_value="60", reader_push_scan_value="30",
+        reader_push_trigger_value="paper",
+    )
+    member = users.create_user(db, username="sam", password="pass2")
+    reader_config.copy_admin_reader_settings(db, db.get(User, member.id))
+    assert reader_config.reader_push_window_minutes(db, member.id) == 60
+    assert reader_config.reader_push_scan_seconds(db, member.id) == 30
+    assert reader_config.reader_push_trigger(db, member.id) == "paper"

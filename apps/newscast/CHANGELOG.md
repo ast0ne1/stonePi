@@ -1,4 +1,30 @@
-﻿# Changelog
+# Changelog
+
+## 0.0.8 — 2026-10-11
+
+### Changed
+- **New look** (StonePi design system): NewsCast icon in the header and as favicon and home-screen icon; new colours, fonts, buttons and cards in light and dark; the old palettes are gone.
+- **New StonePi header:** Search, Refresh, the bell, an app switcher and your avatar sit together on the right. Search opens from the magnifier on every page (it searches all stored articles, with recent searches); the bell opens NewsCast's alerts panel; the grid icon switches app (it replaces the Home tab); Log out moved into the avatar menu, with light/dark/system appearance.
+- **Bottom bar is now Briefing · Saved · Reader · Settings.** Search moved to the header and Sources moved into Settings, where it is the first entry; the Sources page has a "← Settings" link back.
+- **The star saves to Saved.** Starring a story on Briefing now reads "Save to Saved" / "Remove from Saved", and starred stories are listed on the Saved tab (under **Starred**, above long-reads) until you unstar them. The Briefing filter chip is now **Saved**. The bookmark still keeps the full article as a long-read with an expiry.
+- New installs start with **BBC World** as the only feed; the other former defaults (Guardian World, BBC Technology, Hackaday, Krebs on Security, iTnews) stay in Catalog → Add. Existing feeds are untouched.
+- Clearer about where AI is used. An **AI** tag appears only where AI is actually on: a model is set up and the setting uses it (Summarise sources, AI translation, importance scoring). Tags update as soon as you change the dropdown, before saving. Hints and callouts explain where AI can be used and what happens without it. Settings → LLM is now **AI**, with a status box listing what it does and whether story text goes to the cloud or stays local. Briefing and Search cards say **AI summary**, **Excerpt** or **Full article**.
+
+- **Reader paper (X3):** the page after the cover shows the paper name at normal text size (it was a heading, which the readers draw large) above the date and story overview. In Contents, sources are plain italic text under the bold numbered categories instead of looking like headings. Contents spacing is tighter so the sections fit on far less than the page and a half they took. Stories keep their place marker, now a short right-aligned "3/8", and the title, but no longer repeat the date.
+- **X3 cover:** the lead story gets its photo beside the headline: the feed's own thumbnail, saved when stories are fetched and drawn as black-and-white dots for e-ink. With no usable image the frame is filled with a newspaper-style halftone and the story's category icon on a white stamp, with the section name in a black band (never another story's photo). Below it, two columns like a real front page: stories with summaries on the left, an **In brief** column of short headlines on the right (an "Inside today" section index if the paper runs out of stories, never invented copy), each item only when it fits; an **In this issue** strip shows each section's icon and story count, and the date no longer touches the masthead.
+
+- **Paper alerts once per edition, not once per day:** regenerating the paper with new stories sends "Morning paper ready" again, and delivering a changed paper sends "on the reader" again. The same edition never alerts twice; "Not delivered" stays once a day.
+
+### Fixed
+- **The Briefing fills in during a refresh** (backlog B3). Each source's new stories are saved as soon as that source is done, and the Briefing swaps its list in place as they arrive, instead of waiting for every source and reloading the page; open stories stay open and your category filter is kept. When two sources carry the same story, the first one to bring it keeps it (it used to be the one with the longest excerpt). The refresh status gains `new_so_far`.
+- The morning paper published late (07:05 instead of 06:30, sometimes around 09:00). It only holds stories published today, and with **Once a day** refresh the daily fetch ran 24 hours after the last one, so it drifted later each day and a manual Refresh pushed it back further. Now every source not fetched since midnight is refreshed **30 minutes before publish time**, whatever its schedule or active hours.
+- NewsCast no longer reseeds sources on every start. Catalog sources kept being reset to the catalog's category and translate setting after each restart or update, and a deleted default source (BBC World) came back. Defaults are now added once, on a brand-new install; dead-URL repairs still run.
+
+### Added
+- Settings → Schedule → **Daily refresh at**: with Once a day, Global sources refresh at a fixed time (for example 05:00) instead of a rolling 24 hours.
+- **Reader auto-push window** (Settings → Reader): when something is queued, NewsCast looks for the reader every 15 seconds for 30 minutes (both configurable), then stops; the queue waits for Push now. Choose whether anything queued or only the paper starts a window. Replaces the old backoff, which slowed to one check every ~5–6 minutes, never reset for a new paper, and often missed a short File Transfer session.
+- "Not delivered" phone alert (`newscast.push_missed`) when the window closes with the queue still waiting. Approve it once in Notify → Events, then switch it on per person in StonePi → Notifications.
+- Sources → edit a source → **Category**: move an existing source to another category (previously only possible when adding one).
 
 ## 0.0.7 — 2026-10-04
 

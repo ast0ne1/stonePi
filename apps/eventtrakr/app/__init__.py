@@ -13,7 +13,7 @@ from stonepi_auth.brand import add_brand_fonts_route, asset_rev, fonts_rev
 from stonepi_auth.http import portal_home_url
 from stonepi_auth.session import COOKIE_NAME as PLATFORM_COOKIE_NAME
 
-__version__ = "0.0.7"
+__version__ = "0.0.8"
 __asset_rev__ = asset_rev(Path(__file__).resolve().parent / "static")  # cache-bust token; changes with static/
 __github_user__ = "ast0ne1"
 __github__ = "https://github.com/ast0ne1"
@@ -115,7 +115,32 @@ def create_app() -> Flask:
             "stonepi_home_url": home_url,
             "stonepi_prefix": env.stonepi_prefix,
             "alerts_bell_state": _alerts_bell_state(home_url),
+            "review_pending": _review_pending(),
         }
+
+    def _review_pending() -> int:
+        """Open Instagram discoveries waiting in Review (the bottom-bar badge)."""
+        user = g.get("current_user")
+        if user is None:
+            return 0
+        try:
+            from sqlalchemy import func, select
+
+            from app.db import SessionLocal
+            from app.models import EventDiscovery
+
+            with SessionLocal() as db:
+                return int(
+                    db.execute(
+                        select(func.count(EventDiscovery.id)).where(
+                            EventDiscovery.user_id == user.user_id,
+                            EventDiscovery.status.in_(("candidate", "discovered")),
+                        )
+                    ).scalar_one()
+                    or 0
+                )
+        except Exception:  # noqa: BLE001 — a badge must never break a page
+            return 0
 
     def _alerts_bell_state(home_url: str) -> dict:
         secret = auth._platform_session_secret()
@@ -125,6 +150,7 @@ def create_app() -> Flask:
             session_cookie=request.cookies.get(PLATFORM_COOKIE_NAME),
             home_url=home_url,
             enabled=bool(secret),
+            app_id="eventtrakr",
         )
 
     @app.template_filter("format_datetime")

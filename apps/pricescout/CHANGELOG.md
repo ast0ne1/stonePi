@@ -1,5 +1,14 @@
 # PriceScout changelog
 
+## 0.0.8 — 2026-10-11
+
+### Changed
+- **New look** (StonePi design system): PriceScout icon in the header and as favicon and home-screen icon; new colours, fonts, buttons and cards in light and dark; the old palettes are gone.
+- New shared StonePi header: Search, Refresh, the bell, an app switcher and your avatar sit together on the right. Search opens as an overlay with your recent searches.
+- The bell opens a PriceScout notifications panel showing which alerts are on, the last one sent and a Preferences button.
+- Log out and light/dark mode move into the avatar menu; the old sign-out icon is gone.
+- The bottom bar is now Offers · List · Settings. Home moves to the app switcher, Search to the header, and Sources to the first section of Settings (with a "← Settings" link back).
+
 ## 0.0.7 — 2026-10-04
 
 ### Security

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "_filter_icon.html" import filter_icon %}
 {% from "_icons.html" import icon %}
+{% from "_ai_tag.html" import ai_tag %}
 {% block title %}Settings · NewsCast{% endblock %}
 {% block content %}
 {% set tab_labels = dict(settings_tabs) %}
@@ -28,6 +29,20 @@
 <script type="application/json" data-settings-labels-json>{{ tab_labels | tojson }}</script>
 
 <nav class="settings-hub" data-settings-hub-list aria-label="Settings groups"{% if not settings_hub %} hidden{% endif %}>
+  {# Sources is this app's own configuration, so it leads Settings. It is its own page (/sources), not a settings tab. #}
+  <div class="settings-hub-group" data-settings-hub-group="sources">
+    <h2 class="section-label settings-hub-heading">Sources</h2>
+    <div class="group-card settings-hub-card">
+      <a class="settings-hub-row" href="/sources">
+        <span class="settings-hub-icon" aria-hidden="true">{{ filter_icon("feeds") }}</span>
+        <span class="settings-hub-copy">
+          <span class="settings-hub-title">Sources</span>
+          <span class="settings-hub-sub">Feeds you follow and the household Catalog.</span>
+        </span>
+        <span class="settings-hub-chevron" aria-hidden="true">&rsaquo;</span>
+      </a>
+    </div>
+  </div>
   {% for group_id, group_label, rows in settings_groups %}
   <div class="settings-hub-group" data-settings-hub-group="{{ group_id }}">
     <h2 class="section-label settings-hub-heading">{{ group_label }}</h2>
@@ -80,9 +95,9 @@
 
   <div class="stack settings-panel settings-panel-stack" id="settings-panel-device" role="tabpanel" data-settings-panel="device" aria-labelledby="settings-tab-device"{% if settings_tab != 'device' %} hidden{% endif %}>
     {% if platform_managed %}
-    <p class="hint">Your password and colour palette are under <a href="{{ stonepi_home_url }}/settings?tab=general">StonePi → Settings → General</a>. Admins manage household accounts on <a href="{{ stonepi_home_url }}/users">StonePi → Users</a>.</p>
+    <p class="hint">Your password and welcome message are under <a href="{{ stonepi_home_url }}/settings?tab=general">StonePi → Settings → General</a>. Admins manage household accounts on <a href="{{ stonepi_home_url }}/users">StonePi → Users</a>.</p>
     {% else %}
-    <p class="hint">Colour palette for all StonePi apps is set on the portal under Settings → General when StonePi SSO is enabled.</p>
+    <p class="hint">Light, Dark or System for all StonePi apps is under Appearance in your avatar menu.</p>
     {% endif %}
 
     {% if is_admin and not platform_managed %}
@@ -272,14 +287,14 @@
       </label>
       <p class="hint">The Briefing tab stays live. The reader EPUB uses this cap and freezes at publish time.</p>
       <label>
-        Paper includes stories rated
+        <span>Paper includes stories rated{% if ai_on %}{{ ai_tag("importance scoring", ai_local) }}{% endif %}</span>
         <select name="briefing_min_importance">
           {% for value, label in importance_min_choices %}
           <option value="{{ value }}" {% if briefing_min_importance == value %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
       </label>
-      <p class="hint">New stories get an importance score from 1 (ignore) to 5 (major). Favourites always stay when their publish date matches the day chip.</p>
+      <p class="hint">New stories get an importance score from 1 (ignore) to 5 (major). {% if ai_on %}AI scores every new story, including Full-article sources.{% else %}Scores come from built-in keyword rules. If you set up AI on the AI tab, the model scores every new story instead.{% endif %} Saved (starred) stories always stay when their publish date matches the day chip.</p>
       {% endif %}
       <label class="check">
         <input type="checkbox" name="publication_include_saved" value="1" {% if publication_include_saved %}checked{% endif %} />
@@ -333,7 +348,7 @@
         <input type="checkbox" name="briefing_category_mix" value="1" {% if briefing_category_mix %}checked{% endif %} />
         <span>Allocate Briefing slots by category</span>
       </label>
-      <p class="hint">Shapes how many stories from each topic appear in Briefing and the full daily paper. Leave a category blank to share leftover slots. Set 0 to exclude it. Favourites always stay when their publish date matches.</p>
+      <p class="hint">Shapes how many stories from each topic appear in Briefing and the full daily paper. Leave a category blank to share leftover slots. Set 0 to exclude it. Saved (starred) stories always stay when their publish date matches.</p>
       <div class="category-share-grid">
         {% for category in categories %}
         <label>
@@ -377,6 +392,11 @@
         </select>
       </label>
       <p class="hint">Sources set to Global use this. Custom sources keep their own interval. Refresh now still fetches every enabled source.</p>
+      <label>
+        Daily refresh at
+        <input type="time" name="ingest_daily_at" value="{{ ingest_daily_at }}" />
+      </label>
+      <p class="hint">Only used when the global interval is Once a day. Global sources then refresh at this time every day instead of 24 hours after the last refresh, which drifts later each day and resets when you tap Refresh. Leave blank for the rolling 24 hours.</p>
       <div class="schedule-hours">
         <label>
           Active from
@@ -397,6 +417,7 @@
         <input type="time" name="briefing_publish_at" value="{{ briefing_publish_at }}" />
       </label>
       <p class="hint">Local time on this machine. After this time NewsCast writes today’s dated EPUB and keeps about a week of papers.</p>
+      <p class="hint">The paper holds stories published today, so {{ paper_prep_lead_minutes }} minutes before this NewsCast refreshes every source not yet fetched since midnight, whatever its schedule or active hours.</p>
       <p class="hint">{{ delivery.hint }}</p>
     </div>
     <button class="btn btn-primary btn-with-icon settings-save" type="submit">{{ icon("check") }} {{ t("Save settings") }}</button>
@@ -413,7 +434,7 @@
         Exclude words
         <input type="text" name="keyword_exclude" value="{{ keyword_exclude }}" autocomplete="off" placeholder="crypto, sport" />
       </label>
-      <p class="hint">Comma-separated. Exclude wins. If include words are set, a story must match one of them. Each feed can add more words on Feeds. Favourites and Saved long-reads always stay.</p>
+      <p class="hint">Comma-separated. Exclude wins. If include words are set, a story must match one of them. Each feed can add more words on Feeds. Everything on Saved always stays.</p>
     </div>
     <button class="btn btn-primary btn-with-icon settings-save" type="submit">{{ icon("check") }} {{ t("Save settings") }}</button>
   </div>
@@ -432,17 +453,17 @@
       <p class="hint">Feeds marked Translate land in this language. Default is English.</p>
       {% if is_admin %}
       <label>
-        Global provider
+        <span>Global provider{% if ai_on %}{{ ai_tag("translation", ai_local, rules="translate_provider:llm", show=translate_provider == 'llm') }}{% endif %}</span>
         <select name="translate_provider">
           {% for value, label in translate_providers %}
           <option value="{{ value }}" {% if translate_provider == value %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
       </label>
-      <p class="hint">Used when a feed is set to Translate (use global setting). Google uses the free web API with a Chrome fallback when rate-limited. LLM uses the provider and model on the LLM tab.</p>
-      <p class="hint">Each feed can still choose As published, follow this global setting, force Google, or force LLM under Feeds → Schedule &amp; filters.</p>
+      <p class="hint">Used when a feed is set to Translate (use global setting). Google uses the free web API with a Chrome fallback when rate-limited. AI uses the model on the <a href="/settings?tab=llm">AI</a> tab{% if not ai_on %}. No model is set up yet, so stories set to AI translation stay as published{% endif %}.</p>
+      <p class="hint">Each feed can still choose As published, follow this global setting, force Google, or force AI under Feeds → Schedule &amp; filters.</p>
       {% else %}
-      <p class="hint">The household admin chooses Google or LLM for Translate feeds. You only set the target language here.</p>
+      <p class="hint">The household admin chooses Google or AI for Translate feeds. You only set the target language here.</p>
       {% endif %}
     </div>
     <button class="btn btn-primary btn-with-icon settings-save" type="submit">{{ icon("check") }} {{ t("Save settings") }}</button>
@@ -450,7 +471,25 @@
 
   <div class="stack settings-panel" id="settings-panel-llm" role="tabpanel" data-settings-panel="llm" aria-labelledby="settings-tab-llm"{% if settings_tab != 'llm' %} hidden{% endif %}>
     <div class="card stack">
-      <h2 class="section-heading">{{ filter_icon("llm") }} Summaries</h2>
+      <h2 class="section-heading">{{ filter_icon("llm") }} AI model{% if ai_on %}{{ ai_tag("summaries, importance scoring, translation", ai_local) }}{% endif %}</h2>
+      <div class="ai-callout{% if ai_on %} is-on{% endif %}">
+        {% if ai_on %}
+        <p><strong>AI is on</strong> ({{ ai_model_label }}, {{ 'local: story text stays on your network' if ai_local else 'cloud: story text is sent to OpenAI' }}). It is used for:</p>
+        <ul class="hint">
+          <li><strong>Summaries</strong>: sources set to Summarise. Full-article sources are not summarised.</li>
+          <li><strong>Importance scoring</strong>: every new story gets a 1–5 score, including Full-article sources.</li>
+          <li><strong>Translation</strong>: {% if global_translate_llm %}feeds that follow the global setting, plus any feed set to Translate with AI.{% else %}only feeds set to Translate with AI. The global provider is Google.{% endif %}</li>
+        </ul>
+        {% else %}
+        <p><strong>AI is off.</strong> NewsCast works fully without it:</p>
+        <ul class="hint">
+          <li><strong>Summarise</strong> sources show the article’s own text, trimmed to about 420 characters.</li>
+          <li><strong>Importance</strong> comes from built-in keyword rules.</li>
+          <li><strong>Translation</strong> uses Google. Feeds set to Translate with AI stay as published.</li>
+        </ul>
+        <p class="hint">Add an OpenAI key or an Ollama model below to use AI for these.</p>
+        {% endif %}
+      </div>
       <label>
         Provider
         <select name="llm_provider" data-llm-provider>
@@ -607,8 +646,35 @@
         <input type="checkbox" name="reader_push_when_online" value="1" {% if reader_push_when_online %}checked{% endif %} />
         Push when the reader is on Wi-Fi
       </label>
-      <p class="hint" data-reader-hint="xteink" {% if reader_device != 'xteink' %}hidden{% endif %}>NewsCast checks <strong>your</strong> CrossPoint host every minute. If File Transfer is on, queued briefing and Send files upload to your folder. If the reader is asleep, they wait.</p>
-      <p class="hint" data-reader-hint="kobo" {% if reader_device != 'kobo' %}hidden{% endif %}>NewsCast checks <strong>your</strong> Kobo SSH port every minute. If KOReader’s SSH server is running, queued files copy over SFTP. If SSH is off or the Kobo is asleep, they wait.</p>
+      <label>
+        Look for the reader when
+        <select name="reader_push_trigger">
+          {% for value, label in reader_push_triggers | default([]) %}
+          <option value="{{ value }}" {% if reader_push_trigger == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="schedule-hours">
+        <label>
+          Keep looking for
+          <select name="reader_push_window">
+            {% for value, label in reader_push_window_choices | default([]) %}
+            <option value="{{ value }}" {% if reader_push_window == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Check
+          <select name="reader_push_scan">
+            {% for value, label in reader_push_scan_choices | default([]) %}
+            <option value="{{ value }}" {% if reader_push_scan == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+      <p class="hint" data-reader-hint="xteink" {% if reader_device != 'xteink' %}hidden{% endif %}>When something is queued, NewsCast looks for <strong>your</strong> CrossPoint host on this schedule. Turn on File Transfer any time in that window and the queue uploads to your folder. Checking never wakes the reader or uses its battery.</p>
+      <p class="hint" data-reader-hint="kobo" {% if reader_device != 'kobo' %}hidden{% endif %}>When something is queued, NewsCast looks for <strong>your</strong> Kobo SSH port on this schedule. Start KOReader’s SSH server any time in that window and the queue copies over SFTP.</p>
+      <p class="hint">If the reader isn’t found in time, the queue waits for Push now. You can get a phone alert for that: turn on “Not delivered to reader” under StonePi → Notifications. With “The paper only”, Send files go out with the next paper or when you tap Push now.</p>
       <div class="provider-panel" data-reader-panel="xteink" {% if reader_device != 'xteink' %}hidden{% endif %}>
         <label>
           Keep papers on reader

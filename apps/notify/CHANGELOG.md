@@ -1,5 +1,22 @@
 # Changelog — Notify
 
+## 0.2.0 — 2026-10-11
+
+### Changed
+- `POST /api/me/apps/{app}/clear`: clears that app's bell panel for the caller (`dashboard` = every app); hides, never deletes.
+- **TRMNL icon** on each TRMNL display's card on Displays and beside its page heading, like Car Thing's: TRMNL's own seven-block glyph (from trmnl.com/brand) drawn in the StonePi icon style.
+- **New look** (StonePi design system): Notify icon in the header and as favicon; the Car Thing card and page carry the Car Thing icon. TRMNL's title bar shows the StonePi mark: re-paste the template into TRMNL for each Display.
+
+### Added
+- **Per-app bell panel API** for the shared app header: `GET /api/me/apps/{app}` (which of that app's alerts you have on, the last alert it sent to your phone and whether it got there, and whether that's new since you last looked) and `POST /api/me/apps/{app}/seen` (opening the panel clears the bell's dot). "Last looked" is stored per person and app in `bell_seen.json` in Notify's data folder. Answers include your five most recent alerts from that app; `dashboard` covers every app, for the Dashboard's overview.
+- **Car Thing editor:** Touch gestures get their own group in Controls (with arrows), swipe callouts under the drawing, and clickable swipe arrows on the drawing's screen in the Controls tab. New configs map swipe left/right to next/previous page.
+- **TRMNL plan per Display** (Standard / TRMNL+) on the Display's TRMNL settings. It sets the payload cap to TRMNL's real limit (5 KB / 10 KB; StonePi assumed 2 KB, trimming content for nothing), an hourly budget just under TRMNL's (10 of 12 / 25 of 30, counting manual and automatic pushes) and the shortest interval (10 / 5 min). Pushes are skipped when nothing on the screen changed (still refreshed every 2 hours), and a TRMNL `429` pauses pushes until its window passes. History no longer logs the "nothing changed" checks.
+- Phone alerts setup: "Who can use alerts" counts everyone, admins included ("2 of 3 household members"), and is shown as an optional step with a neutral **?** instead of done/to-do; Setup is now out of 3. Links to the personal page point at `/me/notifications`.
+- `newscast.push_missed` ("Not delivered to reader") is pre-approved on fresh installs. Existing installs approve it once in Events; each person then ticks it in Dashboard → Notifications.
+
+### Fixed
+- **Test notifications now show as yours:** a test sent from your notification settings is recorded as delivered to you, so the Dashboard bell lists it under Recent notifications (`stonepi_notify`).
+
 ## 0.1.9 — 2026-10-04
 
 _Platform 0.1.9._

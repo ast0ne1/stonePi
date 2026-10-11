@@ -143,6 +143,7 @@ def _csrf_response(request: Request, name: str, ctx: dict) -> HTMLResponse:
             session_cookie=request.cookies.get(COOKIE_NAME),
             home_url=ctx["stonepi_home_url"],
             enabled=bool(_session_secret()),
+            app_id="pricescout",
         ),
     )
     response = templates.TemplateResponse(request, name, ctx)
@@ -507,6 +508,9 @@ def settings_page(
             "settings_title": title,
             "settings_sections": _PS_SECTIONS.get(tab, ()),
             "settings_groups": (
+                ("sources", "Sources", (
+                    ("sources", "Sources", "Supermarkets on eTilbudsavis and which ones are on.", "sources"),
+                )),
                 ("shopping", "Shopping", (
                     ("general", "General", "Currency, postcode, and search history.", "general"),
                     ("notifications", "Notifications", "Alerts when a leaflet is released.", "notifications"),
@@ -515,6 +519,7 @@ def settings_page(
                     ("about", "About", "Version and project links.", "about"),
                 )),
             ),
+            "settings_hub_links": {"sources": "/sources"},
             "is_admin": bool(user and user.is_admin) or not _session_secret(),
             "can_edit_household": _is_household_admin(user),
             "household_zip": db.household_zip(),

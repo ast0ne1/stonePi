@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.8 — 2026-10-11
+
+### Changed
+- **New look** (StonePi design system): SportGuide icon in the header and as favicon and home-screen icon; new colours, fonts, buttons and cards in light and dark; the old palettes are gone.
+- **New shared StonePi header.** Refresh stays the red button; next to it are the bell (opens SportGuide's alerts panel), an app switcher (replaces the Home tab) and your avatar, which holds appearance, Manage account and Log out (replaces the sign-out icon).
+- **Bottom bar is now Now · Settings.** Home moved to the app switcher in the header.
+- **Sources moved into Settings,** as its first section. The Sources page has a "← Settings" link back, and refreshing one source still works there.
+
 ## 0.0.7 — 2026-10-04
 
 ### Fixed

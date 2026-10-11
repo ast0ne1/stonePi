@@ -152,3 +152,50 @@ def test_old_local_opt_out_no_longer_blocks(monkeypatch):
     calls = _patch_emit(monkeypatch)
     assert ntfy.notify(db, kind="publish", title="X", body="x", user_id=user.id) is True
     assert [c["id"] for c in calls] == ["newscast.publication_available"]
+
+
+def test_not_delivered_alert_does_not_swallow_the_push_alert(monkeypatch):
+    db = _session()
+    owner = _owner(db)
+    calls = _patch_emit(monkeypatch)
+    # Window closes first, then the user taps Push now and the paper lands.
+    assert ntfy.notify(db, kind="missed", title="Home", body="Not delivered", user_id=owner.id) is True
+    assert ntfy.notify(db, kind="push", title="Home", body="On the reader", user_id=owner.id) is True
+    assert [call["id"] for call in calls] == ["newscast.push_missed", "newscast.push_available"]
+    assert ntfy.notify(db, kind="missed", title="Home", body="again", user_id=owner.id) is False  # still once a day
+
+
+def test_regenerated_paper_with_new_stories_alerts_again(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr("app.services.briefing.BRIEFING_DIR", tmp_path)
+    monkeypatch.setattr("app.services.briefing.utcnow", lambda: datetime(2026, 9, 15, 7, 0, tzinfo=timezone.utc))
+    db = _session()
+    _owner(db)
+    when = datetime(2026, 9, 15, 5, 0, tzinfo=timezone.utc)
+
+    def add(n: int) -> None:
+        db.add(Story(title=f"Headline {n}", summary="Summary", source_name="BBC", canonical_url=f"https://e.x/{n}",
+                     content_hash=str(n), cluster_key=str(n), published_at=when, created_at=when, importance=3))
+        db.commit()
+
+    add(1)
+    calls = _patch_emit(monkeypatch)
+    now = datetime(2026, 9, 15, 7, 0)
+    publish_daily_briefing(db, now=now, overwrite=True)
+    add(2)  # a later refresh brings a new story, then the paper is regenerated
+    publish_daily_briefing(db, now=now, overwrite=True)
+    publish_daily_briefing(db, now=now, overwrite=True)  # same edition again: quiet
+    assert [call["id"] for call in calls] == ["newscast.publication_available"] * 2
+
+
+def test_changed_paper_on_the_reader_alerts_again(tmp_path: Path, monkeypatch):
+    db = _session()
+    _owner(db)
+    path = tmp_path / f"news-{date.today().isoformat()}.epub"
+    calls = _patch_emit(monkeypatch)
+    monkeypatch.setattr(reader_push, "reader_reachable", lambda _host, timeout=None, db=None, user_id=None: True)
+    monkeypatch.setattr(reader_push, "upload_file", lambda host, file_path, dest, db=None, user_id=None: None)
+    for content in (b"first edition", b"regenerated edition"):
+        path.write_bytes(content)
+        enqueue_sync_file(db, path, path.name, kind="crosspoint", save_path=f"/News/{path.name}")
+        reader_push.flush_pending(db)
+    assert [call["id"] for call in calls] == ["newscast.push_available"] * 2

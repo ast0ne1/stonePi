@@ -132,3 +132,45 @@ def test_settings_page_has_unsaved_changes_hooks(ctx):
     for tab in ("device", "publication", "schedule", "reader"):
         assert f'data-settings-panel="{tab}"' in html
         assert f'data-settings-tab="{tab}"' in html
+
+
+def test_schedule_tab_saves_daily_refresh_time(ctx):
+    client, db, _user = ctx
+    page = client.get("/settings?tab=schedule").text
+    assert 'name="ingest_daily_at"' in page
+    assert "30 minutes before this" in page
+    token = re.search(r'name="csrf_token" value="([^"]+)"', page)
+    form = {"settings_tab": "schedule", "ingest_interval_minutes": "1440", "ingest_daily_at": "5:00"}
+    if token:
+        form["csrf_token"] = token.group(1)
+    assert client.post("/settings", data=form).status_code in {200, 303}
+    db.expire_all()
+    assert settings.get_value(db, "ingest_daily_at") == "05:00"
+    form["ingest_daily_at"] = ""
+    assert client.post("/settings", data=form).status_code in {200, 303}
+    db.expire_all()
+    assert settings.get_value(db, "ingest_daily_at") == ""
+
+
+def test_reader_tab_saves_push_window(ctx):
+    client, db, user = ctx
+    page = client.get("/settings?tab=reader").text
+    for name in ("reader_push_trigger", "reader_push_window", "reader_push_scan"):
+        assert f'name="{name}"' in page
+    token = re.search(r'name="csrf_token" value="([^"]+)"', page)
+    form = {
+        "settings_tab": "reader",
+        "reader_device": "xteink",
+        "reader_host": "crosspoint.local",
+        "reader_push_when_online": "1",
+        "reader_push_trigger": "paper",
+        "reader_push_window": "60",
+        "reader_push_scan": "30",
+    }
+    if token:
+        form["csrf_token"] = token.group(1)
+    assert client.post("/settings", data=form).status_code in {200, 303}
+    db.expire_all()
+    assert reader_config.reader_push_trigger(db, user.id) == "paper"
+    assert reader_config.reader_push_window_minutes(db, user.id) == 60
+    assert reader_config.reader_push_scan_seconds(db, user.id) == 30

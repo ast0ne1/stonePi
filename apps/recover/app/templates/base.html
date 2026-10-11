@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="light" data-theme-pref="system" data-palette="default">
+<html lang="en" data-theme="light" data-theme-pref="system">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -15,7 +15,13 @@
     </script>
     {% include "_theme_boot.html" %}
     <link rel="stylesheet" href="/assets/fonts/fonts.css?v={{ fonts_rev }}" />
+    <link rel="stylesheet" href="/assets/brand/css/tokens.css?v={{ fonts_rev }}" />
+    <link rel="stylesheet" href="/assets/brand/css/components.css?v={{ fonts_rev }}" />
+    <link rel="icon" type="image/svg+xml" href="/assets/brand/icons/system/recover.svg?v={{ fonts_rev }}" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/icons/png/recover-32.png?v={{ fonts_rev }}" />
+    <link rel="apple-touch-icon" href="/assets/brand/icons/png/recover-180.png?v={{ fonts_rev }}" />
     <link rel="stylesheet" href="static/css/app.css?v={{ app_version }}-{{ asset_rev }}" />
+    <link rel="stylesheet" href="/assets/brand/css/app-base.css?v={{ fonts_rev }}" />
   </head>
   <body class="{% block body_class %}{% endblock %}">
     {% block body %}{% endblock %}

@@ -6,7 +6,7 @@
 {% block content %}
 <section class="hero">
   <a class="settings-back" href="/displays">&larr; Displays</a>
-  <h1>{{ display.name }}</h1>
+  <h1 class="carthing-title"><img class="carthing-icon carthing-icon-lg" src="/assets/brand/icons/system/trmnl.svg" width="40" height="40" alt="" />{{ display.name }}</h1>
   <p class="lede">
     {% if display.builtin %}Built-in household overview.{% else %}Custom Display.{% endif %}
     {{ display.widgets|length }} widget{{ '' if display.widgets|length == 1 else 's' }} ·
@@ -145,9 +145,18 @@
     </label>
     {% endif %}
     <label>
+      TRMNL plan for this device
+      <select name="tier">
+        {% for key, tier in trmnl_tiers.items() %}
+        <option value="{{ key }}" {% if trmnl_tier.id == key %}selected{% endif %}>{{ tier.label }} · {{ tier.per_hour }} pushes an hour, {{ tier.payload_kb }} KB</option>
+        {% endfor %}
+      </select>
+      <span class="hint">TRMNL+ is per device. StonePi stays a little under the limit ({{ trmnl_tier.budget }} an hour, counting manual and automatic pushes) and skips pushes when nothing on the screen has changed.</span>
+    </label>
+    <label>
       Push every (minutes)
-      <input type="number" name="interval_minutes" min="10" max="120" value="{{ display.trmnl.interval_minutes }}" />
-      <span class="hint">10 to 120. TRMNL allows 12 pushes an hour on the standard plan, shared with manual pushes.</span>
+      <input type="number" name="interval_minutes" min="{{ trmnl_tier.min_interval }}" max="120" value="{{ display.trmnl.interval_minutes }}" />
+      <span class="hint">{{ trmnl_tier.min_interval }} to 120 on {{ trmnl_tier.label }}. Unchanged screens are still refreshed every 2 hours.</span>
     </label>
     <fieldset class="stack">
       <legend>Plugin markup</legend>
@@ -166,6 +175,9 @@
     {% if display.trmnl.last_push_at %}
     <p class="hint">Last push {{ display.trmnl.last_push_at[:16]|replace('T', ' ') }} UTC ·
       {% if display.trmnl.last_push_ok %}OK{% else %}failed{% endif %}{% if display.trmnl.last_push_message %} — {{ display.trmnl.last_push_message }}{% endif %}</p>
+    {% if display.trmnl.last_skip_message %}
+    <p class="hint">Last check {{ (display.trmnl.last_check_at or '')[:16]|replace('T', ' ') }} UTC · not sent — {{ display.trmnl.last_skip_message }}</p>
+    {% endif %}
     {% else %}
     <p class="hint">Never pushed.</p>
     {% endif %}

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .alerts import forget_alerts_status, notifications_url, personal_alerts_status
+from .alerts import app_alerts_status, forget_alerts_status, notifications_url, personal_alerts_status
 from .capabilities import (
     CAPABILITY_ACTION,
     CAPABILITY_INPUT,
@@ -46,6 +46,7 @@ from .widgets import (
 )
 
 __all__ = [
+    "app_alerts_status",
     "APP_LABELS",
     "AUDIENCES",
     "AUDIENCE_ADMIN",

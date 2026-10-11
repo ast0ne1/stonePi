@@ -68,6 +68,8 @@ def _record(results: list[dict]) -> None:
     import stonepi_notify
 
     for result in results:
+        if result.get("quiet"):
+            continue
         stonepi_notify.append_history(
             channel="trmnl",
             ok=bool(result.get("ok")),
@@ -191,6 +193,7 @@ def configure_all() -> None:
                     "pricewatch.low_rated_offer": True,
                     "newscast.publication_available": True,
                     "newscast.push_available": True,
+                    "newscast.push_missed": True,
                     "fileserve.publication_created": True,
                     "eventtrakr.event_approaching": True,
                     "sportguide.watched_match_approaching": True,

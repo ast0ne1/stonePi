@@ -83,3 +83,21 @@ def test_saving_sends_every_eventtrakr_capability(client):
     assert body["permissions"]["eventtrakr"] == {
         "can_manage_sources": True, "can_use_social": False, "can_share_agenda": False, "can_sync_calendar": False,
     }
+
+
+def test_own_role_is_locked_and_no_self_disable_or_delete(client):
+    html = client.get("/users").text
+    me = html.split('data-user-detail="p-admin"', 1)[1].split("</article>", 1)[0]
+    assert 'data-role-seg="user" disabled' in me and 'data-role-seg="admin" disabled' in me
+    assert "data-delete-user" not in me and "data-toggle-enabled" not in me
+    jo = html.split('data-user-detail="p-jo"', 1)[1].split("</article>", 1)[0]
+    assert 'data-role-seg="user" disabled' not in jo and "data-delete-user" in jo
+
+
+def test_save_without_role_field_never_demotes(client):
+    # Your own page: the locked role switch isn't submitted.
+    form = {"csrf_token": CSRF, "action": "save", "display_name": "Adam", "enabled": "1", "apps": ["dashboard"]}
+    client.post("/users/p-admin", data=form, headers={"Accept": "application/json"})
+    body = client.calls[-1][2]
+    assert "is_admin" not in body
+    assert body["enabled"] is True

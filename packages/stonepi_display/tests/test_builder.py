@@ -269,3 +269,78 @@ def test_date_formats_render_in_local_time():
     d = _display([], date_format="dmy")
     payload = stonepi_display.display_payload(d, {**SAMPLE_VARIABLES, "updated_ts": stamp.isoformat()})
     assert payload["updated_at"] == local.strftime("%d/%m/%Y %H:%M")
+
+
+# --- TRMNL plans, budget, unchanged skips, back-off -------------------------
+
+
+def _at(minutes: float):
+    from datetime import datetime, timedelta, timezone
+
+    return datetime(2026, 10, 10, 8, 0, tzinfo=timezone.utc) + timedelta(minutes=minutes)
+
+
+def _set_tier(tier: str) -> None:
+    display = stonepi_display.get_display("kitchen")
+    display["trmnl"]["tier"] = tier
+    stonepi_display.upsert_display(display)
+
+
+def test_payload_limit_follows_the_plan(pushing):
+    display = stonepi_display.get_display("kitchen")
+    assert stonepi_display.payload_limit(display) == 5 * 1024 - push_mod.PAYLOAD_HEADROOM_BYTES
+    _set_tier("plus")
+    assert stonepi_display.payload_limit(stonepi_display.get_display("kitchen")) == 10 * 1024 - push_mod.PAYLOAD_HEADROOM_BYTES
+
+
+def test_interval_floor_depends_on_plan(pushing):
+    display = stonepi_display.get_display("kitchen")
+    display["trmnl"]["interval_minutes"] = 5
+    assert stonepi_display.upsert_display(display)["trmnl"]["interval_minutes"] == 10  # Standard floor
+    display["trmnl"].update(tier="plus", interval_minutes=5)
+    assert stonepi_display.upsert_display(display)["trmnl"]["interval_minutes"] == 5
+
+
+def test_unchanged_screen_is_skipped_then_refreshed(pushing):
+    first = stonepi_display.push_display("kitchen", SAMPLE_VARIABLES, skip_unchanged=True, now=_at(0))
+    again = stonepi_display.push_display("kitchen", SAMPLE_VARIABLES, skip_unchanged=True, now=_at(30))
+    manual = stonepi_display.push_display("kitchen", SAMPLE_VARIABLES, now=_at(31))  # a person's Push now
+    stale = stonepi_display.push_display("kitchen", SAMPLE_VARIABLES, skip_unchanged=True, now=_at(31 + 121))
+    assert first["ok"] and not first.get("skipped")
+    assert again["skipped"] and again["quiet"]
+    assert not manual.get("skipped")
+    assert not stale.get("skipped")  # unchanged for over 2 hours: refreshed anyway
+    assert len(_FakeClient.sent) == 3
+
+
+def test_hourly_budget_counts_every_push(pushing):
+    budget = stonepi_display.TRMNL_TIERS["standard"]["budget"]
+    sent = [stonepi_display.push_display("kitchen", SAMPLE_VARIABLES, now=_at(i)) for i in range(budget)]
+    held = stonepi_display.push_display("kitchen", SAMPLE_VARIABLES, now=_at(budget))
+    assert not any(r.get("skipped") for r in sent) and len(_FakeClient.sent) == budget
+    assert held["skipped"] and "Hourly limit" in held["message"]
+    assert len(_FakeClient.sent) == budget  # nothing sent over budget
+    # Once the oldest push is an hour old there is room again.
+    later = stonepi_display.push_display("kitchen", SAMPLE_VARIABLES, now=_at(60.5))
+    assert not later.get("skipped") and len(_FakeClient.sent) == budget + 1
+
+
+def test_rate_limit_pauses_pushes_until_the_window_passes(pushing):
+    _FakeClient.status = 429
+    hit = stonepi_display.push_display("kitchen", SAMPLE_VARIABLES, now=_at(0))
+    _FakeClient.status = 200
+    paused = stonepi_display.push_display("kitchen", SAMPLE_VARIABLES, now=_at(30))
+    resumed = stonepi_display.push_display("kitchen", SAMPLE_VARIABLES, now=_at(61))
+    assert hit["ok"] is False and "rate limit" in hit["message"]
+    assert paused["skipped"] and "slow down" in paused["message"]
+    assert resumed["ok"] and not resumed.get("skipped")
+    assert len(_FakeClient.sent) == 2
+
+
+def test_skipped_check_waits_for_the_next_interval(pushing):
+    collect = lambda: SAMPLE_VARIABLES  # noqa: E731
+    stonepi_display.push_display("kitchen", SAMPLE_VARIABLES, now=_at(0))
+    display = stonepi_display.get_display("kitchen")
+    assert push_mod._is_due(display, _at(16))  # interval is 15 min
+    stonepi_display.push_display("kitchen", SAMPLE_VARIABLES, skip_unchanged=True, now=_at(16))
+    assert not push_mod._is_due(stonepi_display.get_display("kitchen"), _at(17))

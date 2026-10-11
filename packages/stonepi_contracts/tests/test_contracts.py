@@ -142,3 +142,30 @@ def test_drain_can_deliver_locally(monkeypatch, tmp_path):
     assert emit_mod.drain_emit_retry_queue(deliver=lambda p: got.append(p["id"]) or True) == 3
     assert got == ["x.0", "x.1", "x.2"]
     assert not queue.exists()
+
+
+def test_app_alerts_status_serves_last_good_answer_when_notify_is_slow(monkeypatch):
+    """A slow / failed lookup keeps the last good state instead of "couldn't check"."""
+    from stonepi_contracts import alerts
+
+    alerts._app_cache.clear()
+    alerts._app_failures.clear()
+    clock = [1000.0]
+    answers = [{"allowed": True, "available": True, "enabled": True, "events": [], "last": None}, None, None]
+    waits = []
+
+    def fake_ask(cookie_name, session, base_url, timeout, *, path):
+        waits.append(timeout)
+        return answers.pop(0)
+
+    monkeypatch.setattr(alerts, "_ask_notify", fake_ask)
+    kw = dict(cookie_name="c", session_cookie="s", session_allowed=True, now=lambda: clock[0])
+    first = alerts.app_alerts_status("u1", "pricewatch", **kw)
+    assert first["reachable"] is True and waits[0] >= alerts.FIRST_LOOKUP_TIMEOUT
+    clock[0] += alerts.STATUS_TTL_SECONDS + 1
+    again = alerts.app_alerts_status("u1", "pricewatch", **kw)
+    assert again["reachable"] is True and again["enabled"] is True  # stale but good
+    assert waits[1] < alerts.FIRST_LOOKUP_TIMEOUT
+    clock[0] += alerts.STALE_OK_SECONDS + 1
+    gone = alerts.app_alerts_status("u1", "pricewatch", **kw)
+    assert gone["reachable"] is False  # too old: now say so

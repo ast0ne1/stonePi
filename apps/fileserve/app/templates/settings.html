@@ -56,9 +56,9 @@
 
   <div class="stack settings-panel" id="settings-panel-device" role="tabpanel" data-settings-panel="device" aria-labelledby="settings-tab-device"{% if settings_tab != 'device' %} hidden{% endif %}>
     {% if platform_managed %}
-    <p class="hint settings-panel-span" data-settings-with-card="access">Your password and colour palette are under <a href="{{ stonepi_home_url }}/settings?tab=general">StonePi → Settings → General</a>. Admins manage household accounts on <a href="{{ stonepi_home_url }}/users">StonePi → Users</a>.</p>
+    <p class="hint settings-panel-span" data-settings-with-card="access">Your password and welcome message are under <a href="{{ stonepi_home_url }}/settings?tab=general">StonePi → Settings → General</a>. Admins manage household accounts on <a href="{{ stonepi_home_url }}/users">StonePi → Users</a>.</p>
     {% else %}
-    <p class="hint settings-panel-span" data-settings-with-card="access">Colour palette for all StonePi apps is set on the portal under Settings → General when StonePi SSO is enabled.</p>
+    <p class="hint settings-panel-span" data-settings-with-card="access">Light, Dark or System for all StonePi apps is under Appearance in your avatar menu.</p>
     {% endif %}
 
     {% if not platform_managed %}

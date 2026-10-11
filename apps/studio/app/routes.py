@@ -176,6 +176,7 @@ def _csrf_response(request: Request, name: str, ctx: dict) -> HTMLResponse:
             session_cookie=request.cookies.get(COOKIE_NAME),
             home_url=ctx["stonepi_home_url"],
             enabled=bool(_session_secret()),
+            app_id="studio",
         ),
     )
     response = templates.TemplateResponse(request, name, ctx)
@@ -215,15 +216,34 @@ def api_display():
 
 @router.get("/", response_class=HTMLResponse)
 def home(request: Request):
+    """Returning makers land on Projects; first-timers on the Create page."""
     user, denied = _require_user(request)
     if denied:
         return denied
+    if any(_owns(user, p) for p in store.list_projects()):
+        query = request.url.query
+        return RedirectResponse(f"{_prefix()}/projects" + (f"?{query}" if query else ""), status_code=303)
+    return _create_page(request, user, has_projects=False)
+
+
+@router.get("/new", response_class=HTMLResponse)
+def new_project(request: Request):
+    """Create ("What shall we make today?"), reached from Projects' floating +."""
+    user, denied = _require_user(request)
+    if denied:
+        return denied
+    return _create_page(request, user, has_projects=any(_owns(user, p) for p in store.list_projects()))
+
+
+def _create_page(request: Request, user, *, has_projects: bool):
     return _csrf_response(
         request,
         "home.html",
         {
             "user": user,
-            "active": "create",
+            # Create belongs to Projects: that tab stays highlighted.
+            "active": "projects",
+            "has_projects": has_projects,
             "build_kinds": BUILD_KINDS,
             "error": request.query_params.get("err"),
             "message": request.query_params.get("msg"),
@@ -453,7 +473,7 @@ def create_project(
     if denied:
         return denied
     if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
-        return RedirectResponse(f"{_prefix()}/?err=Form+expired", status_code=303)
+        return RedirectResponse(f"{_prefix()}/new?err=Form+expired", status_code=303)
     project = store.create_project(
         name, kind=kind, owner=(user.user_id if user else ""), owner_name=_user_label(user)
     )

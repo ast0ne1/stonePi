@@ -51,6 +51,7 @@
 
 {% set can_social = current_user.can('can_use_social') %}
 <section class="hero">
+  <a class="settings-back" href="/settings">&larr; Settings</a>
   <div class="hero-row hero-row-inline">
     <h1>Instagram</h1>
     <a href="/sources" class="btn btn-outline btn-with-icon">{{ icon('sources') }} <span>URL sources</span></a>
@@ -90,7 +91,7 @@
         {% endfor %}
       </select>
     </div>
-    <button type="submit" class="btn btn-primary btn-with-icon">{{ icon('plus') }} Track account</button>
+    <button type="submit" class="btn btn-primary btn-sm btn-with-icon btn-fit">{{ icon('plus') }} Track account</button>
   </form>
 </section>
 {% endif %}
@@ -181,7 +182,7 @@
   {% else %}
   <div class="empty-state">
     <p>No Instagram accounts yet.</p>
-    {% if can_social %}<p class="form-hint">Add a venue, organiser, or artist above. EventTrakr will poll for new posts and suggest events on Discoveries.</p>{% endif %}
+    {% if can_social %}<p class="form-hint">Add a venue, organiser, or artist above. EventTrakr will poll for new posts and suggest events in Review.</p>{% endif %}
   </div>
   {% endif %}
 </section>

@@ -12,8 +12,9 @@ Shared StonePi sign-in. **Not a launcher tile** (`launcher: False`) — like Aut
 ## What it does
 
 - **Displays** — one per TRMNL screen (built-in Dashboard Display + as many as you add). Each has a drag-and-drop **screen builder** over a real render of the device, and its own TRMNL webhook, interval and device (TRMNL OG 800×480 or TRMNL X 1040×780).
-- **Settings → Destinations** — **ntfy** phone alerts (TRMNL moved onto each Display).
-- **Event prefs / history** — which events may notify; delivery log.
+- **Car Thing** — the touch-and-dial panel's saved configs, edited beside a live preview (Displays → Car Thing).
+- **Phone alerts** — **ntfy**: the household token and topic, and which events may notify. People with the Phone alerts permission set up their own alerts from the bell.
+- **History** — the delivery log.
 - **Ingest** — `POST /api/events` (loopback) via `stonepi_contracts.emit_event()`.
 
 Apps own data; Notify owns delivery. External failures never break apps.
@@ -40,6 +41,6 @@ Dashboard Settings → Display redirects here. The push scheduler runs in this p
 3. Paste the **universal template** (Display → TRMNL → *Universal template for the plugin*) into the plugin's **Full** markup once. The layout travels in each push (`L` = `[[code, x, y, w, h], …]`, `G` = `[cols, rows]`), so rearranging widgets never needs a re-paste.
 4. Lay out widgets in the builder. The preview renders the same template with the same payload a push sends, styled by the TRMNL Framework (3.2.0, loaded from trmnl.com), with sample or live data.
 
-Pushes send only the variables the Display's widgets read, trimmed to TRMNL's 2 KB standard-plan limit. TRMNL allows 12 pushes an hour per plugin on the standard plan, so intervals are 10–120 minutes.
+Pushes send only the variables the Display's widgets read, trimmed to the plan's payload limit. Each Display picks its TRMNL plan: **Standard** allows 12 pushes an hour and 5 KB (intervals 10–120 minutes), **TRMNL+** 30 pushes an hour and 10 KB (intervals 5–120 minutes). Unchanged data isn't re-sent.
 
 Upgrading: the old single TRMNL destination moves onto the Display it pushed, in **legacy** mode (its plugin still holds the older pasted markup, so every flat variable is still sent). Paste the universal template and switch the Display to it to use the builder layout.

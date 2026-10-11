@@ -5,16 +5,19 @@
   <meta name="viewport" content="width=800, height=480, initial-scale=1">
   <title>StonePi</title>
   <style>
-    html, body { margin: 0; height: 100%; background: #0b0d10; color: #F5F1E8; overflow: hidden;
+    /* Design-system Basalt / Stone values; system fonts only (nothing to fetch while unpaired). */
+    html, body { margin: 0; height: 100%; background: #0B0D0E; color: #ECEAE6; overflow: hidden;
       font-family: "DejaVu Sans", Arial, Helvetica, sans-serif; }
     .box { position: absolute; left: 60px; right: 60px; top: 50%; transform: translateY(-50%); }
+    .mark { display: block; margin: 0 0 24px; }
     h1 { font-size: 34px; margin: 0 0 16px; }
-    p { font-size: 20px; line-height: 1.4; color: #b9b4a8; margin: 0; }
+    p { font-size: 20px; line-height: 1.4; color: #9AA0A6; margin: 0; }
   </style>
   <meta http-equiv="refresh" content="20">
 </head>
 <body>
   <div class="box">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="6.5 8.0 87.0 87.0" width="72" height="72" class="mark" aria-hidden="true"><polygon points="20.0,35.0 80.0,11.0 80.0,23.0 32.0,42.2 32.0,49.2 20.0,54.0" fill="#8A806E"></polygon><polygon points="20.0,59.0 80.0,35.0 80.0,47.0 20.0,71.0" fill="#62676C"></polygon><polygon points="80.0,71.0 20.0,95.0 20.0,83.0 68.0,63.8 68.0,56.8 80.0,52.0" fill="#4E5357"></polygon><polygon points="20.0,32.0 80.0,8.0 80.0,20.0 32.0,39.2 32.0,46.2 20.0,51.0" fill="#C7BBA8"></polygon><polygon points="20.0,56.0 80.0,32.0 80.0,44.0 20.0,68.0" fill="#9AA0A6"></polygon><polygon points="80.0,68.0 20.0,92.0 20.0,80.0 68.0,60.8 68.0,53.8 80.0,49.0" fill="#80868C"></polygon></svg>
     {% if caller.kind == "off" %}
     <h1>Panel switched off</h1>
     <p>Switch it on in StonePi: Notify → Displays → Car Thing.</p>

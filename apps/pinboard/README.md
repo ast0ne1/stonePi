@@ -11,14 +11,14 @@ Shared StonePi sign-in. Access requires a **Pinboard** app grant (admins see it 
 
 ## Why it’s in StonePi
 
-A lightweight shared corkboard — not a full task manager. Pins and reminders show on phones and, when Destinations are configured, on a **TRMNL** e-ink panel.
+A lightweight shared corkboard — not a full task manager. Pins and reminders show on phones and, on a **TRMNL** display or the Car Thing panel (set up in Notify → Displays).
 
 ## What it does
 
 - **Board** — all notices and reminders as expandable cards (type pill + icon; due date when present)
 - **Notices** — short household messages everyone with access can see
 - **Reminders** — due date and optional assignee
-- Phone-first UI aligned with NewsCast-style chrome (themes / palettes)
+- Phone-first UI in the shared StonePi design system (light, dark or system theme)
 
 ## Integrations
 

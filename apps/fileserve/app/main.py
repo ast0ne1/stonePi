@@ -41,7 +41,7 @@ from app.auth import (
     wants_json,
 )
 from stonepi_auth.alerts import add_shared_templates, bell_context, notifications_card_context
-from stonepi_auth.brand import add_brand_fonts_route, fonts_rev
+from stonepi_auth.brand import add_brand_fonts_route, brand_color, fonts_rev, manifest_icons
 from stonepi_auth.csrf import csrf_from_request, csrf_ok_request, set_csrf_cookie
 from stonepi_auth.http import portal_home_url
 from app.config import BACKUPS_DIR, DATA_DIR, HOSTED_DIR, UPDATES_DIR, env
@@ -67,8 +67,8 @@ USER_SETTINGS_TABS = tuple(
     (key, label) for key, label in SETTINGS_TABS if key not in ADMIN_ONLY_SETTINGS_TABS
 )
 SETTINGS_LEDES = {
-    "device": "Your login password, hostname, HTTPS, and instance name. Colour palette is under StonePi → Settings → General.",
-    "device_user": "Your login password. Colour palette is under StonePi → Settings → General.",
+    "device": "Your login password, hostname, HTTPS, and instance name. Theme is under Appearance in your avatar menu.",
+    "device_user": "Your login password. Theme is under Appearance in your avatar menu.",
     "notifications": "New-publication alerts via StonePi Notify.",
     "users": "Household accounts. Create users, reset passwords, or remove access.",
     "backup": "Download or restore a zip of your pages and settings. Roll back the last app install here.",
@@ -236,6 +236,7 @@ def create_app(config: dict | None = None) -> Flask:
         pending_tls = False
         can_publish = False
         must_protect = False
+        local_name = ""
         platform_managed = platform_managed_settings()
         platform_user = _platform_user() if platform_managed else None
         if platform_managed:
@@ -244,6 +245,7 @@ def create_app(config: dict | None = None) -> Flask:
         if db is not None:
             viewer = current_user(db)
             if viewer is not None:
+                local_name = viewer.username
                 page_count = len(pages_svc.list_pages(db, viewer=viewer))
                 can_publish = viewer.can(capabilities.PUBLISH_PAGES)
                 must_protect = not viewer.can(capabilities.PUBLISH_UNPROTECTED)
@@ -280,7 +282,9 @@ def create_app(config: dict | None = None) -> Flask:
                 session_cookie=request.cookies.get(COOKIE_NAME),
                 home_url=home_url,
                 enabled=platform_managed,
+                app_id="fileserve",
             ),
+            "local_user_name": local_name,
             "stonepi_prefix": (env.stonepi_prefix or "").rstrip("/"),
         }
 
@@ -1281,9 +1285,9 @@ def create_app(config: dict | None = None) -> Flask:
                 "short_name": name,
                 "start_url": "/",
                 "display": "standalone",
-                "background_color": "#f3eee4",
-                "theme_color": "#f3eee4",
-                "icons": [{"src": "/static/icons/apple-touch-icon.svg", "sizes": "180x180", "type": "image/svg+xml"}],
+                "background_color": brand_color("canvas"),
+                "theme_color": brand_color("surface"),
+                "icons": manifest_icons("fileserve"),
             }
         )
 

@@ -139,6 +139,7 @@ def _page_ctx(request: Request, *, active: str, user, csrf: str, extra: dict | N
             session_cookie=request.cookies.get(COOKIE_NAME),
             home_url=home,
             enabled=bool(_session_secret()),
+            app_id="pinboard",
         ),
     }
     if extra:

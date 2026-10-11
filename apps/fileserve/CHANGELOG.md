@@ -2,6 +2,13 @@
 
 Current version is **0.0.7**.
 
+## 0.0.8 — 2026-10-11
+
+### Changed
+- **New look** (StonePi design system): FileServe icon in the header and as favicon and home-screen icon; new colours, fonts, buttons and cards in light and dark; the old palettes are gone.
+- New shared StonePi header: notifications bell, an app switcher (Dashboard and every app) and an avatar menu with your name, light/dark/system appearance, Manage account and Log out. The old sign-out icon is gone; Log out is in the avatar menu, also when FileServe runs on its own.
+- The bottom bar is now Pages · Settings. Home moved to the app switcher, and Add is a floating + button on Pages for people allowed to publish (the duplicate Add page buttons, at the top of Pages and in the empty state, are gone).
+
 ## 0.0.7 — 2026-10-04
 
 ### Security
