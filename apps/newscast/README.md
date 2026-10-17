@@ -17,7 +17,7 @@ Household “what’s worth reading today” without five news apps — fetch, d
 
 - **Grants / capabilities:** `can_add_custom_sources`, `can_view_status` (Dashboard → Users). Phone alerts are a platform permission on the same page.
 - **Exposure:** home network vs internet-facing changes OPDS / X3 / sync token behaviour — see [deploy/SECURITY.md](../../deploy/SECURITY.md).
-- **Vault keys:** `OPENAI_API_KEY`, `X3_SYNC_TOKEN`, `NEWSCAST_READER_SSH_PASSWORD`, and related secrets preferred from Settings → Vault. Phone alerts use the shared **Notify** token (`STONEPI_NTFY_TOKEN`, Notify → Phone alerts).
+- **Vault keys:** `X3_SYNC_TOKEN`, `NEWSCAST_READER_SSH_PASSWORD`, and related secrets preferred from Settings → Vault. Phone alerts use the shared **Notify** token (`STONEPI_NTFY_TOKEN`, Notify → Phone alerts).
 - **Display:** `GET …/api/display` for Notify → TRMNL (denied at nginx edge when public).
 - Under StonePi, apps bind loopback; nginx serves `/news/`. Per-app LAN HTTPS is for **solo** runs only.
 
@@ -26,8 +26,8 @@ Household “what’s worth reading today” without five news apps — fetch, d
 - Fetches RSS on a schedule, or scrapes the homepage when you choose Scrape (dual-mode catalog sources can switch)
 - Saves each source as it finishes, so the Briefing fills in during a refresh without reloading
 - Deduplicates the same story across outlets (the first source in a refresh keeps it)
-- Writes a concise briefing (**OpenAI**, **Ollama**, or extracted text)
-- Optional **translation** (Google or LLM) per feed or globally
+- Summarises each story on the Pi (2–3 key sentences), or with AI when you switch it on (Settings → AI; the models are set up for the whole Pi in Dashboard → Settings → AI)
+- Optional **translation** per feed (As published / Translate / Translate with Google); whether NewsCast translates with Google or AI is one choice in Settings → AI
 - Scores importance; category slotting; per-category OPDS papers
 - SQLite store; unfavourited stories drop after retention days
 - Mobile-first UI in the shared StonePi design system (light, dark or system theme)
@@ -51,7 +51,7 @@ Search (stories, favourites, Saved long-reads) is in the header.
 | Integration | Role |
 |-------------|------|
 | **E-readers** | OPDS catalogs; CrossPoint File Transfer or KOReader SSH/SFTP; optional X3 Sync API |
-| **AI / LLM** | Briefing summaries |
+| **AI** (optional) | Summaries, translation, importance scoring: off by default, models from Dashboard → Settings → AI |
 | **Translation** | Feed text into a target language |
 | **ntfy** | Phone alerts (capability-gated) |
 | **TRMNL** | Overview/status block via Display |
@@ -111,7 +111,7 @@ Settings → Publication → **Include saved long-reads in today’s paper** (de
 
 | Source | Summarise | Briefing text |
 |--------|-----------|---------------|
-| RSS | On | Title + LLM summary (or extract fallback if no key) |
+| RSS | On | Title + summary (on device, or AI when it is on) |
 | RSS | Off | Title + RSS description/content; full-page extract only when the excerpt is very short |
 | Scrape | same flag | Same rules on extracted body |
 

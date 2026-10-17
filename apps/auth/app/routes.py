@@ -230,6 +230,22 @@ def api_display(db: Annotated[Session, Depends(get_db)]):
     return {"ok": True, "sessions": sessions}
 
 
+def _header_state(payload: dict, home_url: str) -> dict:
+    """Shared header (app switcher + avatar menu, no bell) for the signed-in status page."""
+    from types import SimpleNamespace
+
+    from stonepi_auth.header import header_context
+
+    apps = set(payload.get("apps") or [])
+    person = SimpleNamespace(
+        username=payload.get("username") or "",
+        display_name=payload.get("display_name") or "",
+        is_admin=bool(payload.get("is_admin")),
+        can_access=lambda app_id: app_id in apps,
+    )
+    return {"show": False, "header": header_context("auth", person, home_url=home_url), "panel": None}
+
+
 @router.get("/")
 def root(request: Request, db: Annotated[Session, Depends(get_db)]):
     user = current_user(request, db)
@@ -250,6 +266,7 @@ def root(request: Request, db: Annotated[Session, Depends(get_db)]):
             "home_url": home_url,
             "cockpit_url": resolve_cockpit_url(_request_host(request)),
             "is_admin": bool(payload.get("is_admin")),
+            "header_state": _header_state(payload, home_url),
         },
     )
     set_csrf_cookie(response, token, secure=_https(request))

@@ -24,5 +24,12 @@ if _prefix:
     app.mount(f"{_prefix}/static", StaticFiles(directory=_static), name="static_prefixed")
 app.include_router(router)
 
+
+
+@app.on_event("startup")
+def _migrate_models() -> None:
+    # Studio's old model picker (settings.json) moves into the platform AI config once.
+    _app_routes.llm.migrate_legacy_models()
+
 # A platform install without a session secret locks instead of running solo.
 platform_lock = add_platform_lock(app, lambda: _app_routes._session_secret())

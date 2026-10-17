@@ -74,93 +74,23 @@
   {% if is_admin and settings_tab == 'model' %}
   <div class="stack settings-panel" id="settings-panel-model" role="tabpanel" aria-labelledby="settings-tab-model">
     <div class="card stack settings-panel-span model-status">
-      <h2>Now using</h2>
-      {% if active_provider.id %}
-      <p class="lede"><strong>{{ active_provider.label }}</strong> · <code>{{ active_provider.model }}</code></p>
-      {% else %}
-      <p class="lede">No AI service is connected yet. Add <code>OPENAI_API_KEY</code> or <code>ANTHROPIC_API_KEY</code> in the StonePi Vault, and Studio picks it up automatically.</p>
-      {% endif %}
-      {% if key_status.local %}<p class="hint">A local OpenAI-compatible server (<code>STUDIO_LLM_BASE_URL</code>) is also configured and is used when the choice below is Automatic.</p>{% endif %}
+      <h2>AI models</h2>
+      <p class="lede">StonePi sets up AI for the whole Pi: the keys, which models each kind of job uses and in what order, and how each model is doing. If a model is rate limited or down, Studio moves on to the next one.</p>
+      <ul class="model-overview">
+        {% for row in ai_models %}
+        <li>
+          <strong>{{ row.label }}</strong>
+          {% if row.models %}
+          <span class="hint">{{ row.models[0] }} first{% if row.models|length > 1 %}, then {{ row.models[1:]|join(", ") }}{% endif %}.</span>
+          {% else %}
+          <span class="hint">No model available. Builds of this kind show an error until one is set up.</span>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      <p><a class="btn btn-primary" href="{{ dashboard_ai_url }}">Open Settings → AI in Dashboard</a></p>
+      <p class="hint">Who may use AI is still set per person in Users (Studio's AI permission).</p>
     </div>
-
-    <form method="post" action="/settings/model" class="stack settings-panel-span model-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-
-      <fieldset class="card stack">
-        <legend><h2>AI service</h2></legend>
-        {% set services = [
-          ("auto", "Automatic", "Use whichever key is in the Vault (Anthropic first if both are set).", True),
-          ("openai", "OpenAI", "Uses OPENAI_API_KEY.", key_status.openai),
-          ("anthropic", "Anthropic (Claude)", "Uses ANTHROPIC_API_KEY.", key_status.anthropic),
-        ] %}
-        {% for value, label, blurb, ready in services %}
-        <label class="choice-row">
-          <input type="radio" name="provider" value="{{ value }}" {% if provider_pref == value %}checked{% endif %} data-provider-choice />
-          <span>
-            <span class="choice-title"><strong>{{ label }}</strong>{% if value != "auto" %}<span class="key-pill {{ 'is-ok' if ready else 'is-missing' }}">{{ "Key found" if ready else "No key" }}</span>{% endif %}</span>
-            <span class="hint">{{ blurb }}{% if value != "auto" and not ready %} Add it to the Vault first; until then Studio falls back to Automatic.{% endif %}</span>
-          </span>
-        </label>
-        {% endfor %}
-      </fieldset>
-
-      {# Model cards follow the service: Automatic shows both, a single service collapses the other. #}
-      <details class="card model-panel" data-model-panel="openai" {% if provider_pref in ("auto", "openai") %}open{% endif %}>
-        <summary>
-          <h2>OpenAI model</h2>
-          <span class="hint model-panel-current">{{ openai_model }}</span>
-        </summary>
-        <div class="stack model-panel-body">
-          {% for m in openai_choices %}
-          <label class="choice-row">
-            <input type="radio" name="openai_model" value="{{ m.id }}" {% if openai_model == m.id %}checked{% endif %} />
-            <span>
-              <span class="choice-title"><strong>{{ m.label }}</strong><span class="cost-pill" title="Relative cost">{{ m.cost }}</span></span>
-              <span class="hint">{{ m.blurb }} <code>{{ m.id }}</code></span>
-            </span>
-          </label>
-          {% endfor %}
-          <label class="choice-row">
-            <input type="radio" name="openai_model" value="custom" {% if openai_custom %}checked{% endif %} />
-            <span>
-              <strong>Other model ID</strong>
-              <input type="text" name="openai_custom" value="{{ openai_model if openai_custom else '' }}" placeholder="gpt-…" autocomplete="off" spellcheck="false" />
-              <span class="hint">Any chat model your OpenAI account can use. Prices change, so check your OpenAI account for current rates.</span>
-            </span>
-          </label>
-        </div>
-      </details>
-
-      <details class="card model-panel" data-model-panel="anthropic" {% if provider_pref in ("auto", "anthropic") %}open{% endif %}>
-        <summary>
-          <h2>Claude model</h2>
-          <span class="hint model-panel-current">{{ anthropic_model }}</span>
-        </summary>
-        <div class="stack model-panel-body">
-        {% for m in model_choices %}
-        <label class="choice-row">
-          <input type="radio" name="anthropic_model" value="{{ m.id }}" {% if anthropic_model == m.id %}checked{% endif %} />
-          <span>
-            <span class="choice-title"><strong>{{ m.label }}</strong><span class="cost-pill" title="Relative cost">{{ m.cost }}</span></span>
-            <span class="hint">{{ m.blurb }} <code>{{ m.id }}</code></span>
-          </span>
-        </label>
-        {% endfor %}
-        <label class="choice-row">
-          <input type="radio" name="anthropic_model" value="custom" {% if anthropic_custom %}checked{% endif %} data-custom-model />
-          <span>
-            <strong>Other model ID</strong>
-            <input type="text" name="anthropic_custom" value="{{ anthropic_model if anthropic_custom else '' }}" placeholder="claude-…" autocomplete="off" spellcheck="false" />
-          </span>
-        </label>
-        </div>
-      </details>
-
-      <div class="btn-row">
-        <button class="btn btn-primary" type="submit" name="action" value="save">Save model</button>
-        <button class="btn btn-ghost" type="submit" name="action" value="reset" formnovalidate data-confirm="Go back to the default service and models?">Reset to defaults</button>
-      </div>
-    </form>
   </div>
   {% endif %}
 

@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.0.9 — 2026-10-17
+
+### Added
+- **On-device summaries when AI is off** (backlog U18a). Summarise sources used to show the article's text cut at about 420 characters; now NewsCast picks the 2–3 key sentences on the Pi with sumy (LexRank), word for word and in article order, always keeping the opening sentence. No model, no network; about 10 ms a story on a PC (it reads the first 8,000 characters, so long reads stay quick). Danish stories left untranslated get a Danish stop-word list. Short texts, or text with no whole sentences, still show the excerpt, as does any error. The AI path is unchanged, and a failed AI summary now falls back to the on-device one. Cards say **Summary** (was "Excerpt"); the AI-off hints in Settings and Sources say what it does. Adds `sumy`, `nltk` and `numpy` to requirements; NLTK's English and Danish sentence data (punkt_tab, ~1 MB) ships inside the app in `app/nltk_data/`, so nothing is downloaded at runtime.
+- **Use AI in NewsCast** (backlog U18b). Settings → AI is now a master switch, **off by default**, plus three choices: **Summaries** (On device, default / AI), **Translation** (Google Translate, default / AI) and **Importance** (Rule-based, default / AI). Before, any `OPENAI_API_KEY` in the Vault (one added for Studio, say) silently turned on AI summaries and AI importance scoring for every story; existing installs now start with AI off until you switch it on. With no AI provider set up on the Pi, the switch is greyed out with a link to Dashboard → Settings → AI. The tab lists which model each choice uses now and whether story text stays on your network.
+- **Each story remembers how it was made** (backlog U1, second pass). Per task (summary, translation, importance) a story records **AI (which model)**, **fell back** (AI off, or every model failed) or **opted out** (the source is Full article, or translates with Google). Cards show it rather than today's settings: **AI summary** (the model on hover), **Summary**, **Summary · AI unavailable**, plus **AI translation** or **Translated** for translated stories.
+- **Catch-up:** after each refresh, and when you switch AI on for summaries or importance, NewsCast redoes stories that fell back. Only stories not yet in a published paper (published papers and their EPUB stay frozen; web cards update), only tasks marked "fell back", up to 30 stories a run, most important and newest first, five per request, Free models only. A rate limit or used-up quota stops the run and leaves that model cooling for every app. Translation isn't redone (the original text isn't kept, and the Google translation is already usable).
+- A refresh that fell back says so: "AI was unavailable for 3 stories, so they used the non-AI path; AI redoes them when it's back."
+
+### Changed
+- **NewsCast's own AI provider settings are gone** (backlog F13 / U18b): the OpenAI key, model, Ollama URL and model fields, `llm_provider`, and the Ollama model probe (`/api/ollama/models`). Providers, models and their order are set once for the Pi in Dashboard → Settings → AI, and NewsCast calls them through `stonepi_ai`: if a model is rate limited or down it moves to the next, and after the last one the story uses its non-AI path. NewsCast no longer reads `OPENAI_API_KEY` itself. On start it deletes the old AI rows from its settings table (including any OpenAI key saved there before the Vault, so it stops riding along in backups), and the `openai` package leaves its requirements.
+- **AI translation that fails falls back to Google** for that story (it used to leave the story untranslated).
+- **Sources can only opt out of AI.** A source's Language is As published, Translate (NewsCast setting) or Translate with Google; Translate with AI is gone and sources that had it follow the NewsCast setting. The global translation choice moved from the Translation tab to the AI tab.
+- The "AI is off" banner on Briefing and Settings is gone: on-device summaries are the normal default now.
+- **Summarise sources fetch every article's text when AI is off.** When a feed only gives a short blurb, NewsCast fetched the full article for just 3 stories per source per refresh and the rest showed the blurb or headline. That cap now applies only when AI writes the summaries (each fetched article becomes a long AI request), not merely when a model is set up; with AI off every such story is fetched so the on-device summary has text to work with. Refreshes of sources with short blurbs take longer.
+
+### Fixed
+- **Scrape picked section pages as stories** on sites that put the date in the link's slug (The Age, SMH and other Nine papers: `…-20261017-p616eh.html`). The scraper only knew `/2026/10/17/` dates, so it couldn't tell articles from links like "Western Australia" or "Banking & finance" and saved those pages as stories. Slug dates are now read, so only dated article links are kept.
+
 ## 0.0.8 — 2026-10-11
 
 ### Changed

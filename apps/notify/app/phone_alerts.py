@@ -348,6 +348,21 @@ async def alerts_test(request: Request):
 # -- Dashboard status line ------------------------------------------------------------------
 
 
+def _carthing_summary() -> dict[str, bool]:
+    """Car Thing for the Dashboard's Displays line: switched on, and showing the panel now?"""
+    try:
+        from stonepi_display import carthing
+
+        from app.carthing_routes import _status
+
+        enabled = bool(carthing.load_device().get("enabled"))
+        # Only ask the panel service while it's on; it's off (and not answering) otherwise.
+        connected = enabled and bool(_status().get("connected"))
+    except Exception:  # noqa: BLE001 — the summary must still answer
+        enabled = connected = False
+    return {"enabled": enabled, "connected": connected}
+
+
 @router.get("/api/admin/summary")
 def admin_summary(request: Request):
     """Admin-only status for Dashboard → Settings (session auth)."""
@@ -361,7 +376,7 @@ def admin_summary(request: Request):
     o = alerts_overview(user, dict(request.cookies))
     return {
         "ok": True,
-        "displays": {"count": len(displays), "pushing": pushing},
+        "displays": {"count": len(displays), "pushing": pushing, "carthing": _carthing_summary()},
         "alerts": {
             "enabled": o["enabled"],
             "approved": o["approved"],

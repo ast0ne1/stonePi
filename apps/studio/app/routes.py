@@ -12,7 +12,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
-from app import __asset_rev__, __github__, __github_user__, __version__, llm, model_settings, prompt_files, store, workspace
+from app import __asset_rev__, __github__, __github_user__, __version__, llm, prompt_files, store, workspace
 from app.config import BUILD_KINDS, ROOT_DIR, env
 
 
@@ -260,7 +260,7 @@ def _is_admin(user) -> bool:
 
 def _studio_settings_groups(is_admin: bool) -> tuple:
     build = (
-        ("model", "Model", "Which AI service Studio uses.", "model"),
+        ("model", "Model", "Which AI models Studio builds with.", "model"),
         ("prompts", "Prompts", "Guidelines injected into each turn.", "prompts"),
     )
     app_rows = (
@@ -298,24 +298,12 @@ def settings_page(request: Request):
     ledes = {
         "about": "App name, description, GitHub, and the version running here.",
         "prompts": "Edit the markdown guidelines Studio injects into every LLM turn.",
-        "model": "Choose which AI service and model Studio uses for every chat and build.",
+        "model": "Which AI models Studio builds with. They're set up for the whole Pi in Dashboard → Settings → AI.",
         "notifications": "Alerts when a game or app is published to FileServe.",
     }
     model_ctx = {}
     if tab == "model" and is_admin:
-        active = llm.active_provider()
-        anthropic_model = model_settings.anthropic_model()
-        model_ctx = {
-            "provider_pref": model_settings.provider_pref(),
-            "key_status": llm.key_status(),
-            "active_provider": {"id": active["id"], "label": active["label"], "model": active["model"]},
-            "model_choices": model_settings.MODEL_CHOICES,
-            "anthropic_model": anthropic_model,
-            "anthropic_custom": model_settings.is_custom(anthropic_model),
-            "openai_model": model_settings.openai_model(),
-            "openai_custom": model_settings.is_custom_openai(model_settings.openai_model()),
-            "openai_choices": model_settings.OPENAI_CHOICES,
-        }
+        model_ctx = {"ai_models": llm.model_overview(), "dashboard_ai_url": f"{home}/settings?tab=ai"}
     return _csrf_response(
         request,
         "settings.html",
@@ -350,36 +338,9 @@ def settings_page(request: Request):
 
 
 @router.post("/settings/model")
-def settings_model_save(
-    request: Request,
-    provider: str = Form("auto"),
-    anthropic_model: str = Form(""),
-    anthropic_custom: str = Form(""),
-    openai_model: str = Form(""),
-    openai_custom: str = Form(""),
-    action: str = Form("save"),
-    csrf_token: str = Form(""),
-):
-    user, denied = _require_user(request)
-    if denied:
-        return denied
-    if not _is_admin(user):
-        return HTMLResponse("Admins only.", status_code=403)
-    back = f"{_prefix()}/settings?tab=model"
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
-        return RedirectResponse(f"{back}&err={quote('Form expired')}", status_code=303)
-    try:
-        if (action or "save").strip().lower() == "reset":
-            model_settings.reset()
-            msg = "Back to the defaults"
-        else:
-            chosen = anthropic_custom.strip() if anthropic_model == "custom" else anthropic_model
-            chosen_openai = openai_custom.strip() if openai_model == "custom" else openai_model
-            model_settings.save(provider=provider.strip(), anthropic=chosen, openai=chosen_openai)
-            msg = "Model saved. The next message uses it."
-    except ValueError as exc:
-        return RedirectResponse(f"{back}&err={quote(str(exc))}", status_code=303)
-    return RedirectResponse(f"{back}&msg={quote(msg)}", status_code=303)
+def settings_model_save(request: Request):
+    """Models moved to Dashboard → Settings → AI; an old bookmarked form lands back on the page."""
+    return RedirectResponse(f"{_prefix()}/settings?tab=model", status_code=303)
 
 
 @router.post("/settings/prompts")
@@ -648,6 +609,8 @@ def _chat_events(
         for what, chunk in chunks:
             if what == "stop":
                 stop = chunk
+                continue
+            if what == "model":
                 continue
             parts.append(chunk)
             now = time.monotonic()

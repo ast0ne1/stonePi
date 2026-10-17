@@ -515,6 +515,9 @@ h2 { font-family: var(--serif); font-size: 1.35rem; }
 .ai-callout p { margin: 0 0 6px; }
 .ai-callout ul { margin: 0; padding-left: 18px; }
 .ai-callout li { margin: 0 0 4px; }
+.ai-choices { border: 0; margin: 0; padding: 0; min-width: 0; }
+.ai-choices.is-off, .ai-choices:disabled, label.check.is-disabled { opacity: 0.55; }
+.story-kind + .story-kind { margin-left: 4px; }
 
 .text-link {
   color: var(--accent);

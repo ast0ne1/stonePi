@@ -164,7 +164,7 @@
     for (i = 0; i < nodes.length; i++) nodes[i].textContent = smallTime(d);
     nodes = document.querySelectorAll("[data-date]");
     for (i = 0; i < nodes.length; i++) nodes[i].textContent = dateText(d);
-    // Screensaver clock, or a Clock & weather widget on the page on screen.
+    // Screensaver clock, or a Clock (or Clock & weather) widget on the page on screen.
     nodes = (saver.hidden ? view : saver).querySelectorAll("[data-clock]");
     for (i = 0; i < nodes.length; i++) paintClock(nodes[i], d);
   }
@@ -240,7 +240,13 @@
       for (var j = 0; j < items.length; j++) if (items[j].getAttribute("data-app") === id) { idx = j; break; }
     }
     stack = [{ url: pageUrl(pageIndex), focus: idx }];
-    return load("v/app/" + id, false);
+    return load(id === "music" ? "v/music" : "v/app/" + id, false);
+  }
+  // The weather screen (U14): from a widget tap (data-go) or the Open Weather action.
+  function openWeather() {
+    if (current === "v/weather") return;
+    stack = [{ url: pageUrl(pageIndex), focus: screenKind() === "home" ? focusIndex : 0 }];
+    return load("v/weather", false);
   }
   function cycleApp(step) {
     var apps = cfg.apps;
@@ -267,6 +273,12 @@
     var key = el.getAttribute("data-key");
     if (go) return load(go, true);
     if (key) return pinKey(key);
+    var mus = el.getAttribute("data-music");
+    if (mus) return musicCmd(mus);
+    if (el.hasAttribute("data-device")) {
+      return musicCmd("transfer", el.getAttribute("data-device"), "Playing on " + el.getAttribute("data-device-name") + ".").then(afterPick);
+    }
+    if (el.hasAttribute("data-preset")) return musicCmd("preset", +el.getAttribute("data-preset")).then(afterPick);
     if (act === "restart") return load("v/restart?unit=" + encodeURIComponent(el.getAttribute("data-unit")), true);
     if (act === "restart-now") return postRestart(el.getAttribute("data-unit"), "");
     if (act === "back") return goBack();
@@ -305,6 +317,11 @@
   function allowed(action) { return cfg.allowed.indexOf(action) >= 0; }
   function perform(action) {
     if (!action || !allowed(action)) return;
+    if (action === "open:weather") return openWeather();
+    if (action.indexOf("music:preset:") === 0) return musicCmd("preset", +action.slice(13));
+    if (action === "music:vol_up") return volStep(1);
+    if (action === "music:vol_down") return volStep(-1);
+    if (action.indexOf("music:") === 0) return musicCmd(action.slice(6));
     if (action.indexOf("open:") === 0) return openApp(action.slice(5));
     if (action.indexOf("page:") === 0) {
       var n = +action.slice(5);
@@ -327,6 +344,138 @@
       case "restart": return openApp("system");
     }
   }
+
+  // ── Music (F7): commands, dial volume, Now Playing updates ────────────
+  var npTimer = null, npFresh = null;
+  function npRoot() { return mode === "saver" ? saver : view; }
+  function musicCmd(cmd, arg, okText) {
+    if (cmd === "play_pause") {
+      // Show the new state at once; the next read confirms it.
+      var btns = npRoot().querySelectorAll('[data-music="play_pause"]');
+      for (var i = 0; i < btns.length; i++) btns[i].classList.toggle("is-playing");
+    }
+    return fetch("music/cmd", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cmd: cmd, arg: arg === undefined ? null : arg })
+    }).then(function (r) { return r.json(); }).then(function (res) {
+      if (!res.ok) { toast(res.message || "That didn’t work."); }
+      else if (res.message || okText) toast(res.message || okText);
+      npSoon(700);
+      return res;
+    }).catch(function (err) { fail("music " + cmd, err); return { ok: false }; });
+  }
+  // A speaker or preset picked from its list: back to Now Playing.
+  function afterPick(res) { if (res && res.ok && screenKind() === "music-list") goBack(); }
+
+  // Dial clicks add up for ~300 ms and go out as one volume change.
+  var volClicks = 0, volTimer = null;
+  function volStep(dir) {
+    if (!allowed(dir > 0 ? "music:vol_up" : "music:vol_down")) return;
+    volClicks += dir;
+    var bar = npRoot().querySelector("[data-np-vol] i");
+    if (bar) {
+      var now = parseFloat(bar.style.width) || 0;
+      bar.style.width = Math.max(0, Math.min(100, now + dir * cfg.music.step)) + "%";
+    }
+    clearTimeout(volTimer);
+    volTimer = setTimeout(function () {
+      var clicks = volClicks;
+      volClicks = 0;
+      if (clicks) musicCmd("vol", clicks * cfg.music.step);
+    }, 300);
+  }
+  // Now Playing with the dial on volume: only when the speaker takes remote volume and the
+  // volume actions are allowed; otherwise the dial keeps its mapping.
+  // Now Playing on screen: the Music screen, or a page holding the full-page music widget.
+  function npShown() {
+    var kind = screenKind();
+    return kind === "music" || (kind === "home" && !!view.querySelector("[data-np-full]"));
+  }
+  function dialIsVolume(id) {
+    if ((id !== "dial_cw" && id !== "dial_ccw") || !cfg.music.dial_volume || !npShown()) return false;
+    var vol = view.querySelector("[data-np-vol]");
+    return !!vol && !vol.hidden && allowed(id === "dial_cw" ? "music:vol_up" : "music:vol_down");
+  }
+
+  function fmt(ms) { var s = Math.max(0, Math.floor(ms / 1000)); return Math.floor(s / 60) + ":" + pad(s % 60); }
+  function setAll(root, sel, text) {
+    var nodes = root.querySelectorAll(sel);
+    for (var i = 0; i < nodes.length; i++) if (nodes[i].textContent !== text) nodes[i].textContent = text;
+  }
+  function paintNp(st) {
+    var root = npRoot();
+    if (!root.querySelector("[data-np]") && !root.querySelector("[data-saver-music]")) return;
+    var i, nodes;
+    setAll(root, "[data-np-track]", st.track || (st.connected ? "Nothing playing" : "Music"));
+    setAll(root, "[data-np-artist]", st.track ? st.artist : (st.error || "Start something with a preset, or pick a speaker."));
+    setAll(root, "[data-np-album]", st.album || "");
+    setAll(root, "[data-np-device]", st.device ? st.device.name : "");
+    nodes = root.querySelectorAll("[data-np-art]");
+    for (i = 0; i < nodes.length; i++) {
+      if (st.art && nodes[i].getAttribute("src") !== st.art) nodes[i].setAttribute("src", st.art);
+      nodes[i].hidden = !st.art;
+    }
+    nodes = root.querySelectorAll("[data-np-art-empty]");
+    for (i = 0; i < nodes.length; i++) nodes[i].hidden = !!st.art;
+    nodes = root.querySelectorAll("[data-np-bar]");
+    for (i = 0; i < nodes.length; i++) {
+      nodes[i].setAttribute("data-progress", st.progress_ms);
+      nodes[i].setAttribute("data-duration", st.duration_ms);
+      nodes[i].setAttribute("data-at", st.at_ms);
+      nodes[i].setAttribute("data-playing", st.playing ? "1" : "0");
+    }
+    nodes = root.querySelectorAll('[data-music="play_pause"]');
+    for (i = 0; i < nodes.length; i++) nodes[i].classList.toggle("is-playing", !!st.playing);
+    nodes = root.querySelectorAll('[data-music="shuffle"]');
+    for (i = 0; i < nodes.length; i++) nodes[i].classList.toggle("on", !!st.shuffle);
+    nodes = root.querySelectorAll('[data-music="repeat"]');
+    for (i = 0; i < nodes.length; i++) { nodes[i].classList.toggle("on", st.repeat !== "off"); nodes[i].setAttribute("data-repeat", st.repeat); }
+    var d = st.device;
+    nodes = root.querySelectorAll("[data-np-vol]");
+    for (i = 0; i < nodes.length; i++) {
+      var hasVol = !!(d && d.supports_volume && d.volume !== null);
+      nodes[i].hidden = !hasVol;
+      if (hasVol && !volClicks) nodes[i].querySelector("i").style.width = d.volume + "%";
+    }
+    paintBars();
+  }
+  // Progress bars move every second between reads (the Pi's clock, not the device's).
+  function paintBars() {
+    var nodes = npRoot().querySelectorAll("[data-np-bar]");
+    var now = Date.now() + clockOffset;
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i], dur = +el.getAttribute("data-duration"), pos = +el.getAttribute("data-progress");
+      if (el.getAttribute("data-playing") === "1") pos += now - (+el.getAttribute("data-at"));
+      pos = dur ? Math.min(pos, dur) : 0;
+      var line = el.querySelector(".np-line i");
+      var width = (dur ? Math.round(pos / dur * 1000) / 10 : 0) + "%";
+      if (line && line.style.width !== width) line.style.width = width;
+      var p = el.querySelector("[data-np-pos]");
+      if (p) { var t = dur ? fmt(pos) : ""; if (p.textContent !== t) p.textContent = t; }
+      var dEl = el.querySelector("[data-np-dur]");
+      if (dEl) { var dt = dur ? fmt(dur) : ""; if (dEl.textContent !== dt) dEl.textContent = dt; }
+    }
+  }
+  function npRead() {
+    return fetch("np?src=screen", { credentials: "same-origin" }).then(function (r) {
+      return r.ok ? r.json() : null;
+    }).then(function (st) { if (st && st.ok) paintNp(st); }).catch(function () {});
+  }
+  // Poll every 3 s while Now Playing is on screen; one extra read soon after a command.
+  function npSoon(ms) {
+    clearTimeout(npFresh);
+    npFresh = setTimeout(function () { if (npShown() || screenKind() === "home") npRead(); }, ms);
+  }
+  function npPoll() {
+    clearTimeout(npTimer);
+    npTimer = setTimeout(function () {
+      if (mode === "active" && npShown()) npRead();
+      npPoll();
+    }, 3000);
+  }
+  npPoll();
 
   // ── Idle, screensaver, dimming ─────────────────────────────────────────
   var mode = "active";
@@ -369,21 +518,32 @@
     return "#" + ((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1);
   }
   var DIM_BASE = { "--fg": "#F5F1E8", "--muted": "#9A958A", "--card": "#161A20", "--line": "#262B33", "--good": "#7FE0B0", "--bad": "#FF6B5E" };
+  var paletteF = 1; // colour scale while dimmed without a backlight (animations follow it)
+  // Clock colours on screen: the screensaver's own while any screensaver is up and its clock is
+  // set apart from the widgets (U13): the Clock face, Matrix's time, the corner time on Logo and
+  // Pipes. Otherwise the widgets'.
+  function clockColors() {
+    var own = cfg.clock.saver;
+    if (mode === "saver" && own && own.separate) return { color: own.color, accent: own.accent };
+    return { color: cfg.clock.color, accent: cfg.clock.accent };
+  }
   function setPalette(f, quiet) {
-    var clock = quiet && cfg.clock.quiet_color ? cfg.clock.quiet_color : cfg.clock.color;
+    paletteF = f;
+    var cc = clockColors();
+    var clock = quiet && cfg.clock.quiet_color ? cfg.clock.quiet_color : cc.color;
     if (f >= 0.999 && !(quiet && cfg.clock.quiet_color)) {
       body.classList.remove("dim");
       for (var k in DIM_BASE) body.style.removeProperty(k);
       body.style.setProperty("--accent", cfg.look.accent);
-      body.style.setProperty("--clock", cfg.clock.color);
-      body.style.setProperty("--clock-accent", cfg.clock.accent);
+      body.style.setProperty("--clock", cc.color);
+      body.style.setProperty("--clock-accent", cc.accent);
       return;
     }
     body.classList.add("dim");
     for (var key in DIM_BASE) body.style.setProperty(key, hexScale(DIM_BASE[key], f));
     body.style.setProperty("--accent", hexScale(cfg.look.accent, f));
     body.style.setProperty("--clock", hexScale(clock, f));
-    body.style.setProperty("--clock-accent", hexScale(cfg.clock.accent, f));
+    body.style.setProperty("--clock-accent", hexScale(cc.accent, f));
   }
   function applyLevel(force) {
     var t = targetLevel();
@@ -399,7 +559,283 @@
     } else {
       setPalette(t.off ? 0 : Math.max(0.08, t.level / 100), t.quiet);
     }
+    // Animated screensavers: full rate when bright, half when dimmed or quiet, none when off.
+    var dimmed = t.quiet || t.level < Math.round(bright * 100);
+    animFps = t.off ? 0 : dimmed ? 15 : 30;
+    if (anim) anim.recolor();
+    runAnim();
   }
+
+  // ── Animated screensavers (style ≠ clock) ──────────────────────────────
+  // Each style builds its state on the freshly rendered saver and returns frame(dt), which
+  // draws one step, and recolor(), which repaints after a dim change. One timer drives
+  // whichever is on screen.
+  var SPEEDS = { slow: 0.55, normal: 1, fast: 1.7 };
+  var anim = null, animFps = 30, animTimer = null, animLast = 0;
+
+  // Bouncing logo: the StonePi mark drifting like the DVD logo. Category colours (dark theme
+  // icon tints) when it recolours, else the mark's own sand / stone / stone-deep slabs.
+  var LOGO_COLORS = ["#C7BBA8", "#5CC2A6", "#60A5FA", "#E3A653", "#B19CF0"];
+  var LOGO_FLAT = ["#C7BBA8", "#9AA0A6", "#80868C"];
+  var LOGO_SIZE = 120, LOGO_PX_S = 70, CORNER_PX = 10;
+  var logoPos = null; // kept across re-renders so the mark never jumps
+  function logoSaver(el) {
+    var o = cfg.idle.saver.logo;
+    var mark = el.querySelector("[data-lg-mark]");
+    var slabs = mark.querySelectorAll("polygon");
+    var maxX = 800 - LOGO_SIZE, maxY = 480 - LOGO_SIZE;
+    var v = LOGO_PX_S * (SPEEDS[o.speed] || 1);
+    if (!logoPos) {
+      logoPos = { x: Math.random() * maxX, y: Math.random() * maxY,
+        vx: (Math.random() < 0.5 ? -1 : 1) * v * 0.8, vy: (Math.random() < 0.5 ? -1 : 1) * v * 0.6, c: 0 };
+    }
+    var p = logoPos;
+    function paint() {
+      for (var i = 0; i < slabs.length; i++) {
+        var c = o.recolor ? LOGO_COLORS[p.c % LOGO_COLORS.length] : LOGO_FLAT[i];
+        slabs[i].setAttribute("fill", hexScale(c, paletteF));
+      }
+    }
+    function place() { mark.style.transform = "translate(" + Math.round(p.x) + "px," + Math.round(p.y) + "px)"; }
+    paint();
+    place();
+    return {
+      frame: function (dt) {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        var hitX = false, hitY = false;
+        if (p.x <= 0 || p.x >= maxX) { p.x = Math.max(0, Math.min(maxX, p.x)); p.vx = -p.vx; hitX = true; }
+        if (p.y <= 0 || p.y >= maxY) { p.y = Math.max(0, Math.min(maxY, p.y)); p.vy = -p.vy; hitY = true; }
+        if (hitX || hitY) {
+          var nearX = p.x <= CORNER_PX || p.x >= maxX - CORNER_PX, nearY = p.y <= CORNER_PX || p.y >= maxY - CORNER_PX;
+          if (o.recolor) { p.c++; paint(); }
+          if (o.corner && nearX && nearY) {
+            mark.classList.remove("is-corner");
+            void mark.offsetWidth; // restart the pulse
+            mark.classList.add("is-corner");
+          }
+        }
+        place();
+      },
+      recolor: paint
+    };
+  }
+
+  // Matrix: code rain on a canvas, ~20 px glyphs in 40 columns. Each column falls at its own
+  // pace; the trail fades by painting translucent black over the canvas each frame. That fade
+  // stalls at a faint residue (8-bit rounding), so each head also wipes the cell MX_TRAIL rows
+  // behind it, and falls MX_TRAIL rows past the bottom before starting again.
+  var MX_GLYPHS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ:.=*+-<>|";
+  var MX_SIZE = 20, MX_ROWS_S = 13, MX_FADE = 0.86, MX_TRAIL = 22;
+  var MX_GAP = { light: 40, normal: 14, dense: 4 }; // rows a column rests before falling again
+  function matrixSaver(el) {
+    var o = cfg.idle.saver.matrix;
+    var ctx = el.querySelector("[data-mx]").getContext("2d");
+    var cols = Math.floor(800 / MX_SIZE), rows = Math.ceil(480 / MX_SIZE);
+    var rate = MX_ROWS_S * (SPEEDS[o.speed] || 1), gap = MX_GAP[o.density] || MX_GAP.normal;
+    var drops = [];
+    for (var i = 0; i < cols; i++) drops.push({ y: -Math.random() * (rows + gap), pace: 0.7 + Math.random() * 0.6, row: -1, ch: "" });
+    // The leading glyph is the colour washed towards white.
+    var n = parseInt(o.color.slice(1), 16);
+    var wash = function (c) { return Math.round(c + (255 - c) * 0.7); };
+    var headBase = "#" + ((1 << 24) | (wash((n >> 16) & 255) << 16) | (wash((n >> 8) & 255) << 8) | wash(n & 255)).toString(16).slice(1);
+    var bodyColor = "", headColor = "";
+    function paint() {
+      bodyColor = hexScale(o.color, paletteF);
+      headColor = hexScale(headBase, paletteF);
+    }
+    function glyph() { return MX_GLYPHS.charAt(Math.floor(Math.random() * MX_GLYPHS.length)); }
+    paint();
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, 800, 480);
+    ctx.font = "bold " + (MX_SIZE - 2) + "px monospace";
+    ctx.textBaseline = "top";
+    return {
+      frame: function (dt) {
+        ctx.fillStyle = "rgba(0,0,0," + (1 - Math.pow(MX_FADE, dt * rate)).toFixed(3) + ")";
+        ctx.fillRect(0, 0, 800, 480);
+        for (var c = 0; c < cols; c++) {
+          var d = drops[c], x = c * MX_SIZE;
+          d.y += rate * d.pace * dt;
+          var row = Math.floor(d.y);
+          // Step through every row crossed, so a fast column leaves no gaps.
+          for (var r = Math.max(d.row + 1, 0); r <= row; r++) {
+            // The previous head turns body colour; a new glyph leads.
+            if (d.row >= 0 && d.row < rows) { ctx.fillStyle = bodyColor; ctx.fillText(d.ch, x, d.row * MX_SIZE); }
+            if (r - MX_TRAIL >= 0 && r - MX_TRAIL < rows) { ctx.fillStyle = "#000"; ctx.fillRect(x, (r - MX_TRAIL) * MX_SIZE, MX_SIZE, MX_SIZE); }
+            if (r < rows) { d.ch = glyph(); ctx.fillStyle = headColor; ctx.fillText(d.ch, x, r * MX_SIZE); }
+            d.row = r;
+          }
+          if (d.row >= rows + MX_TRAIL) { d.y = -Math.random() * gap; d.row = -1; d.pace = 0.7 + Math.random() * 0.6; }
+        }
+      },
+      recolor: paint
+    };
+  }
+
+  // 3D Pipes, after the Windows 98 screensaver: a pipe grows cell by cell through a 3D grid
+  // seen in perspective, turning at random, until it boxes itself in; then the next one starts
+  // in a new colour. Once the screen is busy it holds for a moment, clears and begins again.
+  // Each step draws one shaded segment (and a joint at a turn) on top of what's there, so a
+  // frame costs almost nothing. Steps are kept so a dim change can repaint them all.
+  var PP_NX = 16, PP_NY = 10, PP_NZ = 10, PP_D = 12, PP_R = 0.27;
+  var PP_SCALE = 760 * PP_D / PP_NX; // the front layer spans the screen
+  var PP_STEPS_S = 8, PP_TURN = 0.28, PP_FILL = 0.42, PP_HOLD_S = 2.5, PP_BALL = 0.2;
+  var PP_LEN_MIN = 30, PP_LEN_MAX = 70; // segments before a pipe ends anyway, so colours change
+  var PP_COLORS = ["#E53935", "#43A047", "#1E88E5", "#FDD835", "#00ACC1", "#8E24AA", "#FB8C00", "#ECEFF1"];
+  var PP_DIRS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+  // A pipe colour darkened (f < 1) or washed towards white (toWhite), then dim-scaled.
+  function ppMix(hex, f, toWhite) {
+    var n = parseInt(String(hex).slice(1), 16);
+    var ch = function (c) { return Math.round(toWhite ? c + (255 - c) * f : c * f); };
+    return hexScale("#" + ((1 << 24) | (ch((n >> 16) & 255) << 16) | (ch((n >> 8) & 255) << 8) | ch(n & 255)).toString(16).slice(1), paletteF);
+  }
+  function pipesSaver(el) {
+    var o = cfg.idle.saver.pipes;
+    var ctx = el.querySelector("[data-pp]").getContext("2d");
+    var rate = PP_STEPS_S * (SPEEDS[o.speed] || 1);
+    var total = PP_NX * PP_NY * PP_NZ;
+    var taken, used, ops, pipe, colorAt, acc = 0, hold = 0;
+    function key(p) { return p[0] + "," + p[1] + "," + p[2]; }
+    function inside(p) { return p[0] >= 0 && p[0] < PP_NX && p[1] >= 0 && p[1] < PP_NY && p[2] >= 0 && p[2] < PP_NZ; }
+    function proj(p) {
+      var s = PP_SCALE / (PP_D + p[2]);
+      return { x: 400 + (p[0] - (PP_NX - 1) / 2) * s, y: 240 + (p[1] - (PP_NY - 1) / 2) * s, r: PP_R * s };
+    }
+    function drawJoint(op) {
+      var c = proj(op.p), r = c.r * (op.ball ? 1.6 : 1);
+      var g = ctx.createRadialGradient(c.x - r * 0.35, c.y - r * 0.35, r * 0.1, c.x, c.y, r);
+      g.addColorStop(0, ppMix(op.color, 0.65, true));
+      g.addColorStop(0.45, ppMix(op.color, 1));
+      g.addColorStop(1, ppMix(op.color, 0.3));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    function drawSeg(op) {
+      var a = proj(op.a), b = proj(op.b);
+      var dx = b.x - a.x, dy = b.y - a.y, len = Math.sqrt(dx * dx + dy * dy);
+      // Seen end-on (straight into the screen): a disc.
+      if (len < 1) return drawJoint({ p: op.a[2] < op.b[2] ? op.a : op.b, color: op.color, ball: false });
+      var nx = -dy / len, ny = dx / len;
+      if (nx + ny > 0) { nx = -nx; ny = -ny; } // lit edge towards the top left
+      var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, mr = (a.r + b.r) / 2;
+      var g = ctx.createLinearGradient(mx + nx * mr, my + ny * mr, mx - nx * mr, my - ny * mr);
+      g.addColorStop(0, ppMix(op.color, 0.55));
+      g.addColorStop(0.25, ppMix(op.color, 0.6, true));
+      g.addColorStop(0.5, ppMix(op.color, 1));
+      g.addColorStop(1, ppMix(op.color, 0.22));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(a.x + nx * a.r, a.y + ny * a.r);
+      ctx.lineTo(b.x + nx * b.r, b.y + ny * b.r);
+      ctx.lineTo(b.x - nx * b.r, b.y - ny * b.r);
+      ctx.lineTo(a.x - nx * a.r, a.y - ny * a.r);
+      ctx.closePath();
+      ctx.fill();
+    }
+    function draw(op) { return op.seg ? drawSeg(op) : drawJoint(op); }
+    function add(op) { ops.push(op); draw(op); }
+    function reset() {
+      taken = {};
+      used = 0;
+      ops = [];
+      pipe = null;
+      colorAt = Math.floor(Math.random() * PP_COLORS.length);
+      ctx.clearRect(0, 0, 800, 480);
+    }
+    function freeDirs(p) {
+      var out = [];
+      for (var i = 0; i < PP_DIRS.length; i++) {
+        var q = [p[0] + PP_DIRS[i][0], p[1] + PP_DIRS[i][1], p[2] + PP_DIRS[i][2]];
+        if (inside(q) && !taken[key(q)]) out.push(i);
+      }
+      return out;
+    }
+    function startPipe() {
+      for (var tries = 0; tries < 60; tries++) {
+        var p = [Math.floor(Math.random() * PP_NX), Math.floor(Math.random() * PP_NY), Math.floor(Math.random() * PP_NZ)];
+        var dirs = !taken[key(p)] && freeDirs(p);
+        if (!dirs || !dirs.length) continue;
+        taken[key(p)] = true;
+        used++;
+        pipe = { p: p, d: dirs[Math.floor(Math.random() * dirs.length)], color: PP_COLORS[colorAt++ % PP_COLORS.length],
+          left: PP_LEN_MIN + Math.floor(Math.random() * (PP_LEN_MAX - PP_LEN_MIN)) };
+        add({ p: p, color: pipe.color, ball: false }); // rounded start
+        return true;
+      }
+      return false;
+    }
+    function step() {
+      if (!pipe && !startPipe()) { hold = PP_HOLD_S; return; }
+      var dirs = freeDirs(pipe.p);
+      // Boxed in, or long enough: round the end off; the next step starts a new pipe.
+      if (!dirs.length || pipe.left-- <= 0) { add({ p: pipe.p, color: pipe.color, ball: false }); pipe = null; return; }
+      var d = pipe.d;
+      if (dirs.indexOf(d) < 0 || Math.random() < PP_TURN) {
+        var turns = dirs.filter(function (i) { return i !== pipe.d; });
+        d = turns.length ? turns[Math.floor(Math.random() * turns.length)] : d;
+      }
+      var q = [pipe.p[0] + PP_DIRS[d][0], pipe.p[1] + PP_DIRS[d][1], pipe.p[2] + PP_DIRS[d][2]];
+      add({ seg: true, a: pipe.p, b: q, color: pipe.color });
+      if (d !== pipe.d) {
+        // The joint covers the corner where the pipe turned.
+        add({ p: pipe.p, color: pipe.color, ball: o.joints === "ball" || (o.joints === "mixed" && Math.random() < PP_BALL) });
+      }
+      taken[key(q)] = true;
+      used++;
+      pipe.p = q;
+      pipe.d = d;
+      if (used >= total * PP_FILL) hold = PP_HOLD_S;
+    }
+    reset();
+    return {
+      frame: function (dt) {
+        if (hold > 0) {
+          hold -= dt;
+          if (hold <= 0) reset();
+          return;
+        }
+        acc += dt * rate;
+        while (acc >= 1 && hold <= 0) { acc -= 1; step(); }
+      },
+      recolor: function () {
+        ctx.clearRect(0, 0, 800, 480);
+        for (var i = 0; i < ops.length; i++) draw(ops[i]);
+      }
+    };
+  }
+
+  var SAVERS = { logo: logoSaver, matrix: matrixSaver, pipes: pipesSaver };
+  function startAnim() {
+    stopAnim();
+    var el = saver.querySelector("[data-saver]");
+    var make = el && SAVERS[el.getAttribute("data-saver")];
+    if (!make) return;
+    anim = make(el);
+    runAnim();
+  }
+  function stopAnim() {
+    anim = null;
+    clearTimeout(animTimer);
+    animTimer = null;
+  }
+  // Runs while a style is on screen, the screen is lit and the page is visible.
+  function runAnim() {
+    if (!anim || animTimer || !animFps || document.hidden) return;
+    animLast = Date.now();
+    var step = function () {
+      animTimer = null;
+      if (!anim || !animFps || document.hidden) return;
+      var now = Date.now();
+      anim.frame(Math.min(0.2, (now - animLast) / 1000));
+      animLast = now;
+      animTimer = setTimeout(step, 1000 / animFps);
+    };
+    animTimer = setTimeout(step, 1000 / animFps);
+  }
+  document.addEventListener("visibilitychange", runAnim);
 
   function showSaver() {
     if (mode === "saver") return;
@@ -415,6 +851,7 @@
       saver.hidden = false;
       view.hidden = true;
       paintTime(true);
+      startAnim();
       applyLevel(true);
     }).catch(function () {});
   }
@@ -425,13 +862,23 @@
     return shown && shown.then ? shown.then(function () { applyLevel(true); }) : applyLevel(true);
   }
   function refreshSaver() {
+    // The animations show no feed data, but the music artwork can take their place.
+    if (cfg.idle.saver.style !== "clock" && !cfg.music.saver_artwork) return;
     fetch("v/saver", { credentials: "same-origin" }).then(function (r) { return r.ok ? r.text() : null; }).then(function (html) {
-      if (html !== null && mode === "saver") { saver.innerHTML = html; paintTime(true); }
+      if (html === null || mode !== "saver") return;
+      var wasMusic = !!saver.querySelector("[data-saver-music]");
+      if (!wasMusic && cfg.idle.saver.style !== "clock" && html.indexOf("data-saver-music") < 0) return; // animation stays
+      saver.innerHTML = html;
+      paintTime(true);
+      paintBars();
+      startAnim();
+      applyLevel(true);
     }).catch(function () {});
   }
   function wake() {
     asleep = false;
     mode = "active";
+    stopAnim();
     saver.hidden = true;
     view.hidden = false;
     paintTime(true);
@@ -441,6 +888,7 @@
   function onInput(id) {
     lastInput = Date.now();
     if (mode !== "active") { wake(); return; }
+    if (dialIsVolume(id)) return volStep(id === "dial_cw" ? 1 : -1);
     perform(cfg.controls[id]);
   }
 
@@ -582,7 +1030,7 @@
       if (backlight !== !!t.backlight) { backlight = !!t.backlight; applyLevel(true); }
       if (frev && t.frev !== frev) {
         if (mode === "saver") refreshSaver();
-        else if (screenKind() === "home" || screenKind() === "app") load(current, false, focusIndex);
+        else if (screenKind() === "home" || screenKind() === "app" || screenKind() === "weather") load(current, false, focusIndex);
       }
       frev = t.frev;
     }).catch(function () {
@@ -611,6 +1059,7 @@
   var QUIET_SAVER_S = 60;
   setInterval(function () {
     paintTime(false);
+    paintBars();
     var idle = (Date.now() - lastInput) / 1000;
     var saverAfter = cfg.idle.screensaver_after_s;
     // 0 = no screensaver by day; quiet hours still bring it after a minute untouched.
@@ -631,6 +1080,7 @@
       if (e.data.type === "input") onInput(String(e.data.id));
       else if (e.data.type === "saver") { lastInput = Date.now(); showSaver(); }
       else if (e.data.type === "wake") { lastInput = Date.now(); wake(); }
+      else if (e.data.type === "open") { lastInput = Date.now(); if (mode !== "active") wake(); perform(String(e.data.action)); }
       else if (e.data.type === "quiet") { forceQuiet = !!e.data.on; lastInput = 0; applyLevel(true); }
       else if (e.data.type === "rotate") { rotatePreview = !!e.data.on; lastInput = 0; pageShownAt = Date.now(); }
     });
@@ -640,4 +1090,6 @@
   paintTime(true);
   applyLevel(true);
   tick();
+  // Notify's editor reloads the preview with ?saver=1 after a screensaver change.
+  if (cfg.preview && /[?&]saver=1(&|$)/.test(location.search)) showSaver();
 })();

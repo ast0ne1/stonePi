@@ -8,18 +8,19 @@ under Notify's ``/carthing/panel/`` proxy.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from stonepi_display import carthing
 
-from app import __asset_rev__, __version__, state
+from app import __asset_rev__, __version__, music, state
 from app.config import ROOT_DIR
 
 templates = Jinja2Templates(directory=str(ROOT_DIR / "app" / "templates"))
@@ -133,18 +134,25 @@ def _client_config(caller: Caller, page: int = 0) -> dict[str, Any]:
         "idle": cfg["idle"],
         "clock": cfg["clock"],
         "look": cfg["look"],
+        "music": {
+            "dial_volume": bool(_music_cfg(cfg)["dial_volume"]),
+            "step": int(_music_cfg(cfg)["volume_step"]),
+            "saver_artwork": bool(_music_cfg(cfg)["saver_artwork"]),
+        },
         "rev": caller.panel.get("rev") or "",
         "preview": caller.preview,
         **_clock_offset(),
     }
 
 
-def _widget(widget: dict) -> dict:
+def _widget(widget: dict, config: dict | None = None) -> dict:
     """One widget on a page: its card, plus rows/numbers when it's large."""
     wid, size = widget["id"], widget.get("size") or "small"
     view: dict[str, Any] = {"id": wid, "size": size, "label": WIDGET_LABELS.get(wid, wid)}
-    if wid == "clock":
-        return {**view, "kind": "clock"}
+    if wid in ("clock", "weather", "time"):
+        return {**view, "kind": wid}
+    if wid == "music":
+        return {**view, "kind": "music", "np": _np(NP_AGE["widget"]), "opts": _music_options(config or carthing.default_config())}
     data = state.feed(wid)
     card = data.get("card") or {}
     view.update(
@@ -172,7 +180,7 @@ def _page_view(caller: Caller, index: int) -> dict[str, Any]:
     index = index if 0 <= index < len(pages) else 0
     page = pages[index]
     layout = carthing.page_layout(page["widgets"])
-    cols = [[_widget(w) for w in col] for col in layout["cols"]]
+    cols = [[_widget(w, cfg) for w in col] for col in layout["cols"]]
     return {
         "page": {"index": index, "number": index + 1, "name": page["name"], "count": len(pages)},
         "dots": [
@@ -180,7 +188,11 @@ def _page_view(caller: Caller, index: int) -> dict[str, Any]:
             for n, p in enumerate(pages, start=1)
         ],
         "layout": {"kind": layout["kind"], "cols": cols, "count": sum(len(c) for c in cols)},
-        "has_clock": any(w["id"] == "clock" for w in page["widgets"]),
+        # A clock on the page: the strip shows the page name instead of the time.
+        "has_clock": any(w["id"] in ("clock", "time") for w in page["widgets"]),
+        # Weather on the page already: the strip leaves it out.
+        "has_forecast": any(w["id"] in ("clock", "weather") for w in page["widgets"]),
+        "has_weather": any(w["id"] == "weather" for w in page["widgets"]),
         "weather": state.weather(cfg),
     }
 
@@ -228,12 +240,16 @@ def view_home(request: Request, page: str = ""):
 
 
 @router.get("/v/app/{mini}", response_class=HTMLResponse)
-def view_list(request: Request, mini: str):
+def view_list(request: Request, mini: str, kind: str = Query("", alias="list")):
     caller = _caller(request)
     if not caller.ok:
         return _denied(request, caller)
     if mini not in MINI_LABELS:
         return HTMLResponse("", status_code=404)
+    if mini == "music":
+        if kind in ("speakers", "presets"):
+            return _music_list(request, caller, kind)
+        return view_music(request)
     data = state.feed(mini)
     return _render(
         request,
@@ -267,14 +283,48 @@ def view_item(request: Request, mini: str, id: str = ""):
     )
 
 
+@router.get("/v/weather", response_class=HTMLResponse)
+def view_weather(request: Request):
+    """The large weather screen (U14): now, the next 12 hours and the week."""
+    caller = _caller(request)
+    if not caller.ok:
+        return _denied(request, caller)
+    return _render(request, "weather.html", caller, {"weather": state.weather(caller.config)})
+
+
+def _saver_clock(config: dict) -> dict:
+    """Face and colours the screensaver's clock uses: its own when separate (U13), else the widgets'.
+
+    The Clock style always draws it; Matrix's time uses it only when separate (otherwise its
+    usual bold digital), so setting the screensaver clock apart shows on Matrix too.
+    """
+    clock = config["clock"]
+    own = clock.get("saver") or {}
+    if own.get("separate"):
+        return {"face": own["face"], "color": own["color"], "accent": own["accent"], "separate": True}
+    return {"face": clock["face"], "color": clock["color"], "accent": clock["accent"], "separate": False}
+
+
 @router.get("/v/saver", response_class=HTMLResponse)
 def view_saver(request: Request):
     caller = _caller(request)
     if not caller.ok:
         return _denied(request, caller)
     show = caller.config["idle"]["show"]
+    if _music_cfg(caller.config)["saver_artwork"] and music.player.connected():
+        np = _np(NP_AGE["saver"])
+        if np["playing"] and np["track"]:
+            return _render(request, "saver.html", caller, {"music": np, "weather": None, "live": None, "saver_clock": _saver_clock(caller.config)})
+    if caller.config["idle"]["saver"]["style"] != "clock":
+        # Date, weather and the live line are clock-only; the animations need no data.
+        return _render(request, "saver.html", caller, {"weather": None, "live": None, "saver_clock": _saver_clock(caller.config)})
     live = None
-    if show.get("live_line") and show["live_line"] != "none":
+    if show.get("live_line") == "music":
+        np = _np(NP_AGE["saver"]) if music.player.connected() else None
+        if np and np["track"] and np["active"]:
+            text = np["track"] + (f" — {np['artist']}" if np["artist"] else "")
+            live = {"label": "♪", "text": text[:80]}
+    elif show.get("live_line") and show["live_line"] != "none":
         card = state.feed(show["live_line"]).get("card") or {}
         if card.get("headline"):
             live = {"label": MINI_LABELS.get(show["live_line"], ""), "text": str(card["headline"])[:80]}
@@ -282,7 +332,11 @@ def view_saver(request: Request):
         request,
         "saver.html",
         caller,
-        {"weather": state.weather(caller.config) if show.get("weather") else None, "live": live},
+        {
+            "weather": state.weather(caller.config) if show.get("weather") else None,
+            "live": live,
+            "saver_clock": _saver_clock(caller.config),
+        },
     )
 
 
@@ -369,10 +423,15 @@ def tick(request: Request):
 
     if caller.kind == "device":
         connector.note_tick()
+    frev = state.feeds_rev([m for m in shown if m != "music"])
+    # Music on a page, as the live line, or the artwork screensaver: follow the track too.
+    music_age = NP_AGE["widget"] if "music" in shown else NP_AGE["saver"] if _music_cfg(cfg)["saver_artwork"] else 0
+    if music_age and music.player.connected():
+        frev = hashlib.sha256(f"{frev}|{music.player.signature(music_age)}".encode("utf-8")).hexdigest()[:12]
     return {
         "ok": True,
         "rev": caller.panel.get("rev") or "",
-        "frev": state.feeds_rev(shown),
+        "frev": frev,
         "backlight": caller.kind == "device" and connector.has_backlight(),
         **_clock_offset(),
     }
@@ -425,6 +484,165 @@ def background(request: Request, asset_id: str):
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=31536000, immutable"})
 
 
+# ── Music (F7): Now Playing, speakers, presets, commands, artwork ────────────
+
+# How old the cached Spotify state may be, by what's asking (carthing-spotify.md §5).
+NP_AGE = {"screen": 3.0, "widget": 10.0, "saver": 30.0}
+# Panel commands → the action that must be allowed for them.
+MUSIC_CMD_ACTION = {
+    "play_pause": "music:play_pause",
+    "next": "music:next",
+    "prev": "music:prev",
+    "shuffle": "music:shuffle",
+    "repeat": "music:repeat",
+    "save": "music:save",
+    "transfer": "open:music",
+}
+
+
+def _np(max_age: float) -> dict[str, Any]:
+    return music.player.now_playing(max_age)
+
+
+def _music_cfg(config: dict) -> dict[str, Any]:
+    return config.get("music") or carthing.default_music()
+
+
+def _music_options(config: dict) -> dict[str, Any]:
+    opts = _music_cfg(config)
+    allowed = set(config["allowed_actions"])
+    return {
+        "show_save": bool(opts.get("show_save")) and "music:save" in allowed,
+        "presets": [
+            {"number": n, "name": p.get("name") or "", "set": bool(p.get("uri")), "allowed": f"music:preset:{n}" in allowed}
+            for n, p in enumerate(opts.get("presets") or [], start=1)
+        ],
+        "allowed": {cmd: action in allowed for cmd, action in MUSIC_CMD_ACTION.items()},
+    }
+
+
+@router.get("/v/music", response_class=HTMLResponse)
+def view_music(request: Request):
+    """Now Playing: artwork, track, progress, speaker and volume; controls in the focus list."""
+    caller = _caller(request)
+    if not caller.ok:
+        return _denied(request, caller)
+    return _render(request, "music.html", caller, {"np": _np(NP_AGE["screen"]), "opts": _music_options(caller.config)})
+
+
+def _music_list(request: Request, caller: Caller, kind: str):
+    opts = _music_options(caller.config)
+    rows: list[dict[str, Any]] = []
+    message = ""
+    if kind == "speakers":
+        if not opts["allowed"]["transfer"]:
+            message = "Choosing a speaker isn't allowed in this config."
+        else:
+            try:
+                rows = music.player.devices(max_age=3.0)
+            except music.MusicError as exc:
+                message = str(exc)
+            if not rows and not message:
+                message = "No speakers right now. Open Spotify on one to wake it."
+    else:
+        rows = [p for p in opts["presets"] if p["set"]]
+        if not rows:
+            message = "No music presets yet. Choose them in Notify → Displays → Car Thing → Music."
+    return _render(request, "music_list.html", caller, {"kind": kind, "rows": rows, "message": message, "np": _np(NP_AGE["widget"])})
+
+
+@router.get("/np")
+def now_playing(request: Request, src: str = "screen"):
+    """Small JSON the device polls while Now Playing (or a music widget) is on screen."""
+    caller = _caller(request)
+    if not caller.ok:
+        return JSONResponse({"ok": False}, status_code=403)
+    return {"ok": True, **_np(NP_AGE.get(src, NP_AGE["screen"]))}
+
+
+@router.post("/music/cmd")
+async def music_cmd(request: Request):
+    """One Music command from the panel. Every one goes through the config's allowed actions."""
+    caller = _caller(request)
+    if not caller.ok:
+        return JSONResponse({"ok": False, "message": "Not paired."}, status_code=403)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    cmd, arg = str(body.get("cmd") or ""), body.get("arg")
+    cfg = caller.config
+    allowed = set(cfg["allowed_actions"])
+    opts = _music_cfg(cfg)
+    if cmd == "vol":
+        try:
+            delta = max(-50, min(50, int(arg)))
+        except (TypeError, ValueError):
+            delta = 0
+        action = "music:vol_up" if delta > 0 else "music:vol_down"
+    elif cmd == "preset":
+        try:
+            number = int(arg)
+        except (TypeError, ValueError):
+            number = 0
+        action = f"music:preset:{number}"
+    else:
+        action = MUSIC_CMD_ACTION.get(cmd, "")
+    if not action or action not in allowed:
+        return JSONResponse({"ok": False, "message": "That isn't allowed on this panel."}, status_code=403)
+    import asyncio
+
+    def run() -> str:
+        player = music.player
+        if cmd == "play_pause":
+            player.play_pause(opts)
+        elif cmd in ("next", "prev"):
+            player.skip(cmd == "next")
+        elif cmd == "vol":
+            if delta:
+                return f"Volume {player.volume(delta)}%"
+        elif cmd == "shuffle":
+            player.shuffle()
+        elif cmd == "repeat":
+            player.repeat()
+        elif cmd == "save":
+            return f"Saved {player.save()} to Liked Songs."
+        elif cmd == "transfer":
+            player.transfer(str(arg or ""))
+        elif cmd == "preset":
+            name = player.preset(number, opts)
+            return f"Playing {name}." if name else ""
+        return ""
+
+    try:
+        message = await asyncio.to_thread(run)
+    except music.MusicError as exc:
+        return {"ok": False, "code": exc.code, "message": str(exc)}
+    return {"ok": True, "message": message}
+
+
+@router.get("/art/{key}")
+def artwork(request: Request, key: str):
+    caller = _caller(request)
+    if not caller.ok:
+        return Response(status_code=403)
+    path = music.player.art_path(key)
+    if path is None:
+        return Response(status_code=404)
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=604800, immutable"})
+
+
+@router.get("/internal/music/catalog")
+def internal_music_catalog(request: Request):
+    """Notify's Music tab: speakers and playlists to choose presets from."""
+    from stonepi_auth.internal import verify_internal
+
+    if not verify_internal(state.session_secret(), "GET", "/internal/music/catalog", request.headers):
+        return JSONResponse({"ok": False}, status_code=403)
+    return music.catalog()
+
+
 @router.get("/internal/status")
 def internal_status(request: Request):
     """Notify's Device tab: is the Car Thing checking in?"""
@@ -439,6 +657,7 @@ def internal_status(request: Request):
         "connected": state.device_seen.connected(),
         "last_seen": state.device_seen.wall,
         **connector.status(),
+        "music": music.status(),
     }
 
 
@@ -454,6 +673,27 @@ def internal_repair(request: Request):
     state.clear_cache()
     connector.repair()
     return {"ok": True}
+
+
+@router.post("/internal/music/reset")
+def internal_music_reset(request: Request):
+    """Notify changed the Spotify sign-in: drop the access token and reread the vault."""
+    from stonepi_auth.internal import verify_internal
+
+    if not verify_internal(state.session_secret(), "POST", "/internal/music/reset", request.headers):
+        return JSONResponse({"ok": False}, status_code=403)
+    music.reset()
+    return {"ok": True}
+
+
+@router.post("/internal/music/check")
+def internal_music_check(request: Request):
+    """Notify's Test connection button."""
+    from stonepi_auth.internal import verify_internal
+
+    if not verify_internal(state.session_secret(), "POST", "/internal/music/check", request.headers):
+        return JSONResponse({"ok": False}, status_code=403)
+    return music.check()
 
 
 def client_json(data: dict) -> str:

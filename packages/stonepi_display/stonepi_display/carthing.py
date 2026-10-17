@@ -71,13 +71,18 @@ MINI_APPS: tuple[dict[str, str], ...] = (
     {"id": "eventtrakr", "label": "EventTrakr", "source": "eventtrakr"},
     {"id": "newscast", "label": "NewsCast", "source": "newscast"},
     {"id": "pinboard", "label": "Pinboard", "source": "pinboard"},
+    # F7: Spotify through the panel service itself (no /api/display feed).
+    {"id": "music", "label": "Music", "source": "spotify"},
 )
 MINI_APP_IDS = tuple(a["id"] for a in MINI_APPS)
 
-# What a page can hold: every mini-app (its card) plus the clock & weather widget.
+# What a page can hold: every mini-app (its card) plus the clock & weather and weather widgets.
 WIDGETS: tuple[dict[str, str], ...] = (
     *MINI_APPS,
     {"id": "clock", "label": "Clock & weather", "source": ""},
+    {"id": "weather", "label": "Weather", "source": ""},
+    # The clock face and date alone (no weather), in the Clock tab's face and colours.
+    {"id": "time", "label": "Clock", "source": ""},
 )
 WIDGET_IDS = tuple(w["id"] for w in WIDGETS)
 # Sizes on an 800x480 page: small = today's card, half = one half of the page, full = whole page.
@@ -116,10 +121,26 @@ _DEVICE_ACTIONS: tuple[dict[str, str], ...] = (
     {"id": "brightness_down", "label": "Dimmer", "group": "Screen"},
     {"id": "restart", "label": "Restart a service", "group": "Admin"},
 )
+MUSIC_PRESETS = 4
+_MUSIC_ACTIONS: tuple[dict[str, str], ...] = (
+    {"id": "music:play_pause", "label": "Play / pause", "group": "Music"},
+    {"id": "music:next", "label": "Next track", "group": "Music"},
+    {"id": "music:prev", "label": "Previous track", "group": "Music"},
+    {"id": "music:vol_up", "label": "Volume up", "group": "Music"},
+    {"id": "music:vol_down", "label": "Volume down", "group": "Music"},
+    {"id": "music:shuffle", "label": "Shuffle on / off", "group": "Music"},
+    {"id": "music:repeat", "label": "Repeat (off, all, one)", "group": "Music"},
+    {"id": "music:save", "label": "Save to Liked Songs", "group": "Music"},
+    *({"id": f"music:preset:{n}", "label": f"Play music preset {n}", "group": "Music"} for n in range(1, MUSIC_PRESETS + 1)),
+)
+MUSIC_ACTION_IDS = tuple(a["id"] for a in _MUSIC_ACTIONS)
 ACTIONS: tuple[dict[str, str], ...] = (
     *_NAV_ACTIONS,
     *_PAGE_ACTIONS,
     *({"id": f"open:{a['id']}", "label": f"Open {a['label']}", "group": "Mini-apps"} for a in MINI_APPS),
+    # The large weather screen (U14); also what tapping a Weather widget opens.
+    {"id": "open:weather", "label": "Open Weather", "group": "Mini-apps"},
+    *_MUSIC_ACTIONS,
     *_DEVICE_ACTIONS,
 )
 ACTION_IDS = tuple(a["id"] for a in ACTIONS)
@@ -127,7 +148,7 @@ ACTION_IDS = tuple(a["id"] for a in ACTIONS)
 # that existed when it was saved (``actions_known``); anything newer is allowed by default,
 # so an older allow-list never silently forbids it. Configs saved before ``actions_known``
 # existed knew every action except these.
-ADDED_ACTIONS = frozenset({"sleep"})
+ADDED_ACTIONS = frozenset({"sleep", "open:weather", "open:music", *MUSIC_ACTION_IDS})
 
 CLOCK_FACES: tuple[dict[str, str], ...] = (
     {"id": "digital_bold", "label": "Bold digital"},
@@ -139,6 +160,39 @@ CLOCK_FACES: tuple[dict[str, str], ...] = (
     {"id": "words", "label": "Word clock"},
 )
 CLOCK_FACE_IDS = tuple(f["id"] for f in CLOCK_FACES)
+# What tapping (or dial-pressing) a Clock & weather widget does (U14).
+CLOCK_TAPS: tuple[dict[str, str], ...] = (
+    {"id": "none", "label": "Nothing"},
+    {"id": "weather", "label": "Open the weather screen"},
+)
+CLOCK_TAP_IDS = tuple(t["id"] for t in CLOCK_TAPS)
+
+# What the idle screen draws. Clock = today's faces (with date, weather and the live line);
+# the others are animations drawn by panel.js. A new style needs an entry here, its options
+# in SAVER_DEFAULTS (normalised in _normalize_saver), a block in saver.html and a SAVERS entry
+# in panel.js.
+SAVER_STYLES: tuple[dict[str, str], ...] = (
+    {"id": "clock", "label": "Clock"},
+    {"id": "logo", "label": "Bouncing logo"},
+    {"id": "matrix", "label": "Matrix"},
+    {"id": "pipes", "label": "3D Pipes"},
+)
+SAVER_STYLE_IDS = tuple(s["id"] for s in SAVER_STYLES)
+SAVER_SPEEDS = ("slow", "normal", "fast")
+SAVER_DENSITIES = ("light", "normal", "dense")
+# 3D Pipes corners, as in the Windows original: rounded elbows, ball joints, or mostly elbows.
+SAVER_JOINTS: tuple[dict[str, str], ...] = (
+    {"id": "elbow", "label": "Elbows"},
+    {"id": "ball", "label": "Ball joints"},
+    {"id": "mixed", "label": "Mixed"},
+)
+SAVER_JOINT_IDS = tuple(j["id"] for j in SAVER_JOINTS)
+MATRIX_GREEN = "#00FF41"
+SAVER_DEFAULTS: dict[str, dict[str, Any]] = {
+    "logo": {"recolor": True, "corner": True, "speed": "slow", "time": False},
+    "matrix": {"color": MATRIX_GREEN, "time": True, "speed": "normal", "density": "normal"},
+    "pipes": {"speed": "normal", "joints": "mixed", "time": False},
+}
 
 # Design-system defaults for new configs (F6); saved configs keep their own colours.
 SAND = "#C7BBA8"  # brand-sand
@@ -167,7 +221,7 @@ GRADIENTS: tuple[dict[str, str], ...] = (
 )
 GRADIENT_IDS = tuple(g["id"] for g in GRADIENTS)
 BACKGROUND_TYPES = ("solid", "gradient", "image")
-LIVE_LINES = ("none", "eventtrakr", "sportguide", "newscast", "pinboard")
+LIVE_LINES = ("none", "eventtrakr", "sportguide", "newscast", "pinboard", "music")
 QUIET_MODES = ("dim", "off")
 HOUR_FORMATS = ("24", "12")
 # Formatted on the device (panel.js) so the date follows the screen's clock tick.
@@ -236,6 +290,7 @@ def default_config(config_id: str = "default", name: str = "Default") -> dict[st
             "quiet_hours": {"enabled": True, "from": "22:30", "to": "06:30", "mode": "dim", "level": 5},
             "background": {"type": "solid", "value": BASALT},
             "show": {"date": True, "weather": True, "live_line": "eventtrakr"},
+            "saver": {"style": "clock", **{k: dict(v) for k, v in SAVER_DEFAULTS.items()}},
         },
         "clock": {
             "face": "digital_bold",
@@ -245,10 +300,62 @@ def default_config(config_id: str = "default", name: str = "Default") -> dict[st
             "hour_format": "24",
             "seconds": False,
             "date_format": "ddd d MMM",
+            "tap": "none",
+            # U13: the screensaver's own face and colours, used only when ``separate`` is on.
+            "saver": {"separate": False, "face": "digital_bold", "color": STONE_TEXT, "accent": SAND},
         },
         "look": {"theme": "dark", "accent": SAND, "units": "metric"},
         "weather": {"lat": None, "lon": None, "label": ""},
+        "music": default_music(),
     }
+
+
+def default_music() -> dict[str, Any]:
+    """F7 Music: presets 1-4, the speaker to use when nothing is playing, and options."""
+    return {
+        "presets": [{"name": "", "uri": "", "device": {"id": "", "name": ""}} for _ in range(MUSIC_PRESETS)],
+        "default_device": {"id": "", "name": ""},
+        # The dial turns the volume while Now Playing is on screen (falls back to its mapping
+        # when the speaker refuses remote volume or volume actions aren't allowed).
+        "dial_volume": True,
+        "volume_step": 4,
+        # The screensaver shows the artwork while music plays, with the time in a corner.
+        "saver_artwork": True,
+        "show_save": True,
+    }
+
+
+_DEVICE_ID = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
+
+
+def _music_device(raw: Any) -> dict[str, str]:
+    data = raw if isinstance(raw, dict) else {}
+    device_id = str(data.get("id") or "").strip()
+    return {
+        "id": device_id if _DEVICE_ID.match(device_id) else "",
+        "name": str(data.get("name") or "").strip()[:60],
+    }
+
+
+def _normalize_music(raw: Any) -> dict[str, Any]:
+    from .spotify import normalize_uri
+
+    data = raw if isinstance(raw, dict) else {}
+    out = default_music()
+    presets_raw = data.get("presets") if isinstance(data.get("presets"), list) else []
+    for i, entry in enumerate(presets_raw[:MUSIC_PRESETS]):
+        entry = entry if isinstance(entry, dict) else {}
+        out["presets"][i] = {
+            "name": str(entry.get("name") or "").strip()[:40],
+            "uri": normalize_uri(entry.get("uri")),
+            "device": _music_device(entry.get("device")),
+        }
+    out["default_device"] = _music_device(data.get("default_device"))
+    for key in ("dial_volume", "saver_artwork", "show_save"):
+        if key in data:
+            out[key] = bool(data.get(key))
+    out["volume_step"] = _int(data.get("volume_step"), out["volume_step"], 1, 10)
+    return out
 
 
 # ── Normalisation ────────────────────────────────────────────────────────────
@@ -282,6 +389,29 @@ def _coord(value: Any, lo: float, hi: float) -> float | None:
     except (TypeError, ValueError):
         return None
     return round(number, 4) if lo <= number <= hi else None
+
+
+def _normalize_saver(raw: Any, saver: dict[str, Any]) -> None:
+    """Fill ``saver`` (the defaults) from ``raw``; unknown or missing values keep the defaults."""
+    raw = raw if isinstance(raw, dict) else {}
+    saver["style"] = _choice(raw.get("style"), SAVER_STYLE_IDS, saver["style"])
+    for style, defaults in SAVER_DEFAULTS.items():
+        opts_raw = raw.get(style) if isinstance(raw.get(style), dict) else {}
+        opts = saver[style]
+        for key, default in defaults.items():
+            if key not in opts_raw:
+                continue
+            value = opts_raw[key]
+            if isinstance(default, bool):
+                opts[key] = bool(value)
+            elif key == "color":
+                opts[key] = _color(value, default)
+            elif key == "speed":
+                opts[key] = _choice(value, SAVER_SPEEDS, default)
+            elif key == "density":
+                opts[key] = _choice(value, SAVER_DENSITIES, default)
+            elif key == "joints":
+                opts[key] = _choice(value, SAVER_JOINT_IDS, default)
 
 
 def clean_config_id(value: Any) -> str:
@@ -443,6 +573,7 @@ def normalize_config(raw: Any) -> dict[str, Any]:
         if key in show_raw:
             show[key] = bool(show_raw.get(key))
     show["live_line"] = _choice(show_raw.get("live_line"), LIVE_LINES, show["live_line"])
+    _normalize_saver(idle_raw.get("saver"), idle["saver"])
 
     clock_raw = data.get("clock") if isinstance(data.get("clock"), dict) else {}
     clock = out["clock"]
@@ -454,6 +585,16 @@ def normalize_config(raw: Any) -> dict[str, Any]:
     if "seconds" in clock_raw:
         clock["seconds"] = bool(clock_raw.get("seconds"))
     clock["date_format"] = _choice(clock_raw.get("date_format"), tuple(DATE_STYLES), clock["date_format"])
+    clock["tap"] = _choice(clock_raw.get("tap"), CLOCK_TAP_IDS, clock["tap"])
+    # Separate screensaver clock: missing values follow the widget clock, so switching it on
+    # starts from what's on screen today. Off (the default) = one face everywhere.
+    saver_raw = clock_raw.get("saver") if isinstance(clock_raw.get("saver"), dict) else {}
+    clock["saver"] = {
+        "separate": bool(saver_raw.get("separate")),
+        "face": _choice(saver_raw.get("face"), CLOCK_FACE_IDS, clock["face"]),
+        "color": _color(saver_raw.get("color"), clock["color"]),
+        "accent": _color(saver_raw.get("accent"), clock["accent"]),
+    }
 
     look_raw = data.get("look") if isinstance(data.get("look"), dict) else {}
     look = out["look"]
@@ -469,6 +610,7 @@ def normalize_config(raw: Any) -> dict[str, Any]:
         "lon": lon if lat is not None else None,
         "label": str(weather_raw.get("label") or "").strip()[:60],
     }
+    out["music"] = _normalize_music(data.get("music"))
     return out
 
 
@@ -585,6 +727,32 @@ def update_device(**fields: Any) -> dict[str, Any]:
         device = load_device()
         device.update(fields)
         return save_device(device)
+
+
+def music_account() -> dict[str, Any]:
+    """The Spotify account linked for the Music mini-app (name only; tokens live in the vault)."""
+    data = _read_json(_root() / "music.json")
+    data = data if isinstance(data, dict) else {}
+    return {
+        "name": str(data.get("name") or "")[:80],
+        "id": str(data.get("id") or "")[:80],
+        "connected_at": data.get("connected_at") or None,
+    }
+
+
+def save_music_account(name: str, account_id: str) -> dict[str, Any]:
+    record = {"name": str(name or "")[:80], "id": str(account_id or "")[:80], "connected_at": _now()}
+    with _lock:
+        _write_json(_root() / "music.json", record)
+    return record
+
+
+def clear_music_account() -> None:
+    with _lock:
+        try:
+            (_root() / "music.json").unlink()
+        except FileNotFoundError:
+            pass
 
 
 def new_pairing_token() -> str:
@@ -812,9 +980,15 @@ def editor_catalog() -> dict[str, Any]:
         "page_capacity": PAGE_CAPACITY,
         "max_pages": MAX_PAGES,
         "clock_faces": [dict(f) for f in CLOCK_FACES],
+        "clock_taps": [dict(t) for t in CLOCK_TAPS],
+        "saver_styles": [dict(s) for s in SAVER_STYLES],
+        "saver_joints": [dict(j) for j in SAVER_JOINTS],
+        "saver_speeds": list(SAVER_SPEEDS),
+        "saver_densities": list(SAVER_DENSITIES),
         "color_presets": [dict(c) for c in COLOR_PRESETS],
         "gradients": [dict(g) for g in GRADIENTS],
         "live_lines": list(LIVE_LINES),
+        "music_presets": MUSIC_PRESETS,
         "date_formats": [{"id": k, "label": v} for k, v in DATE_STYLES.items()],
         "screen": {"width": SCREEN_WIDTH, "height": SCREEN_HEIGHT},
     }

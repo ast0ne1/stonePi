@@ -278,6 +278,25 @@ button:focus { outline: none; }
 .w-full .wface { zoom: 0.6; }
 .w-full .wface.face-analogue, .w-full .wface.face-stacked { zoom: 0.48; }
 .w-half .wface.face-analogue, .w-half .wface.face-stacked { zoom: 0.4; }
+/* Clock only: no forecast underneath, so the face can be bigger. */
+.w-time .wface { zoom: 0.42; }
+.w-half.w-time .wface { zoom: 0.7; }
+.w-full.w-time .wface { zoom: 1.3; }
+.w-time .wface.face-analogue, .w-time .wface.face-stacked { zoom: 0.3; }
+.w-half.w-time .wface.face-analogue, .w-half.w-time .wface.face-stacked { zoom: 0.55; }
+.w-full.w-time .wface.face-analogue, .w-full.w-time .wface.face-stacked { zoom: 0.8; }
+/* Seconds make the digital faces wider. */
+.w-time.secs .wface { zoom: 0.35; }
+.w-half.w-time.secs .wface { zoom: 0.56; }
+.w-full.w-time.secs .wface { zoom: 1.18; }
+/* Analogue and stacked are tall rather than wide: seconds don't change their size. */
+.w-time.secs .wface.face-analogue, .w-time.secs .wface.face-stacked { zoom: 0.3; }
+.w-half.w-time.secs .wface.face-analogue, .w-half.w-time.secs .wface.face-stacked { zoom: 0.55; }
+.w-full.w-time.secs .wface.face-analogue, .w-full.w-time.secs .wface.face-stacked { zoom: 0.8; }
+/* The word clock is drawn 720px wide: scale it to the card's width. */
+.w-time .wface.face-words { zoom: 0.3; }
+.w-half.w-time .wface.face-words { zoom: 0.48; }
+.w-full.w-time .wface.face-words { zoom: 1; }
 .wface.face-stacked { padding-left: 0; }
 .wclock-meta { font-size: 20px; color: var(--fg); margin-top: 8px; white-space: nowrap; }
 .wclock-meta > span + span { margin-left: 16px; }
@@ -444,6 +463,47 @@ button:focus { outline: none; }
   z-index: 5;
 }
 
+/* Weather widget (U14): now on top, hours and days below as it grows. */
+.w-clock { text-align: center; }
+.w-weather { justify-content: center; color: var(--fg); }
+.ww-now { display: flex; align-items: center; }
+.ww-ico { width: 52px; height: 52px; flex: none; margin-right: 12px; }
+.ww-temp { font-family: var(--font-display); font-size: 48px; font-weight: 600; line-height: 1; color: var(--clock); }
+.ww-temp small { font-size: 0.45em; margin-left: 2px; }
+.ww-meta { display: flex; flex-direction: column; margin-left: 14px; font-size: 18px; min-width: 0; }
+.ww-meta > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ww-meta > .ww-label { white-space: normal; }
+.ww-meta .soft { font-size: 16px; }
+.w-half .ww-now, .w-full .ww-now { justify-content: center; }
+.w-half .ww-ico, .w-full .ww-ico { width: 72px; height: 72px; }
+.w-half .ww-temp, .w-full .ww-temp { font-size: 72px; }
+.w-half .ww-meta, .w-full .ww-meta { font-size: 22px; }
+.w-weather .fc-row { margin-top: 18px; }
+.w-full.w-weather .fc-days { margin-left: 0; padding-left: 0; border-left: 0; }
+.w-weather .w-empty { margin-top: 8px; font-size: 16px; }
+
+/* The weather screen (U14): now + 12 hours across the top, the week below. */
+.wv { flex: 1; display: flex; flex-direction: column; padding: 14px 16px 16px; min-height: 0; }
+.wv-top { display: flex; align-items: center; }
+.wv-now { display: flex; align-items: center; width: 250px; flex: none; }
+.wv-ico { width: 64px; height: 64px; flex: none; margin-right: 12px; color: var(--fg); }
+.wv-temp { font-family: var(--font-display); font-size: 64px; font-weight: 600; line-height: 1; color: var(--clock); }
+.wv-temp small { font-size: 0.4em; margin-left: 2px; }
+.wv-now p { margin: 4px 0 0; }
+.wv-label { font-size: 20px; }
+.wv-facts { font-size: 16px; }
+.wv-hours, .wv-week { list-style: none; margin: 0; padding: 0; display: flex; }
+.wv-hours { flex: 1; min-width: 0; justify-content: space-between; margin-left: 8px; }
+.wv-hours li { display: flex; flex-direction: column; align-items: center; width: 42px; font-size: 14px; color: var(--muted); }
+.wv-hours .ico { width: 24px; height: 24px; margin: 6px 0; color: var(--fg); }
+.wv-hours strong { font-size: 18px; color: var(--fg); }
+.wv-pop { font-size: 13px; color: var(--accent); min-height: 16px; margin-top: 2px; }
+.wv-week { flex: 1; margin-top: 16px; padding-top: 14px; border-top: 2px solid var(--line); }
+.wv-week li { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 14px; font-size: 18px; color: var(--muted); }
+.wv-week li.is-today { background: var(--card); color: var(--fg); }
+.wv-week .ico { width: 40px; height: 40px; margin: 10px 0; color: var(--fg); }
+.wv-hl strong { font-size: 24px; color: var(--fg); }
+
 /* ── Screensaver ───────────────────────────────────────────────────── */
 .saver { color: var(--clock); z-index: 3; }
 .saver-inner {
@@ -559,6 +619,41 @@ button:focus { outline: none; }
 }
 .face-words .clock .soft { opacity: 0.45; font-size: 1em; }
 
+/* Bouncing logo: one element moved by transform; panel.js sets the slab fills (dim-scaled). */
+.saver-logo { display: block; }
+.lg-mark { position: absolute; left: 0; top: 0; width: 120px; height: 120px; will-change: transform; }
+.lg-mark svg { display: block; }
+.lg-mark.is-corner svg { animation: lg-corner 0.9s ease-out; }
+@keyframes lg-corner {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.22); }
+  100% { transform: scale(1); }
+}
+.lg-time {
+  position: absolute;
+  right: 28px;
+  bottom: 22px;
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+/* Matrix: the rain is a canvas; the time sits on a dark backing so it reads over it. */
+.saver-matrix { background: #000; }
+.saver-matrix canvas { position: absolute; left: 0; top: 0; width: 800px; height: 480px; }
+.mx-time {
+  position: relative;
+  padding: 18px 40px 24px;
+  border-radius: 28px;
+  background: rgba(0, 0, 0, 0.82);
+}
+.mx-time:not(.face-words) .clock { font-size: 150px; } /* any face; the word clock keeps its own size */
+
+/* 3D Pipes: a transparent canvas over the screensaver background. */
+.saver-pipes { display: block; }
+.saver-pipes canvas { position: absolute; left: 0; top: 0; width: 800px; height: 480px; }
+
 /* ── Dimmed / off (palette swap, no overlays) ─────────────────────── */
 body.dim, body.dim .view { background: #000; }
 body.dim .saver { background: #000 !important; }
@@ -577,3 +672,70 @@ body.off .saver-inner { visibility: hidden; }
 .w-icon { display: inline-block; width: 32px; height: 32px; border-radius: 22%; vertical-align: -7px; margin-right: 10px; }
 .bar-mark { display: inline-block; width: 28px; height: 28px; vertical-align: -5px; margin-right: 12px; }
 body.theme-light .bar-mark { content: url("../brand/logos/stonepi-mark-flat-light.svg"); }
+
+/* ── Music (F7): Now Playing, music widget, artwork screensaver ─────── */
+.np { display: flex; flex: 1; min-height: 0; padding: 20px 24px 18px; }
+.np-art { position: relative; flex: none; width: 300px; height: 300px; border-radius: 14px; overflow: hidden; background: var(--card); }
+.np-art img { display: block; width: 100%; height: 100%; }
+.np-art-empty { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.np-art-empty .ico { width: 30%; height: 30%; }
+.np-main { flex: 1; min-width: 0; display: flex; flex-direction: column; margin-left: 28px; }
+.np-track { font-family: var(--font-display); font-size: 30px; font-weight: 700; line-height: 1.15; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.np-artist { font-size: 21px; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-album { font-size: 17px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-album:empty { display: none; }
+.np-progress { display: flex; align-items: center; margin-top: 16px; font-size: 15px; color: var(--muted); }
+.np-line { flex: 1; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin: 0 10px; }
+.np-line i { display: block; height: 100%; background: var(--accent); }
+.np-pos, .np-dur { flex: none; min-width: 40px; }
+.np-dur { text-align: right; }
+.np-controls { display: flex; align-items: center; margin-top: 14px; }
+.np-btn { display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; margin-right: 8px; border: 3px solid transparent; border-radius: 50%; background: var(--card); }
+.np-btn .ico { width: 28px; height: 28px; }
+.np-prev { order: 1; }
+.np-play { order: 2; width: 76px; height: 76px; background: var(--accent); color: var(--on-accent); }
+.np-play .ico { width: 34px; height: 34px; }
+.np-play .i-pause, .np-play.is-playing .i-play { display: none; }
+.np-play.is-playing .i-pause { display: inline; }
+.np-play.is-focus { border-color: var(--fg) !important; }
+.np-next { order: 3; margin-right: 18px; }
+.np-small { order: 4; width: 52px; height: 52px; color: var(--muted); }
+.np-small .ico { width: 22px; height: 22px; }
+.np-small.on { color: var(--accent); }
+.np-repeat { position: relative; }
+.np-repeat b { position: absolute; right: 9px; bottom: 7px; font-size: 11px; display: none; }
+.np-repeat[data-repeat="track"] b { display: block; }
+.np-foot { display: flex; align-items: center; margin-top: auto; }
+.np-chip { display: flex; align-items: center; height: 52px; padding: 0 16px; margin-right: 10px; border: 3px solid transparent; border-radius: 26px; background: var(--card); font-size: 17px; }
+.np-chip .ico { width: 20px; height: 20px; margin-right: 8px; }
+.np-vol { display: flex; align-items: center; flex: 1; min-width: 0; margin-left: 6px; color: var(--muted); }
+.np-vol .ico { width: 22px; height: 22px; flex: none; }
+.np-vol-line { flex: 1; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin-left: 10px; }
+.np-vol-line i { display: block; height: 100%; background: var(--fg); }
+
+.w-music { padding: 6px 8px 10px; }
+.w-icon-ico { width: 28px; height: 28px; margin-right: 8px; vertical-align: -7px; color: var(--accent); }
+.wm-body { display: flex; flex: 1; min-height: 0; padding: 6px 10px 0; }
+.wm-art { width: 150px; height: 150px; }
+.w-full .wm-art { width: 300px; height: 300px; }
+.wm-main { flex: 1; min-width: 0; display: flex; flex-direction: column; margin-left: 16px; }
+.w-half .np-track { font-size: 22px; }
+.w-half .np-artist { font-size: 17px; }
+.w-half .np-album { display: none; }
+.w-half .np-progress { margin-top: auto; }
+
+.saver-music { flex-direction: row; justify-content: flex-start; padding: 0 56px; }
+.sm-art { width: 320px; height: 320px; }
+.sm-main { flex: 1; min-width: 0; display: flex; flex-direction: column; margin-left: 36px; color: var(--clock); }
+.sm-main .np-track { font-size: 34px; }
+.sm-main .np-artist { font-size: 24px; opacity: 0.85; }
+.sm-main .np-progress { color: inherit; opacity: 0.7; }
+.sm-main .np-line i { background: var(--clock-accent); }
+.sm-device { font-size: 17px; opacity: 0.6; margin-top: 12px; }
+.sm-time { position: absolute; right: 28px; top: 20px; font-family: var(--font-display); font-size: 30px; font-weight: 600; opacity: 0.7; }
+/* The full-page music widget is Now Playing itself, inside the page's card. */
+.w-music-full { padding: 0; }
+.np-in-card { padding: 16px 18px 14px; }
+.np-where { display: flex; align-items: center; font-size: 15px; color: var(--muted); margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-where .ico { width: 16px; height: 16px; margin-right: 6px; flex: none; }
+.np-where span:empty { display: none; }

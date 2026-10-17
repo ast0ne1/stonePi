@@ -1,5 +1,25 @@
 # Changelog — Notify
 
+## 0.3.0 — 2026-10-17
+
+### Changed
+- **Shared StonePi header** (backlog U16): the old sign-out icon is replaced by the same app switcher and avatar menu as every app (appearance and Log out in the avatar menu). The bell stays as it was, a link to your notifications. **Home** is gone from the nav (the switcher's Home replaces it), so the bottom bar has three tabs. The "Notify is for administrators" page gets the header too.
+- New event **AI unavailable** (`system.ai_unavailable`, admin): every AI model for a job failed and the app is on its non-AI fallback. Sent once until a model works again. Approved by default on fresh installs; existing installs approve it once in Notify → Events.
+- `GET /api/admin/summary`: `displays.carthing` says whether the Car Thing is switched on and showing the panel now, for the Dashboard's Displays line (backlog B10).
+
+### Added
+- **Car Thing → Music (Spotify): connect your Spotify account** (backlog F7, step S1). A new Music card in Displays → Car Thing walks you through creating your own Spotify developer app, takes its client ID (saved in the Vault; no client secret, since sign-in uses PKCE) and connects one Spotify account for the house. On HTTPS (the Tailscale `ts.net` address) Spotify sends you straight back to Notify; otherwise you approve, land on a `127.0.0.1` error page, and paste its address back into Notify. The card then shows the connected account, with **Test connection** (asks the Car Thing service for a Spotify token) and **Disconnect**. Admins only. The refresh token goes to the Vault and the account name to `carthing/music.json`.
+- Car Thing editor → Pages: a **Clock** widget (the clock on its own, no weather). The Clock tab's face hint now names both clock widgets.
+- **Car Thing editor → Music tab** (backlog F7): presets 1–4, each picked from your playlists or pasted as a Spotify link (playlist, album, artist or track), with an optional speaker; the **default speaker** for when nothing is playing; and options for dial volume on Now Playing (with the step per click), the artwork screensaver and Save to Liked Songs. Speakers and playlists come from the Car Thing service, which holds the Spotify token. **Show Now Playing in the preview** opens it in the drawing. Actions gain a **Music** group, the live line can be **Music**, and the preview can send Music commands to the real speakers.
+- Car Thing editor → Idle: **Screensaver style** (Clock, Bouncing logo, Matrix, 3D Pipes) with each style's options; changing one shows the screensaver in the preview. 3D Pipes: corners, speed, show time.
+- Car Thing editor → Clock: **Give the screensaver its own face and colours** (backlog U13). Off by default; switched on, it starts from the widget clock's face and colours. **Tapping the Clock & weather widget**: nothing (default) or open the weather screen (U14).
+- Car Thing editor → Pages: the **Weather** widget (small, half, full); Controls and Actions: **Open Weather** (allowed in saved configs without re-ticking).
+
+### Fixed
+- **Car Thing preview was slow to show changes**, so screensaver options looked like they did nothing. The preview proxy built a new HTTP client for every file the panel loads (about 350 ms each, mostly loading the certificate store), so each reload took several seconds, and the screensaver only came up after every font and icon had loaded. It now reuses one client (each file takes milliseconds), and after a screensaver change the preview opens straight on the screensaver. The Clock tab also says when the screensaver clock settings can't show because the screensaver style isn't Clock.
+- Leaving the Car Thing editor or a TRMNL display's builder with unsaved changes (Home, the nav, sign out) asks in Notify's own sheet instead of the browser's "Leave site?" dialog. Reload, closing the tab and the browser's Back button still use the browser's prompt; pages can't restyle that one.
+- Car Thing editor: the device drawing matches the real Car Thing (round dial right of the screen, Back below it, presets and Settings/Mute on the top edge). Dial and Back labels sit under the drawing's right side.
+
 ## 0.2.0 — 2026-10-11
 
 ### Changed

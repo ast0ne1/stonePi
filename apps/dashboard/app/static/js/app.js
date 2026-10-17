@@ -1992,3 +1992,322 @@ if (settingsShell) {
   });
   schedule(delay === SLOW ? SLOW : FAST);
 })();
+
+// Settings → AI (backlog F13): models, tier order and per-job lists, saved as one JSON field.
+(function aiSettingsPage() {
+  const page = document.querySelector("[data-ai-page]");
+  if (!page) return;
+  let state;
+  let data;
+  try {
+    state = JSON.parse(page.querySelector("[data-ai-state]").textContent);
+    data = JSON.parse(page.querySelector("[data-ai-data]").textContent);
+  } catch (err) {
+    return;
+  }
+  const info = Object.fromEntries((data.models || []).map((m) => [m.id, m]));
+  const presets = data.presets || [];
+  const dirty = page.querySelectorAll("[data-ai-dirty]");
+  const GRIP = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="7" r="1.4"/><circle cx="15" cy="7" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="17" r="1.4"/><circle cx="15" cy="17" r="1.4"/></svg>';
+  const UP = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 6-6 6 6"/></svg>';
+  const DOWN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 10 6 6 6-6"/></svg>';
+  const CLOSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>';
+
+  function esc(text) {
+    const span = document.createElement("span");
+    span.textContent = text == null ? "" : String(text);
+    return span.innerHTML.replace(/"/g, "&quot;");
+  }
+  function model(id) {
+    return state.models.find((m) => m.id === id);
+  }
+  function isFree(m) {
+    if (!m) return false;
+    if (m.provider === "ollama") return true;
+    if (m.provider !== "gemini") return false;
+    if (typeof m.free === "boolean") return m.free;
+    return data.gemini_free_tier === true;
+  }
+  function badge(m) {
+    return isFree(m) ? '<span class="chip ai-chip is-free">Free</span>' : '<span class="chip ai-chip is-paid">Paid</span>';
+  }
+  function markDirty() {
+    dirty.forEach((note) => {
+      note.hidden = false;
+    });
+  }
+  function splitKey(key) {
+    const at = key.indexOf(":");
+    return [key.slice(0, at), key.slice(at + 1)];
+  }
+  function listFor(key) {
+    const [kind, id] = splitKey(key);
+    if (kind === "tier") return state.tiers[id] || [];
+    return (state.functions[id] || {}).models || [];
+  }
+  function setList(key, ids) {
+    const [kind, id] = splitKey(key);
+    if (kind === "tier") state.tiers[id] = ids;
+    else state.functions[id] = { ...(state.functions[id] || {}), models: ids };
+  }
+
+  function renderRank(box) {
+    const key = box.dataset.aiRank;
+    if (key.startsWith("fn:") && box.hidden) return;
+    const ids = listFor(key).filter((id) => model(id));
+    setList(key, ids);
+    const items = ids
+      .map((id, i) => {
+        const m = model(id);
+        const meta = info[id] || {};
+        const local = m.provider === "ollama" ? ' <span class="chip chip-quiet">Local</span>' : "";
+        const off = meta.ready === false;
+        const title = off ? ' title="Its provider isn\'t set up, so it is skipped"' : "";
+        return '<li class="ai-rank-item' + (off ? " is-off" : "") + '" draggable="true" data-id="' + esc(id) + '"' + title + ">" +
+          '<span class="ai-rank-grip" aria-hidden="true">' + GRIP + "</span>" +
+          '<span class="ai-rank-num">' + (i + 1) + "</span>" +
+          '<span class="ai-rank-name">' + esc(m.label) + " " + badge(m) + local + "</span>" +
+          '<button type="button" class="icon-btn" data-move="-1" aria-label="Move ' + esc(m.label) + ' up"' + (i === 0 ? " disabled" : "") + ">" + UP + "</button>" +
+          '<button type="button" class="icon-btn" data-move="1" aria-label="Move ' + esc(m.label) + ' down"' + (i === ids.length - 1 ? " disabled" : "") + ">" + DOWN + "</button>" +
+          '<button type="button" class="icon-btn" data-drop aria-label="Remove ' + esc(m.label) + ' from this list">' + CLOSE + "</button>" +
+          "</li>";
+      })
+      .join("");
+    const spare = state.models.filter((m) => !ids.includes(m.id));
+    const add = spare.length
+      ? '<select class="ai-rank-add" data-add aria-label="Add a model to this list"><option value="">Add a model…</option>' +
+        spare.map((m) => '<option value="' + esc(m.id) + '">' + esc(m.label) + (isFree(m) ? " · Free" : "") + "</option>").join("") +
+        "</select>"
+      : "";
+    const empty = key.startsWith("tier:")
+      ? '<p class="ai-rank-empty">No models: jobs in this tier borrow the nearest one.</p>'
+      : '<p class="ai-rank-empty">No models: this job will use its non-AI path.</p>';
+    box.innerHTML = (ids.length ? '<ol class="ai-rank">' + items + "</ol>" : empty) + add;
+  }
+
+  function renderWarnings() {
+    const warn = page.querySelector("[data-ai-best-warn]");
+    if (!warn) return;
+    warn.hidden = !(state.tiers.best || []).some((id) => {
+      const m = model(id);
+      return m && (isFree(m) || m.provider === "ollama");
+    });
+  }
+
+  function renderModels() {
+    const list = page.querySelector("[data-ai-models]");
+    if (!list) return;
+    const keyFree = data.gemini_free_tier === true ? "Free" : data.gemini_free_tier === false ? "Paid" : "not set";
+    list.innerHTML = state.models
+      .map((m) => {
+        const meta = info[m.id] || {};
+        const status = meta.status || { state: "unused", text: m.label + ": not saved yet" };
+        const failing = status.state === "cooling" || status.state === "error";
+        const flag =
+          m.provider === "gemini"
+            ? '<select data-flag aria-label="Free or paid for ' + esc(m.label) + '">' +
+              '<option value=""' + (typeof m.free !== "boolean" ? " selected" : "") + ">As the key (" + keyFree + ")</option>" +
+              '<option value="free"' + (m.free === true ? " selected" : "") + ">Free</option>" +
+              '<option value="paid"' + (m.free === false ? " selected" : "") + ">Paid</option></select>"
+            : "";
+        return '<li class="ai-model" data-id="' + esc(m.id) + '"><div class="ai-model-main"><div class="ai-model-text">' +
+          '<div class="vault-item-title"><strong>' + esc(m.label) + "</strong> " + badge(m) +
+          (meta.cost ? ' <span class="chip chip-quiet" title="Rough cost">' + esc(meta.cost) + "</span>" : "") +
+          (meta.ready === false ? ' <span class="chip chip-quiet">Provider not set up</span>' : "") +
+          "</div>" +
+          '<div class="vault-item-meta"><code>' + esc(m.id) + "</code>" + (meta.blurb ? "<span>" + esc(meta.blurb) + "</span>" : "") + "</div>" +
+          '<span class="ai-model-status is-' + esc(status.state) + '">' + esc(status.text) + "</span>" +
+          '</div><div class="ai-model-actions">' + flag +
+          (meta.status && meta.ready ? '<button type="submit" class="btn btn-ghost" name="action" value="test:' + esc(m.id) + '">Test</button>' : "") +
+          (failing ? '<button type="submit" class="btn btn-ghost" name="action" value="clear:' + esc(m.id) + '">Try again</button>' : "") +
+          '<button type="button" class="icon-btn" data-remove aria-label="Remove ' + esc(m.label) + '">' + CLOSE + "</button>" +
+          "</div></div></li>";
+      })
+      .join("");
+  }
+
+  function renderAll() {
+    page.querySelectorAll("[data-ai-rank]").forEach(renderRank);
+    renderModels();
+    renderWarnings();
+  }
+
+  page.addEventListener("click", (event) => {
+    const box = event.target.closest("[data-ai-rank]");
+    const move = event.target.closest("[data-move]");
+    const drop = event.target.closest("[data-drop]");
+    if (box && (move || drop)) {
+      const key = box.dataset.aiRank;
+      const ids = listFor(key).slice();
+      const id = event.target.closest("[data-id]").dataset.id;
+      const at = ids.indexOf(id);
+      if (drop) {
+        ids.splice(at, 1);
+      } else {
+        const to = at + Number(move.dataset.move);
+        if (to < 0 || to >= ids.length) return;
+        ids.splice(at, 1);
+        ids.splice(to, 0, id);
+      }
+      setList(key, ids);
+      renderRank(box);
+      renderWarnings();
+      markDirty();
+      if (move) {
+        const again = box.querySelector('[data-id="' + CSS.escape(id) + '"] [data-move="' + move.dataset.move + '"]');
+        (again && !again.disabled ? again : box.querySelector('[data-id="' + CSS.escape(id) + '"] .icon-btn:not([disabled])'))?.focus();
+      }
+      return;
+    }
+    const remove = event.target.closest("[data-remove]");
+    if (remove) {
+      const id = remove.closest("[data-id]").dataset.id;
+      const m = model(id);
+      if (!window.confirm("Remove " + (m ? m.label : id) + "? It also leaves every tier and job list.")) return;
+      state.models = state.models.filter((x) => x.id !== id);
+      Object.keys(state.tiers).forEach((t) => {
+        state.tiers[t] = state.tiers[t].filter((x) => x !== id);
+      });
+      Object.values(state.functions).forEach((row) => {
+        if (row.models) row.models = row.models.filter((x) => x !== id);
+      });
+      renderAll();
+      markDirty();
+    }
+  });
+
+  page.addEventListener("change", (event) => {
+    const add = event.target.closest("[data-add]");
+    if (add) {
+      if (!add.value) return;
+      const box = add.closest("[data-ai-rank]");
+      setList(box.dataset.aiRank, [...listFor(box.dataset.aiRank), add.value]);
+      renderRank(box);
+      renderWarnings();
+      markDirty();
+      box.querySelector("[data-add]")?.focus();
+      return;
+    }
+    const tier = event.target.closest("[data-ai-function-tier]");
+    if (tier) {
+      const row = tier.closest("[data-ai-function]");
+      const fid = row.dataset.aiFunction;
+      const box = row.querySelector("[data-ai-rank]");
+      if (tier.value === "custom") {
+        const current = state.functions[fid] || {};
+        const from = current.tier || row.dataset.aiSuggested;
+        const start = current.models && current.models.length ? current.models : (state.tiers[from] || []).slice();
+        state.functions[fid] = { ...current, models: start };
+        box.hidden = false;
+        renderRank(box);
+      } else {
+        state.functions[fid] = { tier: tier.value };
+        box.hidden = true;
+      }
+      markDirty();
+      return;
+    }
+    const flag = event.target.closest("[data-flag]");
+    if (flag) {
+      const m = model(flag.closest("[data-id]").dataset.id);
+      m.free = flag.value === "free" ? true : flag.value === "paid" ? false : null;
+      renderAll();
+      markDirty();
+    }
+  });
+
+  // Drag to reorder within one list (mouse); the arrow buttons cover touch and keyboard.
+  let dragged = null;
+  page.addEventListener("dragstart", (event) => {
+    const item = event.target.closest && event.target.closest(".ai-rank-item");
+    if (!item) return;
+    dragged = item;
+    item.classList.add("is-dragging");
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", item.dataset.id);
+  });
+  page.addEventListener("dragover", (event) => {
+    if (!dragged) return;
+    const list = event.target.closest && event.target.closest(".ai-rank");
+    if (!list || list !== dragged.parentElement) return;
+    event.preventDefault();
+    const over = event.target.closest(".ai-rank-item");
+    if (!over || over === dragged) return;
+    const rect = over.getBoundingClientRect();
+    list.insertBefore(dragged, event.clientY > rect.top + rect.height / 2 ? over.nextSibling : over);
+  });
+  page.addEventListener("drop", (event) => {
+    if (dragged) event.preventDefault();
+  });
+  page.addEventListener("dragend", () => {
+    if (!dragged) return;
+    const box = dragged.closest("[data-ai-rank]");
+    dragged.classList.remove("is-dragging");
+    dragged = null;
+    if (!box) return;
+    setList(box.dataset.aiRank, [...box.querySelectorAll(".ai-rank-item")].map((li) => li.dataset.id));
+    renderRank(box);
+    renderWarnings();
+    markDirty();
+  });
+
+  // Add a model to the pool.
+  const providerSel = page.querySelector("[data-ai-add-provider]");
+  const modelInput = page.querySelector("[data-ai-add-model]");
+  const labelInput = page.querySelector("[data-ai-add-label]");
+  const idList = page.querySelector("[data-ai-model-ids]");
+  const note = page.querySelector("[data-ai-add-note]");
+  function fillIds(names) {
+    idList.innerHTML = names.map((n) => '<option value="' + esc(n) + '"></option>').join("");
+  }
+  function presetIds() {
+    fillIds(presets.filter((p) => p.provider === providerSel.value).map((p) => p.model));
+  }
+  if (providerSel && idList) {
+    providerSel.addEventListener("change", presetIds);
+    presetIds();
+  }
+  page.querySelector("[data-ai-add-btn]")?.addEventListener("click", () => {
+    const name = (modelInput.value || "").trim();
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,119}$/.test(name)) {
+      modelInput.focus();
+      note.textContent = "Model IDs use letters, numbers, dots, dashes, colons or slashes.";
+      return;
+    }
+    const id = providerSel.value + "/" + name;
+    if (model(id)) {
+      note.textContent = "That model is already in the list.";
+      return;
+    }
+    const known = presets.find((p) => p.id === id);
+    const label = (labelInput.value || "").trim() || (known ? known.label : name);
+    state.models.push({ id, provider: providerSel.value, model: name, label, free: null });
+    const providerRow = page.querySelector('[data-ai-provider="' + providerSel.value + '"] .vault-status.is-set');
+    info[id] = { ready: Boolean(providerRow), cost: "", blurb: "" };
+    modelInput.value = "";
+    labelInput.value = "";
+    note.textContent = label + " added. Put it in a tier above, then save.";
+    renderAll();
+    markDirty();
+  });
+  page.querySelector("[data-ai-ollama-load]")?.addEventListener("click", async () => {
+    const url = (page.querySelector("[data-ai-ollama-url]") || {}).value || "";
+    providerSel.value = "ollama";
+    note.textContent = "Asking the Ollama server…";
+    try {
+      const res = await fetch("/api/settings/ai/ollama-models?url=" + encodeURIComponent(url), { credentials: "same-origin" });
+      const body = await res.json();
+      if (!body.ok) throw new Error(body.error || "no reply");
+      fillIds(body.models);
+      note.textContent = body.models.length ? body.models.length + " models found: pick one in Model ID." : "The server has no models pulled yet.";
+      modelInput.focus();
+    } catch (err) {
+      note.textContent = "Couldn't list models: " + err.message;
+    }
+  });
+
+  page.addEventListener("submit", () => {
+    page.querySelector("[data-ai-state-input]").value = JSON.stringify(state);
+  });
+  renderAll();
+})();

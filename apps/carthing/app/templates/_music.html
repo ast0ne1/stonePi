@@ -1,0 +1,65 @@
+{# Music (F7) pieces shared by Now Playing, the music widget and the artwork screensaver.
+   panel.js keeps them current: paintNp() fills the data-np-* parts from /np, and the 1 s timer
+   moves every [data-np-bar] between reads. #}
+{% from "_icons.html" import icon %}
+
+{% macro mmss(ms) -%}{% set s = ((ms or 0) / 1000)|int %}{{ s // 60 }}:{{ "%02d"|format(s % 60) }}{%- endmacro %}
+
+{% macro art(np, cls="np-art") -%}
+<div class="{{ cls }}">
+  <img data-np-art src="{{ np.art or '' }}" alt=""{% if not np.art %} hidden{% endif %}>
+  <span class="np-art-empty" data-np-art-empty{% if np.art %} hidden{% endif %}>{{ icon("note") }}</span>
+</div>
+{%- endmacro %}
+
+{% macro bar(np) -%}
+<div class="np-progress" data-np-bar data-progress="{{ np.progress_ms }}" data-duration="{{ np.duration_ms }}" data-at="{{ np.at_ms }}" data-playing="{{ 1 if np.playing else 0 }}">
+  <span class="np-pos" data-np-pos>{{ mmss(np.progress_ms) }}</span>
+  <span class="np-line"><i style="width:{{ ((np.progress_ms / np.duration_ms * 100) if np.duration_ms else 0)|round|int }}%"></i></span>
+  <span class="np-dur" data-np-dur>{{ mmss(np.duration_ms) if np.duration_ms else "" }}</span>
+</div>
+{%- endmacro %}
+
+{% macro text(np) -%}
+<strong class="np-track" data-np-track>{{ np.track or ("Nothing playing" if np.connected else "Music") }}</strong>
+<span class="np-artist" data-np-artist>{{ np.artist if np.track else (np.error or "Start something with a preset, or pick a speaker.") }}</span>
+<span class="np-album" data-np-album>{{ np.album }}</span>
+{%- endmacro %}
+
+{#- The control row. play_pause comes first in the markup so it takes the first focus;
+    CSS puts it between Previous and Next. -#}
+{% macro controls(np, opts, extra=True) -%}
+<div class="np-controls">
+  {% if opts.allowed.play_pause %}<button class="np-btn np-play{% if np.playing %} is-playing{% endif %}" data-focus data-music="play_pause" aria-label="Play or pause">{{ icon("play", "ico i-play") }}{{ icon("pause", "ico i-pause") }}</button>{% endif %}
+  {% if opts.allowed.prev %}<button class="np-btn np-prev" data-focus data-music="prev" aria-label="Previous">{{ icon("prev") }}</button>{% endif %}
+  {% if opts.allowed.next %}<button class="np-btn np-next" data-focus data-music="next" aria-label="Next">{{ icon("next") }}</button>{% endif %}
+  {% if extra %}
+  {% if opts.allowed.shuffle %}<button class="np-btn np-small np-shuffle{% if np.shuffle %} on{% endif %}" data-focus data-music="shuffle" aria-label="Shuffle">{{ icon("shuffle") }}</button>{% endif %}
+  {% if opts.allowed.repeat %}<button class="np-btn np-small np-repeat{% if np.repeat != 'off' %} on{% endif %}" data-focus data-music="repeat" data-repeat="{{ np.repeat }}" aria-label="Repeat">{{ icon("repeat") }}<b>1</b></button>{% endif %}
+  {% if opts.show_save %}<button class="np-btn np-small np-save" data-focus data-music="save" aria-label="Save to Liked Songs">{{ icon("heart") }}</button>{% endif %}
+  {% endif %}
+</div>
+{%- endmacro %}
+
+{% macro volume(np) -%}
+{% set d = np.device or {} %}
+<span class="np-vol" data-np-vol{% if not d or not d.supports_volume or d.volume is none %} hidden{% endif %}>{{ icon("volume") }}<span class="np-vol-line"><i style="width:{{ d.volume or 0 }}%"></i></span></span>
+{%- endmacro %}
+
+{#- The Now Playing body: the Music screen, and the full-page music widget (which is the same view). -#}
+{% macro now_playing(np, opts, cls="np", show_device=False) -%}
+<div class="{{ cls }}">
+  {{ art(np) }}
+  <div class="np-main">
+    {% if show_device %}<span class="np-where">{{ icon("speaker") }}<span data-np-device>{{ np.device.name if np.device else "" }}</span></span>{% endif %}
+    {{ text(np) }}
+    {{ bar(np) }}
+    {{ controls(np, opts) }}
+    <div class="np-foot">
+      {% if opts.allowed.transfer %}<button class="np-chip" data-focus data-go="v/app/music?list=speakers">{{ icon("speaker") }} Speakers</button>{% endif %}
+      <button class="np-chip" data-focus data-go="v/app/music?list=presets">{{ icon("presets") }} Presets</button>
+      {{ volume(np) }}
+    </div>
+  </div>
+</div>
+{%- endmacro %}

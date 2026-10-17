@@ -5,10 +5,7 @@ import re
 import time
 
 import httpx
-from openai import OpenAI
 from sqlalchemy.orm import Session
-
-from app.services.settings import LlmConfig
 
 logger = logging.getLogger("newscast.translate")
 GTX_URL = "https://translate.googleapis.com/translate_a/single"
@@ -36,11 +33,12 @@ ENGLISH_HINT = re.compile(
 )
 LANG_CODE = re.compile(r"^[a-z]{2,3}(?:-[A-Za-z]{2,4})?$")
 PROVIDERS = ("google", "llm")
+# Sources can only opt out of AI translation (force Google), never opt in; "llm" from
+# older installs reads as "global".
 FEED_PROVIDER_CHOICES = (
     ("off", "As published"),
-    ("global", "Translate (use global setting)"),
+    ("global", "Translate (NewsCast setting)"),
     ("google", "Translate with Google"),
-    ("llm", "Translate with AI"),
 )
 TARGET_LANGUAGES = (
     ("en", "English"),
@@ -114,7 +112,7 @@ def parse_feed_translate_mode(value: str | None) -> tuple[bool, str]:
     if mode == "google":
         return True, "google"
     if mode == "llm":
-        return True, "llm"
+        return True, "global"
     return False, "global"
 
 
@@ -122,24 +120,35 @@ def feed_translate_mode(feed) -> str:
     if not bool(getattr(feed, "translate", False)):
         return "off"
     raw = (getattr(feed, "translate_provider", None) or "global").strip().lower()
-    if raw in PROVIDERS:
-        return raw
-    return "global"
+    return "google" if raw == "google" else "global"
 
 
-def resolve_provider(db: Session | None, feed=None, *, global_provider: str | None = None) -> str | None:
-    from app.services import settings as settings_service
+def resolve_provider(db: Session | None, feed=None, *, ai=None) -> str | None:
+    """"google" or "llm" for a story from ``feed`` (None: the feed is not translated).
 
+    AI only when NewsCast's AI settings use it for translation (``ai``: AiSettings) and
+    the source has not opted out by forcing Google.
+    """
     if feed is not None and not bool(getattr(feed, "translate", False)):
         return None
-    feed_raw = (getattr(feed, "translate_provider", None) or "global").strip().lower() if feed is not None else "global"
-    if feed_raw in PROVIDERS:
-        return feed_raw
-    if global_provider:
-        return normalize_provider(global_provider)
-    if db is None:
+    if feed is not None and feed_translate_mode(feed) == "google":
         return "google"
-    return settings_service.translate_provider(db)
+    if ai is None and db is not None:
+        from app.services.ai import ai_settings
+
+        ai = ai_settings(db)
+    return "llm" if ai is not None and ai.translate else "google"
+
+
+def translate_record(feed, provider: str | None) -> dict:
+    """The story's translate record before the call (U1); an AI call fills it in."""
+    from app.services.ai import fell_back, opted_out
+
+    if provider is None:
+        return {}
+    if feed is not None and feed_translate_mode(feed) == "google":
+        return opted_out()
+    return {} if provider == "llm" else fell_back("off")
 
 
 def translate_text(
@@ -147,31 +156,38 @@ def translate_text(
     *,
     provider: str = "google",
     target_lang: str = DEFAULT_TARGET_LANG,
-    config: LlmConfig | None = None,
     db: Session | None = None,
+    record: dict | None = None,
 ) -> str:
+    """Translate with Google or AI; AI that fails falls back to Google for this text.
+
+    ``record`` (the story's translate record, U1) gets which model did it, or "fallback".
+    """
     source = (text or "").strip()
     if not source:
         return ""
     engine = normalize_provider(provider)
     target = normalize_target_lang(target_lang)
     if engine == "llm":
-        translated = _translate_with_llm(source, target_lang=target, config=config, db=db)
-        return translated if translated else source
+        from app.services.ai import by_ai, fell_back
+
+        result = _translate_with_llm(source, target_lang=target, db=db)
+        if result is not None:
+            if record is not None:
+                record.clear()
+                record.update(by_ai(result))
+            return result.text
+        if record is not None:
+            record.clear()
+            record.update(fell_back("unavailable"))
     parts = [_translate_chunk_google(chunk, target_lang=target) for chunk in _chunks(source)]
     if any(part is None for part in parts):
         return source
     return " ".join(part.strip() for part in parts if part).strip() or source
 
 
-def translate_to_english(
-    text: str,
-    *,
-    provider: str = "google",
-    config: LlmConfig | None = None,
-    db: Session | None = None,
-) -> str:
-    return translate_text(text, provider=provider, target_lang="en", config=config, db=db)
+def translate_to_english(text: str, *, provider: str = "google", db: Session | None = None) -> str:
+    return translate_text(text, provider=provider, target_lang="en", db=db)
 
 
 def translate_story(
@@ -180,8 +196,8 @@ def translate_story(
     *,
     provider: str = "google",
     target_lang: str = DEFAULT_TARGET_LANG,
-    config: LlmConfig | None = None,
     db: Session | None = None,
+    record: dict | None = None,
 ) -> tuple[str, str]:
     title = (title or "").strip()
     excerpt = (excerpt or "").strip()
@@ -189,13 +205,15 @@ def translate_story(
     target = normalize_target_lang(target_lang)
     if excerpt:
         packed = f"{TITLE_MARK}\n{title}\n{BODY_MARK}\n{excerpt}"
-        rendered = translate_text(packed, provider=engine, target_lang=target, config=config, db=db)
+        rendered = translate_text(packed, provider=engine, target_lang=target, db=db, record=record)
         parsed = _unpack_story(rendered, title, excerpt)
         if parsed:
             return parsed
-    new_title = translate_text(title, provider=engine, target_lang=target, config=config, db=db) or title
+        if record is not None and record.get("by") == "fallback":
+            engine = "google"  # AI already failed for this story: no second and third try
+    new_title = translate_text(title, provider=engine, target_lang=target, db=db, record=record) or title
     new_excerpt = (
-        translate_text(excerpt, provider=engine, target_lang=target, config=config, db=db) if excerpt else ""
+        translate_text(excerpt, provider=engine, target_lang=target, db=db, record=record) if excerpt else ""
     )
     return new_title.strip() or title, new_excerpt
 
@@ -228,43 +246,19 @@ def _translate_chunk_google(text: str, *, target_lang: str = DEFAULT_TARGET_LANG
     return None
 
 
-def _translate_with_llm(
-    text: str,
-    *,
-    target_lang: str = DEFAULT_TARGET_LANG,
-    config: LlmConfig | None,
-    db: Session | None,
-) -> str | None:
-    from app.services.importance import clear_ai_error, record_ai_error
-    from app.services import settings as settings_service
+def _translate_with_llm(text: str, *, target_lang: str = DEFAULT_TARGET_LANG, db: Session | None):
+    """The AI reply (stonepi_ai Result), or None when no model could do it."""
+    from app.services.ai import FN_TRANSLATE, complete
 
-    cfg = config
-    if cfg is None and db is not None:
-        cfg = settings_service.llm_config(db)
-    if cfg is None or not cfg.ready:
-        logger.info("llm translate skipped: model not ready")
-        return None
-    client = OpenAI(api_key=cfg.api_key, base_url=cfg.base_url) if cfg.base_url else OpenAI(api_key=cfg.api_key)
-    try:
-        response = client.chat.completions.create(
-            model=cfg.model or "gpt-4o-mini",
-            temperature=0.1,
-            max_tokens=1200,
-            messages=[
-                {"role": "system", "content": llm_system_prompt(target_lang)},
-                {"role": "user", "content": text[:8000]},
-            ],
-        )
-    except Exception as exc:  # noqa: BLE001
-        record_ai_error(db, f"Translate failed: {exc}")
-        logger.info("llm translate failed: %s", exc)
-        return None
-    out = (response.choices[0].message.content or "").strip()
-    if not out:
-        record_ai_error(db, "Translate returned empty text.")
-        return None
-    clear_ai_error(db)
-    return out
+    return complete(
+        FN_TRANSLATE,
+        db,
+        "Translation",
+        system=llm_system_prompt(target_lang),
+        prompt=text[:8000],
+        max_tokens=1200,
+        temperature=0.1,
+    )
 
 
 def _post_gtx(text: str, *, target_lang: str = DEFAULT_TARGET_LANG) -> str | None:

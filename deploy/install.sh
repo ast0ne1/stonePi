@@ -484,9 +484,10 @@ install_app() {
   local dir="$DEST/apps/$name"
   local pkgs=(stonepi_auth stonepi_contracts stonepi_update stonepi_vault)
   case "$name" in
-    dashboard) pkgs+=(stonepi_display stonepi_watch stonepi_automations) ;;
+    dashboard) pkgs+=(stonepi_display stonepi_watch stonepi_automations stonepi_ai) ;;
     notify) pkgs+=(stonepi_display stonepi_notify stonepi_watch) ;;
     carthing) pkgs+=(stonepi_display) ;;
+    newscast | studio) pkgs+=(stonepi_ai) ;;
   esac
   if [[ "$extra" == "playwright" ]]; then
     pkgs+=(stonepi_browser)

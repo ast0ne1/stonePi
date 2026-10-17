@@ -99,6 +99,8 @@ def _ensure_schema() -> None:
                         "WHERE translate_provider IS NULL OR translate_provider = ''"
                     )
                 )
+            # Sources can no longer force AI translation (U18b): it follows NewsCast's setting.
+            conn.execute(text("UPDATE feeds SET translate_provider = 'global' WHERE translate_provider = 'llm'"))
             if "muted_until" not in feed_cols:
                 conn.execute(text("ALTER TABLE feeds ADD COLUMN muted_until DATETIME"))
             if "keyword_include" not in feed_cols:
@@ -176,6 +178,17 @@ def _ensure_schema() -> None:
                 conn.execute(text("ALTER TABLE stories ADD COLUMN content_lang VARCHAR(8)"))
             if "image_url" not in story_cols:
                 conn.execute(text("ALTER TABLE stories ADD COLUMN image_url VARCHAR(1000)"))
+            if "ai_record" not in story_cols:
+                conn.execute(text("ALTER TABLE stories ADD COLUMN ai_record TEXT"))
+        if "settings" in tables:
+            # NewsCast's own AI provider settings went with U18b / F13. Old installs could hold a
+            # plaintext OpenAI key here (pre-Vault), which would otherwise ride along in backups.
+            conn.execute(
+                text(
+                    "DELETE FROM settings WHERE key IN "
+                    "('openai_api_key', 'openai_model', 'llm_provider', 'ollama_base_url', 'ollama_model')"
+                )
+            )
         if "sync_tasks" in tables:
             task_cols = _table_columns(conn, "sync_tasks")
             if "kind" not in task_cols:

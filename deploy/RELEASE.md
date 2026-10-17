@@ -25,6 +25,8 @@ Run the release smoke overlay from Windows: `cmd /c "scripts\push-release-smoke-
 7. NewsCast: Refresh fills the Briefing source by source without reloading
 8. Users: your own Role switch is locked; another account can be changed
 9. Open via router DNS (e.g. `http://stonepi.home/`): sign-in and the app switcher stay on that host
+10. Dashboard → Settings → AI: providers show as set up, **Test** on a model answers, and NewsCast → Settings → AI can switch AI on
+11. Car Thing (if plugged in): Music → Now Playing shows the current track; Test connection in Notify → Displays → Car Thing → Music passes
 
 ## 4. Commit (when you ask)
 

@@ -537,6 +537,7 @@ def _rebuild_stories_table(conn) -> None:
                 importance INTEGER,
                 content_lang VARCHAR(8),
                 image_url VARCHAR(1000),
+                ai_record TEXT,
                 created_at DATETIME,
                 CONSTRAINT uq_stories_user_url UNIQUE (user_id, canonical_url)
             )
@@ -562,6 +563,7 @@ def _rebuild_stories_table(conn) -> None:
         "importance" if "importance" in cols else "NULL",
         "content_lang" if "content_lang" in cols else "NULL",
         "image_url" if "image_url" in cols else "NULL",
+        "ai_record" if "ai_record" in cols else "NULL",
         "created_at" if "created_at" in cols else "CURRENT_TIMESTAMP",
     ]
     conn.execute(text(f"INSERT INTO stories_new SELECT {', '.join(select_cols)} FROM stories"))

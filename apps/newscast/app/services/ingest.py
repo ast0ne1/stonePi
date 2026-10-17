@@ -40,7 +40,7 @@ RSS_ACCEPT = (
 )
 HTML_ACCEPT = "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8"
 MIN_EXCERPT_CHARS = 280
-MAX_EXTRACTS_PER_FEED = 3
+MAX_EXTRACTS_PER_FEED = 3  # Summarise sources, only while AI writes the summaries
 _lock = Lock()
 
 
@@ -61,6 +61,8 @@ class IngestState:
     stop_requested: bool = False
     # Local user id that started the manual refresh (None: scheduler / per-feed).
     started_by: int | None = None
+    # Stories in the running refresh that used a non-AI path because every model failed.
+    ai_fallbacks: int = 0
 
 
 state = IngestState()
@@ -414,9 +416,11 @@ def _purge_old_stories(db: Session) -> None:
 
 
 def _backfill_translations(db: Session, source_names: list[str] | None = None) -> int:
+    from app.services.ai import ai_settings, dump_record, load_record
     from app.services.translate import (
         needs_translation,
         resolve_provider,
+        translate_record,
         translate_story,
         translate_text,
         translate_target_lang,
@@ -430,8 +434,7 @@ def _backfill_translations(db: Session, source_names: list[str] | None = None) -
     feeds = query.all()
     if not feeds:
         return 0
-    llm = settings.llm_config(db)
-    global_provider = settings.translate_provider(db)
+    ai = ai_settings(db)
     target = translate_target_lang(db)
     by_name = {feed.name: feed for feed in feeds}
     updated = 0
@@ -441,19 +444,20 @@ def _backfill_translations(db: Session, source_names: list[str] | None = None) -
             continue
         _check_stop()
         feed = by_name.get(story.source_name)
-        provider = resolve_provider(db, feed, global_provider=global_provider)
+        provider = resolve_provider(db, feed, ai=ai)
         if not provider:
             continue
         original_excerpt = story.raw_excerpt or ""
         original_summary = story.summary or ""
+        record = translate_record(feed, provider)
         try:
             title, excerpt = translate_story(
                 story.title,
                 original_excerpt or original_summary,
                 provider=provider,
                 target_lang=target,
-                config=llm,
                 db=db,
+                record=record,
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("backfill translate failed for %s: %s", story.title, exc)
@@ -468,12 +472,16 @@ def _backfill_translations(db: Session, source_names: list[str] | None = None) -
         elif original_summary.strip() == original_excerpt.strip():
             story.summary = excerpt or title
         else:
+            # AI already failed on this story: the summary goes to Google too.
+            again = "google" if record.get("by") == "fallback" else provider
             story.summary = (
-                translate_text(original_summary, provider=provider, target_lang=target, config=llm, db=db)
+                translate_text(original_summary, provider=again, target_lang=target, db=db, record=record)
                 or excerpt
                 or title
             )
         story.content_lang = target
+        if record:
+            story.ai_record = dump_record({**load_record(story), "translate": record})
         story.content_hash = content_hash(story.title, story.raw_excerpt or "")
         story.cluster_key = cluster_key(story.title)
         updated += 1
@@ -525,9 +533,9 @@ def _save_source_stories(
     feed: Feed,
     candidates: list[dict],
     saved_titles: list[str],
-    llm,
-    score_importance,
-    summarize_with_config,
+    ai,
+    score_story,
+    summarize_story,
     on_added=None,
 ) -> int:
     """Summarise, score and add one source's new stories; returns how many were added.
@@ -538,6 +546,8 @@ def _save_source_stories(
     a Stop part-way through a source still counts (and keeps) what was summarised.
     Committed by the caller.
     """
+    from app.services.ai import dump_record, fell_back, opted_out
+
     category = getattr(feed, "category", None) or "news"
     added = 0
     for item in candidates:
@@ -545,24 +555,32 @@ def _save_source_stories(
             continue
         _check_stop()
         excerpt = item.get("excerpt") or ""
+        record: dict = {}
         if item.get("summarize", True):
             try:
-                summary = summarize_with_config(item["title"], excerpt, item["source"], llm, db=db)
+                summary, record["summary"] = summarize_story(item["title"], excerpt, item["source"], ai, db=db)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("summarize failed for %s: %s", item["title"], exc)
-                from app.services.summarize import fallback_summary
+                from app.services.summarize import on_device_summary
 
-                summary = fallback_summary(item["title"], excerpt)
+                summary = on_device_summary(item["title"], excerpt)
+                record["summary"] = fell_back("unavailable" if ai is not None and ai.summaries else "off")
         else:
+            # Full-article source: no summary at all, so no AI either.
             summary = excerpt.strip() or item["title"]
-        importance = score_importance(
+            record["summary"] = opted_out()
+        importance, record["importance"] = score_story(
             item["title"],
             excerpt,
             source=item["source"],
             category=category,
-            config=llm,
+            ai=ai,
             db=db,
         )
+        if item.get("ai_translate"):
+            record["translate"] = item["ai_translate"]
+        if ai is not None and any(r.get("reason") == "unavailable" for r in record.values()):
+            state.ai_fallbacks += 1
         db.add(
             Story(
                 user_id=int(item.get("user_id") or 1),
@@ -577,6 +595,7 @@ def _save_source_stories(
                 importance=importance,
                 content_lang=item.get("content_lang"),
                 image_url=item.get("image_url") or None,
+                ai_record=dump_record(record),
             )
         )
         saved_titles.append(item["title"])
@@ -623,10 +642,13 @@ def run_ingest(
     state.last_started_at = utcnow()
     state.last_error = None
     state.new_so_far = 0
+    state.ai_fallbacks = 0
     created = 0
 
     try:
-        llm = settings.llm_config(db)
+        from app.services.ai import ai_settings
+
+        ai = ai_settings(db)
         global_minutes = settings.get_int(db, "ingest_interval_minutes", env.ingest_interval_minutes)
         active_start = settings.get_value(db, "ingest_active_start")
         active_end = settings.get_value(db, "ingest_active_end")
@@ -678,14 +700,13 @@ def run_ingest(
                 ]
         global_include = settings.get_value(db, "keyword_include")
         global_exclude = settings.get_value(db, "keyword_exclude")
-        global_translate = settings.translate_provider(db)
         if not feeds:
             state.last_message = "No enabled feeds due yet." if not force else "No enabled feeds."
             state.last_new_stories = 0
             return {"ok": True, "created": 0, "message": state.last_message}
 
-        from app.services.importance import score_importance
-        from app.services.summarize import summarize_with_config
+        from app.services.importance import score_story
+        from app.services.summarize import summarize_story
 
         def _count_added() -> None:
             nonlocal created
@@ -743,8 +764,11 @@ def run_ingest(
                         continue
                     # Article extraction and translation are the slow steps per item.
                     _check_stop()
+                    # With AI writing summaries, each extract becomes a long AI request, so only a
+                    # few per source; on device the summary needs the body text and costs nothing.
                     should_extract = (not summarize_feed) or (
-                        extracts < MAX_EXTRACTS_PER_FEED and len(item["excerpt"]) < MIN_EXCERPT_CHARS
+                        len(item["excerpt"]) < MIN_EXCERPT_CHARS
+                        and (not ai.summaries or extracts < MAX_EXTRACTS_PER_FEED)
                     )
                     if should_extract:
                         item["excerpt"] = _extract_article(
@@ -753,20 +777,27 @@ def run_ingest(
                         if summarize_feed:
                             extracts += 1
                     if translate_feed:
-                        from app.services.translate import resolve_provider, translate_story, translate_target_lang
+                        from app.services.translate import (
+                            resolve_provider,
+                            translate_record,
+                            translate_story,
+                            translate_target_lang,
+                        )
 
-                        provider = resolve_provider(db, feed, global_provider=global_translate)
+                        provider = resolve_provider(db, feed, ai=ai)
                         target = translate_target_lang(db)
+                        record = translate_record(feed, provider)
                         try:
                             item["title"], item["excerpt"] = translate_story(
                                 item["title"],
                                 item["excerpt"],
                                 provider=provider or "google",
                                 target_lang=target,
-                                config=llm,
                                 db=db,
+                                record=record,
                             )
                             item["content_lang"] = target
+                            item["ai_translate"] = record
                         except Exception as exc:  # noqa: BLE001
                             logger.warning("translate failed for %s: %s", item["title"], exc)
                     item["content_hash"] = content_hash(item["title"], item["excerpt"])
@@ -814,9 +845,9 @@ def run_ingest(
                 feed,
                 candidates,
                 saved_titles.setdefault(uid, []),
-                llm,
-                score_importance,
-                summarize_with_config,
+                ai,
+                score_story,
+                summarize_story,
                 on_added=_count_added,
             )
             stats["new"] = new_here
@@ -845,6 +876,14 @@ def run_ingest(
             translated = _backfill_translations(db)
         _purge_old_stories(db)
         db.commit()
+        caught_up = 0
+        if feed_id is None and ai.enabled:
+            from app.services.catchup import run_catchup
+
+            try:
+                caught_up = run_catchup(db, ai)
+            except Exception:  # noqa: BLE001
+                logger.exception("AI catch-up failed")
         if feed_id is not None and feed_stats:
             row = feed_stats[0]
             message = f"Updated {feeds[0].name}. Added {created} new stor{'y' if created == 1 else 'ies'}."
@@ -872,11 +911,14 @@ def run_ingest(
             message += (
                 f" Translated {translated} existing stor{'y' if translated == 1 else 'ies'} into {lang_name}."
             )
-        if not llm.ready:
-            if llm.provider == "ollama":
-                message += " Ollama has no model set, so summaries used extracted text."
-            else:
-                message += " OpenAI key is not set, so summaries used extracted text."
+        if state.ai_fallbacks:
+            n = state.ai_fallbacks
+            message += (
+                f" AI was unavailable for {n} stor{'y' if n == 1 else 'ies'}, so "
+                f"{'it' if n == 1 else 'they'} used the non-AI path; AI redoes them when it's back."
+            )
+        if caught_up:
+            message += f" AI redid {caught_up} stor{'y' if caught_up == 1 else 'ies'} that had used the non-AI path."
         state.last_new_stories = created
         state.last_message = message
         state.last_error = None
@@ -890,7 +932,7 @@ def run_ingest(
             "ok": True,
             "created": created,
             "message": message,
-            "llm_ready": llm.ready,
+            "ai_enabled": ai.enabled,
             "feed_stats": feed_stats,
         }
     except IngestStopped:

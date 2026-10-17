@@ -116,6 +116,55 @@ function askConfirm({ title, body, okLabel }) {
   });
 }
 
+// Unsaved-changes guard for editors. Links and forms on the page ask with the styled sheet;
+// reload, closing the tab and the browser's Back button can only use the browser's own
+// prompt (pages can't style it). `scope`: the editor's own forms, which save rather than leave.
+function guardLeave(isDirty, { body, scope } = {}) {
+  let leaving = false;
+  const ask = () =>
+    askConfirm({ title: "Leave without saving?", body: body || "Your changes aren't saved.", okLabel: "Leave" });
+  document.addEventListener(
+    "click",
+    (event) => {
+      const link = event.target.closest?.("a[href]");
+      if (!link || leaving || event.defaultPrevented || event.button !== 0) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || link.hasAttribute("download")) return;
+      if (link.target && link.target !== "_self") return;
+      const url = new URL(link.href, window.location.href);
+      if (!/^https?:$/.test(url.protocol)) return;
+      if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash) return;
+      if (!isDirty()) return;
+      event.preventDefault();
+      ask().then((ok) => {
+        if (!ok) return;
+        leaving = true;
+        window.location.href = url.href;
+      });
+    },
+    true,
+  );
+  document.addEventListener(
+    "submit",
+    (event) => {
+      const form = event.target;
+      if (leaving || event.defaultPrevented || (scope && scope.contains(form)) || !isDirty()) return;
+      event.preventDefault();
+      ask().then((ok) => {
+        if (!ok) return;
+        leaving = true;
+        if (typeof form.requestSubmit === "function") form.requestSubmit();
+        else form.submit();
+      });
+    },
+    true,
+  );
+  window.addEventListener("beforeunload", (event) => {
+    if (leaving || !isDirty()) return;
+    event.preventDefault();
+    event.returnValue = "";
+  });
+}
+
 document.querySelectorAll("form[data-confirm]").forEach((form) => {
   form.addEventListener("submit", (event) => {
     if (form.dataset.confirmPassed === "1") {

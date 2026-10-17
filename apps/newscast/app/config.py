@@ -25,11 +25,6 @@ class EnvSettings(BaseSettings):
     admin_password: str = "admin"
     session_secret: str = ""
 
-    openai_api_key: str = ""
-    openai_model: str = "gpt-4o-mini"
-    llm_provider: str = "openai"
-    ollama_base_url: str = "http://127.0.0.1:11434"
-    ollama_model: str = ""
     instance_name: str = ""
 
     ingest_interval_minutes: int = 60

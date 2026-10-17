@@ -19,6 +19,7 @@ from app.models import Base, Feed, Story, User
 from app.routers import ui
 from app.services import passwords, settings
 from stonepi_auth.session import COOKIE_NAME, encode_session
+from tests.ai_helpers import platform_ai, use_ai
 
 OWNER = "5f0c1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b"
 SECRET = "nc-test-secret"
@@ -74,10 +75,10 @@ def ctx(monkeypatch):
     return client, db
 
 
-def _ai_on(db: Session) -> None:
-    settings.set_value(db, "llm_provider", "ollama")
-    settings.set_value(db, "ollama_model", "llama3.2")
-    db.commit()
+def _ai_on(monkeypatch, db: Session, **choices) -> None:
+    """Ollama set up in the platform, and NewsCast's master switch plus the given choices on."""
+    platform_ai(monkeypatch, "ok", provider="ollama", model="llama3.2")
+    use_ai(db, **({"summaries": True} | choices))
 
 
 def _feed_row(html: str, name: str) -> str:
@@ -93,39 +94,81 @@ def _visible_tags(fragment: str) -> list[str]:
 def test_ai_off_has_no_tags_but_explains(ctx):
     client, _db = ctx
     llm_tab = client.get("/settings?tab=llm").text
-    assert "AI is off." in llm_tab
+    assert "No AI is set up on this StonePi yet" in llm_tab
+    assert 'name="ai_enabled" value="1" data-ai-master  disabled' in llm_tab
     assert AI_TAG not in llm_tab
     sources = client.get("/sources?tab=feeds").text
     assert AI_TAG not in _feed_row(sources, "Summary Feed")
-    assert "because AI is off" in sources
+    assert "picked on this device" in sources
     briefing = client.get("/").text
-    assert "AI summary" not in briefing and ">Excerpt<" in briefing
+    assert "AI summary" not in briefing and ">Summary<" in briefing
 
 
-def test_ai_on_tags_only_settings_that_use_it(ctx):
-    client, db = ctx
-    _ai_on(db)
+def test_platform_key_alone_does_not_turn_ai_on(ctx, monkeypatch):
+    client, _db = ctx
+    platform_ai(monkeypatch, "ok")  # e.g. an OpenAI key added for Studio
     llm_tab = client.get("/settings?tab=llm").text
-    assert "AI is on" in llm_tab and AI_TAG in llm_tab
+    assert "No AI is set up" not in llm_tab
+    assert 'data-ai-master  disabled' not in llm_tab and "checked" not in llm_tab.split('name="ai_enabled"')[1][:60]
+    assert AI_TAG not in _feed_row(client.get("/sources?tab=feeds").text, "Summary Feed")
+
+
+def test_master_switch_and_choices_save(ctx, monkeypatch):
+    client, db = ctx
+    platform_ai(monkeypatch, "ok")
+    form = {"settings_tab": "llm", "ai_enabled": "1", "ai_summaries": "ai", "translate_provider": "google",
+            "ai_importance": "rules"}
+    monkeypatch.setattr("app.services.catchup.start_catchup", lambda: True)
+    assert client.post("/settings", data=form).status_code in {200, 303}
+    db.expire_all()
+    from app.services.ai import ai_settings
+
+    ai = ai_settings(db)
+    assert ai.enabled and ai.summaries and not ai.translate and not ai.importance
+    form.pop("ai_enabled")
+    client.post("/settings", data=form)
+    db.expire_all()
+    assert not ai_settings(db).enabled and not ai_settings(db).summaries
+
+
+def test_ai_on_tags_only_settings_that_use_it(ctx, monkeypatch):
+    client, db = ctx
+    _ai_on(monkeypatch, db)
+    llm_tab = client.get("/settings?tab=llm").text
+    assert AI_TAG in llm_tab
     assert "story text stays on your network" in llm_tab
     sources = client.get("/sources?tab=feeds").text
     assert _visible_tags(_feed_row(sources, "Summary Feed"))
     assert not _visible_tags(_feed_row(sources, "Full Feed"))  # Full article, no translation
     # ...but it carries a hidden tag with live rules, so switching to Summarise shows it before Save.
-    assert 'data-ai-rules="summarize:1;translate:llm"' in _feed_row(sources, "Full Feed")
-    briefing = client.get("/").text
-    assert "AI summary" in briefing
+    assert 'data-ai-rules="summarize:1;"' in _feed_row(sources, "Full Feed")
 
 
-def test_translation_tag_needs_ai_and_ai_provider(ctx):
+def test_cards_follow_each_story_not_the_settings(ctx, monkeypatch):
+    client, db = ctx
+    story = db.query(Story).one()
+    story.ai_record = '{"summary":{"by":"ai","model":"Gemini 2.5 Flash-Lite","model_id":"gemini/x"},"translate":{"by":"fallback","reason":"unavailable"}}'
+    db.commit()
+    briefing = client.get("/").text  # AI is off now, but this story was made with it
+    assert "AI summary" in briefing and "Gemini 2.5 Flash-Lite" in briefing
+    assert ">Translated<" in briefing
+    story.ai_record = '{"summary":{"by":"fallback","reason":"unavailable"}}'
+    db.commit()
+    assert "Summary · AI unavailable" in client.get("/").text
+
+
+def test_translation_tag_needs_ai_translation(ctx, monkeypatch):
     client, db = ctx
     feed = db.query(Feed).filter(Feed.name == "Full Feed").one()
     feed.translate = True
-    feed.translate_provider = "llm"
+    feed.translate_provider = "global"
     db.commit()
     assert AI_TAG not in _feed_row(client.get("/sources?tab=feeds").text, "Full Feed")
-    _ai_on(db)
+    _ai_on(monkeypatch, db, summaries=False, translate=True)
     assert _visible_tags(_feed_row(client.get("/sources?tab=feeds").text, "Full Feed"))
+    feed.translate_provider = "google"  # the source opts out
+    db.commit()
+    assert not _visible_tags(_feed_row(client.get("/sources?tab=feeds").text, "Full Feed"))
 
 
 def test_edit_source_changes_category(ctx):

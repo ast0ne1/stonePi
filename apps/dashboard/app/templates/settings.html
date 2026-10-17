@@ -502,6 +502,167 @@
 </div>
 {% endif %}
 
+{% if settings_tab == 'ai' and ai %}
+<form method="post" action="/settings/ai" class="settings-panels ai-page" data-ai-page>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+  <input type="hidden" name="state_json" value="" data-ai-state-input />
+  <script type="application/json" data-ai-data>{{ {
+    "models": ai.models,
+    "presets": ai.presets,
+    "gemini_free_tier": ai.gemini_free_tier,
+  } | tojson }}</script>
+  <script type="application/json" data-ai-state>{{ ai.state_json | safe }}</script>
+
+  {% if not ai.any_ready %}
+  <p class="banner banner-muted ai-span">No AI provider is set up yet. Add a key in <a href="/settings?tab=vault#vault-GEMINI_API_KEY">Settings → Vault → AI</a> (Gemini, Anthropic or OpenAI), or an Ollama URL below. Until then apps use their non-AI paths, and Studio can't build.</p>
+  {% endif %}
+  {% for w in ai.warnings %}<p class="banner banner-warn ai-span">{{ w }}</p>{% endfor %}
+
+  <section class="card stack ai-span" id="ai-providers">
+    <h2 class="section-heading">{{ svg("ai") }} Providers</h2>
+    <p class="muted">Keys live in the Vault and every app shares them. A provider is used once its key is set and its models are in a tier below.</p>
+    <ul class="ai-providers">
+      {% for p in ai.providers %}
+      <li class="ai-provider" data-ai-provider="{{ p.id }}">
+        <div class="ai-provider-main">
+          <span class="vault-status{% if p.ready %} is-set{% endif %}" aria-hidden="true">{% if p.ready %}{{ svg('check') }}{% endif %}</span>
+          <div class="ai-provider-text">
+            <div class="vault-item-title">
+              <strong>{{ p.label }}</strong>
+              {% if p.ready %}<span class="chip vault-chip is-set">Set up</span>{% else %}<span class="chip chip-quiet">Not set up</span>{% endif %}
+              <span class="chip ai-chip {{ 'is-free' if p.billing in ('Free', 'Free tier') else 'is-paid' }}">{{ p.billing }}</span>
+            </div>
+            <p class="hint">{{ p.blurb }}</p>
+          </div>
+          {% if p.secret %}
+          <a class="vault-owner-link" href="/settings?tab=vault#vault-{{ p.secret }}">{{ 'Replace key' if p.ready else 'Add key' }} in Vault <span aria-hidden="true">&rarr;</span></a>
+          {% endif %}
+        </div>
+        {% if p.local %}
+        <div class="ai-provider-extra">
+          <label class="ai-inline-label" for="ai-ollama-url">Server URL</label>
+          <div class="vault-edit-row">
+            <input id="ai-ollama-url" type="url" name="ollama_url" value="{{ p.base_url }}" placeholder="http://192.168.1.20:11434" autocomplete="off" spellcheck="false" data-ai-ollama-url />
+            <button class="btn btn-ghost" type="submit" name="action" value="ollama_url">Save URL</button>
+          </div>
+        </div>
+        {% endif %}
+        {% if p.ask_free %}
+        <div class="ai-provider-extra ai-ask" role="group" aria-label="Gemini billing">
+          <p><strong>Free tier, no billing on this key?</strong> NewsCast's catch-up only uses Free models. Google may use free-tier prompts to improve its models.</p>
+          <div class="row-actions">
+            <button class="btn btn-primary" type="submit" name="action" value="gemini_free:yes">Yes, free tier</button>
+            <button class="btn btn-ghost" type="submit" name="action" value="gemini_free:no">No, it has billing</button>
+          </div>
+        </div>
+        {% elif p.free_tier is not none and p.ready %}
+        <div class="ai-provider-extra">
+          <p class="hint">This key is marked as <strong>{{ 'free tier' if p.free_tier else 'paid (billing on)' }}</strong>.
+            <button class="link-btn" type="submit" name="action" value="gemini_free:{{ 'no' if p.free_tier else 'yes' }}">Mark as {{ 'paid' if p.free_tier else 'free tier' }}</button></p>
+        </div>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="card stack ai-span" id="ai-tiers">
+    <h2 class="section-heading">{{ svg("reorder") }} Model order by tier</h2>
+    <p class="muted">Each job asks for a tier, and its app tries the models from the top. On a rate limit, a used-up quota or an outage it moves to the next model. After the last one, NewsCast uses its non-AI path and Studio shows an error. Drag to reorder.</p>
+    <div class="ai-tiers">
+      {% for tier in ai.tiers %}
+      <div class="ai-tier">
+        <h3>{{ tier.label }}</h3>
+        <p class="hint">{{ tier.blurb }}</p>
+        <div data-ai-rank="tier:{{ tier.id }}"></div>
+        {% if tier.id == 'best' %}<p class="ai-rank-warn" data-ai-best-warn hidden>A Free or small local model is in Best. They often cut long output short.</p>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="row-actions ai-save">
+      <button class="btn btn-primary btn-with-icon" type="submit" name="action" value="save">{{ svg('check') }} Save AI settings</button>
+      <span class="hint" data-ai-dirty hidden>Unsaved changes</span>
+    </div>
+  </section>
+
+  <section class="card stack ai-span" id="ai-functions">
+    <h2 class="section-heading">{{ svg("manage") }} Jobs</h2>
+    <p class="muted">What each app uses AI for, and the tier it asks for. Move a job to another tier, or give it its own list.</p>
+    {% for app in ai.apps %}
+    <div class="ai-app">
+      <h3>{{ app.label }}</h3>
+      <ul class="ai-functions">
+        {% for fn in app.functions %}
+        <li class="ai-function" data-ai-function="{{ fn.id }}" data-ai-suggested="{{ fn.suggested }}">
+          <div class="ai-function-main">
+            <div class="ai-function-text">
+              <strong>{{ fn.label }}</strong>
+              <span class="hint">{{ fn.blurb }} {% if fn.first %}Uses {{ fn.first }} first.{% else %}No model available now.{% endif %}</span>
+            </div>
+            <select class="ai-function-tier" data-ai-function-tier aria-label="Tier for {{ app.label }} {{ fn.label }}">
+              {% for tier in ai.tiers %}<option value="{{ tier.id }}"{% if not fn.custom and fn.tier == tier.id %} selected{% endif %}>{{ tier.label }}{% if fn.suggested == tier.id %} (suggested){% endif %}</option>{% endfor %}
+              <option value="custom"{% if fn.custom %} selected{% endif %}>Own list</option>
+            </select>
+          </div>
+          <div class="ai-function-rank" data-ai-rank="fn:{{ fn.id }}"{% if not fn.custom %} hidden{% endif %}></div>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endfor %}
+    <div class="row-actions ai-save">
+      <button class="btn btn-primary btn-with-icon" type="submit" name="action" value="save">{{ svg('check') }} Save AI settings</button>
+      <span class="hint" data-ai-dirty hidden>Unsaved changes</span>
+    </div>
+  </section>
+
+  <section class="card stack ai-span" id="ai-models">
+    <h2 class="section-heading">{{ svg("ai") }} Models</h2>
+    <p class="muted">The models that tiers and jobs can use, and how each one is doing. Free means the request costs nothing on this key (Ollama, a Gemini free-tier key). Free requests still count toward the monthly limit below.</p>
+    <ul class="ai-models" data-ai-models></ul>
+    <div class="ai-add-model">
+      <h3>Add a model</h3>
+      <div class="ai-add-row">
+        <label>Provider
+          <select data-ai-add-provider>
+            {% for p in ai.providers %}<option value="{{ p.id }}">{{ p.label }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Model ID
+          <input type="text" list="ai-model-ids" data-ai-add-model placeholder="gemini-3.5-flash-lite" autocomplete="off" spellcheck="false" />
+          <datalist id="ai-model-ids" data-ai-model-ids></datalist>
+        </label>
+        <label>Name <span class="hint">(optional)</span>
+          <input type="text" data-ai-add-label maxlength="80" autocomplete="off" />
+        </label>
+        <button class="btn btn-ghost btn-with-icon" type="button" data-ai-add-btn>{{ svg('plus') }} Add</button>
+      </div>
+      <p class="hint" data-ai-add-note>Any model ID the key can use works. For Ollama, <button class="link-btn" type="button" data-ai-ollama-load>load the server's models</button>.</p>
+    </div>
+    <div class="row-actions ai-save">
+      <button class="btn btn-primary btn-with-icon" type="submit" name="action" value="save">{{ svg('check') }} Save AI settings</button>
+      <span class="hint" data-ai-dirty hidden>Unsaved changes</span>
+    </div>
+  </section>
+
+  <section class="card stack ai-span" id="ai-usage">
+    <h2 class="section-heading">{{ svg("watch") }} Monthly AI requests</h2>
+    {% if ai.quota %}
+    <p class="muted">Every AI request from every app counts here, Free models too, as a safety net if a key is mislabelled. At the limit, apps use their non-AI paths until {{ ai.quota.resets_on }}.</p>
+    <p><strong>{{ "{:,}".format(ai.quota.used) }}</strong> of {{ "{:,}".format(ai.quota.limit) }} used this month{% if ai.quota.by_app %} ({% for app, n in ai.quota.by_app.items() %}{{ app|title }} {{ "{:,}".format(n) }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif %}.</p>
+    <div class="vault-edit-row">
+      <label class="visually-hidden" for="ai-quota-limit">Monthly limit</label>
+      <input id="ai-quota-limit" type="number" name="quota_limit" min="0" step="100" value="{{ ai.quota.limit }}" />
+      <button class="btn btn-ghost" type="submit" name="action" value="quota">Save limit</button>
+    </div>
+    {% else %}
+    <p class="muted">The request count is unavailable (the Vault folder can't be read).</p>
+    {% endif %}
+  </section>
+
+</form>
+{% endif %}
+
 {% if settings_tab == 'automations' %}
 <div class="settings-panels">
 <section class="card stack settings-panel-span-2">

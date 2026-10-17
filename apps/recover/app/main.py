@@ -51,24 +51,76 @@ _login_failures: dict[str, list[float]] = defaultdict(list)
 VAULT_PASSWORD_KEYS = ("STONEPI_RECOVER_PASSWORD", LEGACY_VAULT_KEY)
 LOCAL_BACKUP_DIR = Path("/var/backups/stonepi/current")
 USB_BACKUP_ROOT = Path("/mnt/stonepi-backup/RaspberryPi-Backup")
-UNITS = [
-    "nginx",
-    "stonepi-auth",
-    "stonepi-dashboard",
-    "stonepi-notify",
-    "stonepi-newscast",
-    "stonepi-fileserve",
-    "stonepi-eventtrakr",
-    "stonepi-pinboard",
-    "stonepi-studio",
-    "stonepi-pricescout",
-    "stonepi-sportguide",
-    "stonepi-pricewatch",
-    "stonepi-library",
-]
+# Services on the home page, grouped, with friendly names. Kept here rather than read from
+# stonepi_auth's catalog so the list still renders when the shared packages are broken.
+SERVICE_GROUPS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
+    (
+        "Core",
+        (
+            ("nginx", "Web server"),
+            ("stonepi-auth", "Auth"),
+            ("stonepi-dashboard", "Dashboard"),
+            ("stonepi-notify", "Notify"),
+        ),
+    ),
+    (
+        "Apps",
+        (
+            ("stonepi-newscast", "NewsCast"),
+            ("stonepi-fileserve", "FileServe"),
+            ("stonepi-eventtrakr", "EventTrakr"),
+            ("stonepi-pinboard", "Pinboard"),
+            ("stonepi-studio", "Studio"),
+            ("stonepi-pricescout", "PriceScout"),
+            ("stonepi-sportguide", "SportGuide"),
+            ("stonepi-pricewatch", "PriceWatch"),
+            ("stonepi-library", "Library"),
+        ),
+    ),
+    (
+        "Background",
+        (
+            ("stonepi-kiwix", "Offline library (Kiwix)"),
+            ("stonepi-failover-monitor", "Failover monitor"),
+            ("stonepi-carthing", "Car Thing panel"),
+        ),
+    ),
+)
+UNITS = [unit for _group, rows in SERVICE_GROUPS for unit, _name in rows]
+# Units shown on Logs when nothing has failed (the original combined journal).
+DEFAULT_LOG_UNITS = ("stonepi-dashboard", "stonepi-auth", "stonepi-notify", "nginx")
+FAILOVER_FLAG = Path("/var/lib/stonepi/failover")
+RESTORE_PREVIEW = 3  # newest backups shown before "Show all"
 
 APP_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
+
+
+def _use_header_templates() -> bool:
+    """Shared ``stonepi/header.html`` when stonepi_auth imports, else Recover's own fallback.
+
+    Recover must render when the shared packages are broken, so the fallback (a plain
+    Log out) sits last in the loader chain and the shared copy wins whenever it loads.
+    """
+    from jinja2 import ChoiceLoader, FileSystemLoader
+
+    try:
+        from stonepi_auth.alerts import add_shared_templates
+
+        add_shared_templates(templates.env)
+        shared = True
+    except Exception:  # noqa: BLE001
+        shared = False
+    loader = templates.env.loader
+    fallback = FileSystemLoader(str(APP_DIR / "templates_fallback"))
+    if isinstance(loader, ChoiceLoader):
+        loader.loaders = [*loader.loaders, fallback]
+    else:
+        templates.env.loader = ChoiceLoader([loader, fallback])
+    return shared
+
+
+SHARED_HEADER = _use_header_templates()
 
 log = logging.getLogger("stonepi.recover")
 
@@ -176,6 +228,37 @@ def _portal_home(request: Request) -> str:
     return f"http://{host}/"
 
 
+def _platform_origin(request: Request) -> str:
+    """Absolute portal origin (no trailing slash) for the app switcher's links."""
+    if _dev_mode():
+        return (os.environ.get("PUBLIC_ORIGIN") or "http://127.0.0.1:8010").rstrip("/")
+    if _behind_proxy(request):
+        proto = (request.headers.get("x-forwarded-proto") or request.url.scheme or "http").split(",")[0].strip()
+        host = (request.headers.get("host") or "").strip()
+        if host:
+            return f"{proto}://{host}"
+    return _portal_home(request).rstrip("/")
+
+
+def _header_state(request: Request) -> dict:
+    """State for ``header_tools``: avatar menu always, app switcher only while Auth is up.
+
+    No bell: its panel asks Notify over HTTP, and Recover has to work when apps are down.
+    Signed in with the Recover password (no platform account), the avatar shows "stonepi".
+    """
+    user = _platform_user(request)
+    header: dict = {"app": "recover", "dashboard_url": "", "apps": [], "account": None}
+    if SHARED_HEADER and user is not None:
+        try:
+            from stonepi_auth.header import header_context
+
+            home = _platform_origin(request) if _auth_up() else ""
+            header = header_context("recover", user, home_url=home)
+        except Exception:  # noqa: BLE001 — the header must never break Recover
+            pass
+    return {"show": False, "dot": False, "header": header, "panel": None}
+
+
 def _page(request: Request, name: str, ctx: dict | None = None, status_code: int = 200):
     token = _csrf_token(request)
     data = {
@@ -185,6 +268,10 @@ def _page(request: Request, name: str, ctx: dict | None = None, status_code: int
         "csrf_token": token,
         "portal_home": _portal_home(request),
     }
+    if name != "login.html":
+        state = _header_state(request)
+        data["header_state"] = state
+        data["header_name"] = "" if state["header"].get("account") else "stonepi"
     if ctx:
         data.update(ctx)
     response = templates.TemplateResponse(request, name, data, status_code=status_code)
@@ -249,22 +336,106 @@ def _disk_pct() -> str:
         return "n/a"
 
 
+def _unit_states() -> dict[str, dict[str, str]]:
+    """ActiveState / UnitFileState / LoadState for every unit, in one systemctl call."""
+    _code, out = _run(
+        ["systemctl", "show", "--no-pager", "-p", "Id,ActiveState,UnitFileState,LoadState", *UNITS],
+        timeout=10,
+    )
+    states: dict[str, dict[str, str]] = {}
+    for block in (out or "").replace("\r\n", "\n").split("\n\n"):
+        props = dict(line.split("=", 1) for line in block.strip().splitlines() if "=" in line)
+        unit = (props.get("Id") or "").removesuffix(".service")
+        if unit in UNITS:
+            states[unit] = props
+    return states
+
+
+def _unit_status(props: dict[str, str]) -> tuple[str, str]:
+    """(label, kind) for a unit. kind: ok | off | busy | warn | bad | muted."""
+    active = (props.get("ActiveState") or "").lower()
+    enabled = (props.get("UnitFileState") or "").lower()
+    if (props.get("LoadState") or "").lower() == "not-found":
+        return "Not installed", "off"
+    if active == "active":
+        return "Running", "ok"
+    if active == "failed":
+        return "Failed", "bad"
+    if active in {"activating", "reloading"}:
+        return "Starting", "busy"
+    if active == "deactivating":
+        return "Stopping", "busy"
+    if active == "inactive":
+        # Optional services (Car Thing, Kiwix) are disabled while switched off: not a problem.
+        if enabled in {"disabled", "masked"}:
+            return "Off", "off"
+        return "Stopped", "warn"
+    return "Unknown", "muted"
+
+
 def _unit_rows() -> list[dict]:
+    states = _unit_states()
     rows = []
-    for unit in UNITS:
-        _code, out = _run(["systemctl", "is-active", unit], timeout=5)
-        status = (out or "unknown").strip() or "unknown"
-        low = status.lower()
-        if low == "active":
-            kind = "ok"
-        elif low in {"failed", "inactive", "deactivating"}:
-            kind = "bad" if low == "failed" else "warn"
-        elif low in {"activating", "reloading"}:
-            kind = "busy"
-        else:
-            kind = "muted"
-        rows.append({"unit": unit, "status": status, "status_kind": kind})
+    for group, units in SERVICE_GROUPS:
+        for unit, name in units:
+            status, kind = _unit_status(states.get(unit, {}))
+            rows.append(
+                {
+                    "unit": unit,
+                    "name": name,
+                    "group": group,
+                    "status": status,
+                    "status_kind": kind,
+                    "problem": kind in {"bad", "warn", "busy", "muted"},
+                }
+            )
     return rows
+
+
+def _failover_on() -> bool:
+    try:
+        return FAILOVER_FLAG.exists()
+    except OSError:
+        return False
+
+
+def _default_route() -> dict[str, str]:
+    """{"gateway", "dev"} of the default route, or {} without one."""
+    _code, out = _run(["ip", "-o", "route", "show", "default"], timeout=5)
+    words = (out or "").split()
+    info: dict[str, str] = {}
+    for key, name in (("via", "gateway"), ("dev", "dev")):
+        if key in words and words.index(key) + 1 < len(words):
+            info[name] = words[words.index(key) + 1]
+    return info
+
+
+def _network_mode(route: dict[str, str] | None = None) -> str:
+    dev = (route if route is not None else _default_route()).get("dev", "")
+    if not dev:
+        return "No network"
+    if dev.startswith(("wlan", "wl")):
+        return "Wi-Fi"
+    if dev.startswith(("eth", "en")):
+        return "Ethernet"
+    return dev
+
+
+def _summary(rows: list[dict], disk: str, failover: bool, network: str) -> dict:
+    problems = [r for r in rows if r["problem"]]
+    running = sum(1 for r in rows if r["status_kind"] == "ok")
+    if problems:
+        n = len(problems)
+        headline = f"{n} service{'' if n == 1 else 's'} need{'s' if n == 1 else ''} attention"
+    else:
+        headline = f"All {running} services running"
+    return {
+        "ok": not problems and not failover,
+        "headline": headline,
+        "disk": disk,
+        "failover": failover,
+        "network": network,
+    }
 
 
 def _load_passwd() -> tuple[str, str] | None:
@@ -322,7 +493,8 @@ def _valid_session_token(token: str | None, password: str) -> bool:
     return hmac.compare_digest(sig, expect)
 
 
-def _session_admin(request: Request) -> bool:
+def _platform_user(request: Request):
+    """The signed-in platform admin (SSO cookie), or None. Never raises."""
     try:
         from stonepi_auth.session import COOKIE_NAME, decode_session
         from stonepi_vault import get_secret
@@ -333,11 +505,15 @@ def _session_admin(request: Request) -> bool:
             os.environ.get("STONEPI_SESSION_SECRET") or os.environ.get("SESSION_SECRET") or ""
         ).strip()
         if not secret:
-            return False
+            return None
         user = decode_session(request.cookies.get(COOKIE_NAME), secret)
-        return bool(user and getattr(user, "is_admin", False))
+        return user if user and getattr(user, "is_admin", False) else None
     except Exception:
-        return False
+        return None
+
+
+def _session_admin(request: Request) -> bool:
+    return _platform_user(request) is not None
 
 
 def _recover_session_ok(request: Request) -> bool:
@@ -544,15 +720,23 @@ def logout(request: Request, csrf_token: str = Form("")):
 def home(request: Request, _auth: None = Depends(require_recover_auth)):
     msg = request.query_params.get("msg") or ""
     err = request.query_params.get("err") or ""
+    rows = _unit_rows()
+    failover = _failover_on()
+    installed = [r for r in rows if r["status"] != "Not installed"]
+    groups = [{"name": group, "units": [r for r in installed if r["group"] == group]} for group, _units in SERVICE_GROUPS]
     return _page(
         request,
         "home.html",
         {
             "msg": msg,
             "err": err,
-            "disk_pct": _disk_pct(),
-            "units": _unit_rows(),
+            "summary": _summary(rows, _disk_pct(), failover, _network_mode()),
+            "problems": [r for r in rows if r["problem"]],
+            "groups": [g for g in groups if g["units"]],
+            "healthy_count": sum(1 for r in installed if not r["problem"]),
+            "failover": failover,
             "snapshots": _list_snapshots(),
+            "restore_preview": RESTORE_PREVIEW,
         },
     )
 
@@ -630,13 +814,58 @@ def restore(
 
 
 @app.get("/logs", response_class=HTMLResponse)
-def logs(request: Request, _auth: None = Depends(require_recover_auth)):
-    units = ["stonepi-dashboard", "stonepi-auth", "stonepi-notify", "nginx"]
-    args = ["journalctl", "--no-pager", "-n", "80"]
+def logs(request: Request, unit: str = "", _auth: None = Depends(require_recover_auth)):
+    """One unit's journal (?unit=), or by default the failed units, else the core four."""
+    rows = _unit_rows()
+    chosen = unit if unit in UNITS else ""
+    if chosen:
+        units = [chosen]
+    else:
+        units = [r["unit"] for r in rows if r["status_kind"] == "bad"] or list(DEFAULT_LOG_UNITS)
+    args = ["journalctl", "--no-pager", "-n", "120" if chosen else "80"]
     for u in units:
         args.extend(["-u", u])
     _code, out = _run(args, timeout=15)
-    return _page(request, "logs.html", {"log_text": out or "(empty)"})
+    names = {r["unit"]: r["name"] for r in rows}
+    return _page(
+        request,
+        "logs.html",
+        {
+            "log_text": out or "(empty)",
+            "chosen": chosen,
+            "showing": ", ".join(names.get(u, u) for u in units),
+            "groups": [{"name": g, "units": [r for r in rows if r["group"] == g]} for g, _units in SERVICE_GROUPS],
+        },
+    )
+
+
+def _tailscale_summary() -> str:
+    if not shutil.which("tailscale"):
+        return "Not installed"
+    code, out = _run(["tailscale", "status", "--json"], timeout=10)
+    try:
+        state = str(json.loads(out).get("BackendState") or "")
+    except (ValueError, AttributeError):
+        return "Not answering" if code else "Unknown"
+    return {"Running": "Up", "Stopped": "Stopped", "NeedsLogin": "Needs sign-in"}.get(state, state or "Unknown")
+
+
+def _network_summary() -> list[tuple[str, str]]:
+    """Readable lines above the raw output: connection, addresses, router, Tailscale."""
+    route = _default_route()
+    _code, addrs = _run(["hostname", "-I"], timeout=5)
+    gateway = route.get("gateway", "")
+    if gateway:
+        code, _out = _run(["ping", "-c", "1", "-W", "2", gateway], timeout=5)
+        router = f"{gateway} · {'reachable' if code == 0 else 'not answering'}"
+    else:
+        router = "None (no default route)"
+    return [
+        ("Connection", _network_mode(route) + (f" ({route['dev']})" if route.get("dev") else "")),
+        ("Addresses", " · ".join((addrs or "").split()) or "None"),
+        ("Router", router),
+        ("Tailscale", _tailscale_summary()),
+    ]
 
 
 @app.get("/network", response_class=HTMLResponse)
@@ -649,4 +878,4 @@ def network(request: Request, _auth: None = Depends(require_recover_auth)):
     ):
         _code, out = _run(cmd, timeout=10)
         parts.append("$ " + " ".join(cmd) + "\n" + (out or ""))
-    return _page(request, "network.html", {"net_text": "\n".join(parts)})
+    return _page(request, "network.html", {"net_text": "\n".join(parts), "net_summary": _network_summary()})

@@ -22,20 +22,21 @@ When the portal itself is broken there is no Dashboard to fix it from. Recover i
 - The `STONEPI_RECOVER_PASSWORD` env override works only in dev (Windows run-dev, or `RECOVER_DEV=1`).
 - A StonePi **admin** session cookie is also accepted when Auth is healthy. The Recover login is for when it isn't.
 - Sign-in sets a signed `stonepi_recover` session cookie (12 hours).
-- **Sign out** clears that cookie. If you came in with a portal admin session, it signs that out too (otherwise the admin cookie would let you straight back in): through `/auth/logout` when nginx and Auth are up, or by clearing the portal cookies in this browser on direct `:8099` / when Auth is down.
-- **Dashboard** in the header goes to portal Home: `/` through nginx, `http://<same host>/` when Recover was opened on `:8099`.
+- **Log out** (avatar menu) clears that cookie. If you came in with a portal admin session, it signs that out too (otherwise the admin cookie would let you straight back in): through `/auth/logout` when nginx and Auth are up, or by clearing the portal cookies in this browser on direct `:8099` / when Auth is down.
+- The header is the shared StonePi one (app switcher and avatar menu) while Auth is up and you came in with a StonePi session. A Recover-password sign-in gets a "stonepi" avatar and a **Dashboard** button to portal Home (`/` through nginx, `http://<same host>/` on `:8099`). If `stonepi_auth` can't load, a plain header with **Log out** stands in.
 - Failed sign-ins are rate-limited: 5 per client IP and 30 overall per 15 minutes. Behind nginx the client IP comes from `X-Real-IP`; direct `:8099` requests use the socket peer (the header is ignored there).
 - Every form (sign-in, sign-out, service actions, restore) carries a CSRF token matched against Recover's own `stonepi_recover_csrf` cookie.
 - Restore paths are resolved (symlinks and `..`) and must be the local `current` copy or a directory inside the USB `RaspberryPi-Backup/` tree.
 
 ## What it does
 
-- **Services** — status of every StonePi unit plus nginx, with **Restart** and **Stop**. Stop is refused for Auth, nginx and Recover itself.
-- **Restore** — pick the local backup (`/var/backups/stonepi/current`) or a USB snapshot (`/mnt/stonepi-backup/RaspberryPi-Backup/…`). Runs `stonepi-backup-helper restore`.
-- **Clear failover** — turns off the nginx failover that sends `/` to Recover once Dashboard is healthy again.
+- **Status** — a card with services, disk, failover and network at a glance.
+- **Services** — problems first: only services that need attention are listed, the rest fold under **Show all services**, grouped Core / Apps / Background with friendly names (including Kiwix, the failover monitor and the Car Thing panel). **Restart** is on the row; **Stop** and **Logs** are in its ⋯ menu. A switched-off service shows as **Off**, not as a problem. Stop is refused for Auth, nginx and Recover itself.
+- **Restore** — the newest 3 backups (**Show all backups** for the rest): the local backup (`/var/backups/stonepi/current`) or a USB snapshot (`/mnt/stonepi-backup/RaspberryPi-Backup/…`). Runs `stonepi-backup-helper restore`.
+- **Clear failover** — shown only while failover is on; turns off the nginx failover that sends `/` to Recover once Dashboard is healthy again.
 - **Reboot** the Pi.
-- **Logs** — recent journal for Dashboard, Auth, Notify and nginx.
-- **Network** — `hostname -I`, `ip -br addr`, and Tailscale status.
+- **Logs** — recent journal for a service you pick (failed services first by default), plus nginx.
+- **Network** — a readable summary (addresses, Tailscale), with the raw `hostname -I`, `ip -br addr` and Tailscale output under **Raw output**.
 - Every destructive action asks for confirmation first.
 
 ## How it's wired

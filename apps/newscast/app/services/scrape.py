@@ -9,6 +9,8 @@ from lxml import html
 COMMON_FEED_PATHS = ("/RSS/rss.ashx", "/feed/", "/rss.xml", "/rss")
 DATE_PATH = re.compile(r"/(\d{4})/(\d{2})/(\d{2})(?:/|$)")
 YEAR_MONTH_PATH = re.compile(r"/(\d{4})/(\d{2})(?:/|$)")
+# Date inside the slug, e.g. The Age / SMH: /national/some-headline-20261017-p616ei.html
+SLUG_DATE = re.compile(r"-((?:19|20)\d{2})(\d{2})(\d{2})(?=-|\.html?$|$)")
 NOISE_TITLE = re.compile(
     r"^(see all\b|read more|…read more|\d+\s+comments?|no comments|older posts|next page|previous page)\b",
     re.I,
@@ -89,6 +91,12 @@ def published_from_url(url: str) -> datetime | None:
             return datetime(int(match[1]), int(match[2]), int(match[3]), tzinfo=timezone.utc)
         except ValueError:
             return None
+    match = SLUG_DATE.search(path)
+    if match:
+        try:
+            return datetime(int(match[1]), int(match[2]), int(match[3]), tzinfo=timezone.utc)
+        except ValueError:
+            pass
     match = YEAR_MONTH_PATH.search(path)
     if not match:
         return None

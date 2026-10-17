@@ -93,6 +93,10 @@ def test_editor_page_and_displays_card():
     page = client.get("/displays/carthing")
     assert page.status_code == 200 and "data-ct-editor" in page.text and "/carthing/panel/" in page.text
     assert "Car Thing" in client.get("/displays").text
+    # U13 / U14 / 3D Pipes controls
+    for bind in ("clock.saver.separate", "clock.saver.face", "clock.tap", "idle.saver.pipes.joints", "idle.saver.pipes.speed"):
+        assert f'data-bind="{bind}"' in page.text
+    assert '"id": "weather", "label": "Weather"' in page.text or '"id":"weather","label":"Weather"' in page.text
 
 
 def test_non_admin_is_refused():

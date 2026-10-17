@@ -65,6 +65,25 @@
 
   mountSheetsToBody();
 
+  // ⋯ menus on service rows: one open at a time, closed by a tap outside or Esc.
+  function closeRowMenus(except) {
+    document.querySelectorAll("details.row-menu[open]").forEach(function (menu) {
+      if (menu !== except) menu.removeAttribute("open");
+    });
+  }
+  document.addEventListener("click", function (event) {
+    closeRowMenus(event.target.closest ? event.target.closest("details.row-menu") : null);
+  });
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") closeRowMenus(null);
+  });
+
+  document.querySelectorAll("select[data-autosubmit]").forEach(function (select) {
+    select.addEventListener("change", function () {
+      select.form.submit();
+    });
+  });
+
   document.querySelectorAll("form[data-confirm]").forEach(function (form) {
     form.addEventListener("submit", function (event) {
       if (form.dataset.confirmBusy === "1") return;

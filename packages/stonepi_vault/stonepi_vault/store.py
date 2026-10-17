@@ -109,6 +109,10 @@ class Vault:
             self._secure_file(self._key_path)
         self._invalidate_cache()
 
+    def reload(self) -> None:
+        """Forget the read cache, so the next read sees another app's save straight away."""
+        self._invalidate_cache()
+
     def list_keys(self) -> list[str]:
         return sorted(self._load().keys())
 

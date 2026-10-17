@@ -99,6 +99,28 @@ def notify_settings_url(tab: str = "") -> str:
 _NOTIFY_SUMMARY: dict[str, object] = {"at": -1e9, "body": None}
 
 
+def _displays_line(displays: dict) -> str:
+    """Displays status: TRMNL screens plus the Car Thing while it's switched on (backlog B10)."""
+    count, pushing = int(displays.get("count") or 0), int(displays.get("pushing") or 0)
+    carthing = displays.get("carthing") or {}
+    if not carthing.get("enabled"):
+        # TRMNL only (or an older Notify that doesn't report the Car Thing).
+        if not count:
+            return "No screens yet"
+        line = f"{count} screen{'' if count == 1 else 's'}"
+        return line + (f" · {'all' if pushing == count and count > 1 else pushing} pushing to TRMNL" if pushing else " · not pushing yet")
+    parts = [f"{count + 1} screens" if count else "1 screen"]
+    if count:
+        if not pushing:
+            parts.append("TRMNL not pushing yet")
+        elif pushing == count:
+            parts.append("TRMNL pushing")
+        else:
+            parts.append(f"{pushing} of {count} TRMNL pushing")
+    parts.append("Car Thing connected" if carthing.get("connected") else "Car Thing not connected")
+    return " · ".join(parts)
+
+
 def notify_admin_status(cookies: dict[str, str]) -> dict[str, str] | None:
     """Status lines for Dashboard -> Settings: Displays and Phone alerts. None if Notify can't say.
 
@@ -112,13 +134,7 @@ def notify_admin_status(cookies: dict[str, str]) -> dict[str, str] | None:
         if status != 200 or not body.get("ok"):
             return None
         _NOTIFY_SUMMARY.update(at=now, body=body)
-    displays = body.get("displays") or {}
-    count, pushing = int(displays.get("count") or 0), int(displays.get("pushing") or 0)
-    if count:
-        displays_line = f"{count} screen{'' if count == 1 else 's'}"
-        displays_line += f" · {'all' if pushing == count and count > 1 else pushing} pushing to TRMNL" if pushing else " · not pushing yet"
-    else:
-        displays_line = "No screens yet"
+    displays_line = _displays_line(body.get("displays") or {})
     alerts = body.get("alerts") or {}
     if not alerts.get("enabled"):
         alerts_line = "Off · set up in a couple of minutes"

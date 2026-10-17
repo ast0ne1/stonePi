@@ -145,8 +145,7 @@ input, select { font-size: 16px; }
   cursor: pointer;
   text-decoration: none;
 }
-.icon-btn svg,
-.sign-out svg {
+.icon-btn svg {
   width: 18px;
   height: 18px;
   fill: none;
@@ -156,15 +155,13 @@ input, select { font-size: 16px; }
   stroke-linejoin: round;
 }
 .icon-btn:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, var(--card)); }
-.sign-out:hover { color: var(--error); background: color-mix(in srgb, var(--error) 10%, var(--card)); }
-.sign-out { width: var(--tap); display: grid; place-items: center; }
 
 .nav {
   position: relative;
   flex: 0 0 auto;
   z-index: 12;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 2px;
   padding: 8px var(--gutter) calc(10px + var(--safe-bottom));
   background: color-mix(in srgb, var(--card) 94%, transparent);
@@ -1414,10 +1411,10 @@ details.alerts-section[open] > summary .section-heading::after { transform: rota
 .ct-geo { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .ct-device { width: 100%; }
 /* Labels around the drawing, never over it. The top row's columns follow the drawing's
-   640-unit width: margin to preset 1, four presets (90 each), M, then the dial. */
+   640-unit width: margin, then a 118-wide column centred on each preset, then M. */
 .ct-callouts {
   display: grid; align-items: end; gap: 0;
-  grid-template-columns: minmax(0, 62fr) repeat(4, minmax(0, 90fr)) minmax(0, 64fr) minmax(0, 154fr);
+  grid-template-columns: minmax(0, 55fr) repeat(4, minmax(0, 118fr)) minmax(0, 113fr);
   margin-bottom: 6px;
 }
 .ct-callouts > .ct-co:first-child { grid-column: 2; }
@@ -1434,7 +1431,7 @@ details.alerts-section[open] > summary .section-heading::after { transform: rota
 .ct-co:hover, .ct-co.is-hot { border-color: var(--accent); }
 .ct-co.is-hot b { color: var(--accent); }
 .ct-co:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
-.ct-co-dial { display: grid; gap: 3px; min-width: 0; margin-left: 6px; }
+.ct-co-dial { display: grid; gap: 3px; min-width: 0; }
 .ct-co-dial .ct-co { flex-direction: row; justify-content: flex-start; gap: 6px; margin: 0; padding: 2px 6px; }
 .ct-co-dial .ct-co span { display: block; white-space: nowrap; text-overflow: ellipsis; text-align: left; }
 .ct-device-body { position: relative; }
@@ -1442,25 +1439,26 @@ details.alerts-section[open] > summary .section-heading::after { transform: rota
 .ct-pager { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .ct-pager span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9rem; }
 .ct-pager .btn { min-width: var(--tap); padding: 4px 10px; flex: none; }
-/* Back sits under the drawing's back button (x 528-640 of 640). */
-.ct-co-back { flex: none; width: 17.5%; min-width: 72px; margin: 0; }
+/* Dial and Back labels sit under the drawing's dial and back button (x 473-640 of 640). */
+.ct-co-right { flex: none; width: 26%; min-width: 110px; display: grid; gap: 3px; }
+.ct-co-back { margin: 0; }
 .ct-drawing { display: block; width: 100%; height: auto; }
 .ct-body { fill: #24272b; stroke: #3a3e44; stroke-width: 2; }
 .ct-bezel { fill: #000; }
 .ct-ctl rect, .ct-ctl circle { fill: #3a3e44; stroke: #50555c; stroke-width: 2; cursor: pointer; }
 .ct-knob { fill: #34383d; stroke: #50555c; stroke-width: 2; }
-.ct-knob-ridge { stroke: #4a4f56; stroke-width: 2; pointer-events: none; }
+.ct-knob-ring { fill: none; stroke: #4a4f56; stroke-width: 2; pointer-events: none; }
 .ct-hit { fill: transparent; cursor: pointer; }
 .ct-hit:hover, .ct-ctl:hover rect, .ct-ctl:hover circle { fill: color-mix(in srgb, var(--accent) 35%, #3a3e44); }
-[data-input].is-hot rect, [data-input].is-hot circle, rect[data-input].is-hot { fill: var(--accent); }
+[data-input].is-hot rect, [data-input].is-hot circle, .ct-hit.is-hot { fill: var(--accent); }
 .ct-device.is-mapping .ct-ctl rect, .ct-device.is-mapping .ct-ctl circle, .ct-device.is-mapping .ct-knob { stroke: var(--accent); }
 .ct-ctl:focus-visible, .ct-hit:focus-visible { outline: 2px solid var(--focus); }
-/* Screen: 480×288 at (44, 96) in the drawing's 640×394 view (y from 16); the 800×480 panel is scaled to fit. */
-.ct-screen { position: absolute; left: 6.875%; top: 20.305%; width: 75%; height: 73.096%; overflow: hidden; border-radius: 4px; background: #000; }
+/* Screen: 400×240 at (43, 54) in the drawing's 640×330 view (y from 4); the 800×480 panel is scaled to fit. */
+.ct-screen { position: absolute; left: 6.719%; top: 15.152%; width: 62.5%; height: 72.727%; overflow: hidden; border-radius: 4px; background: #000; }
 .ct-screen iframe { width: 800px; height: 480px; border: 0; transform-origin: 0 0; display: block; }
 .ct-device-hint { margin-top: 8px; }
 /* Swipes: arrow zones on the drawing's screen while mapping, plus callouts under it. */
-.ct-swipes { position: absolute; left: 6.875%; top: 20.305%; width: 75%; height: 73.096%; display: none; pointer-events: none; }
+.ct-swipes { position: absolute; left: 6.719%; top: 15.152%; width: 62.5%; height: 72.727%; display: none; pointer-events: none; }
 .ct-device.is-mapping .ct-swipes { display: block; }
 .ct-swipe {
   position: absolute; display: grid; place-items: center; pointer-events: auto; cursor: pointer;

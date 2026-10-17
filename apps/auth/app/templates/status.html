@@ -25,12 +25,10 @@
             <p class="sp-tagline">The bedrock of your digital home</p>
           </div>
         </div>
-        <form method="post" action="/logout" class="status-signout">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-          <button class="icon-btn sign-out" type="submit" aria-label="Sign out" title="Sign out">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 7V5a2 2 0 0 1 2-2h7v18h-7a2 2 0 0 1-2-2v-2"/><path d="M15 12H3m0 0 3-3m-3 3 3 3"/></svg>
-          </button>
-        </form>
+        {% from "stonepi/header.html" import header_tools %}
+        <div class="status-signout">
+          {{ header_tools(header_state, logout_action="/logout", csrf_token=csrf_token) }}
+        </div>
       </header>
 
       <main class="card login-card status-card">

@@ -44,7 +44,7 @@
     <h2>Sources</h2>
     <div class="help-sheet-body">
       <p><strong>Feeds</strong> are sources you follow. Tap a row to change schedule, fetch mode, summarise, language, and keywords. The circular arrow fetches just that source.</p>
-      <p>Each feed can follow the global schedule (every {{ global_interval_label }}) or use its own. <strong>Summarise</strong> {% if ai_on %}has AI write a short summary{% else %}shows the article’s own text, trimmed (AI is off){% endif %}. <strong>Full article</strong> keeps the RSS description or scraped body. AI is only used where you see the <span class="chip chip-ai">AI</span> tag. Set it up under Settings → <a href="/settings?tab=llm">AI</a>.</p>
+      <p>Each feed can follow the global schedule (every {{ global_interval_label }}) or use its own. <strong>Summarise</strong> {% if ai.summaries %}has AI write a short summary{% else %}shows 2–3 key sentences from the article, picked on this device{% endif %}. <strong>Full article</strong> keeps the RSS description or scraped body. AI is only used where you see the <span class="chip chip-ai">AI</span> tag; choose what it does under Settings → <a href="/settings?tab=llm">AI</a>.</p>
       <p><strong>Catalog</strong> is the household library — tap Add or Remove. Import and export packages under Settings → Catalog.</p>
     </div>
     <div class="btn-row">

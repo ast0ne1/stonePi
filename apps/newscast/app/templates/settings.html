@@ -287,14 +287,14 @@
       </label>
       <p class="hint">The Briefing tab stays live. The reader EPUB uses this cap and freezes at publish time.</p>
       <label>
-        <span>Paper includes stories rated{% if ai_on %}{{ ai_tag("importance scoring", ai_local) }}{% endif %}</span>
+        <span>Paper includes stories rated{% if ai.importance %}{{ ai_tag("importance scoring", ai_local) }}{% endif %}</span>
         <select name="briefing_min_importance">
           {% for value, label in importance_min_choices %}
           <option value="{{ value }}" {% if briefing_min_importance == value %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
       </label>
-      <p class="hint">New stories get an importance score from 1 (ignore) to 5 (major). {% if ai_on %}AI scores every new story, including Full-article sources.{% else %}Scores come from built-in keyword rules. If you set up AI on the AI tab, the model scores every new story instead.{% endif %} Saved (starred) stories always stay when their publish date matches the day chip.</p>
+      <p class="hint">New stories get an importance score from 1 (ignore) to 5 (major). {% if ai.importance %}AI scores every new story, including Full-article sources.{% else %}Scores come from built-in keyword rules. On the <a href="/settings?tab=llm">AI</a> tab you can have AI score them instead.{% endif %} Saved (starred) stories always stay when their publish date matches the day chip.</p>
       {% endif %}
       <label class="check">
         <input type="checkbox" name="publication_include_saved" value="1" {% if publication_include_saved %}checked{% endif %} />
@@ -452,16 +452,8 @@
       </label>
       <p class="hint">Feeds marked Translate land in this language. Default is English.</p>
       {% if is_admin %}
-      <label>
-        <span>Global provider{% if ai_on %}{{ ai_tag("translation", ai_local, rules="translate_provider:llm", show=translate_provider == 'llm') }}{% endif %}</span>
-        <select name="translate_provider">
-          {% for value, label in translate_providers %}
-          <option value="{{ value }}" {% if translate_provider == value %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <p class="hint">Used when a feed is set to Translate (use global setting). Google uses the free web API with a Chrome fallback when rate-limited. AI uses the model on the <a href="/settings?tab=llm">AI</a> tab{% if not ai_on %}. No model is set up yet, so stories set to AI translation stay as published{% endif %}.</p>
-      <p class="hint">Each feed can still choose As published, follow this global setting, force Google, or force AI under Feeds → Schedule &amp; filters.</p>
+      <p class="hint">Translated by {% if ai.translate %}AI{{ ai_tag("translation", ai_local) }}{% else %}Google Translate (the free web API, with a Chrome fallback when rate limited){% endif %}. Choose Google or AI on the <a href="/settings?tab=llm">AI</a> tab.</p>
+      <p class="hint">Each feed can choose As published, Translate (NewsCast setting) or Translate with Google under Feeds → Schedule &amp; filters. Translate with Google never uses AI.</p>
       {% else %}
       <p class="hint">The household admin chooses Google or AI for Translate feeds. You only set the target language here.</p>
       {% endif %}
@@ -470,78 +462,54 @@
   </div>
 
   <div class="stack settings-panel" id="settings-panel-llm" role="tabpanel" data-settings-panel="llm" aria-labelledby="settings-tab-llm"{% if settings_tab != 'llm' %} hidden{% endif %}>
-    <div class="card stack">
-      <h2 class="section-heading">{{ filter_icon("llm") }} AI model{% if ai_on %}{{ ai_tag("summaries, importance scoring, translation", ai_local) }}{% endif %}</h2>
-      <div class="ai-callout{% if ai_on %} is-on{% endif %}">
-        {% if ai_on %}
-        <p><strong>AI is on</strong> ({{ ai_model_label }}, {{ 'local: story text stays on your network' if ai_local else 'cloud: story text is sent to OpenAI' }}). It is used for:</p>
-        <ul class="hint">
-          <li><strong>Summaries</strong>: sources set to Summarise. Full-article sources are not summarised.</li>
-          <li><strong>Importance scoring</strong>: every new story gets a 1–5 score, including Full-article sources.</li>
-          <li><strong>Translation</strong>: {% if global_translate_llm %}feeds that follow the global setting, plus any feed set to Translate with AI.{% else %}only feeds set to Translate with AI. The global provider is Google.{% endif %}</li>
-        </ul>
-        {% else %}
-        <p><strong>AI is off.</strong> NewsCast works fully without it:</p>
-        <ul class="hint">
-          <li><strong>Summarise</strong> sources show the article’s own text, trimmed to about 420 characters.</li>
-          <li><strong>Importance</strong> comes from built-in keyword rules.</li>
-          <li><strong>Translation</strong> uses Google. Feeds set to Translate with AI stay as published.</li>
-        </ul>
-        <p class="hint">Add an OpenAI key or an Ollama model below to use AI for these.</p>
-        {% endif %}
+    <div class="card stack" data-ai-scope>
+      <h2 class="section-heading">{{ filter_icon("llm") }} AI{% if ai_on %}{{ ai_tag("summaries, translation, importance scoring", ai_local) }}{% endif %}</h2>
+      {% if not ai_available %}
+      <div class="ai-callout">
+        <p><strong>No AI is set up on this StonePi yet.</strong> NewsCast works fully without it: on-device summaries, Google Translate and rule-based importance.</p>
+        <p class="hint">An admin sets up AI providers and models once for the whole Pi. <a href="{{ dashboard_ai_url }}">Set up AI in Dashboard → Settings → AI</a>, then come back to switch it on here.</p>
       </div>
-      <label>
-        Provider
-        <select name="llm_provider" data-llm-provider>
-          <option value="openai" {% if llm_provider == 'openai' %}selected{% endif %}>OpenAI — default for the Pi</option>
-          <option value="ollama" {% if llm_provider == 'ollama' %}selected{% endif %}>Ollama — local model</option>
-        </select>
+      {% endif %}
+      <label class="check{% if not ai_available %} is-disabled{% endif %}">
+        <input type="checkbox" name="ai_enabled" value="1" data-ai-master {% if ai_enabled_setting and ai_available %}checked{% endif %}{% if not ai_available %} disabled{% endif %} />
+        <span><strong>Use AI in NewsCast</strong></span>
       </label>
-      <p class="hint">OpenAI is the usual choice on a Pi. Use Ollama when this copy of NewsCast can reach a local model on the same machine or LAN.</p>
-      <div class="provider-panel" data-provider-panel="openai" {% if llm_provider != 'openai' %}hidden{% endif %}>
+      <p class="hint">Off by default. A key added to the Vault for another app never turns AI on here. Then choose what AI does below; anything left on its default never uses AI.</p>
+      <fieldset class="stack ai-choices" data-ai-choices{% if not ai_available %} disabled{% endif %}>
         <label>
-          OpenAI API key
-          <input type="password" name="openai_api_key" autocomplete="off" placeholder="{{ openai_key.hint or 'Not set' }}" />
-        </label>
-        <p class="hint">
-          {% if openai_key.set %}Saved from {{ openai_key.source }} ({{ openai_key.hint }}). Leave blank to keep.{% else %}Not set.{% endif %}
-        </p>
-        <label class="check">
-          <input type="checkbox" name="clear_openai_api_key" value="1" />
-          Clear saved OpenAI key
-        </label>
-        <label>
-          OpenAI model
-          <select name="openai_model" data-model-select>
-            {% for value, label in openai_models %}
-            <option value="{{ value }}" {% if openai_model == value %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-            <option value="other" {% if not openai_model_known %}selected{% endif %}>Other…</option>
+          <span>Summaries{% if ai_on %}{{ ai_tag("summaries", ai_local, rules="ai_summaries:ai", show=ai.summaries) }}{% endif %}</span>
+          <select name="ai_summaries">
+            {% for value, label in ai_summary_choices %}<option value="{{ value }}" {% if ai_summaries_choice == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
           </select>
         </label>
-        <label data-model-custom {% if openai_model_known %}hidden{% endif %}>
-          Custom model id
-          <input type="text" name="openai_model_custom" value="{{ '' if openai_model_known else openai_model }}" autocomplete="off" placeholder="gpt-…" />
-        </label>
-      </div>
-      <div class="provider-panel" data-provider-panel="ollama" {% if llm_provider != 'ollama' %}hidden{% endif %}>
+        <p class="hint">On device picks the 2–3 key sentences on the Pi, word for word; nothing leaves the Pi. AI writes a short summary. Sources set to Full article are never summarised.</p>
         <label>
-          Ollama URL
-          <input type="url" name="ollama_base_url" value="{{ ollama_base_url }}" autocomplete="off" inputmode="url" placeholder="http://127.0.0.1:11434" />
-        </label>
-        <p class="hint">Default is this machine. If Ollama runs on another PC, use that LAN address, for example <strong>http://192.168.1.20:11434</strong>.</p>
-        <label>
-          Ollama model
-          <input type="text" name="ollama_model" value="{{ ollama_model }}" autocomplete="off" data-ollama-model placeholder="llama3.2" />
-        </label>
-        <label data-ollama-pick hidden>
-          Installed models
-          <select data-ollama-select>
-            <option value="">Choose…</option>
+          <span>Translation{% if ai_on %}{{ ai_tag("translation", ai_local, rules="translate_provider:llm", show=ai.translate) }}{% endif %}</span>
+          <select name="translate_provider">
+            {% for value, label in translate_providers %}<option value="{{ value }}" {% if translate_provider == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
           </select>
         </label>
-        <button class="btn btn-secondary btn-with-icon" type="button" data-load-ollama>{{ icon("load") }} Load from Ollama</button>
+        <p class="hint">For sources set to Translate (NewsCast setting). A source set to Translate with Google never uses AI. If AI fails, that story is translated with Google.</p>
+        <label>
+          <span>Importance{% if ai_on %}{{ ai_tag("importance scoring", ai_local, rules="ai_importance:ai", show=ai.importance) }}{% endif %}</span>
+          <select name="ai_importance">
+            {% for value, label in ai_importance_choices %}<option value="{{ value }}" {% if ai_importance_choice == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+        </label>
+        <p class="hint">Every new story gets a score from 1 (ignore) to 5 (major). Rule-based uses built-in keyword rules.</p>
+      </fieldset>
+      {% if ai_available %}
+      <div class="ai-callout{% if ai_on %} is-on{% endif %}">
+        <p><strong>Models now</strong> (the order is set in <a href="{{ dashboard_ai_url }}">Dashboard → Settings → AI</a>):</p>
+        <ul class="hint">
+          {% for key, label in [("summary", "Summaries"), ("translate", "Translation"), ("importance", "Importance")] %}
+          {% set first = ai_models_now.get(key) %}
+          <li><strong>{{ label }}</strong>: {% if first %}{{ first.label }}{% if first.local %} (local: story text stays on your network){% else %} (cloud: story text is sent to the provider){% endif %}{% else %}no model available right now, so the default is used{% endif %}.</li>
+          {% endfor %}
+        </ul>
+        <p class="hint">If every model fails, a story uses the default instead and its card says so. When AI is back (or you switch it on), NewsCast redoes those stories with Free models, up to 30 per refresh, but only ones not yet in a published paper.</p>
       </div>
+      {% endif %}
     </div>
     <button class="btn btn-primary btn-with-icon settings-save" type="submit">{{ icon("check") }} {{ t("Save settings") }}</button>
   </div>

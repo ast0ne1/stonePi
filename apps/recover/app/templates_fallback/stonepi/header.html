@@ -1,0 +1,14 @@
+{#- Recover's stand-in for stonepi_auth's shared header (stonepi/header.html).
+
+  Loaded only when the shared packages fail to import, so Recover still renders:
+  same macro signature, no switcher or bell, just Log out.
+-#}
+{% macro header_tools(state, logout_action="/logout", csrf_token="", local_name="") -%}
+<form method="post" action="{{ logout_action }}" class="logout-form">
+  {%- if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}" />{% endif %}
+  <button class="btn btn-ghost btn-with-icon btn-top" type="submit" title="Log out">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 7V5a2 2 0 0 1 2-2h7v18h-7a2 2 0 0 1-2-2v-2"/><path d="M15 12H3m0 0 3-3m-3 3 3 3"/></svg>
+    <span class="btn-label">Log out</span>
+  </button>
+</form>
+{%- endmacro %}

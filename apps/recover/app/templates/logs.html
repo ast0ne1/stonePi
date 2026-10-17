@@ -1,18 +1,24 @@
 {% extends "base.html" %}
+{% from "_topbar.html" import topbar with context %}
 {% block title %}Logs · Recover{% endblock %}
 {% block body_class %}console-body{% endblock %}
 {% block body %}
-<header class="console-top">
-  <div class="console-brand-block">
-    <p class="brand"><img class="brand-icon" src="/assets/brand/icons/system/recover.svg" width="28" height="28" alt="" />Recover</p>
-    <p class="subbrand">Recover · Logs</p>
-  </div>
-  <div class="console-top-actions">
-    <a class="btn btn-ghost btn-with-icon btn-top" href="./">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
-      <span>Back</span>
-    </a>
-  </div>
-</header>
+{{ topbar("Logs", back=True) }}
+<form method="get" action="logs" class="log-picker">
+  <label>Service
+    <select name="unit" data-autosubmit>
+      <option value=""{% if not chosen %} selected{% endif %}>Failed services, else Core</option>
+      {% for g in groups %}
+      <optgroup label="{{ g.name }}">
+        {% for r in g.units %}
+        <option value="{{ r.unit }}"{% if r.unit == chosen %} selected{% endif %}>{{ r.name }} · {{ r.status }}</option>
+        {% endfor %}
+      </optgroup>
+      {% endfor %}
+    </select>
+  </label>
+  <noscript><button class="btn btn-ghost" type="submit">Show</button></noscript>
+</form>
+<p class="hint">Showing: {{ showing }}</p>
 <pre class="console-pre">{{ log_text }}</pre>
 {% endblock %}

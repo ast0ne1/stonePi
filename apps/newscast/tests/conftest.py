@@ -27,6 +27,15 @@ def _isolated_platform_state(tmp_path, monkeypatch):
       STONEPI_EXPOSURE env that exposure tests set.
     """
     monkeypatch.setenv("STONEPI_EXPOSURE_FILE", str(tmp_path / "exposure"))
+    # Platform AI (stonepi_ai): its config, health and quota files in tmp, and no provider keys
+    # unless a test sets some (see tests/ai_helpers.py).
+    monkeypatch.setenv("STONEPI_AI_DIR", str(tmp_path / "ai"))
+    try:
+        from stonepi_ai import config as ai_config
+
+        monkeypatch.setattr(ai_config, "secret_for", lambda _pid: "")
+    except ImportError:
+        pass
     from app.services import reader_push
 
     reader_push.reset_probe_state()  # remembered reader probes are module state

@@ -2,6 +2,64 @@
 
 Platform version lives in [`VERSION`](VERSION). App zips use each app’s `__version__` (see `scripts/build_release_zips.py`).
 
+## 0.3.0 — 2026-10-17
+
+**AI set up once for the whole Pi, and the Car Thing becomes a Spotify remote.** Dashboard → Settings → AI holds the providers and model order for every app, and NewsCast summarises on the Pi by default with AI as an opt-in. The Car Thing gains Spotify Now Playing and controls, new screensavers, Clock and Weather widgets and a weather screen. Also: Recover's home tidied up, the shared header on Notify, Recover and Auth, and the Car Thing counted on the Dashboard's Displays line.
+
+### Added
+- **Car Thing Music: Spotify Now Playing and controls** (backlog F7; spec `ideation/carthing-spotify.md`). The Car Thing becomes a Spotify remote again: Now Playing, a music widget, the artwork screensaver, Speakers, presets 1–4 and dial volume, all through the Spotify Web API from the panel service (no audio on the Pi). Sign-in is one Spotify account for the house, connected in Notify → Displays → Car Thing with your own Spotify developer app. New `stonepi_display.spotify`: authorization code + PKCE (no client secret), pasted-callback parsing, Spotify link normalising, and the `TokenSource` the panel uses (access tokens in memory; rotated refresh tokens saved back to the Vault). The Car Thing config gains a `music` section (presets, default speaker, options), a `music` mini-app and widget, a Music action group and `music` as a live line. New Vault keys `SPOTIFY_CLIENT_ID` and `SPOTIFY_REFRESH_TOKEN`. `stonepi_vault.Vault.reload()` drops the 30-second read cache, so a service sees another app's save at once.
+- **AI is set up once for the whole Pi** (backlog F13; new package `packages/stonepi_ai`). Apps no longer keep their own AI keys, providers or model pickers; they ask the package for a job (`newscast.summary`, `studio.game`, …) and it does the rest.
+  - **Providers:** Gemini (Google AI Studio key, `GEMINI_API_KEY`, new in the Vault), Anthropic, OpenAI and Ollama (or any OpenAI-compatible server, by URL). Keys stay in the Vault and are read with `get_secret`; the rest lives in `ai-config.json` in the Vault folder, written by Dashboard → Settings → AI. Apps read the file directly, so AI keeps working while Dashboard is down. OpenAI, Gemini (through its OpenAI-compatible endpoint) and Ollama go to `/chat/completions`, Anthropic to `/messages`; plain httpx, no SDKs.
+  - **Tiers and overrides:** every model the admin adds sits in a ranked list per tier (Cheap, Standard, Best). Each job asks for a tier (apps suggest one in the package's catalog, never a model); the admin can move a job to another tier or give it its own list. An empty tier borrows the nearest one, so a new app works as soon as any model is ranked. Fresh installs start with Gemini 3.5 Flash-Lite → Claude Haiku 4.5 → GPT-4.1 mini for Cheap, Standard starts with Gemini 3.8 Flash → Claude Sonnet 5 → GPT-4.1, and Best with Claude Sonnet 5 → GPT-4.1; only providers with a key are used.
+  - **Free / Paid per key and model:** Ollama is always Free, OpenAI and Anthropic always Paid; Gemini asks once whether the key has billing, and each Gemini model can be changed. NewsCast's catch-up uses Free models only.
+  - **Falling over and shared health:** a 429, used-up quota, rejected key, missing model or outage moves the job to the next model and puts that model in `ai-health.json` (cooling off for 5–60 minutes, or as long as the provider's Retry-After says), which every app reads: a rate limit in NewsCast makes Studio skip that model too. When every model for a job fails, the app uses its own fallback and one admin alert goes to Notify (`system.ai_unavailable`, new event, approved on fresh installs).
+  - **Monthly AI request limit:** every request counts toward a shared `llm` quota (`stonepi_vault.quota`, default 20,000 requests a month, Free models included as a safety net); at the limit apps use their non-AI paths until the period resets.
+- **Gemini models are 3.x** (backlog B11): Google closed Gemini 2.5 to keys that hadn't used it before (new keys get a 404), so the suggested models are Gemini 3.5 Flash-Lite, 3.8 Flash and 3.1 Pro (preview). A config already saved with the 2.5 models moves to these once, in its tiers and job lists too; a custom name you gave a model is kept, and a 2.5 model you add back afterwards stays. Gemini 3 Flash models can't switch thinking off, and which thinking levels they take varies (3.8 Flash refuses "minimal"), so they're asked for "low" and short replies get at least 1,024 tokens of room; a model that refuses its thinking level is asked again without one, and that error no longer puts the model on a one-hour cool-off as "model not available". 2.5 Flash still has thinking switched off.
+- `deploy/install.sh` and `scripts/run_dev.py` install `stonepi_ai` into the Dashboard, NewsCast and Studio venvs.
+- **NewsCast summarises on the Pi** (backlog U18a): the 2–3 key sentences, word for word, with sumy (LexRank), instead of the article cut at ~420 characters. AI is opt-in under NewsCast → Settings → AI (U18b): summaries, translation and importance each choose AI or the non-AI path, and each story records how it was made (U1). Stories that fell back are redone when AI returns ("catch-up"), Free models only.
+- **Car Thing screensavers and widgets** (backlog U12, U13, U14, U19, U20): Bouncing logo, Matrix and 3D Pipes screensavers beside the clock; the screensaver can have its own clock face; Weather and Clock widgets (small, half, full page); a weather screen with the next 12 hours and the week, opened from the Weather widget, a clock tap or an action.
+
+### Changed
+- **Shared StonePi header on Notify, Recover and Auth** (backlog U16, U17): the app switcher and avatar menu as in every other app. Recover falls back to a plain header when Auth is down.
+- **Recover home tidied up** (backlog U11): a status card, problems first with healthy services folded and grouped, Restart on the row and Stop/Logs in a ⋯ menu, the newest 3 backups, and Clear failover only while it's on.
+- **Dashboard's Displays line counts the Car Thing** (backlog B10), e.g. "2 screens · TRMNL pushing · Car Thing connected".
+- Studio's own model choice moves into the platform AI config once; its model picker and `STUDIO_LLM_BASE_URL` are gone.
+
+### Fixed
+- **Car Thing weather could stay blank for 15 minutes** after one failed fetch (backlog B12); it's retried after a minute, and failed fetches are logged.
+- **NewsCast picked section pages as stories** on sites with the date in the link's slug (The Age, SMH and other Nine papers).
+
+### App versions in this cut
+
+Platform: **0.3.0**
+
+| System (ships with platform) | Version |
+|-----|---------|
+| dashboard | 0.3.0 |
+| auth | 0.3.0 |
+| notify | 0.3.0 |
+| recover | 0.3.0 |
+| carthing | 0.3.0 |
+
+| Apps | Version |
+|-----|---------|
+| newscast | 0.0.9 |
+| fileserve | 0.0.8 |
+| eventtrakr | 0.0.8 |
+| pinboard | 0.0.8 |
+| studio | 0.0.9 |
+| pricescout | 0.0.8 |
+| sportguide | 0.0.8 |
+| pricewatch | 0.0.8 |
+| library | 0.0.8 |
+
+| Packages | Version | Why |
+|----------|---------|-----|
+| stonepi_ai | 0.1.0 | new: platform AI providers, tiers and per-job routing, fall-over, shared `ai-health.json`, Gemini 3 thinking handling |
+| stonepi_display | 0.6.0 | Spotify sign-in and tokens (`spotify`); Car Thing Music mini-app, widget, actions and `music` config; Clock, Weather and screensaver-clock config; screensaver styles |
+| stonepi_vault | 0.2.0 | shared `llm` request quota; `Vault.reload()` |
+| stonepi_contracts | 0.1.3 | `system.ai_unavailable` event |
+
 ## 0.2.0 — 2026-10-11
 
 **A new look.** StonePi gets its own design system across every app, with one shared header, app icons, light and dark themes, and a Home that greets you by name and fits on a phone screen. Also: the NewsCast Briefing fills in during a refresh, a Clear button in the bell, TRMNL plans per Display, steadier Car Thing links, and a fix for admins locking themselves out.

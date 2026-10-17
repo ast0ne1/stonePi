@@ -2,6 +2,8 @@
 {% macro svg(name) -%}
 {%- if name == 'check' -%}
 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5 10 17l9-10"/></svg>
+{%- elif name == 'ai' -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1-5.1-1.9 5.1-1.9z"/><path d="M18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg>
 {%- elif name == 'plus' -%}
 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
 {%- elif name == 'trash' -%}
@@ -146,6 +148,8 @@
   <circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 2.5"/>
   {%- elif name == "vault" -%}
   <rect x="6" y="10" width="12" height="10" rx="2"/><path d="M9 10V8a3 3 0 0 1 6 0v2"/><circle cx="12" cy="15" r="1.2" fill="currentColor" stroke="none"/>
+  {%- elif name == "ai" -%}
+  <path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1-5.1-1.9 5.1-1.9z"/><path d="M18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/>
   {%- elif name == "automations" -%}
   <path d="M5 8h6l2 3h6"/><path d="M5 16h4l2-3h8"/><circle cx="7" cy="8" r="1.5" fill="currentColor" stroke="none"/><circle cx="17" cy="16" r="1.5" fill="currentColor" stroke="none"/>
   {%- elif name == "update" -%}

@@ -22,6 +22,7 @@ PLATFORM_PKGS = [
     ROOT / "packages" / "stonepi_notify",
     ROOT / "packages" / "stonepi_watch",
     ROOT / "packages" / "stonepi_vault",
+    ROOT / "packages" / "stonepi_ai",
     ROOT / "packages" / "stonepi_automations",
     ROOT / "packages" / "stonepi_browser",
 ]
@@ -209,6 +210,9 @@ def ensure_venv(name: str, app_dir: Path) -> Path:
     browser_pkg = ROOT / "packages" / "stonepi_browser"
     if browser_pkg.exists() and name in {"eventtrakr", "sportguide"}:
         _pip(py, "-e", str(browser_pkg))
+    ai_pkg = ROOT / "packages" / "stonepi_ai"
+    if ai_pkg.exists() and name in {"newscast", "studio"}:
+        _pip(py, "-e", str(ai_pkg))
     if name == "dashboard":
         for pkg in PLATFORM_PKGS:
             if pkg.exists() and pkg.name not in {

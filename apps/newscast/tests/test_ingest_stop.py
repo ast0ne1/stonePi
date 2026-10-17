@@ -99,9 +99,9 @@ def test_stop_while_saving_keeps_finished_stories(monkeypatch):
     def fake_score(title, *args, **kwargs):
         scored.append(title)
         request_stop()  # pressed after the first story is saved
-        return 3
+        return 3, {}
 
-    monkeypatch.setattr("app.services.importance.score_importance", fake_score)
+    monkeypatch.setattr("app.services.importance.score_story", fake_score)
     result = run_ingest(db, force=True, manual=True)
 
     assert result["stopped"] is True and result["created"] == 1

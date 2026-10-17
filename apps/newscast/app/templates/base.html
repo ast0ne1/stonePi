@@ -64,15 +64,6 @@
           </form>
         </div>
         {% endif %}
-        {% if not llm_ready and active in ['briefing', 'settings'] %}
-        <p class="banner banner-muted">
-          {% if llm_provider == 'ollama' %}
-            AI is off: Ollama is selected but no model is set. Everything still works, using the article’s own text. Add a model on the <a href="/settings?tab=llm">AI</a> tab to use AI for summaries, scoring and translation.
-          {% else %}
-            AI is off. Everything still works, using the article’s own text. To use AI for summaries, scoring and translation, add an OpenAI key or an Ollama model on the <a href="/settings?tab=llm">AI</a> tab.
-          {% endif %}
-        </p>
-        {% endif %}
         {% block content %}{% endblock %}
       </main>
 

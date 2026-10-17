@@ -1,6 +1,7 @@
 {# Page widgets. Sizes: small (the Home card), half (one half of the page), full (the page).
    Large widgets keep every tap target at 52px or more. #}
 {% from "_icons.html" import icon %}
+{% import "_music.html" as m %}
 
 {#- The app's fixed icon (design system); System shows the StonePi mark. -#}
 {% set APP_ICON_IDS = ("newscast", "eventtrakr", "pricescout", "sportguide", "library", "pinboard", "pricewatch", "fileserve", "studio") %}
@@ -86,7 +87,9 @@
 {%- endmacro %}
 
 {% macro clock(w, config, weather) -%}
-<div class="card w w-{{ w.size }} w-clock">
+{#- Tapping it opens the weather screen when the config says so (Clock tab, U14). -#}
+{% set tap = config.clock.tap == "weather" %}
+<{{ "button" if tap else "div" }} class="card w w-{{ w.size }} w-clock"{% if tap %} data-focus data-go="v/weather"{% endif %}>
   <div class="wface face-{{ config.clock.face }}"><div class="clock" data-clock data-face="{{ config.clock.face }}"></div></div>
   <div class="wclock-meta">
     <span data-date></span>
@@ -113,11 +116,98 @@
   {% elif not weather and w.size != "small" %}
   <p class="w-empty soft">Set a weather location in Notify → Car Thing → Look.</p>
   {% endif %}
+</{{ "button" if tap else "div" }}>
+{%- endmacro %}
+
+{#- Weather on its own (U14): now, then the next hours and days as the widget grows.
+    Always opens the weather screen. -#}
+{% macro weather_widget(w, config, weather) -%}
+<button class="card w w-{{ w.size }} w-weather" data-focus data-go="v/weather">
+  {% if weather %}
+  <span class="ww-now">
+    {{ icon(weather.icon, "ico ww-ico") }}
+    <strong class="ww-temp">{{ weather.temp if weather.temp is not none else "–" }}<small>{{ weather.unit }}</small></strong>
+    <span class="ww-meta">
+      <span class="ww-label">{{ weather.label }}</span>
+      {% if weather.high is not none %}<span class="soft">H {{ weather.high }}° · L {{ weather.low }}°</span>{% endif %}
+      {% if w.size != "small" and weather.place %}<span class="soft">{{ weather.place }}</span>{% endif %}
+    </span>
+  </span>
+  {% if w.size == "half" and weather.hours %}
+  <ol class="fc-row fc-hours">
+    {% for h in weather.hours %}<li><span>{{ hour_label(h.hour, config) }}</span>{{ icon(h.icon) }}<strong>{{ h.temp }}°</strong></li>{% endfor %}
+  </ol>
+  {% endif %}
+  {% if w.size == "full" and weather.hourly %}
+  <ol class="fc-row fc-hours">
+    {% for h in weather.hourly[:10] %}<li><span>{{ hour_label(h.hour, config) }}</span>{{ icon(h.icon) }}<strong>{{ h.temp }}°</strong></li>{% endfor %}
+  </ol>
+  {% endif %}
+  {% set days = weather.days if w.size == "half" else (weather.week or [])[1:7] %}
+  {% if w.size != "small" and days %}
+  <ol class="fc-row fc-days">
+    {% for d in days %}<li><span>{{ d.day }}</span>{{ icon(d.icon) }}<strong>{{ d.high }}°</strong><span class="soft">{{ d.low }}°</span></li>{% endfor %}
+  </ol>
+  {% endif %}
+  {% else %}
+  <span class="card-label">Weather</span>
+  <span class="w-empty soft">Set a weather location in Notify → Car Thing → Look.</span>
+  {% endif %}
+</button>
+{%- endmacro %}
+
+{#- Music (F7). Small: track · artist. Half: artwork, track and play state; both open Now Playing.
+    Full: Now Playing itself (controls, Speakers, Presets, volume), no header to open it again. -#}
+{% macro music_widget(w) -%}
+{% set np = w.np %}
+{% if w.size == "small" %}
+<button class="card w w-small w-music" data-focus data-go="v/music" data-app="music">
+  <span class="card-label">{{ icon("note", "ico w-icon-ico") }}Music{% if np.playing %} <span class="badge">Playing</span>{% endif %}</span>
+  <strong class="card-head" data-np-track>{{ np.track or ("Nothing playing" if np.connected else "Not connected") }}</strong>
+  <span class="card-sub" data-np-artist>{{ np.artist if np.track else "" }}</span>
+</button>
+{% elif w.size == "full" %}
+<div class="card w w-full w-music w-music-full" data-np data-np-full>
+  {% if not np.connected %}
+  <p class="w-empty">Connect Spotify in Notify → Displays → Car Thing → Music.</p>
+  {% else %}
+  {{ m.now_playing(np, w.opts, "np np-in-card", show_device=True) }}
+  {% endif %}
+</div>
+{% else %}
+<div class="card w w-{{ w.size }} w-music" data-np>
+  <button class="w-head" data-focus data-go="v/music" data-app="music">
+    <span class="card-label">{{ icon("note", "ico w-icon-ico") }}Music{% if np.device %} · {{ np.device.name }}{% endif %}</span>
+    {{ icon("chevron", "ico w-go") }}
+  </button>
+  {% if not np.connected %}
+  <p class="w-empty">Connect Spotify in Notify → Displays → Car Thing → Music.</p>
+  {% else %}
+  <div class="wm-body">
+    {{ m.art(np, "np-art wm-art") }}
+    <div class="wm-main">
+      {{ m.text(np) }}
+      {{ m.bar(np) }}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+{%- endmacro %}
+
+{#- The clock on its own: the Clock tab's face and colours, with the date. -#}
+{% macro time_widget(w, config) -%}
+<div class="card w w-{{ w.size }} w-clock w-time{% if config.clock.seconds %} secs{% endif %}">
+  <div class="wface face-{{ config.clock.face }}"><div class="clock" data-clock data-face="{{ config.clock.face }}"></div></div>
+  <div class="wclock-meta"><span data-date></span></div>
 </div>
 {%- endmacro %}
 
 {% macro widget(w, config, weather) -%}
-{% if w.kind == "clock" %}{{ clock(w, config, weather) }}
+{% if w.kind == "music" %}{{ music_widget(w) }}
+{% elif w.kind == "time" %}{{ time_widget(w, config) }}
+{% elif w.kind == "clock" %}{{ clock(w, config, weather) }}
+{% elif w.kind == "weather" %}{{ weather_widget(w, config, weather) }}
 {% elif w.size == "small" %}{{ small_card(w) }}
 {% elif w.kind == "system" %}{{ system_large(w) }}
 {% else %}{{ app_large(w) }}

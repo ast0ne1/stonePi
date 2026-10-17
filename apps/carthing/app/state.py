@@ -29,11 +29,13 @@ STATE_TTL = 10.0
 SYSTEM_TTL = 30.0
 FEED_TTL = 60.0
 WEATHER_TTL = 900.0
+FAIL_RETRY = 60.0  # a fetch that failed with nothing older to show is retried this soon
 _ASSET = re.compile(r"^[a-f0-9]{16}$")
 
 _client = httpx.Client(timeout=3.0)
 _lock = threading.Lock()
 _cache: dict[str, tuple[float, Any]] = {}
+_failing: set[str] = set()
 
 
 def session_secret() -> str:
@@ -56,13 +58,22 @@ def _cached(key: str, ttl: float, fetch, *, keep_stale: bool = True) -> Any:
         return hit[1]
     try:
         value = fetch()
-    except Exception:  # noqa: BLE001 - a dead source must never break the panel
-        logger.debug("fetch %s failed", key, exc_info=True)
+    except Exception as exc:  # noqa: BLE001 - a dead source must never break the panel
+        # Once per key until it works again, so the journal says why a card or the weather is blank.
+        if key not in _failing:
+            logger.warning("fetch %s failed: %s", key, str(exc)[:160] or type(exc).__name__)
+        _failing.add(key)
         value = None
+    else:
+        _failing.discard(key)
     if value is None and hit and keep_stale:
         value = hit[1]
+    stamp = now
+    if value is None:
+        # Nothing to show: try again after FAIL_RETRY, not after the full TTL (15 min for weather).
+        stamp = now - max(0.0, ttl - FAIL_RETRY)
     with _lock:
-        _cache[key] = (now, value)
+        _cache[key] = (stamp, value)
     return value
 
 
@@ -184,6 +195,8 @@ _WMO: dict[int, tuple[str, str]] = {
 _weather_key: dict[str, Any] = {"key": None}
 FORECAST_HOURS = 5  # every 3 h from now, for the large Clock & weather widget
 FORECAST_DAYS = 3  # after today
+HOURLY_HOURS = 12  # every hour from now, for the Weather widget and the weather screen (U14)
+WEEK_DAYS = 7  # today + 6, for the weather screen
 _DAY_NAMES = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
 
@@ -197,38 +210,59 @@ def _wmo(code: Any, is_day: bool = True) -> tuple[str, str]:
     return icon, label
 
 
-def _forecast(data: dict) -> tuple[list[dict], list[dict]]:
-    """Next hours (3-hourly) and days from the same Open-Meteo answer. Times are local ("auto")."""
+def _pct(values: list, i: int) -> int | None:
+    try:
+        return round(values[i]) if values[i] is not None else None
+    except (IndexError, TypeError, ValueError):
+        return None
+
+
+def _hour_rows(data: dict, step: int, limit: int) -> list[dict]:
+    """Every ``step`` hours from the next one, up to ``limit`` rows. Times are local ("auto")."""
     hourly = data.get("hourly") or {}
-    hours: list[dict] = []
+    rows: list[dict] = []
     times, temps = hourly.get("time") or [], hourly.get("temperature_2m") or []
     codes, day_flags = hourly.get("weather_code") or [], hourly.get("is_day") or []
-    for i in range(3, min(len(times), len(temps), len(codes)), 3):
-        if len(hours) >= FORECAST_HOURS:
+    pops = hourly.get("precipitation_probability") or []
+    for i in range(step, min(len(times), len(temps), len(codes)), step):
+        if len(rows) >= limit:
             break
         if temps[i] is None:
             continue
         stamp = str(times[i])
         icon, _ = _wmo(codes[i], bool(day_flags[i]) if i < len(day_flags) else True)
         hour = int(stamp[11:13]) if stamp[11:13].isdigit() else 0
-        hours.append({"hour": hour, "temp": round(temps[i]), "icon": icon})
+        rows.append({"hour": hour, "temp": round(temps[i]), "icon": icon, "rain": _pct(pops, i)})
+    return rows
+
+
+def _day_rows(data: dict) -> list[dict]:
+    """Today and the days after it (today first, named "Today")."""
     daily = data.get("daily") or {}
     days: list[dict] = []
     d_times = daily.get("time") or []
     d_max, d_min = daily.get("temperature_2m_max") or [], daily.get("temperature_2m_min") or []
-    d_codes = daily.get("weather_code") or []
-    for i in range(1, min(len(d_times), len(d_max), len(d_min), len(d_codes))):
-        if len(days) >= FORECAST_DAYS:
+    d_codes, d_pops = daily.get("weather_code") or [], daily.get("precipitation_probability_max") or []
+    for i in range(min(len(d_times), len(d_max), len(d_min), len(d_codes))):
+        if len(days) >= WEEK_DAYS:
             break
         if d_max[i] is None or d_min[i] is None:
             continue
         try:
-            name = _DAY_NAMES[date.fromisoformat(str(d_times[i])).weekday()]
+            name = "Today" if i == 0 else _DAY_NAMES[date.fromisoformat(str(d_times[i])).weekday()]
         except ValueError:
             name = ""
         icon, label = _wmo(d_codes[i])
-        days.append({"day": name, "high": round(d_max[i]), "low": round(d_min[i]), "icon": icon, "label": label})
-    return hours, days
+        days.append(
+            {"day": name, "high": round(d_max[i]), "low": round(d_min[i]), "icon": icon, "label": label, "rain": _pct(d_pops, i)}
+        )
+    return days
+
+
+def _forecast(data: dict) -> tuple[list[dict], list[dict]]:
+    """3-hourly hours and the next days (after today) for the large Clock & weather widget."""
+    week = [d for d in _day_rows(data) if d["day"] != "Today"]
+    return _hour_rows(data, 3, FORECAST_HOURS), week[:FORECAST_DAYS]
 
 
 def _fetch_weather(lat: float, lon: float, units: str) -> dict | None:
@@ -238,18 +272,19 @@ def _fetch_weather(lat: float, lon: float, units: str) -> dict | None:
     params = {
         "latitude": lat,
         "longitude": lon,
-        "current": "temperature_2m,weather_code,is_day",
-        "hourly": "temperature_2m,weather_code,is_day",
-        "daily": "weather_code,temperature_2m_max,temperature_2m_min",
-        "forecast_days": FORECAST_DAYS + 1,
-        "forecast_hours": FORECAST_HOURS * 3 + 1,
+        "current": "temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m",
+        "hourly": "temperature_2m,weather_code,is_day,precipitation_probability",
+        "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
+        "forecast_days": WEEK_DAYS,
+        "forecast_hours": max(FORECAST_HOURS * 3, HOURLY_HOURS) + 1,
         "timezone": "auto",
     }
     if units == "imperial":
         params["temperature_unit"] = "fahrenheit"
+        params["wind_speed_unit"] = "mph"
     response = _client.get(env.weather_url, params=params, timeout=6.0)
     if response.status_code != 200:
-        return None
+        raise RuntimeError(f"Open-Meteo answered {response.status_code}")
     data = response.json()
     current = data.get("current") or {}
     daily = data.get("daily") or {}
@@ -260,9 +295,16 @@ def _fetch_weather(lat: float, lon: float, units: str) -> dict | None:
         return round(values[0]) if values and values[0] is not None else None
 
     temp = current.get("temperature_2m")
+    feels = current.get("apparent_temperature")
+    wind = current.get("wind_speed_10m")
     hours, days = _forecast(data)
     return {
         "temp": round(temp) if temp is not None else None,
+        "feels": round(feels) if feels is not None else None,
+        "wind": round(wind) if wind is not None else None,
+        "wind_unit": "mph" if units == "imperial" else "km/h",
+        "hourly": _hour_rows(data, 1, HOURLY_HOURS),
+        "week": _day_rows(data),
         "high": _first("temperature_2m_max"),
         "low": _first("temperature_2m_min"),
         "icon": icon,

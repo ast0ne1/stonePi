@@ -1,0 +1,14 @@
+{% import "_music.html" as m %}
+{#- Now Playing (F7). panel.js polls /np every 3 s while this is on screen. -#}
+<section class="screen music" data-screen="music" data-app="music" data-np data-url="v/music">
+  <header class="bar">
+    <span class="bar-title">Music</span>
+    <span class="bar-meta" data-np-device>{{ np.device.name if np.device else "" }}</span>
+    <span class="bar-time" data-clock-small></span>
+  </header>
+  {% if not np.connected %}
+  <p class="empty">Connect Spotify in Notify → Displays → Car Thing → Music.</p>
+  {% else %}
+  {{ m.now_playing(np, opts) }}
+  {% endif %}
+</section>

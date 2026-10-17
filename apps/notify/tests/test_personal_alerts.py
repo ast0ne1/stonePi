@@ -268,11 +268,19 @@ def test_me_falls_back_to_session_when_auth_unreachable(monkeypatch):
 
 def test_notify_bell_dot_until_admin_sets_up():
     html = admin().get("/history").text
-    bell = html.find('class="icon-btn alerts-bell')
-    assert 0 < bell < html.find('class="icon-btn sign-out"')
-    assert "alerts-bell-dot" in html
+    bell = html.find('class="icon-btn sp-bell has-dot"')
+    assert 0 < bell < html.find('aria-label="Account:')  # shared header: bell, then the avatar menu
     stonepi_notify.enable_subscription(ADMIN, username="adam", is_admin=True)
-    assert "alerts-bell-dot" not in admin().get("/history").text
+    html = admin().get("/history").text
+    assert 'class="icon-btn sp-bell"' in html and "sp-bell has-dot" not in html
+
+
+def test_notify_uses_shared_header_and_drops_home_from_nav():
+    html = admin().get("/displays").text
+    assert "sign-out" not in html  # the old sign-out icon is gone; Log out lives in the avatar menu
+    assert 'class="sp-menu-logout"' in html and 'action="/logout"' in html
+    nav = html[html.index('<nav class="nav"') :]
+    assert "<span>Home</span>" not in nav[: nav.index("</nav>")]
 
 
 _real_load_people = people.load_people  # the autouse fixture stubs it per test
@@ -290,14 +298,14 @@ def test_roster_backs_off_after_auth_failure(monkeypatch):
 
 def test_notify_bell_hidden_while_household_alerts_off():
     stonepi_notify.save_destinations({"ntfy": {"enabled": False}})
-    assert "alerts-bell" not in admin().get("/history").text
+    assert 'class="icon-btn sp-bell' not in admin().get("/history").text
 
 
 def test_notify_bell_no_dot_after_turning_alerts_off():
     stonepi_notify.enable_subscription(ADMIN, username="adam", is_admin=True)
     stonepi_notify.disable_subscription(ADMIN)
     html = admin().get("/history").text
-    assert 'class="icon-btn alerts-bell' in html and "alerts-bell-dot" not in html
+    assert 'class="icon-btn sp-bell"' in html
 
 
 # -- Phone alerts page (/alerts) ----------------------------------------------------
@@ -352,7 +360,8 @@ def test_checklist_shows_progress_and_next_step():
 def test_approve_all_except_admin_only():
     stonepi_notify.save_prefs({"events": {"studio.site_published": {"approved": False, "admin_only": True, "urgent": False}}})
     r = _post(admin(), "/alerts/approve-recommended")
-    assert "Disk%20warning%20left%20for%20you%20to%20decide" in r.headers["location"]
+    location = r.headers["location"]
+    assert "Disk%20warning" in location and "AI%20unavailable%20left%20for%20you%20to%20decide" in location
     events = stonepi_notify.load_prefs()["events"]
     assert events["pricewatch.price_drop"]["approved"] is True
     assert events["studio.site_published"] == {"approved": True, "admin_only": True, "urgent": False}  # flags kept
@@ -411,6 +420,7 @@ def test_admin_summary_api():
     assert body["ok"] is True
     assert body["alerts"]["enabled"] is True and body["alerts"]["approved"] == 1
     assert body["alerts"]["people_on"] == 2 and body["alerts"]["needs_attention"] is False
+    assert body["displays"]["carthing"] == {"enabled": False, "connected": False}
     assert alice().get("/api/admin/summary").status_code == 403
 
 

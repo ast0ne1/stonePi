@@ -1,5 +1,15 @@
 # Changelog — Studio
 
+## 0.0.9 — 2026-10-17
+
+### Changed
+- **Studio's models are set up for the whole Pi** (backlog F13), in Dashboard → Settings → AI, instead of Studio's own Model picker. Each build kind is its own AI job: **Handy apps** (Standard tier), **Stories and guides** (Cheap) and **Games** (Best). If a model is rate limited, out of quota or down, Studio moves on to the next one in the order, as long as nothing has been written yet. Gemini and Ollama now work too. Settings → Model shows which models each kind uses and links to Dashboard. Who may use AI is unchanged (Studio's AI permission per person).
+- **Your earlier choice carries over:** on first start, the Model picker's service and models (`settings.json`) become each build kind's own list in the platform AI config, in the same order. Builds keep using them until you change them in Dashboard. This only happens if the platform AI config doesn't exist yet.
+- `STUDIO_LLM_BASE_URL` is no longer read: add a local or OpenAI-compatible server as Ollama on Dashboard → Settings → AI. `STUDIO_LLM_MAX_TOKENS` still caps Claude replies; OpenAI-style models write up to their own limit.
+
+### Removed
+- Studio's own Model picker (`app/model_settings.py`, `POST /settings/model`, which now just returns to the page).
+
 ## 0.0.8 — 2026-10-11
 
 ### Changed

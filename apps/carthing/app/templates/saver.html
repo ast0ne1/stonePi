@@ -1,10 +1,52 @@
 {% from "_icons.html" import icon %}
+{% import "_music.html" as mu %}
+{% set saver = config.idle.saver %}
+{% if music %}
+{#- Artwork while music plays (F7): the screensaver style steps aside, the time sits in a corner. -#}
+<div class="saver-inner saver-music" data-saver-music>
+  {{ mu.art(music, "np-art sm-art") }}
+  <div class="sm-main">
+    {{ mu.text(music) }}
+    {{ mu.bar(music) }}
+    {% if music.device %}<span class="sm-device">{{ music.device.name }}</span>{% endif %}
+  </div>
+  <span class="sm-time" data-clock-small></span>
+</div>
+{% elif saver.style == "logo" %}
+{#- Bouncing logo: panel.js moves .lg-mark (a transform) and recolours its slabs. -#}
+<div class="saver-inner saver-logo" data-saver="logo">
+  {% if saver.logo.time %}<span class="lg-time" data-clock-small></span>{% endif %}
+  <div class="lg-mark" data-lg-mark>
+    <svg viewBox="8 8 84 84" width="120" height="120" aria-hidden="true">
+      <polygon points="20,32 80,8 80,20 32,39.2 32,46.2 20,51" />
+      <polygon points="20,56 80,32 80,44 20,68" />
+      <polygon points="80,68 20,92 20,80 68,60.8 68,53.8 80,49" />
+    </svg>
+  </div>
+</div>
+{% elif saver.style == "matrix" %}
+{#- Matrix: panel.js draws the rain on the canvas. -#}
+<div class="saver-inner saver-matrix" data-saver="matrix">
+  <canvas width="800" height="480" data-mx></canvas>
+  {#- The time uses the screensaver's own face once it's set apart (U13), else bold digital. -#}
+  {% set mx_face = saver_clock.face if saver_clock.separate else "digital_bold" %}
+  {% if saver.matrix.time %}<div class="mx-time face-{{ mx_face }}"><div class="clock" data-clock data-face="{{ mx_face }}"></div></div>{% endif %}
+</div>
+{% elif saver.style == "pipes" %}
+{#- 3D Pipes: panel.js grows the pipes on the canvas, over the screensaver background. -#}
+<div class="saver-inner saver-pipes" data-saver="pipes">
+  <canvas width="800" height="480" data-pp></canvas>
+  {% if saver.pipes.time %}<span class="lg-time" data-clock-small></span>{% endif %}
+</div>
+{% else %}
 {% set show = config.idle.show %}
-<div class="saver-inner face-{{ config.clock.face }}">
-  <div class="clock" data-clock data-face="{{ config.clock.face }}"></div>
+{#- saver_clock: the screensaver's own face when it's set apart from the widgets (U13). -#}
+<div class="saver-inner face-{{ saver_clock.face }}">
+  <div class="clock" data-clock data-face="{{ saver_clock.face }}"></div>
   <div class="saver-meta">
     {% if show.date %}<span class="saver-date" data-date></span>{% endif %}
     {% if weather %}<span class="saver-wx">{{ icon(weather.icon) }} {{ weather.temp if weather.temp is not none else "–" }}{{ weather.unit }}{% if weather.high is not none %} <span class="soft">{{ weather.high }}° / {{ weather.low }}°</span>{% endif %}</span>{% endif %}
   </div>
   {% if live %}<p class="live"><span class="live-label">{{ live.label }}</span> {{ live.text }}</p>{% endif %}
 </div>
+{% endif %}

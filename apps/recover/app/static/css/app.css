@@ -141,7 +141,8 @@ input, select, textarea {
 }
 .logout-form { margin: 0; }
 /* Header buttons share one shape: Dashboard / Refresh pills, Sign out as a round icon. */
-.console-top-actions .icon-btn { border-radius: 999px; }
+.console-top-actions > .icon-btn { border-radius: 999px; }
+.console-top .brand { text-decoration: none; color: inherit; }
 .subbrand {
   font-family: var(--chrome);
   font-weight: 500;
@@ -266,9 +267,15 @@ input, select, textarea {
   min-width: 0;
 }
 .unit-name {
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
+  display: block;
+  font-size: 0.95rem;
   font-weight: 600;
+}
+.unit-id {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--muted);
   word-break: break-all;
 }
 .unit-row-actions {
@@ -332,6 +339,99 @@ input, select, textarea {
   background: color-mix(in srgb, var(--accent) 12%, var(--card));
 }
 .status-busy .status-dot { background: var(--accent); }
+.status-off { color: var(--muted); }
+
+/* Status summary: one line that answers "is anything wrong?", then disk / failover / network. */
+.summary-card { display: grid; gap: 12px; }
+.summary-headline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+.summary-headline .status-dot { width: 10px; height: 10px; }
+.summary-card.is-ok .status-dot { background: var(--ok); }
+.summary-card.is-bad .status-dot { background: var(--error); }
+.summary-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+}
+.summary-facts dt { font-size: 0.75rem; color: var(--muted); }
+.summary-facts dd { margin: 2px 0 0; font-size: 0.92rem; overflow-wrap: anywhere; }
+.summary-quiet { margin: 0; }
+
+/* Folded lists (all services, older backups, raw network output). */
+.disclosure > summary {
+  cursor: pointer;
+  color: var(--link);
+  font-size: 0.92rem;
+  font-weight: 500;
+  padding: 6px 0;
+}
+.disclosure[open] > summary { margin-bottom: 4px; }
+.unit-groups { display: grid; gap: 16px; }
+.group-label {
+  margin: 8px 0 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ⋯ menu on a service row: Logs, and Stop (the risky one). */
+.row-menu { position: relative; }
+.row-menu > summary { list-style: none; }
+.row-menu > summary::-webkit-details-marker { display: none; }
+.row-menu-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 5;
+  min-width: 10rem;
+  padding: 6px;
+  display: grid;
+  gap: 2px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--ink) 14%, transparent);
+}
+.row-menu-list form { margin: 0; }
+.row-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.9rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+.row-menu-item:hover { background: color-mix(in srgb, var(--ink) 6%, var(--card)); }
+.row-menu-item.is-danger { color: var(--error); }
+.row-menu-item svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.log-picker { margin: 0 0 8px; max-width: 24rem; }
+.net-facts { grid-template-columns: 1fr; }
 
 .chip {
   display: inline-block;
@@ -436,6 +536,8 @@ html.sheet-open body {
 }
 
 @media (min-width: 1024px) {
+  .unit-groups .unit-list { grid-template-columns: 1fr 1fr; column-gap: 28px; }
+  .unit-groups .unit-row:nth-last-child(2):nth-child(odd) { border-bottom: 0; }
   .console-body {
     padding-left: 28px;
     padding-right: 28px;

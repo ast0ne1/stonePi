@@ -38,7 +38,8 @@ try:  # POSIX (the Pi); Windows dev has a single writer.
 except ImportError:  # pragma: no cover - Windows
     fcntl = None
 
-DEFAULT_LIMITS = {"brightdata": 5000}
+# llm: AI requests across apps (stonepi_ai), Free models included.
+DEFAULT_LIMITS = {"brightdata": 5000, "llm": 20000}
 DEFAULT_RESET_DAY = 1
 
 _thread_lock = threading.Lock()

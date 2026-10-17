@@ -47,7 +47,7 @@ a { color: var(--link); }
   gap: 12px;
   margin-bottom: 16px;
 }
-.status-signout { margin: 0; }
+.status-signout { margin: 0; display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 .status-card {
   padding: 22px 20px 20px;
   display: grid;
@@ -127,10 +127,6 @@ a { color: var(--link); }
 }
 .icon-btn:hover {
   border-color: var(--border-control);
-}
-.sign-out:hover {
-  border-color: var(--border-control);
-  color: var(--danger-text);
 }
 @media (min-width: 720px) {
   .login-shell { width: min(440px, calc(100% - 48px)); padding: 48px 0 80px; }

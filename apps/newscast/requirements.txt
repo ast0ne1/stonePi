@@ -7,7 +7,9 @@ jinja2==3.1.6
 httpx==0.28.1
 feedparser==6.0.11
 trafilatura==2.0.0
-openai==1.107.1
+sumy==0.13.0
+nltk==3.10.3
+numpy==2.2.6
 apscheduler==3.11.0
 ebooklib==0.18
 segno==1.6.6

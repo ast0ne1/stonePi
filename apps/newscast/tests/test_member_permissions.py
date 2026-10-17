@@ -242,11 +242,8 @@ def test_household_routes_are_admin_only(world, monkeypatch):
     assert bob.post("/settings/categories", data={"label": "Sport"}).status_code == 403
     assert bob.post("/settings/categories/news/rename", data={"label": "Nope"}).status_code == 403
     assert bob.post("/settings/categories/news/delete").status_code == 403
-    probed: list = []
-    monkeypatch.setattr("app.services.summarize.list_ollama_models", lambda url: probed.append(url) or [])
-    assert bob.get("/api/ollama/models?base_url=http://169.254.169.254/").status_code == 403
-    assert probed == []
-    assert world["alice"].get("/api/ollama/models?base_url=http://127.0.0.1:11434").status_code == 200
+    # The Ollama probe moved to Dashboard → Settings → AI (admin-only there).
+    assert bob.get("/api/ollama/models?base_url=http://169.254.169.254/").status_code == 404
     assert world["alice"].post("/settings/categories", data={"label": "Sport"}).status_code in {200, 303}
 
 
@@ -293,7 +290,7 @@ def test_member_publication_tab_hides_household_fields(world):
 def test_admin_save_only_writes_the_submitted_tab(world):
     db = world["db"]
     settings.set_value(db, "keyword_include", "climate")
-    settings.set_value(db, "ollama_model", "llama3.2")
+    settings.set_value(db, "ai_summaries", "ai")
     settings.set_value(db, "instance_name", "Home")
     settings.set_value(db, "briefing_category_mix", "1")
     settings.set_value(db, "x3_device_id", "dev-1")
@@ -304,7 +301,7 @@ def test_admin_save_only_writes_the_submitted_tab(world):
     assert response.status_code == 200, response.text
     db.expire_all()
     assert settings.get_value(db, "keyword_include") == "climate"
-    assert settings.get_value(db, "ollama_model") == "llama3.2"
+    assert settings.get_value(db, "ai_summaries") == "ai"
     assert settings.get_value(db, "instance_name") == "Home"
     assert settings.get_value(db, "briefing_category_mix") == "1"
     assert settings.get_value(db, "x3_device_id") == "dev-1"

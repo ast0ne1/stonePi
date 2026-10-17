@@ -200,6 +200,7 @@ def configure_all() -> None:
                     "pricescout.publication_released": True,
                     "studio.site_published": True,
                     "system.disk_warning": True,
+                    "system.ai_unavailable": True,
                 }
             }
         )

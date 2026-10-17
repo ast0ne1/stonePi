@@ -16,6 +16,7 @@ import secrets
 import shutil
 import subprocess
 import threading
+import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -23,10 +24,11 @@ from urllib.parse import quote
 import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
+from starlette.concurrency import run_in_threadpool
 from stonepi_auth.csrf import csrf_from_request, csrf_ok_request, set_csrf_cookie
 from stonepi_auth.http import request_is_https
 from stonepi_auth.internal import sign_internal, verify_internal
-from stonepi_display import carthing
+from stonepi_display import carthing, spotify
 
 logger = logging.getLogger("notify.carthing")
 router = APIRouter()
@@ -35,6 +37,10 @@ PANEL_URL = (os.environ.get("STONEPI_CARTHING_URL") or "http://127.0.0.1:8013").
 HELPER = "/usr/local/sbin/stonepi-carthing-helper"
 PREVIEW_BASE = "/carthing/panel/"
 MAX_UPLOAD = 8 * 1024 * 1024
+# One client for every call to the panel service. Building an httpx client loads the TLS
+# certificate store (~350 ms on the dev PC), and the preview proxy fetches every CSS, JS, icon
+# and font file through here: a new client per request made each preview reload take seconds.
+_panel_client = httpx.Client(timeout=10.0)
 
 # The editor's unsaved config, shown by the preview. One slot: Notify is admin-only.
 _draft: dict[str, Any] = {"config": None}
@@ -107,13 +113,13 @@ def run_helper(action: str) -> dict:
     return data if isinstance(data, dict) else {"ok": False}
 
 
-def _panel_signed(method: str, path: str, **kwargs) -> httpx.Response | None:
+def _panel_signed(method: str, path: str, timeout: float = 3.0, **kwargs) -> httpx.Response | None:
     secret = _secret()
     if not secret:
         return None
     try:
-        return httpx.request(
-            method, f"{PANEL_URL}{path}", headers=sign_internal(secret, method, path), timeout=3.0, **kwargs
+        return _panel_client.request(
+            method, f"{PANEL_URL}{path}", headers=sign_internal(secret, method, path), timeout=timeout, **kwargs
         )
     except httpx.HTTPError:
         return None
@@ -237,7 +243,7 @@ async def panel_proxy(request: Request, path: str):
     if denied is not None:
         return denied
     target = "/" + path
-    if request.method == "POST" and target not in {"/restart"}:
+    if request.method == "POST" and target not in {"/restart", "/music/cmd"}:
         return Response(status_code=405)
     secret = _secret()
     if not secret:
@@ -249,15 +255,17 @@ async def panel_proxy(request: Request, path: str):
     }
     if request.method == "POST":
         headers["content-type"] = "application/json"
+    body = await request.body() if request.method == "POST" else None
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            upstream = await client.request(
-                request.method,
-                f"{PANEL_URL}{target}",
-                params=dict(request.query_params),
-                headers=headers,
-                content=await request.body() if request.method == "POST" else None,
-            )
+        # The shared (sync, thread-safe) client in a worker thread: no per-request client.
+        upstream = await run_in_threadpool(
+            _panel_client.request,
+            request.method,
+            f"{PANEL_URL}{target}",
+            params=dict(request.query_params),
+            headers=headers,
+            content=body,
+        )
     except httpx.HTTPError:
         return HTMLResponse(
             "<body style='margin:0;background:#0b0d10;color:#f5f1e8;font:20px sans-serif;"
@@ -317,6 +325,7 @@ def carthing_page(request: Request, config: str = ""):
                 "snapshots": carthing.list_snapshots(editing["id"]),
                 "editor": {"config": editing, "catalog": carthing.editor_catalog(), "active": device["active_config"]},
                 "pin_length": carthing.PIN_LENGTH,
+                "music": music_view(request),
             },
         ),
     )
@@ -552,6 +561,207 @@ def config_export(request: Request, config_id: str):
         media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ── Music: Spotify sign-in (F7 S1) ───────────────────────────────────────────
+#
+# Authorization code + PKCE: only the client ID is stored, never a client secret. The refresh
+# token goes to the vault; the panel service turns it into access tokens. Two callbacks:
+# Notify's own HTTPS address (Tailscale) when the page is on HTTPS, else Spotify's loopback
+# exception, where the admin pastes the error page's address back here.
+
+_PENDING_TTL_S = 15 * 60
+_pending: dict[str, dict[str, Any]] = {}
+_pending_lock = threading.Lock()
+_spotify_client = httpx.Client(timeout=10.0)
+
+
+def _https_redirect(request: Request) -> str:
+    """Notify's own callback, only when this page is on HTTPS (Spotify needs HTTPS off loopback)."""
+    if not request_is_https(request):
+        return ""
+    from stonepi_auth.prefix import clean_prefix
+
+    from app.config import env
+
+    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(",")[0].strip()
+    if not host:
+        return ""
+    return f"https://{host}{clean_prefix(env.stonepi_prefix)}{spotify.CALLBACK_PATH}"
+
+
+def _remember_pending(verifier: str, redirect_uri: str) -> str:
+    state = secrets.token_urlsafe(24)
+    now = time.monotonic()
+    with _pending_lock:
+        for key in [k for k, v in _pending.items() if now - v["at"] > _PENDING_TTL_S]:
+            _pending.pop(key, None)
+        while len(_pending) >= 5:
+            _pending.pop(next(iter(_pending)))
+        _pending[state] = {"verifier": verifier, "redirect_uri": redirect_uri, "at": now}
+    return state
+
+
+def _take_pending(state: str) -> dict[str, Any] | None:
+    with _pending_lock:
+        entry = _pending.pop(state or "", None)
+    if entry is None or time.monotonic() - entry["at"] > _PENDING_TTL_S:
+        return None
+    return entry
+
+
+def _paste_pending() -> bool:
+    now = time.monotonic()
+    with _pending_lock:
+        return any(
+            v["redirect_uri"] == spotify.LOOPBACK_REDIRECT and now - v["at"] <= _PENDING_TTL_S for v in _pending.values()
+        )
+
+
+def _vault_secret(key: str) -> str:
+    try:
+        from stonepi_vault import get_secret
+
+        return (get_secret(key, env_name=key, default="") or "").strip()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _vault_save(key: str, value: str) -> bool:
+    try:
+        from stonepi_vault import set_secret
+
+        set_secret(key, value)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("spotify: couldn't save %s: %s", key, exc)
+        return False
+
+
+def _tell_panel_music_changed() -> None:
+    """The panel drops its in-memory access token and rereads the vault."""
+    _panel_signed("POST", "/internal/music/reset")
+
+
+def music_view(request: Request) -> dict[str, Any]:
+    client_id = _vault_secret(spotify.CLIENT_ID_KEY)
+    return {
+        "client_id": client_id,
+        "connected": bool(client_id and _vault_secret(spotify.REFRESH_TOKEN_KEY)),
+        "account": carthing.music_account(),
+        "https_redirect": _https_redirect(request),
+        "loopback_redirect": spotify.LOOPBACK_REDIRECT,
+        "awaiting_paste": _paste_pending(),
+    }
+
+
+def _finish_sign_in(code: str, state: str) -> tuple[str, str]:
+    """(message, error) after Spotify sends the code back."""
+    entry = _take_pending(state)
+    if entry is None:
+        return "", "That Spotify sign-in expired or didn't start here. Press Connect again."
+    client_id = _vault_secret(spotify.CLIENT_ID_KEY)
+    if not client_id:
+        return "", "Save the Spotify client ID first."
+    try:
+        tokens = spotify.exchange_code(client_id, code, entry["redirect_uri"], entry["verifier"], client=_spotify_client)
+        profile = spotify.fetch_profile(str(tokens["access_token"]), client=_spotify_client)
+    except spotify.SpotifyAuthError as exc:
+        return "", str(exc)
+    refresh = str(tokens.get("refresh_token") or "")
+    if not refresh:
+        return "", "Spotify didn't return a refresh token. Press Connect again."
+    if not _vault_save(spotify.REFRESH_TOKEN_KEY, refresh):
+        return "", "Signed in, but the vault couldn't save the token. Check Settings → Vault."
+    carthing.save_music_account(profile["name"], profile["id"])
+    _tell_panel_music_changed()
+    return f"Spotify connected as {profile['name'] or 'your account'}.", ""
+
+
+@router.get("/api/carthing/music/catalog")
+def api_music_catalog(request: Request):
+    """Speakers and playlists for the editor's Music tab, from the panel service (it holds the token)."""
+    _, denied = _admin(request)
+    if denied is not None:
+        return denied
+    response = _panel_signed("GET", "/internal/music/catalog", timeout=15.0)
+    if response is None or response.status_code != 200:
+        return {"ok": False, "message": "The Car Thing service isn't running, so speakers and playlists can't be listed.", "devices": [], "playlists": []}
+    try:
+        data = response.json()
+    except ValueError:
+        data = {}
+    return data if isinstance(data, dict) else {"ok": False, "devices": [], "playlists": []}
+
+
+@router.get("/displays/carthing/spotify/callback")
+def spotify_callback(request: Request, code: str = "", state: str = "", error: str = ""):
+    from app.routes import _guard
+
+    _, denied = _guard(request, path="/displays/carthing", active="displays", template="carthing.html")
+    if denied is not None:
+        return denied
+    if error:
+        _take_pending(state)
+        return _back(err="Spotify sign-in was cancelled." if error == "access_denied" else f"Spotify said: {error[:80]}", anchor="music")
+    msg, err = _finish_sign_in(code, state)
+    return _back(msg=msg, err=err, anchor="music")
+
+
+@router.post("/displays/carthing/music")
+async def music_action(request: Request):
+    form, denied = await _form(request)
+    if denied is not None:
+        return denied
+    action = str(form.get("action") or "")
+    if action == "client":
+        client_id = str(form.get("client_id") or "").strip()
+        if not spotify.valid_client_id(client_id):
+            return _back(err="A Spotify client ID is 32 letters and digits, from your Spotify app's Settings page.", anchor="music")
+        if not _vault_save(spotify.CLIENT_ID_KEY, client_id):
+            return _back(err="The vault couldn't save the client ID. Check Settings → Vault.", anchor="music")
+        _tell_panel_music_changed()
+        return _back(msg="Client ID saved. Now press Connect Spotify.", anchor="music")
+    if action == "connect":
+        client_id = _vault_secret(spotify.CLIENT_ID_KEY)
+        if not client_id:
+            return _back(err="Save the Spotify client ID first.", anchor="music")
+        redirect_uri = "" if str(form.get("mode") or "") == "paste" else _https_redirect(request)
+        redirect_uri = redirect_uri or spotify.LOOPBACK_REDIRECT
+        verifier, challenge = spotify.new_pkce()
+        state = _remember_pending(verifier, redirect_uri)
+        return RedirectResponse(spotify.authorize_url(client_id, redirect_uri, state, challenge), status_code=303)
+    if action == "paste":
+        parsed = spotify.parse_callback(str(form.get("callback_url") or ""))
+        if parsed.get("error"):
+            _take_pending(parsed.get("state", ""))
+            return _back(err="Spotify sign-in was cancelled.", anchor="music")
+        if not parsed.get("code") or not parsed.get("state"):
+            return _back(err="Paste the whole address from the error page. It starts with http://127.0.0.1:8888/callback?code=", anchor="music")
+        msg, err = _finish_sign_in(parsed["code"], parsed["state"])
+        return _back(msg=msg, err=err, anchor="music")
+    if action == "test":
+        response = _panel_signed("POST", "/internal/music/check", timeout=12.0)
+        if response is None or response.status_code != 200:
+            return _back(err="The Car Thing service isn't running, so it can't check Spotify.", anchor="music")
+        try:
+            data = response.json()
+        except ValueError:
+            data = {}
+        if data.get("ok"):
+            return _back(msg="The Car Thing service got a Spotify token. Music is ready.", anchor="music")
+        return _back(err=str(data.get("message") or "The Car Thing service couldn't reach Spotify."), anchor="music")
+    if action == "disconnect":
+        try:
+            from stonepi_vault import get_vault
+
+            get_vault().delete(spotify.REFRESH_TOKEN_KEY)
+        except Exception:  # noqa: BLE001
+            return _back(err="The vault couldn't remove the token. Check Settings → Vault.", anchor="music")
+        carthing.clear_music_account()
+        _tell_panel_music_changed()
+        return _back(msg="Spotify disconnected. To revoke it fully, remove StonePi under Manage apps on your Spotify account page.", anchor="music")
+    return _back(err="Unknown action.", anchor="music")
 
 
 def carthing_summary() -> dict:

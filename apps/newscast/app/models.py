@@ -129,6 +129,8 @@ class Story(Base):
     content_lang: Mapped[str | None] = mapped_column(String(8), nullable=True)
     # The feed's own thumbnail for the story, used for the paper's cover photo.
     image_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    # How each task was done for this story (U1): JSON per task, see app/services/ai.py.
+    ai_record: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

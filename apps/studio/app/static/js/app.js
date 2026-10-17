@@ -114,29 +114,6 @@
 
   document.querySelectorAll("[data-page-setup]").forEach(bindPageSetup);
 
-  // Settings → Model: expand the model card(s) for the chosen service, collapse the other.
-  const providerChoices = document.querySelectorAll("[data-provider-choice]");
-  providerChoices.forEach((radio) => {
-    radio.addEventListener("change", () => {
-      if (!radio.checked) return;
-      document.querySelectorAll("[data-model-panel]").forEach((panel) => {
-        panel.open = radio.value === "auto" || panel.dataset.modelPanel === radio.value;
-      });
-    });
-  });
-  // Keep each collapsed card's summary showing the model that is picked inside it.
-  document.querySelectorAll("[data-model-panel]").forEach((panel) => {
-    const current = panel.querySelector(".model-panel-current");
-    panel.addEventListener("change", (event) => {
-      const t = event.target;
-      if (!current || !(t instanceof HTMLInputElement)) return;
-      if (t.type === "radio" && t.checked) {
-        current.textContent = t.value === "custom" ? panel.querySelector("input[type=text]")?.value || "Other model ID" : t.value;
-      } else if (t.type === "text") {
-        current.textContent = t.value || "Other model ID";
-      }
-    });
-  });
 
   function askConfirm({ title, body, okLabel }) {
     const sheet = document.querySelector("[data-confirm-sheet]");

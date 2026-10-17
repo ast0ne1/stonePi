@@ -32,8 +32,11 @@ def test_normalize_drops_unknown_and_disallowed():
     assert cfg["id"] == "kitchen-panel"
     # A single Home (schema 1) becomes page 1, small cards
     assert cfg["pages"] == [{"name": "Home", "widgets": [{"id": "newscast", "size": "small"}, {"id": "system", "size": "small"}]}]
-    # home + back are always allowed; page actions and Sleep didn't exist yet, so they're allowed too
-    assert set(cfg["allowed_actions"]) == {"home", "back", "select", "open:newscast", "sleep", *carthing.PAGE_ACTION_IDS}
+    # home + back are always allowed; page actions, Sleep, Open Weather and Music didn't exist yet, so they're allowed too
+    assert set(cfg["allowed_actions"]) == {
+        "home", "back", "select", "open:newscast", "sleep", "open:weather", "open:music",
+        *carthing.PAGE_ACTION_IDS, *carthing.MUSIC_ACTION_IDS,
+    }
     assert cfg["controls"]["preset1"] == "open:newscast"
     assert cfg["controls"]["preset2"] is None  # not allowed → unmapped
     assert "nope" not in cfg["controls"]
@@ -177,7 +180,8 @@ def test_old_export_imports_and_new_export_is_marked(store: Path):
 
 def test_schema_2_allow_list_is_respected():
     cfg = carthing.normalize_config({"pages": [{"name": "A", "widgets": []}], "allowed_actions": ["select"]})
-    assert set(cfg["allowed_actions"]) == {"home", "back", "select", "sleep"}  # Sleep is newer than this list
+    # newer than this list
+    assert set(cfg["allowed_actions"]) == {"home", "back", "select", "sleep", "open:weather", "open:music", *carthing.MUSIC_ACTION_IDS}
     cfg = carthing.normalize_config(
         {"pages": [], "allowed_actions": ["next_page", "page:2"], "controls": {"swipe_left": "next_page", "preset1": "page:2", "preset2": "page:9"}}
     )
@@ -279,3 +283,107 @@ def test_saved_colours_survive_new_defaults():
     assert cfg["idle"]["background"] == {"type": "gradient", "value": "midnight"}
     fresh = carthing.normalize_config({})
     assert fresh["look"]["accent"] == "#C7BBA8" and fresh["idle"]["background"]["type"] == "solid"
+
+
+def test_screensaver_style_defaults_and_old_configs():
+    """U12: saved configs (no ``saver``) stay on the clock, with every style's defaults."""
+    cfg = carthing.normalize_config({"idle": {"screensaver_after_s": 120}})
+    assert cfg["idle"]["saver"] == {
+        "style": "clock",
+        "logo": {"recolor": True, "corner": True, "speed": "slow", "time": False},
+        "matrix": {"color": "#00FF41", "time": True, "speed": "normal", "density": "normal"},
+        "pipes": {"speed": "normal", "joints": "mixed", "time": False},
+    }
+
+
+def test_screensaver_style_options_are_kept_or_reset():
+    raw = {
+        "style": "matrix",
+        "logo": {"recolor": False, "speed": "fast", "time": 1},
+        "matrix": {"color": "#ff0000", "speed": "warp", "density": "dense", "time": False, "extra": 1},
+    }
+    saver = carthing.normalize_config({"idle": {"saver": raw}})["idle"]["saver"]
+    assert saver["style"] == "matrix"
+    assert saver["logo"] == {"recolor": False, "corner": True, "speed": "fast", "time": True}
+    assert saver["matrix"] == {"color": "#FF0000", "time": False, "speed": "normal", "density": "dense"}
+    bad = carthing.normalize_config({"idle": {"saver": {"style": "toasters", "matrix": {"color": "green"}}}})
+    assert bad["idle"]["saver"]["style"] == "clock" and bad["idle"]["saver"]["matrix"]["color"] == "#00FF41"
+
+
+def test_pipes_options_are_kept_or_reset():
+    saver = carthing.normalize_config({"idle": {"saver": {"style": "pipes", "pipes": {"joints": "ball", "speed": "fast", "time": 1}}}})
+    assert saver["idle"]["saver"]["style"] == "pipes"
+    assert saver["idle"]["saver"]["pipes"] == {"speed": "fast", "joints": "ball", "time": True}
+    bad = carthing.normalize_config({"idle": {"saver": {"pipes": {"joints": "teapot"}}}})
+    assert bad["idle"]["saver"]["pipes"]["joints"] == "mixed"
+    assert [s["id"] for s in carthing.SAVER_STYLES][-1] == "pipes"
+
+
+def test_screensaver_clock_follows_widgets_until_set_apart():
+    """U13: saved configs keep one face everywhere; the screensaver's own starts from it."""
+    cfg = carthing.normalize_config({"clock": {"face": "flip", "color": "#FF4D4D", "accent": "#FFFFFF"}})
+    assert cfg["clock"]["saver"] == {"separate": False, "face": "flip", "color": "#FF4D4D", "accent": "#FFFFFF"}
+    own = carthing.normalize_config(
+        {"clock": {"face": "flip", "saver": {"separate": True, "face": "analogue", "color": "#9fd8ff", "accent": "bad"}}}
+    )
+    assert own["clock"]["face"] == "flip"
+    assert own["clock"]["saver"] == {"separate": True, "face": "analogue", "color": "#9FD8FF", "accent": "#C7BBA8"}
+    assert carthing.normalize_config({"clock": {"saver": {"face": "nixie"}}})["clock"]["saver"]["face"] == "digital_bold"
+
+
+def test_clock_tap_and_weather_widget():
+    """U14: the Clock & weather widget does nothing on tap unless set; Weather is a widget."""
+    assert carthing.default_config()["clock"]["tap"] == "none"
+    assert carthing.normalize_config({"clock": {"tap": "weather"}})["clock"]["tap"] == "weather"
+    assert carthing.normalize_config({"clock": {"tap": "dance"}})["clock"]["tap"] == "none"
+    page = carthing.normalize_config({"pages": [{"widgets": [{"id": "weather", "size": "half"}, "clock"]}]})["pages"][0]
+    assert page["widgets"] == [{"id": "weather", "size": "half"}, {"id": "clock", "size": "small"}]
+
+
+def test_open_weather_is_allowed_for_older_allow_lists():
+    old = carthing.normalize_config(carthing.default_config())
+    old["allowed_actions"].remove("open:weather")
+    old["actions_known"].remove("open:weather")
+    assert "open:weather" in carthing.normalize_config(old)["allowed_actions"]
+    old["actions_known"].append("open:weather")  # saved since: unticking sticks
+    assert "open:weather" not in carthing.normalize_config(old)["allowed_actions"]
+
+
+def test_music_section_normalised():
+    cfg = carthing.normalize_config(
+        {
+            "music": {
+                "presets": [
+                    {"name": " Morning ", "uri": "https://open.spotify.com/intl-da/playlist/37i9dQZF1DXcBWIGoYBM5M?si=x",
+                     "device": {"id": "abc123", "name": "Kitchen"}},
+                    {"name": "Bad", "uri": "spotify:playlist:short", "device": {"id": "bad id!"}},
+                    "junk",
+                ],
+                "default_device": {"id": "dev-1", "name": "Living room"},
+                "dial_volume": False,
+                "volume_step": 99,
+            }
+        }
+    )
+    music = cfg["music"]
+    assert len(music["presets"]) == carthing.MUSIC_PRESETS
+    assert music["presets"][0] == {"name": "Morning", "uri": "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M",
+                                   "device": {"id": "abc123", "name": "Kitchen"}}
+    assert music["presets"][1]["uri"] == "" and music["presets"][1]["device"]["id"] == ""
+    assert music["presets"][3] == {"name": "", "uri": "", "device": {"id": "", "name": ""}}
+    assert music["default_device"] == {"id": "dev-1", "name": "Living room"}
+    assert music["dial_volume"] is False and music["saver_artwork"] is True and music["volume_step"] == 10
+    assert carthing.normalize_config({})["music"] == carthing.default_music()
+
+
+def test_music_is_a_widget_and_live_line():
+    assert "music" in carthing.WIDGET_IDS and "open:music" in carthing.ACTION_IDS
+    cfg = carthing.normalize_config({"pages": [{"widgets": [{"id": "music", "size": "half"}]}], "idle": {"show": {"live_line": "music"}}})
+    assert cfg["pages"][0]["widgets"] == [{"id": "music", "size": "half"}]
+    assert cfg["idle"]["show"]["live_line"] == "music"
+
+
+def test_clock_only_widget_in_catalog():
+    assert "time" in carthing.WIDGET_IDS
+    cfg = carthing.normalize_config({"pages": [{"widgets": [{"id": "time", "size": "full"}]}]})
+    assert cfg["pages"][0]["widgets"] == [{"id": "time", "size": "full"}]

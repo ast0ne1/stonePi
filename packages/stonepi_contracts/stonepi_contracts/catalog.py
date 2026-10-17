@@ -83,6 +83,8 @@ EVENT_CATALOG: tuple[EventType, ...] = (
               "The backup drive can't fit the offline library content."),
     EventType("system.disk_warning", "system", "Disk warning", AUDIENCE_ADMIN,
               "The Pi is running low on disk space."),
+    EventType("system.ai_unavailable", "system", "AI unavailable", AUDIENCE_ADMIN,
+              "Every AI model for a feature failed, so the app is using its non-AI fallback."),
 )
 
 _BY_ID = {e.id: e for e in EVENT_CATALOG}

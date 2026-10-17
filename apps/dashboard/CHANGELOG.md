@@ -1,5 +1,20 @@
 # Changelog — Dashboard
 
+## 0.3.0 — 2026-10-17
+
+### Added
+- **Vault → Music**: **Spotify client ID** and **Spotify sign-in** (backlog F7), both set from Notify → Displays → Car Thing.
+- **Settings → AI** (House group, admins only; backlog F13). One page for AI on the whole Pi:
+  - **Providers:** Gemini, Anthropic, OpenAI and Ollama, each with whether it's set up and Free or Paid. Keys link to the Vault. Ollama takes a server URL, and **load the server's models** fills the model list. With a Gemini key the page asks once: "Free tier, no billing on this key?"
+  - **Model order by tier:** Cheap, Standard and Best, each a list you drag to reorder (arrow buttons on touch and keyboard). A warning shows when a Free or small local model is in Best.
+  - **Jobs:** every app's AI jobs (NewsCast summaries, translation and importance; Studio apps, stories and games) with the tier each asks for and the model it would use first. A job can move to another tier or get its own list.
+  - **Models:** add any model ID, with a Free/Paid badge, rough cost and a status line each ("Gemini 3.5 Flash-Lite: free quota hit 14:02, cooling until 15:00"). **Test** sends one tiny request; **Try again** clears a cooling model.
+  - **Monthly AI requests:** used this month per app, and the limit (default 20,000).
+- **Vault → AI** gains **Gemini API key**. The three AI keys are now optional, and the group points to Settings → AI. **Studio LLM base URL** moves to Legacy: set an Ollama or other OpenAI-compatible server on Settings → AI instead.
+
+### Fixed
+- **Settings → Displays line counts the Car Thing** (backlog B10). While the Car Thing is switched on it counts as a screen and the line says whether it's connected, e.g. "2 screens · TRMNL pushing · Car Thing connected". With the Car Thing off (or an older Notify) the TRMNL-only wording is unchanged.
+
 ## 0.2.0 — 2026-10-11
 
 ### Changed

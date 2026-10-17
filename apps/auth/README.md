@@ -22,6 +22,7 @@ One login for the portal — no duplicate per-app password databases when `STONE
 - Disabled-app list for the portal
 - Catalog contract used by Dashboard Users UI (`stonepi_auth.catalog`)
 - `GET /api/display` — active session count for Display widgets (loopback; nginx denies at the edge)
+- The signed-in status page uses the shared StonePi header (app switcher, avatar menu with Log out)
 
 ## Factory login
 

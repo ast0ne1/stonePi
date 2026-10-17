@@ -27,6 +27,8 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(recover, "_unit_rows", lambda: [])
     monkeypatch.setattr(recover, "_list_snapshots", lambda: [])
     monkeypatch.setattr(recover, "_disk_pct", lambda: "n/a")
+    monkeypatch.setattr(recover, "_network_mode", lambda route=None: "Wi-Fi")
+    monkeypatch.setattr(recover, "_failover_on", lambda: False)
     monkeypatch.setattr(recover, "migrate_legacy_password", lambda: None)
     token_file = tmp_path / "recover-proxy.token"
     token_file.write_text(PROXY_TOKEN + "\n", encoding="utf-8")

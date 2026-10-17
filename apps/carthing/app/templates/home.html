@@ -15,7 +15,7 @@
       {% endfor %}
     </nav>
     {% endif %}
-    {% if not has_clock %}{{ weather_inline(weather) }}{% endif %}
+    {% if not has_forecast %}{{ weather_inline(weather) }}{% endif %}
   </header>
   {% if layout.count %}
   <div class="page lay-{{ layout.kind }}{% if layout.kind == 'grid' %} cards cards-{{ layout.count }}{% endif %}">

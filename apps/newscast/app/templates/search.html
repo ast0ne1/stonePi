@@ -44,7 +44,7 @@
       <div class="story-kicker">
         {% if story.favicon %}<img class="source-icon" src="{{ story.favicon }}" alt="" width="28" height="28">{% endif %}
         <p class="chip chip-source {% if story.feed_type == 'webpage' %}chip-source-scrape{% else %}chip-source-rss{% endif %}">{{ story.source_name }}</p>
-        {% if story.is_summary and ai_on %}<span class="chip chip-ai story-kind story-kind-ai" title="Summary written by AI ({{ 'local model' if ai_local else 'cloud model' }})">AI summary</span>{% else %}<span class="chip chip-quiet story-kind">{{ 'Excerpt' if story.is_summary else 'Full article' }}</span>{% endif %}
+        {% include "_story_kind.html" %}
         {% if story.saved %}<span class="chip chip-quiet">Saved</span>{% endif %}
         {% if story.favourited %}<span class="chip chip-quiet">Saved</span>{% endif %}
         {% if story.published_label %}<time class="chip chip-quiet story-date">{{ story.published_label }}</time>{% endif %}

@@ -1,0 +1,54 @@
+{# The large weather screen (U14): now, the next 12 hours and the week. Back returns. #}
+{% from "_icons.html" import icon %}
+{% from "_widgets.html" import hour_label %}
+<section class="screen weather" data-screen="weather" data-url="v/weather">
+  <header class="bar">
+    <span class="bar-title">Weather</span>
+    <span class="bar-meta">{{ weather.place if weather else "" }}</span>
+    <span class="bar-time" data-clock-small></span>
+  </header>
+  {% if weather %}
+  <div class="wv">
+    <div class="wv-top">
+      <div class="wv-now">
+        {{ icon(weather.icon, "ico wv-ico") }}
+        <div>
+          <strong class="wv-temp">{{ weather.temp if weather.temp is not none else "–" }}<small>{{ weather.unit }}</small></strong>
+          <p class="wv-label">{{ weather.label }}</p>
+          <p class="wv-facts soft">
+            {% if weather.feels is not none %}Feels {{ weather.feels }}°{% endif %}
+            {% if weather.wind is not none %} · Wind {{ weather.wind }} {{ weather.wind_unit }}{% endif %}
+          </p>
+          {% if weather.high is not none %}<p class="wv-facts soft">H {{ weather.high }}° · L {{ weather.low }}°</p>{% endif %}
+        </div>
+      </div>
+      {% if weather.hourly %}
+      <ol class="wv-hours">
+        {% for h in weather.hourly %}
+        <li>
+          <span class="wv-when">{{ hour_label(h.hour, config) }}</span>
+          {{ icon(h.icon) }}
+          <strong>{{ h.temp }}°</strong>
+          <span class="wv-pop">{% if h.rain %}{{ h.rain }}%{% endif %}</span>
+        </li>
+        {% endfor %}
+      </ol>
+      {% endif %}
+    </div>
+    {% if weather.week %}
+    <ol class="wv-week">
+      {% for d in weather.week %}
+      <li{% if loop.first %} class="is-today"{% endif %}>
+        <span class="wv-when">{{ d.day }}</span>
+        {{ icon(d.icon) }}
+        <span class="wv-hl"><strong>{{ d.high }}°</strong> <span class="soft">{{ d.low }}°</span></span>
+        <span class="wv-pop">{% if d.rain %}{{ d.rain }}%{% endif %}</span>
+      </li>
+      {% endfor %}
+    </ol>
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="empty">No weather yet. Set a location in Notify → Displays → Car Thing → Look.</p>
+  {% endif %}
+</section>

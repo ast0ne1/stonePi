@@ -12,7 +12,7 @@ Shared StonePi sign-in. **Not a launcher tile** (`launcher: False`) — like Aut
 ## What it does
 
 - **Displays** — one per TRMNL screen (built-in Dashboard Display + as many as you add). Each has a drag-and-drop **screen builder** over a real render of the device, and its own TRMNL webhook, interval and device (TRMNL OG 800×480 or TRMNL X 1040×780).
-- **Car Thing** — the touch-and-dial panel's saved configs, edited beside a live preview (Displays → Car Thing).
+- **Car Thing** — the touch-and-dial panel's saved configs, edited beside a live preview (Displays → Car Thing). **Music:** connect Spotify (admins; your own developer app, PKCE, one account for the house), then presets 1–4, a default speaker, and dial-volume, artwork-screensaver and Save options in the editor's Music tab.
 - **Phone alerts** — **ntfy**: the household token and topic, and which events may notify. People with the Phone alerts permission set up their own alerts from the bell.
 - **History** — the delivery log.
 - **Ingest** — `POST /api/events` (loopback) via `stonepi_contracts.emit_event()`.
@@ -30,7 +30,7 @@ Apps own data; Notify owns delivery. External failures never break apps.
 | Data | `/var/lib/stonepi/notify` |
 | Packages | `stonepi_contracts`, `stonepi_display`, `stonepi_notify` |
 
-Vault keys: `STONEPI_NTFY_TOKEN`; TRMNL webhooks `DISPLAY_WEBHOOK_URL` (built-in Dashboard Display) and `DISPLAY_WEBHOOK_URL_<ID>` (other Displays).
+Vault keys: `STONEPI_NTFY_TOKEN`; TRMNL webhooks `DISPLAY_WEBHOOK_URL` (built-in Dashboard Display) and `DISPLAY_WEBHOOK_URL_<ID>` (other Displays); `SPOTIFY_CLIENT_ID` and `SPOTIFY_REFRESH_TOKEN` (Car Thing Music; the account name is kept in `carthing/music.json`).
 
 Dashboard Settings → Display redirects here. The push scheduler runs in this process and pushes each enabled Display on its own interval; Dashboard automations call `POST /api/push-trmnl` (pushes every Display with TRMNL on).
 

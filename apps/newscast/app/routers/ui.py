@@ -65,6 +65,7 @@ from app.services import saved as saved_articles
 from app.services.catalog import catalog_with_status, grouped_catalog
 from app.services import catalog as catalog_service
 from app.services.categories import category_labels, list_categories, group_feeds_by_category
+from app.services.ai import card_labels
 from app.services.ingest import request_stop, snapshot, start_ingest
 from app.services.text_cleanup import TEXT_CLEANUP_CHOICES, normalize_text_cleanup
 from app.services import categories as category_service
@@ -123,8 +124,8 @@ SETTINGS_LEDES = {
     "publication": "How the paper is named, how many stories it keeps, category mix, and which topics get their own OPDS papers.",
     "schedule": "How often sources refresh, and when today’s newspaper freezes for the reader.",
     "filters": "Words to keep or drop across every source. A feed can add more on Feeds.",
-    "translation": "Choose the language Translate feeds land in, and whether Google or AI (the model on the AI tab) does the translating.",
-    "llm": "Optional. Connect OpenAI or Ollama to use AI for summaries, importance scoring and translation. NewsCast works fully without it.",
+    "translation": "Choose the language Translate feeds land in. Whether Google or AI translates is on the AI tab.",
+    "llm": "Optional. Use AI for summaries, translation and importance scoring. NewsCast works fully without it. The models are set up for the whole Pi in Dashboard.",
     "reader": "Your reader device: Xteink with CrossPoint or CrossInk, or Kobo with KOReader. Host, upload folder, and push when on Wi-Fi are per account.",
     "notifications": "Your phone alerts when your paper is published or reaches your reader.",
     "categories": "Built-in groups stay. Add a country or topic, then fill it from Catalog.",
@@ -455,12 +456,39 @@ def _ingest_for(request: Request, db: Session) -> dict:
     return data
 
 
+def _ai_tab_context(db: Session, base: dict) -> dict:
+    """Settings → AI: the master switch, the three choices and which model each uses now."""
+    from app.services import ai as ai_mod
+
+    rows = []
+    for key, fn, label in (
+        ("summary", ai_mod.FN_SUMMARY, "Summaries"),
+        ("translate", ai_mod.FN_TRANSLATE, "Translation"),
+        ("importance", ai_mod.FN_IMPORTANCE, "Importance"),
+    ):
+        rows.append({"key": key, "label": label, "first": ai_mod.first_model(fn)})
+    home = (base.get("stonepi_home_url") or "").rstrip("/")
+    return {
+        "ai_available": ai_mod.platform_available(),
+        "ai_enabled_setting": settings.get_value(db, "ai_enabled") == "1",
+        "ai_summaries_choice": settings.get_value(db, "ai_summaries"),
+        "ai_importance_choice": settings.get_value(db, "ai_importance"),
+        "ai_summary_choices": ai_mod.SUMMARY_CHOICES,
+        "ai_importance_choices": ai_mod.IMPORTANCE_CHOICES,
+        "ai_models_now": {row["key"]: row["first"] for row in rows},
+        "dashboard_ai_url": f"{home}/settings?tab=ai" if home else "/settings?tab=ai",
+    }
+
+
 def _base_context(request: Request, db: Session, active: str) -> dict:
     from app.auth import _platform_user
     from stonepi_auth.session import factory_admin_warning
 
+    from app.services.ai import FN_SUMMARY, ai_settings, first_model
+
     ingest = _ingest_for(request, db)
-    llm = settings.llm_config(db)
+    ai = ai_settings(db)
+    first = first_model(FN_SUMMARY) if ai.enabled else None
     uid = _current_user_id(request)
     session = session_from_request(request)
     lang = settings.resolve_ui_lang(db, user_id=session.user_id if session else None)
@@ -475,15 +503,12 @@ def _base_context(request: Request, db: Session, active: str) -> dict:
         "request": request,
         "active": active,
         "ingest": ingest,
-        "has_openai_key": llm.provider == "openai" and llm.ready,
-        "llm_ready": llm.ready,
-        "llm_provider": llm.provider,
-        # AI tags only show where AI is actually on: a model is set up AND the
-        # setting uses it. Hints explain where AI can be used either way.
-        "ai_on": llm.ready,
-        "ai_local": llm.provider == "ollama",
-        "ai_model_label": llm.label,
-        "global_translate_llm": settings.translate_provider(db) == "llm",
+        # AI tags only show where AI is actually on: the master switch is on AND the
+        # choice uses it. Hints explain where AI can be used either way.
+        "ai": ai,
+        "ai_on": ai.enabled,
+        "ai_local": bool(first and first["local"]),
+        "global_translate_llm": ai.translate,
         "using_factory_admin": factory,
         "app_name": "NewsCast",
         "app_version": __version__,
@@ -755,6 +780,7 @@ def briefing_page(request: Request, db: Annotated[Session, Depends(get_db)], day
         feed = feeds_by_name.get(story.source_name)
         story.is_summary = True if feed is None else bool(getattr(feed, "summarize", True))
         story.feed_type = (getattr(feed, "type", None) or "rss") if feed else "rss"
+        story.ai_labels = card_labels(story)
     return render(
         request,
         "briefing.html",
@@ -857,6 +883,7 @@ def search_page(request: Request, db: Annotated[Session, Depends(get_db)], q: st
         feed = feeds_by_name.get(story.source_name)
         story.is_summary = True if feed is None else bool(getattr(feed, "summarize", True))
         story.feed_type = (getattr(feed, "type", None) or "rss") if feed else "rss"
+        story.ai_labels = card_labels(story)
     return render(
         request,
         "search.html",
@@ -960,8 +987,9 @@ def _feeds_panel_context(request: Request, db: Session) -> dict:
 
     labels = category_labels(db)
     global_interval = settings.get_int(db, "ingest_interval_minutes", env.ingest_interval_minutes)
-    llm_ready = settings.llm_config(db).ready
-    global_translate_llm = settings.translate_provider(db) == "llm"
+    from app.services.ai import ai_settings
+
+    ai = ai_settings(db)
     for feed in feeds:
         feed.is_muted = feed_is_muted(feed, now)
         feed.health = feed_health(feed, now)
@@ -978,10 +1006,8 @@ def _feeds_panel_context(request: Request, db: Session) -> dict:
         article_label = "Summarise" if feed.summarize is not False else "Full article"
         cleanup = " · Strict cleanup" if (getattr(feed, "text_cleanup", None) or "standard") == "strict" else ""
         feed.meta_line = f"{type_label} · {article_label}{cleanup} · {feed.schedule_label}"
-        feed.ai_summary = llm_ready and feed.summarize is not False
-        feed.ai_translate = llm_ready and (
-            feed.translate_mode == "llm" or (feed.translate_mode == "global" and global_translate_llm)
-        )
+        feed.ai_summary = ai.summaries and feed.summarize is not False
+        feed.ai_translate = ai.translate and feed.translate_mode == "global"
     return {
         **_base_context(request, db, "sources"),
         "sources_tab": "feeds",
@@ -1277,13 +1303,7 @@ def _settings_page_context(
         "settings_lede": SETTINGS_HUB_LEDE if settings_hub else SETTINGS_LEDES[settings_tab],
         "settings_ledes": SETTINGS_LEDES,
         "admin_username": settings.get_value(db, "admin_username"),
-        "openai_key": settings.secret_hint(db, "openai_api_key"),
-        "openai_model": settings.get_value(db, "openai_model"),
-        "openai_models": settings.OPENAI_MODELS,
-        "openai_model_known": settings.get_value(db, "openai_model") in settings.OPENAI_MODEL_IDS,
-        "llm_provider": settings.normalize_provider(settings.get_value(db, "llm_provider")),
-        "ollama_base_url": settings.normalize_ollama_root(settings.get_value(db, "ollama_base_url")),
-        "ollama_model": settings.get_value(db, "ollama_model"),
+        **_ai_tab_context(db, base),
         "instance_name": settings.get_value(db, "instance_name"),
         "x3_token": user_settings_service.secret_hint(db, uid, "x3_sync_token"),
         "x3_catalog_login": settings.catalog_login_enabled(db),
@@ -1596,31 +1616,6 @@ def delete_library_file_form(file_id: int, request: Request, db: Annotated[Sessi
     if _wants_json(request):
         return JSONResponse({"ok": True, "message": "Removed from the library."})
     return RedirectResponse("/device?tab=library", status_code=303)
-
-
-@router.get("/api/ollama/models")
-def ollama_models(
-    request: Request,
-    db: Annotated[Session, Depends(get_db)],
-    base_url: str = "",
-):
-    from app.services.summarize import list_ollama_models
-
-    # Probes an arbitrary URL from the Pi and only serves the admin-only LLM tab.
-    if not _is_admin(request):
-        return JSONResponse({"ok": False, "message": "Only the household admin can do that."}, status_code=403)
-
-    url = (base_url or settings.get_value(db, "ollama_base_url")).strip()
-    try:
-        models = list_ollama_models(url)
-    except ValueError as exc:
-        return JSONResponse({"ok": False, "message": str(exc)}, status_code=400)
-    except Exception:  # noqa: BLE001
-        return JSONResponse(
-            {"ok": False, "message": "Could not reach Ollama. Is it running on that URL?"},
-            status_code=502,
-        )
-    return JSONResponse({"ok": True, "models": models})
 
 
 @router.post("/ingest")
@@ -1943,13 +1938,6 @@ async def save_settings(
     current_password: Annotated[str, Form()] = "",
     new_password: Annotated[str, Form()] = "",
     new_password_confirm: Annotated[str, Form()] = "",
-    openai_api_key: Annotated[str, Form()] = "",
-    clear_openai_api_key: Annotated[str, Form()] = "",
-    openai_model: Annotated[str, Form()] = "",
-    openai_model_custom: Annotated[str, Form()] = "",
-    llm_provider: Annotated[str, Form()] = "openai",
-    ollama_base_url: Annotated[str, Form()] = "",
-    ollama_model: Annotated[str, Form()] = "",
     instance_name: Annotated[str, Form()] = "",
     x3_sync_token: Annotated[str, Form()] = "",
     clear_x3_sync_token: Annotated[str, Form()] = "",
@@ -2102,29 +2090,24 @@ async def save_settings(
                 settings.clear_value(db, "instance_name")
 
     if is_admin and tab == "llm":
-        if clear_openai_api_key:
-            settings.clear_value(db, "openai_api_key")
-        elif openai_api_key.strip():
-            settings.set_value(db, "openai_api_key", openai_api_key.strip())
+        from app.services.ai import ai_settings, platform_available
 
-        chosen_model = openai_model.strip()
-        if chosen_model == "other":
-            chosen_model = openai_model_custom.strip()
-        if chosen_model:
-            settings.set_value(db, "openai_model", chosen_model)
+        before = ai_settings(db)
+        if platform_available():
+            settings.set_value(db, "ai_enabled", "1" if str(form.get("ai_enabled") or "").strip() else "0")
+        if "ai_summaries" in form:
+            settings.set_value(db, "ai_summaries", "ai" if form.get("ai_summaries") == "ai" else "device")
+        if "ai_importance" in form:
+            settings.set_value(db, "ai_importance", "ai" if form.get("ai_importance") == "ai" else "rules")
+        provider = translate_provider.strip().lower()
+        if "translate_provider" in form and provider in settings.TRANSLATE_PROVIDER_IDS:
+            settings.set_value(db, "translate_provider", provider)
+        after = ai_settings(db)
+        if (after.summaries and not before.summaries) or (after.importance and not before.importance):
+            # AI just switched on for a task: redo stories that used the non-AI path (catchup.py).
+            from app.services.catchup import start_catchup
 
-        if "llm_provider" in form:
-            settings.set_value(db, "llm_provider", settings.normalize_provider(llm_provider))
-        if "ollama_base_url" in form:
-            ollama_root = settings.normalize_ollama_root(ollama_base_url)
-            if not ollama_root.startswith(("http://", "https://")):
-                return _settings_error(request, "Ollama URL must start with http:// or https://", tab)
-            settings.set_value(db, "ollama_base_url", ollama_root)
-        if "ollama_model" in form:
-            if ollama_model.strip():
-                settings.set_value(db, "ollama_model", ollama_model.strip())
-            else:
-                settings.clear_value(db, "ollama_model")
+            start_catchup()
 
     if is_admin and tab == "filters":
         if "keyword_include" in form:
@@ -2132,9 +2115,6 @@ async def save_settings(
         if "keyword_exclude" in form:
             settings.set_value(db, "keyword_exclude", keyword_exclude.strip())
     if is_admin and tab == "translation":
-        provider = translate_provider.strip().lower()
-        if "translate_provider" in form and provider in settings.TRANSLATE_PROVIDER_IDS:
-            settings.set_value(db, "translate_provider", provider)
         if "translate_target_lang" in form:
             settings.set_value(db, "translate_target_lang", translate.normalize_target_lang(translate_target_lang))
     uid = _current_user_id(request)

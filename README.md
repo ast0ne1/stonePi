@@ -16,7 +16,7 @@ StonePi is a private hub for your home on one Raspberry Pi. It brings you the ne
 <p align="center">
   <img src="docs/screenshots/login.jpg" alt="The shared sign-in" width="250" />
   <img src="docs/screenshots/users.jpg" alt="Users: household accounts" width="250" />
-  <img src="docs/screenshots/settings.jpg" alt="Settings: General, Network, Vault, Displays, Phone alerts, Automations" width="250" />
+  <img src="docs/screenshots/settings.jpg" alt="Settings: General, Network, Vault, AI, Automations, Updates, Backup" width="250" />
 </p>
 
 *Home, Health and Services; sign-in, Users and Settings. Every page works on a phone, in light or dark.*
@@ -43,17 +43,17 @@ Always on; not Home tiles.
 
 | Part | Path | Role |
 |------|------|------|
-| **[Dashboard](apps/dashboard/README.md)** | `/` | Home launcher, **Health** (host and apps, updates live), **Services** (enable, start, stop, restart, logs), **Users**, and admin **Settings**: General, Network, Vault, Automations, Updates, Backup. |
+| **[Dashboard](apps/dashboard/README.md)** | `/` | Home launcher, **Health** (host and apps, updates live), **Services** (enable, start, stop, restart, logs), **Users**, and admin **Settings**: General, Network, Vault, AI, Automations, Updates, Backup, About. |
 | **[Auth](apps/auth/README.md)** | `/auth/` | One household sign-in across every app. |
 | **[Notify](apps/notify/README.md)** | `/notify/` | Where apps' updates go: TRMNL wall displays, the Car Thing panel, and ntfy phone alerts. |
-| **[Car Thing](apps/carthing/README.md)** | (USB) | A Spotify Car Thing plugged into the Pi becomes a touch-and-dial panel: pages of widgets (System, clock and weather, sport, events, news, Pinboard) that turn on a timer or by button, a clock when idle, and service restarts behind an admin PIN. Set up under Notify → Displays → Car Thing. Ships with the platform. |
+| **[Car Thing](apps/carthing/README.md)** | (USB) | A Spotify Car Thing plugged into the Pi becomes a touch-and-dial panel: pages of widgets (System, Clock, Clock & weather, Weather, Music, sport, events, news, Pinboard) that turn on a timer or by button, a Spotify remote (Now Playing, Speakers, presets, dial volume) and a weather screen, a screensaver when idle (clock, album artwork, Bouncing logo, Matrix or 3D Pipes), and service restarts behind an admin PIN. Set up under Notify → Displays → Car Thing. Ships with the platform. |
 | **[Recover](apps/recover/README.md)** | `/recover/`, `:8099` | Recovery Console for when the portal itself is down: restart services, restore a backup. |
 | **[Cockpit](https://cockpit-project.org/)** | `:9090` | Web console for the Raspberry Pi's operating system, separate from StonePi: system updates, storage, networking, logs and a terminal in the browser. Installed by the installer; sign in with your Pi's Linux user, not your StonePi account. |
 
 **Displays and alerts.** Apps own their data and only emit when something useful happens; Notify decides where it goes.
 
 - **TRMNL** (e-ink, for a wall or fridge): one Display per screen, laid out in a drag-and-drop builder over a real render of the device, pushed on a timer.
-- **Car Thing** (touch and dial, for a desk or dash): saved configs with pages, widget sizes, button and dial actions and clock faces, edited beside a live preview. The device keeps its own firmware and gets its screen back when the panel is switched off.
+- **Car Thing** (touch and dial, for a desk or dash): saved configs with pages, widget sizes, button and dial actions, clock faces, screensaver styles and Spotify music presets, edited beside a live preview. The device keeps its own firmware and gets its screen back when the panel is switched off.
 - **ntfy** (phone): paper ready, a PriceWatch strike, an event or kick-off you follow, a backup that needs attention.
 
 ## People and permissions
@@ -84,9 +84,9 @@ StonePi needs only the Pi and a phone or laptop. Add what fits your household; k
 | The paper on an e-reader | **[Xteink X3 / X4](https://www.xteink.com/products/xteink-x3)** with **[CrossPoint](https://crosspointreader.com/)**, or a Kobo with **[KOReader](https://koreader.rocks/)** | NewsCast → Reader ([setup](apps/newscast/README.md#e-reader)) |
 | A wall or fridge display | **[TRMNL](https://trmnl.com/)** | Notify → Displays: one Private Plugin per screen, webhook in Vault |
 | A desk or dash control panel | **Spotify Car Thing** with ADB-enabled firmware, on USB | Notify → Displays → Car Thing |
+| Spotify control on the Car Thing | **Spotify Premium** and your own (free) **[Spotify developer app](https://developer.spotify.com/dashboard)** | Notify → Displays → Car Thing → Music: paste the client ID and connect (`SPOTIFY_CLIENT_ID`, `SPOTIFY_REFRESH_TOKEN` are saved in the Vault for you) |
 | Phone alerts | **[ntfy](https://ntfy.sh/)** topic (hosted or self-hosted) | Notify → Phone alerts (`STONEPI_NTFY_TOKEN`) |
-| AI summaries and translation in NewsCast | **[OpenAI](https://platform.openai.com/api-keys)** key or a local **[Ollama](https://ollama.com/)** model | NewsCast → Settings → AI (`OPENAI_API_KEY`); works without, using extracted text |
-| Studio | **[Anthropic](https://console.anthropic.com/)** and/or OpenAI key | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, optional `STUDIO_LLM_BASE_URL` |
+| AI for Studio, and optionally NewsCast | A **[Gemini](https://aistudio.google.com/apikey)** (free tier OK), **[Anthropic](https://console.anthropic.com/)** or **[OpenAI](https://platform.openai.com/api-keys)** key, or a local **[Ollama](https://ollama.com/)** server | Keys in Dashboard → Settings → Vault (`GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`); models and their order in Dashboard → Settings → AI. NewsCast works without AI and only uses it once switched on in its Settings → AI |
 | Facebook events and Instagram in EventTrakr | **[Bright Data](https://brightdata.com/)** | `BRIGHTDATA_API_KEY` |
 | Retailer trust scores in PriceWatch | Bright Data (Trustpilot) | `PRICEWATCH_BRIGHTDATA_API_KEY` |
 | Favourites in Google Calendar | A Google Cloud OAuth client | EventTrakr → Settings → Calendar Integrations (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) |
@@ -150,8 +150,9 @@ apps/            dashboard, auth, notify, recover, carthing (platform)
                  newscast, eventtrakr, sportguide, pricescout, pricewatch,
                  library, fileserve, studio, pinboard (Home apps)
 packages/        stonepi_auth      sign-in, app catalog and permissions, Auth roster, platform lock
-                 stonepi_vault     encrypted secrets, shared Bright Data limit
-                 stonepi_display   display widgets, Car Thing config
+                 stonepi_vault     encrypted secrets, shared Bright Data and AI request limits
+                 stonepi_display   display widgets, Car Thing config, Spotify sign-in
+                 stonepi_ai        platform AI: providers, model tiers, fallback, shared health
                  stonepi_notify    Notify routing and delivery
                  stonepi_contracts event and widget contracts
                  stonepi_update    app updates

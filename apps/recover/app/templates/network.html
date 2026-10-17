@@ -1,18 +1,18 @@
 {% extends "base.html" %}
+{% from "_topbar.html" import topbar with context %}
 {% block title %}Network · Recover{% endblock %}
 {% block body_class %}console-body{% endblock %}
 {% block body %}
-<header class="console-top">
-  <div class="console-brand-block">
-    <p class="brand"><img class="brand-icon" src="/assets/brand/icons/system/recover.svg" width="28" height="28" alt="" />Recover</p>
-    <p class="subbrand">Recover · Network</p>
-  </div>
-  <div class="console-top-actions">
-    <a class="btn btn-ghost btn-with-icon btn-top" href="./">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
-      <span>Back</span>
-    </a>
-  </div>
-</header>
-<pre class="console-pre">{{ net_text }}</pre>
+{{ topbar("Network", back=True) }}
+<section class="card console-section">
+  <dl class="summary-facts net-facts">
+    {% for label, value in net_summary %}
+    <div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>
+    {% endfor %}
+  </dl>
+</section>
+<details class="disclosure">
+  <summary>Raw output</summary>
+  <pre class="console-pre">{{ net_text }}</pre>
+</details>
 {% endblock %}

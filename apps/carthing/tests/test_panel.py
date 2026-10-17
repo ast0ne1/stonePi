@@ -167,8 +167,12 @@ PAGED = carthing.normalize_config(
 )
 WEATHER = {
     "temp": 14, "high": 16, "low": 9, "icon": "partly", "label": "Partly cloudy", "unit": "°C", "place": "Copenhagen",
+    "feels": 12, "wind": 18, "wind_unit": "km/h",
     "hours": [{"hour": 15, "temp": 15, "icon": "sun"}, {"hour": 18, "temp": 13, "icon": "cloud"}],
     "days": [{"day": "Sat", "high": 17, "low": 8, "icon": "rain", "label": "Rain"}],
+    "hourly": [{"hour": 10 + i, "temp": 15 - i, "icon": "cloud", "rain": 10 * i} for i in range(12)],
+    "week": [{"day": "Today", "high": 16, "low": 9, "icon": "partly", "label": "Partly cloudy", "rain": 20}]
+    + [{"day": d, "high": 17, "low": 8, "icon": "rain", "label": "Rain", "rain": 70} for d in ("Sat", "Sun", "Mon", "Tue", "Wed", "Thu")],
 }
 FEEDS["system"]["stats"] = {"cpu": 37, "mem": 41, "temp": 52, "disk": 63, "uptime": "3d 4h", "hostname": "stonepi",
                             "up": 10, "total": 11, "backup": "6h ago", "backup_ok": True}
@@ -248,8 +252,120 @@ def test_forecast_from_open_meteo():
     }
     hours, days = state._forecast(data)
     assert [h["hour"] for h in hours] == [15, 18, 21, 0, 0]
-    assert hours[0] == {"hour": 15, "temp": 13, "icon": "sun"} and hours[1]["icon"] == "moon"
+    assert hours[0] == {"hour": 15, "temp": 13, "icon": "sun", "rain": None} and hours[1]["icon"] == "moon"
     assert days == [
-        {"day": "Sun", "high": 15, "low": 8, "icon": "rain", "label": "Light rain"},
-        {"day": "Tue", "high": 9, "low": 1, "icon": "snow", "label": "Light snow"},
+        {"day": "Sun", "high": 15, "low": 8, "icon": "rain", "label": "Light rain", "rain": None},
+        {"day": "Tue", "high": 9, "low": 1, "icon": "snow", "label": "Light snow", "rain": None},
     ]
+
+
+def test_hourly_and_week_for_the_weather_screen():
+    data = {
+        "hourly": {
+            "time": [f"2026-10-03T{h:02d}:00" for h in range(10, 24)],
+            "temperature_2m": [10.0 + i for i in range(14)],
+            "weather_code": [61] * 14,
+            "is_day": [1] * 14,
+            "precipitation_probability": [i * 5 for i in range(14)],
+        },
+        "daily": {
+            "time": ["2026-10-03", "2026-10-04"],
+            "weather_code": [3, 0],
+            "temperature_2m_max": [16.2, 14.6],
+            "temperature_2m_min": [8.1, 7.5],
+            "precipitation_probability_max": [80, None],
+        },
+    }
+    hourly = state._hour_rows(data, 1, state.HOURLY_HOURS)
+    assert len(hourly) == 12 and hourly[0] == {"hour": 11, "temp": 11, "icon": "rain", "rain": 5}
+    week = state._day_rows(data)
+    assert [d["day"] for d in week] == ["Today", "Sun"] and week[0]["rain"] == 80 and week[1]["rain"] is None
+
+
+def test_screensaver_styles_render(env, monkeypatch):
+    client, panel, _ = env
+    monkeypatch.setattr(state, "weather", lambda config: WEATHER)
+    client.cookies.set(routes.TOKEN_COOKIE, TOKEN)
+    clock = client.get("/v/saver").text
+    assert 'data-face="digital_bold"' in clock and "data-saver" not in clock and "saver-date" in clock
+
+    def saver(style, **opts):
+        cfg = carthing.normalize_config({"idle": {"saver": {"style": style, style: opts}}})
+        panel["value"] = _panel(config=cfg)
+        return client.get("/v/saver").text
+
+    logo = saver("logo", time=True)
+    assert 'data-saver="logo"' in logo and "data-lg-mark" in logo and "data-clock-small" in logo
+    assert "saver-date" not in logo and "Partly cloudy" not in logo  # date and weather are clock-only
+    assert "data-clock-small" not in saver("logo")  # time off by default
+    matrix = saver("matrix")
+    assert 'data-saver="matrix"' in matrix and "data-mx" in matrix and "data-clock" in matrix  # time on by default
+    assert "data-clock" not in saver("matrix", time=False)
+    shell = _shell_config(client.get("/").text)
+    assert shell["idle"]["saver"]["style"] == "matrix"  # panel.js reads the options from here
+
+
+
+def test_pipes_and_separate_screensaver_clock(env, monkeypatch):
+    client, panel, _ = env
+    monkeypatch.setattr(state, "weather", lambda config: WEATHER)
+    client.cookies.set(routes.TOKEN_COOKIE, TOKEN)
+    cfg = carthing.normalize_config({"idle": {"saver": {"style": "pipes", "pipes": {"time": True}}}})
+    panel["value"] = _panel(config=cfg)
+    pipes = client.get("/v/saver").text
+    assert 'data-saver="pipes"' in pipes and "data-pp" in pipes and "data-clock-small" in pipes
+    assert "Partly cloudy" not in pipes  # no feed data for the animations
+    # U13: the Clock screensaver uses its own face once set apart; widgets keep theirs.
+    cfg = carthing.normalize_config(
+        {
+            "pages": [{"widgets": [{"id": "clock", "size": "full"}]}],
+            "clock": {"face": "flip", "saver": {"separate": True, "face": "analogue"}},
+        }
+    )
+    panel["value"] = _panel(config=cfg)
+    assert 'data-face="analogue"' in client.get("/v/saver").text
+    assert 'data-face="flip"' in client.get("/v/home").text
+    shell = _shell_config(client.get("/").text)
+    assert shell["clock"]["saver"]["separate"] is True  # panel.js picks the colours from here
+    # Matrix's time follows the screensaver clock once it's set apart; bold digital otherwise.
+    matrix = {"style": "matrix", "matrix": {"time": True}}
+    cfg = carthing.normalize_config({"idle": {"saver": matrix}, "clock": {"saver": {"separate": True, "face": "segment"}}})
+    panel["value"] = _panel(config=cfg)
+    assert 'class="mx-time face-segment"' in client.get("/v/saver").text
+    panel["value"] = _panel(config=carthing.normalize_config({"idle": {"saver": matrix}, "clock": {"face": "flip"}}))
+    assert 'class="mx-time face-digital_bold"' in client.get("/v/saver").text
+
+
+def test_weather_widget_and_screen(env, monkeypatch):
+    client, panel, _ = env
+    monkeypatch.setattr(state, "weather", lambda config: WEATHER)
+    client.cookies.set(routes.TOKEN_COOKIE, TOKEN)
+    pages = [
+        {"name": "Small", "widgets": [{"id": "weather", "size": "small"}, "newscast"]},
+        {"name": "Half", "widgets": [{"id": "weather", "size": "half"}]},
+        {"name": "Full", "widgets": [{"id": "weather", "size": "full"}]},
+    ]
+    panel["value"] = _panel(config=carthing.normalize_config({"pages": pages}))
+    small = client.get("/v/home?page=1").text
+    assert "w-weather" in small and 'data-go="v/weather"' in small and "14<small>°C" in small
+    assert 'class="wx"' not in small  # no second temperature in the strip
+    assert "Sat" in client.get("/v/home?page=2").text  # half: hours + next days
+    full = client.get("/v/home?page=3").text
+    assert "Thu" in full and full.count("<li>") >= 16  # full: 10 hours + 6 days
+    screen = client.get("/v/weather").text
+    assert 'data-screen="weather"' in screen and "Feels 12°" in screen and "Wind 18 km/h" in screen
+    assert screen.count('class="wv-when"') == 12 + 7 and "is-today" in screen and "70%" in screen
+    monkeypatch.setattr(state, "weather", lambda config: None)
+    assert "No weather yet" in client.get("/v/weather").text
+
+
+def test_clock_widget_opens_weather_only_when_set(env):
+    client, panel, _ = env
+    client.cookies.set(routes.TOKEN_COOKIE, TOKEN)
+    pages = [{"widgets": [{"id": "clock", "size": "half"}]}]
+    panel["value"] = _panel(config=carthing.normalize_config({"pages": pages}))
+    plain = client.get("/v/home").text
+    assert "w-clock" in plain and 'data-go="v/weather"' not in plain
+    panel["value"] = _panel(config=carthing.normalize_config({"pages": pages, "clock": {"tap": "weather"}}))
+    tap = client.get("/v/home").text
+    assert '<button class="card w w-half w-clock" data-focus data-go="v/weather">' in tap

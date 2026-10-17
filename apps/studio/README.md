@@ -40,7 +40,7 @@ Guidelines injected every LLM turn: `app/prompts/fileserve_hosting.md` plus `kin
 
 | Integration | Role |
 |-------------|------|
-| **AI / LLM** | Anthropic, OpenAI, or OpenAI-compatible base URL (`STUDIO_LLM_BASE_URL`). Keys from **Vault only**. |
+| **AI / LLM** | Set up for the whole Pi in Dashboard → Settings → AI (Gemini, Anthropic, OpenAI, Ollama), one job per build kind. Keys from **Vault only**. |
 | **FileServe** | Publish zip via authenticated `POST /api/studio/publish` |
 
 ## Hosting rules (summary)
@@ -53,7 +53,7 @@ See `.cursor/skills/studio-fileserve` and `app/prompts/`.
 
 ## Platform notes
 
-- LLM keys: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, optional `STUDIO_LLM_BASE_URL` in Dashboard → Settings → Vault.
+- LLM keys: `GEMINI_API_KEY`, `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in Dashboard → Settings → Vault; models and their order in Dashboard → Settings → AI.
 - Under StonePi, nginx serves `/studio/`; apps bind loopback.
 - **Display / TRMNL:** `GET /api/display` returns project/build summary for Studio's line on TRMNL Displays (denied at nginx edge).
 

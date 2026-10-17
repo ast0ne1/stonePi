@@ -1,5 +1,4 @@
 import json
-from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
@@ -9,33 +8,6 @@ from app.models import Setting
 
 DEFAULT_ADMIN_USERNAME = "admin"
 DEFAULT_ADMIN_PASSWORD = "admin"
-
-OPENAI_MODELS = [
-    ("gpt-4o-mini", "gpt-4o-mini — fast and inexpensive"),
-    ("gpt-4o", "gpt-4o — stronger summaries"),
-    ("gpt-4.1-mini", "gpt-4.1-mini"),
-    ("gpt-4.1", "gpt-4.1"),
-    ("o4-mini", "o4-mini"),
-]
-OPENAI_MODEL_IDS = {item[0] for item in OPENAI_MODELS}
-
-LLM_PROVIDERS = [
-    ("openai", "OpenAI — default for the Pi"),
-    ("ollama", "Ollama — local model"),
-]
-LLM_PROVIDER_IDS = {item[0] for item in LLM_PROVIDERS}
-
-DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
-
-
-@dataclass(frozen=True)
-class LlmConfig:
-    provider: str
-    model: str
-    api_key: str
-    base_url: str | None
-    ready: bool
-    label: str
 
 REFRESH_INTERVALS = [
     (15, "Every 15 minutes"),
@@ -65,8 +37,8 @@ IMPORTANCE_MIN_CHOICES = [
 IMPORTANCE_MIN_VALUES = {value for value, _label in IMPORTANCE_MIN_CHOICES}
 DEFAULT_MIN_IMPORTANCE = 3
 TRANSLATE_PROVIDERS = [
-    ("google", "Google Translate (Chrome fallback)"),
-    ("llm", "AI (the model on the AI tab)"),
+    ("google", "Google Translate (default)"),
+    ("llm", "AI"),
 ]
 TRANSLATE_PROVIDER_IDS = {value for value, _label in TRANSLATE_PROVIDERS}
 DEFAULT_TRANSLATE_PROVIDER = "google"
@@ -155,11 +127,9 @@ def format_interval_short(minutes: int | None) -> str:
 UI_KEYS = (
     "admin_username",
     "admin_password",
-    "openai_api_key",
-    "openai_model",
-    "llm_provider",
-    "ollama_base_url",
-    "ollama_model",
+    "ai_enabled",
+    "ai_summaries",
+    "ai_importance",
     "instance_name",
     "https_enabled",
     "ui_lang",
@@ -212,7 +182,6 @@ UI_LANG_CHOICES = [
 DEFAULT_UI_LANG = "en"
 
 VAULT_SECRET_KEYS: dict[str, str] = {
-    "openai_api_key": "OPENAI_API_KEY",
     "x3_sync_token": "X3_SYNC_TOKEN",
     "reader_ssh_password": "NEWSCAST_READER_SSH_PASSWORD",
     "ntfy_token": "NEWSCAST_NTFY_TOKEN",
@@ -257,11 +226,6 @@ def _env_value(key: str) -> str:
     mapping = {
         "admin_username": env.admin_username,
         "admin_password": env.admin_password,
-        "openai_api_key": env.openai_api_key,
-        "openai_model": env.openai_model,
-        "llm_provider": env.llm_provider,
-        "ollama_base_url": env.ollama_base_url,
-        "ollama_model": env.ollama_model,
         "instance_name": env.instance_name,
         "x3_sync_token": env.x3_sync_token,
         "x3_catalog_login": env.x3_catalog_login,
@@ -281,12 +245,12 @@ def _default_value(key: str) -> str:
         return DEFAULT_ADMIN_USERNAME
     if key == "admin_password":
         return DEFAULT_ADMIN_PASSWORD
-    if key == "openai_model":
-        return "gpt-4o-mini"
-    if key == "llm_provider":
-        return "openai"
-    if key == "ollama_base_url":
-        return DEFAULT_OLLAMA_URL
+    if key == "ai_enabled":
+        return "0"
+    if key == "ai_summaries":
+        return "device"
+    if key == "ai_importance":
+        return "rules"
     if key == "x3_briefing_format":
         return "txt"
     if key == "x3_catalog_username":
@@ -739,40 +703,3 @@ def using_factory_admin(db: Session) -> bool:
     if username != DEFAULT_ADMIN_USERNAME:
         return False
     return passwords.verify_password(password, DEFAULT_ADMIN_PASSWORD)
-
-
-def normalize_provider(value: str) -> str:
-    provider = (value or "").strip().lower()
-    return provider if provider in LLM_PROVIDER_IDS else "openai"
-
-
-def normalize_ollama_root(url: str) -> str:
-    raw = (url or "").strip().rstrip("/")
-    if raw.endswith("/v1"):
-        raw = raw[:-3].rstrip("/")
-    return raw or DEFAULT_OLLAMA_URL
-
-
-def llm_config(db: Session) -> LlmConfig:
-    provider = normalize_provider(get_value(db, "llm_provider"))
-    if provider == "ollama":
-        model = get_value(db, "ollama_model").strip()
-        root = normalize_ollama_root(get_value(db, "ollama_base_url"))
-        return LlmConfig(
-            provider="ollama",
-            model=model,
-            api_key="ollama",
-            base_url=f"{root}/v1",
-            ready=bool(model),
-            label=f"Ollama {model}" if model else "Ollama",
-        )
-    model = get_value(db, "openai_model").strip() or "gpt-4o-mini"
-    api_key = get_value(db, "openai_api_key").strip()
-    return LlmConfig(
-        provider="openai",
-        model=model,
-        api_key=api_key,
-        base_url=None,
-        ready=bool(api_key),
-        label=f"OpenAI {model}" if api_key else "OpenAI",
-    )

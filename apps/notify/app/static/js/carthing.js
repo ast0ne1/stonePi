@@ -51,8 +51,13 @@
     }, 350);
   };
   // Reload the preview on the page being edited (its own page flips report back below).
+  // After a screensaver change the preview opens straight on the screensaver (?saver=1), so it
+  // shows as soon as the panel script runs instead of after every font and icon has loaded.
+  let saverNext = false;
   const showPage = () => {
-    frame.src = `${frameBase}?page=${pageSel + 1}&r=${Date.now()}`;
+    const saver = saverNext ? "&saver=1" : "";
+    saverNext = false;
+    frame.src = `${frameBase}?page=${pageSel + 1}${saver}&r=${Date.now()}`;
   };
   window.addEventListener("message", (e) => {
     if (e.source !== frame.contentWindow || !e.data || e.data.source !== "stonepi-carthing-panel") return;
@@ -107,9 +112,7 @@
     renderAll();
     changed();
   });
-  window.addEventListener("beforeunload", (e) => {
-    if (isDirty()) e.preventDefault();
-  });
+  guardLeave(isDirty, { body: "Your Car Thing changes aren't saved.", scope: root });
 
   // ── tabs ─────────────────────────────────────────────────────────────
   const tabs = root.querySelectorAll("[data-ct-tab]");
@@ -124,6 +127,34 @@
         : "Click the buttons, click or scroll over the dial, and tap the screen to try the panel. Hold a button for its long-press. The drawing is a schematic.";
   };
   tabs.forEach((b) => b.addEventListener("click", () => setTab(b.dataset.ctTab)));
+
+  // ── screensaver style: each style's options; background and clock extras where they apply ──
+  const renderSaver = () => {
+    const style = config.idle.saver.style;
+    root.querySelectorAll("[data-ct-saver-pane]").forEach((el) => {
+      el.hidden = !el.dataset.ctSaverPane.split(" ").includes(style);
+    });
+    // Screensaver clock (U13): its own face and colours only while it's set apart.
+    const separate = !!config.clock.saver.separate;
+    root.querySelector("[data-ct-saver-clock]").hidden = !separate;
+    // What the current screensaver style shows of this clock, so the preview never looks wrong.
+    const note = root.querySelector("[data-ct-saver-clock-note]");
+    const styleName = (cat.saver_styles.find((s) => s.id === style) || { label: style }).label;
+    const timeOn = !!(config.idle.saver[style] || {}).time;
+    let text = "";
+    if (style === "matrix") {
+      text = timeOn ? "" : "Matrix's Show time is off (Idle tab), so no clock shows on it.";
+    } else if (style !== "clock") {
+      text = timeOn
+        ? `${styleName} shows a small time in the corner: it takes these colours, not the face. Choose Clock or Matrix under Idle → Screensaver style to see the face.`
+        : `${styleName} shows no clock. Turn on Show time under Idle, or choose Clock or Matrix there, to see these.`;
+    }
+    note.textContent = text;
+    note.hidden = !separate || !text;
+    root.querySelector("[data-ct-face-hint]").textContent = separate
+      ? "For the Clock and Clock & weather widgets."
+      : "For the Clock and Clock & weather widgets and the Clock screensaver.";
+  };
 
   // ── simple bindings ──────────────────────────────────────────────────
   const binds = root.querySelectorAll("[data-bind]");
@@ -150,6 +181,15 @@
       set(el.dataset.bind, value);
       root.querySelectorAll("[data-ct-out]").forEach((o) => (o.textContent = `${get(o.dataset.ctOut)}%`));
       if (el.dataset.bind === "clock.color" || el.dataset.bind === "clock.face") renderSwatches();
+      if (el.dataset.bind === "clock.saver.separate" && value) {
+        // Start the screensaver's own clock from what the widgets show now.
+        Object.assign(config.clock.saver, { face: config.clock.face, color: config.clock.color, accent: config.clock.accent });
+        renderBinds();
+      }
+      if (el.dataset.bind.startsWith("idle.saver.") || el.dataset.bind.startsWith("clock.saver.")) {
+        renderSaver();
+        saverNext = true; // show the screensaver once the preview reloads with the draft
+      }
       changed();
     });
   });
@@ -597,6 +637,64 @@
     changed();
   });
 
+  // ── music (F7): presets, default speaker ─────────────────────────────
+  // Speakers and playlists come from the Car Thing service (it holds the Spotify token).
+  const musicStatus = root.querySelector("[data-ct-music-status]");
+  const musicData = { devices: [], playlists: [], loaded: false };
+  const devicePath = (key) => `music.${key}`;
+  const renderMusic = () => {
+    root.querySelectorAll("[data-ct-music-device]").forEach((sel) => {
+      const current = get(devicePath(sel.dataset.ctMusicDevice)) || { id: "", name: "" };
+      const rows = musicData.devices.slice();
+      if (current.id && !rows.some((d) => d.id === current.id)) rows.push({ id: current.id, name: `${current.name || "Saved speaker"} (not available now)` });
+      const none = sel.dataset.ctMusicDevice === "default_device" ? "None" : "Where music is playing";
+      sel.innerHTML = `<option value="">${none}</option>` + rows.map((d) => `<option value="${esc(d.id)}">${esc(d.name)}</option>`).join("");
+      sel.value = current.id || "";
+    });
+    root.querySelectorAll("[data-ct-music-pick]").forEach((sel) => {
+      const uri = get(`music.presets.${sel.dataset.ctMusicPick}.uri`) || "";
+      sel.innerHTML = '<option value="">Choose a playlist…</option>' +
+        musicData.playlists.map((p) => `<option value="${esc(p.uri)}">${esc(p.name)}</option>`).join("");
+      sel.value = musicData.playlists.some((p) => p.uri === uri) ? uri : "";
+    });
+  };
+  root.querySelectorAll("[data-ct-music-device]").forEach((sel) => {
+    sel.addEventListener("change", () => {
+      const row = musicData.devices.find((d) => d.id === sel.value);
+      const current = get(devicePath(sel.dataset.ctMusicDevice)) || {};
+      set(devicePath(sel.dataset.ctMusicDevice), sel.value ? { id: sel.value, name: row ? row.name : current.name || "" } : { id: "", name: "" });
+      changed();
+    });
+  });
+  root.querySelectorAll("[data-ct-music-pick]").forEach((sel) => {
+    sel.addEventListener("change", () => {
+      if (!sel.value) return;
+      const n = sel.dataset.ctMusicPick;
+      const row = musicData.playlists.find((p) => p.uri === sel.value);
+      set(`music.presets.${n}.uri`, sel.value);
+      if (row && !get(`music.presets.${n}.name`)) set(`music.presets.${n}.name`, row.name.slice(0, 40));
+      renderBinds();
+      changed();
+    });
+  });
+  const loadMusic = async () => {
+    if (musicData.loaded || !musicStatus) return;
+    musicData.loaded = true;
+    try {
+      const res = await fetch(api("music/catalog"));
+      const body = await res.json();
+      musicData.devices = body.devices || [];
+      musicData.playlists = body.playlists || [];
+      if (!body.ok) musicStatus.textContent = body.message || "Speakers and playlists aren't available right now.";
+      else musicStatus.textContent = `${musicData.devices.length} speaker${musicData.devices.length === 1 ? "" : "s"} and ${musicData.playlists.length} playlist${musicData.playlists.length === 1 ? "" : "s"} from Spotify. Asleep speakers may be missing: open Spotify on one to wake it, then reload.`;
+    } catch {
+      musicStatus.textContent = "Speakers and playlists aren't available right now.";
+    }
+    renderMusic();
+  };
+  tabs.forEach((b) => b.addEventListener("click", () => { if (b.dataset.ctTab === "music") loadMusic(); }));
+  root.querySelector("[data-ct-music-open]")?.addEventListener("click", () => send("open", { action: "open:music" }));
+
   // ── device status ────────────────────────────────────────────────────
   const statusEl = document.querySelector("[data-ct-status-detail]");
   const pollStatus = async () => {
@@ -622,12 +720,14 @@
   // ── go ───────────────────────────────────────────────────────────────
   const renderAll = () => {
     renderBinds();
+    renderSaver();
     renderPages();
     renderAllowed();
     renderControls();
     renderBackground();
     renderSwatches();
     renderWeather();
+    renderMusic();
   };
   renderAll();
   setTab(window.location.hash === "#controls" ? "controls" : "pages");

@@ -27,15 +27,14 @@ def test_parse_feed_translate_mode():
     assert parse_feed_translate_mode("1") == (True, "global")
     assert parse_feed_translate_mode("global") == (True, "global")
     assert parse_feed_translate_mode("google") == (True, "google")
-    assert parse_feed_translate_mode("llm") == (True, "llm")
+    assert parse_feed_translate_mode("llm") == (True, "global")  # sources can no longer force AI
 
 
 def test_resolve_provider_respects_feed_and_global():
+    from app.services.ai import AI_OFF
+
     assert resolve_provider(None, FakeFeed(translate=False)) is None
-    assert resolve_provider(None, FakeFeed(translate=True, translate_provider="llm")) == "llm"
-    assert resolve_provider(None, FakeFeed(translate=True, translate_provider="global"), global_provider="google") == "google"
-    assert feed_translate_mode(FakeFeed(False)) == "off"
-    assert feed_translate_mode(FakeFeed(True, "google")) == "google"
+    assert resolve_provider(None, FakeFeed(translate=True, translate_provider="global"), ai=AI_OFF) == "google"
 
 
 def test_join_segments_reads_gtx_payload():
@@ -219,50 +218,52 @@ def test_llm_system_prompt_mentions_spanish():
 
 
 def test_translate_with_llm(monkeypatch):
-    from app.services.settings import LlmConfig
+    from tests.ai_helpers import platform_ai
 
-    class FakeMessage:
-        content = "[[T]]\nThe house is burning\n[[B]]\nPolice are on the way."
-
-    class FakeChoice:
-        message = FakeMessage()
-
-    class FakeResponse:
-        choices = [FakeChoice()]
-
-    captured: dict = {}
-
-    class FakeCompletions:
-        def create(self, **kwargs):
-            captured["system"] = kwargs["messages"][0]["content"]
-            return FakeResponse()
-
-    class FakeChat:
-        completions = FakeCompletions()
-
-    class FakeOpenAI:
-        def __init__(self, **_kwargs):
-            self.chat = FakeChat()
-
-    monkeypatch.setattr("app.services.translate.OpenAI", FakeOpenAI)
-    config = LlmConfig(
-        provider="openai",
-        model="gpt-4o-mini",
-        api_key="sk-test",
-        base_url=None,
-        ready=True,
-        label="OpenAI",
-    )
+    sent = platform_ai(monkeypatch, "[[T]]\nThe house is burning\n[[B]]\nPolice are on the way.")
+    record: dict = {}
     title, excerpt = translate_story(
         "Huset brænder",
         "Politiet er på vej.",
         provider="llm",
         target_lang="es",
-        config=config,
+        record=record,
     )
     assert title == "The house is burning"
     assert "Police" in excerpt
-    assert "Spanish" in captured["system"]
+    assert "Spanish" in sent[0]["messages"][0]["content"]
+    assert record["by"] == "ai" and record["model_id"] == "openai/gpt-4.1-mini"
+
+
+def test_failed_ai_translation_falls_back_to_google(monkeypatch):
+    import httpx
+
+    from tests.ai_helpers import platform_ai
+
+    platform_ai(monkeypatch, lambda prompt, system: httpx.Response(429, json={"error": {"message": "slow down"}}))
+    monkeypatch.setattr(
+        "app.services.translate._translate_chunk_google",
+        lambda text, target_lang="en": text.replace("Huset brænder", "The house is burning"),
+    )
+    record: dict = {}
+    title, _excerpt = translate_story("Huset brænder", "", provider="llm", record=record)
+    assert title == "The house is burning"
+    assert record == {"by": "fallback", "reason": "unavailable"}
+
+
+def test_sources_can_only_opt_out_of_ai():
+    from app.services.ai import AiSettings
+    from app.services.translate import translate_record
+
+    ai = AiSettings(available=True, enabled=True, summaries=False, translate=True, importance=False)
+    off = AiSettings(available=True, enabled=True, summaries=False, translate=False, importance=False)
+    google = FakeFeed(translate=True, translate_provider="google")
+    legacy_ai = FakeFeed(translate=True, translate_provider="llm")  # older "Translate with AI"
+    assert resolve_provider(None, google, ai=ai) == "google"
+    assert translate_record(google, "google") == {"by": "opted_out"}
+    assert resolve_provider(None, legacy_ai, ai=off) == "google"
+    assert resolve_provider(None, legacy_ai, ai=ai) == "llm"
+    assert translate_record(FakeFeed(), "google") == {"by": "fallback", "reason": "off"}
 
 
 def test_unpack_story_splits_markers():

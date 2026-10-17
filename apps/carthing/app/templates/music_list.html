@@ -1,0 +1,28 @@
+{% from "_icons.html" import icon %}
+{#- Music lists (F7): speakers (select = play there) or presets 1-4 (select = play it). -#}
+<section class="screen list" data-screen="music-list" data-app="music" data-url="v/app/music?list={{ kind }}">
+  <header class="bar">
+    <span class="bar-title">{{ "Speakers" if kind == "speakers" else "Presets" }}</span>
+    <span class="bar-meta">{{ np.track if np.track else "" }}</span>
+    <span class="bar-time" data-clock-small></span>
+  </header>
+  <ol class="rows">
+    {% if kind == "speakers" %}
+    {% for d in rows %}
+    <li><button class="row{% if d.active %} level-up{% endif %}" data-focus data-device="{{ d.id }}" data-device-name="{{ d.name }}">
+      <span class="row-main"><strong>{{ d.name }}</strong><span>{{ d.type }}{% if d.volume is not none %} · volume {{ d.volume }}%{% endif %}{% if d.restricted %} · can't be controlled{% endif %}</span></span>
+      {% if d.active %}<span class="badge">Playing</span>{% endif %}
+      {{ icon("speaker", "ico row-go") }}
+    </button></li>
+    {% endfor %}
+    {% else %}
+    {% for p in rows %}
+    <li><button class="row" data-focus{% if p.allowed %} data-preset="{{ p.number }}"{% endif %}>
+      <span class="row-main"><strong>{{ p.name or ("Preset " ~ p.number) }}</strong><span>Preset {{ p.number }}{% if not p.allowed %} · not allowed here{% endif %}</span></span>
+      {{ icon("play", "ico row-go") }}
+    </button></li>
+    {% endfor %}
+    {% endif %}
+    {% if message %}<li class="empty">{{ message }}</li>{% endif %}
+  </ol>
+</section>

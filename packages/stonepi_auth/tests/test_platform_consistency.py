@@ -70,14 +70,20 @@ def test_versions_table_lists_every_catalog_app():
 
 def test_recover_unit_list_matches_catalog():
     # Recover must start even when StonePi packages are broken, so it keeps its own list.
+    # Its units come from SERVICE_GROUPS (Core / Apps / Background rows of unit + name, U11).
     tree = ast.parse((ROOT / "apps" / "recover" / "app" / "main.py").read_text(encoding="utf-8"))
-    units = next(
+    groups = next(
         ast.literal_eval(node.value)
         for node in tree.body
-        if isinstance(node, ast.Assign) and any(getattr(t, "id", "") == "UNITS" for t in node.targets)
+        if isinstance(node, (ast.Assign, ast.AnnAssign))
+        and any(getattr(t, "id", "") == "SERVICE_GROUPS" for t in (node.targets if isinstance(node, ast.Assign) else [node.target]))
     )
+    units = {unit for _group, rows in groups for unit, _name in rows}
     expected = {item["unit"] for item in APP_CATALOG if item["id"] != "recover"} | {"nginx"}
-    assert set(units) == expected
+    # Background units that aren't catalog apps.
+    background = {"stonepi-kiwix", "stonepi-failover-monitor", "stonepi-carthing"}
+    assert expected <= units, sorted(expected - units)
+    assert units - expected <= background, sorted(units - expected - background)
 
 
 def test_contract_app_labels_match_catalog_names():

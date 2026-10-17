@@ -3,10 +3,9 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 
-from openai import OpenAI
 from sqlalchemy.orm import Session
 
-from app.services.settings import LlmConfig, get_value, set_value
+from app.services.settings import get_value, set_value
 
 IMPORTANCE_MIN = 1
 IMPORTANCE_MAX = 5
@@ -102,11 +101,11 @@ def heuristic_importance(
     return clamp_importance(score)
 
 
-def _llm_importance(title: str, excerpt: str, source: str, config: LlmConfig) -> int | None:
-    if not config.ready:
-        return None
-    client = OpenAI(api_key=config.api_key, base_url=config.base_url) if config.base_url else OpenAI(api_key=config.api_key)
-    user = (
+IMPORTANCE_SYSTEM = "You score news importance. Reply with only an integer from 1 to 5."
+
+
+def importance_prompt(title: str, excerpt: str, source: str) -> str:
+    return (
         f"Outlet: {source}\n"
         f"Headline: {title}\n\n"
         f"Excerpt:\n{(excerpt or title)[:2000]}\n\n"
@@ -114,47 +113,48 @@ def _llm_importance(title: str, excerpt: str, source: str, config: LlmConfig) ->
         "1=ignore, 2=interesting, 3=worth reading, 4=important, 5=major story.\n"
         "Reply with only the integer."
     )
-    response = client.chat.completions.create(
-        model=config.model or "gpt-4o-mini",
-        temperature=0,
-        max_tokens=8,
-        messages=[
-            {
-                "role": "system",
-                "content": "You score news importance. Reply with only an integer from 1 to 5.",
-            },
-            {"role": "user", "content": user},
-        ],
-    )
-    text = (response.choices[0].message.content or "").strip()
-    match = re.search(r"[1-5]", text)
-    if not match:
-        return None
-    return clamp_importance(int(match.group(0)))
 
 
-def score_importance(
+def parse_score(text: str) -> int | None:
+    match = re.search(r"[1-5]", text or "")
+    return clamp_importance(int(match.group(0))) if match else None
+
+
+def score_story(
     title: str,
     excerpt: str = "",
     *,
     source: str = "",
     category: str = "news",
-    config: LlmConfig | None = None,
+    ai=None,
     db: Session | None = None,
-) -> int:
+) -> tuple[int, dict]:
+    """(score, the story's importance record): AI when NewsCast uses it, else the rules."""
+    from app.services.ai import FN_IMPORTANCE, by_ai, complete, fell_back
+
     fallback = heuristic_importance(title, excerpt, category=category, source=source)
-    if config is None or not config.ready:
-        return fallback
-    try:
-        scored = _llm_importance(title, excerpt, source, config)
-    except Exception as exc:  # noqa: BLE001
-        record_ai_error(db, f"Importance scoring failed: {exc}")
-        return fallback
+    if ai is None or not ai.importance:
+        return fallback, fell_back("off")
+    result = complete(
+        FN_IMPORTANCE,
+        db,
+        "Importance scoring",
+        system=IMPORTANCE_SYSTEM,
+        prompt=importance_prompt(title, excerpt, source),
+        max_tokens=20,
+        temperature=0,
+    )
+    if result is None:
+        return fallback, fell_back("unavailable")
+    scored = parse_score(result.text)
     if scored is None:
         record_ai_error(db, "Importance scoring returned no score.")
-        return fallback
-    clear_ai_error(db)
-    return scored
+        return fallback, fell_back("unavailable")
+    return scored, by_ai(result)
+
+
+def score_importance(title: str, excerpt: str = "", **kwargs) -> int:
+    return score_story(title, excerpt, **kwargs)[0]
 
 
 def effective_importance(story, *, category: str = "news") -> int:

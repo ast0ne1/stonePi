@@ -1,0 +1,16 @@
+{# How this story was made (U1), from its own record rather than today's settings. #}
+{%- set made = story.ai_labels or {} -%}
+{%- if story.is_summary and made.summary_ai -%}
+<span class="chip chip-ai story-kind story-kind-ai" title="Summary written by AI{% if made.summary_model %}: {{ made.summary_model }}{% endif %}">AI summary</span>
+{%- elif story.is_summary and made.summary_missed -%}
+<span class="chip chip-quiet story-kind" title="AI was unavailable, so the key sentences were picked on this device. AI redoes it when it's back, if the story isn't in a published paper yet.">Summary · AI unavailable</span>
+{%- elif story.is_summary -%}
+<span class="chip chip-quiet story-kind" title="Key sentences from the article, picked on this device">Summary</span>
+{%- else -%}
+<span class="chip chip-quiet story-kind">Full article</span>
+{%- endif -%}
+{%- if made.translated_by == 'ai' -%}
+<span class="chip chip-ai story-kind story-kind-ai" title="Translated by AI{% if made.translate_model %}: {{ made.translate_model }}{% endif %}">AI translation</span>
+{%- elif made.translated_by == 'google' -%}
+<span class="chip chip-quiet story-kind" title="Translated with Google Translate">Translated</span>
+{%- endif -%}

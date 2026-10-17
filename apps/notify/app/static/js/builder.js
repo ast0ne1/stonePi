@@ -673,12 +673,7 @@
     saving = true;
   });
 
-  window.addEventListener("beforeunload", (event) => {
-    if (!saving && markDirty()) {
-      event.preventDefault();
-      event.returnValue = "";
-    }
-  });
+  guardLeave(() => !saving && markDirty(), { body: "Your display changes aren't saved.", scope: el.form });
 
   if ("ResizeObserver" in window) new ResizeObserver(() => applyScale()).observe(el.screen);
 

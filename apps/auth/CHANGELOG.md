@@ -1,5 +1,10 @@
 # Changelog — Auth
 
+## 0.3.0 — 2026-10-17
+
+### Changed
+- **Signed-in status page** uses the shared StonePi header: the old sign-out icon is replaced by the app switcher and avatar menu (Log out lives there), as in every app (found alongside backlog U16).
+
 ## 0.2.0 — 2026-10-11
 
 ### Changed

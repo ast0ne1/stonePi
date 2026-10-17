@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Iterator
-from urllib.parse import urlparse
 
-import httpx
-
-from app import model_settings
-from app.config import env
+from app.config import BUILD_KINDS, DATA_DIR, env
 from app.prompt_files import hosting_prompt_text, kind_prompt_text
 from app.workspace import FILE_MAP_RE
 
-# Streaming keeps long game builds alive: the read timeout is per chunk, not per reply.
-_TIMEOUT = httpx.Timeout(connect=15.0, read=180.0, write=30.0, pool=15.0)
+logger = logging.getLogger("studio.llm")
+
+# Each build kind is its own platform AI function; Dashboard → Settings → AI sets its models.
+AI_FUNCTIONS = {"spa": "studio.spa", "guide": "studio.guide", "game": "studio.game"}
+LEGACY_SETTINGS = DATA_DIR / "settings.json"
 
 # Owned by code, not the editable prompt files, because workspace.parse_file_blocks
 # depends on it exactly.
@@ -40,20 +40,6 @@ _CLARIFY_FORMAT = """## Output format (clarify turns)
 Reply conversationally in plain prose (short Markdown lists are fine). Keep it brief: confirm what you understood,
 ask at most 3 concrete questions, and suggest sensible defaults so the user can simply press **Build**.
 Do not write any files or <studio-file> blocks on this turn."""
-
-
-def _secret(name: str) -> str:
-    try:
-        from stonepi_vault import get_secret
-
-        value = get_secret(name, env_name=name, default="")
-        if value.strip():
-            return value.strip()
-    except Exception:
-        pass
-    import os
-
-    return (os.environ.get(name) or "").strip()
 
 
 def system_prompt(
@@ -112,6 +98,10 @@ def system_prompt(
     return "\n\n".join(parts) + "\n"
 
 
+def function_for(kind: str) -> str:
+    return AI_FUNCTIONS.get((kind or "spa").strip().lower(), "studio.spa")
+
+
 def stream_chat(
     messages: list[dict[str, str]],
     project_files: list[str],
@@ -121,50 +111,25 @@ def stream_chat(
     sources: dict[str, str] | None = None,
     needs_name: bool = False,
 ) -> Iterator[tuple[str, str]]:
-    """Yield ("text", chunk) pieces, then one ("stop", stop_reason)."""
+    """Yield ("model", label), ("text", chunk) pieces, then one ("stop", stop_reason)."""
+    from stonepi_ai import stream
+
     sys = system_prompt(project_files, kind=kind, intent=intent, sources=sources, needs_name=needs_name)
-    provider = active_provider()
-    if provider["id"] == "anthropic":
-        return _stream_anthropic(sys, messages, provider["key"])
-    if provider["id"] in {"openai", "local"}:
-        return _stream_openai_compatible(sys, messages, base_url=provider["base_url"], api_key=provider["key"])
-    raise RuntimeError("No LLM configured. Add ANTHROPIC_API_KEY or OPENAI_API_KEY to Vault.")
+    return stream(function_for(kind), system=sys, messages=messages, anthropic_max_tokens=env.llm_max_tokens)
 
 
-def key_status() -> dict[str, bool]:
-    """Which credentials exist in Vault / env (booleans only, safe to render)."""
-    return {
-        "anthropic": bool(_secret("ANTHROPIC_API_KEY")),
-        "openai": bool(_secret("OPENAI_API_KEY")),
-        "local": bool(_secret("STUDIO_LLM_BASE_URL")),
-    }
+def model_overview() -> list[dict]:
+    """Per build kind: the models it would try now, in order (labels only, safe to render)."""
+    from stonepi_ai import candidates
 
-
-def active_provider() -> dict:
-    """Which service Studio will call. Includes the key: never render it.
-
-    The admin's choice wins when its key exists; "auto" (or a missing key) falls back to
-    a local OpenAI-compatible server, then Anthropic, then OpenAI.
-    """
-    anthropic = _secret("ANTHROPIC_API_KEY")
-    openai = _secret("OPENAI_API_KEY")
-    base_url = _secret("STUDIO_LLM_BASE_URL")
-    options = {
-        "anthropic": {"id": "anthropic", "label": "Anthropic (Claude)", "base_url": "", "key": anthropic,
-                      "model": model_settings.anthropic_model()},
-        "openai": {"id": "openai", "label": "OpenAI", "base_url": "https://api.openai.com", "key": openai,
-                   "model": model_settings.openai_model()},
-    }
-    pref = model_settings.provider_pref()
-    if pref in options and options[pref]["key"]:
-        return options[pref]
-    if base_url:
-        return {"id": "local", "label": "OpenAI-compatible server", "base_url": base_url, "key": openai or "local",
-                "model": model_settings.openai_model()}
-    for name in ("anthropic", "openai"):
-        if options[name]["key"]:
-            return options[name]
-    return {"id": "", "label": "Not configured", "base_url": "", "key": "", "model": ""}
+    rows = []
+    for item in BUILD_KINDS:
+        try:
+            found = candidates(function_for(item["id"]))
+        except Exception:  # noqa: BLE001 - Vault folder unreadable
+            found = []
+        rows.append({"kind": item["id"], "label": item["label"], "models": [m["label"] for m in found]})
+    return rows
 
 
 def chat(
@@ -179,80 +144,49 @@ def chat(
     ).strip()
 
 
-def _sse_data(resp: httpx.Response) -> Iterator[str]:
-    for line in resp.iter_lines():
-        if line.startswith("data:"):
-            yield line[5:].strip()
+def migrate_legacy_models() -> bool:
+    """Move Studio's old admin model choice (settings.json) into the platform AI config, once.
 
-
-def _raise_for_status(resp: httpx.Response) -> None:
-    if resp.status_code < 400:
-        return
-    resp.read()
+    Studio 0.0.8 and older picked one Anthropic and one OpenAI model plus a preferred
+    service. Each build kind gets those two as its own list, in the preferred order, so
+    builds keep using the same models until an admin changes them on Settings → AI.
+    """
     try:
-        detail = (resp.json().get("error") or {}).get("message") or resp.text
-    except ValueError:
-        detail = resp.text
-    raise RuntimeError(f"LLM request failed ({resp.status_code}): {str(detail)[:300]}")
+        data = json.loads(LEGACY_SETTINGS.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    if not isinstance(data, dict) or not ({"provider", "anthropic_model", "openai_model"} & set(data)):
+        return False
+    try:
+        from stonepi_ai import config as ai_config
 
-
-def _stream_anthropic(system: str, messages: list[dict[str, str]], api_key: str) -> Iterator[tuple[str, str]]:
-    payload = {
-        "model": model_settings.anthropic_model(),
-        "max_tokens": env.llm_max_tokens,
-        "stream": True,
-        "system": system,
-        "messages": [{"role": m["role"], "content": m["content"]} for m in messages if m["role"] in {"user", "assistant"}],
-    }
-    headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
-    stop = "end_turn"
-    with httpx.Client(timeout=_TIMEOUT) as client:
-        with client.stream("POST", "https://api.anthropic.com/v1/messages", headers=headers, json=payload) as resp:
-            _raise_for_status(resp)
-            for data in _sse_data(resp):
-                try:
-                    event = json.loads(data)
-                except json.JSONDecodeError:
-                    continue
-                etype = event.get("type")
-                if etype == "content_block_delta":
-                    delta = event.get("delta") or {}
-                    if delta.get("type") == "text_delta":
-                        yield "text", str(delta.get("text") or "")
-                elif etype == "message_delta":
-                    stop = (event.get("delta") or {}).get("stop_reason") or stop
-                elif etype == "error":
-                    raise RuntimeError((event.get("error") or {}).get("message") or "LLM stream error")
-    yield "stop", stop
-
-
-def _stream_openai_compatible(
-    system: str, messages: list[dict[str, str]], *, base_url: str, api_key: str
-) -> Iterator[tuple[str, str]]:
-    root = (base_url or "https://api.openai.com").rstrip("/")
-    if root and urlparse(root).scheme not in {"http", "https"}:
-        raise ValueError("STUDIO_LLM_BASE_URL must be http(s).")
-    payload = {"model": model_settings.openai_model(), "stream": True, "messages": [{"role": "system", "content": system}, *messages]}
-    headers = {"content-type": "application/json"}
-    if api_key:
-        headers["authorization"] = f"Bearer {api_key}"
-    stop = "end_turn"
-    with httpx.Client(timeout=_TIMEOUT) as client:
-        with client.stream("POST", f"{root}/v1/chat/completions", headers=headers, json=payload) as resp:
-            _raise_for_status(resp)
-            for data in _sse_data(resp):
-                if data == "[DONE]":
-                    break
-                try:
-                    choice = (json.loads(data).get("choices") or [{}])[0]
-                except (json.JSONDecodeError, AttributeError):
-                    continue
-                text = (choice.get("delta") or {}).get("content")
-                if text:
-                    yield "text", str(text)
-                if choice.get("finish_reason") == "length":
-                    stop = "max_tokens"
-    yield "stop", stop
+        if not ai_config.exists():
+            cfg = ai_config.default_config()
+            known = {m["id"] for m in cfg["models"]}
+            ids = []
+            for provider, model in (
+                ("anthropic", str(data.get("anthropic_model") or env.llm_model)),
+                ("openai", str(data.get("openai_model") or env.openai_model)),
+            ):
+                entry = ai_config.model_entry(provider, model)
+                if entry["id"] not in known:
+                    cfg["models"].append(entry)
+                ids.append(entry["id"])
+            if data.get("provider") == "openai":
+                ids.reverse()
+            for function in AI_FUNCTIONS.values():
+                cfg["functions"][function] = {"models": list(ids)}
+            ai_config.save(cfg)
+        for key in ("provider", "anthropic_model", "openai_model"):
+            data.pop(key, None)
+        if data:
+            LEGACY_SETTINGS.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        else:
+            LEGACY_SETTINGS.unlink()
+    except Exception:  # noqa: BLE001 - never block startup over this
+        logger.exception("moving Studio's model choice to the platform AI config failed")
+        return False
+    return True
 
 
 def assistant_summary(text: str) -> str:

@@ -121,14 +121,20 @@ def _login_next(path: str) -> str:
 
 
 def _alerts_bell_state(user, home: str) -> dict:
-    """Notify's own bell, from local data (no HTTP call to itself)."""
+    """Shared header state (``stonepi/header.html``) with Notify's own bell, from local data.
+
+    The bell stays a plain link to the person's notifications (no panel): the panel would
+    ask Notify over HTTP about itself. Notify isn't in the app switcher (reached via the bell).
+    """
     import stonepi_notify
 
     from app.people import load_people
     from stonepi_auth.alerts import phone_alerts_allowed
+    from stonepi_auth.header import header_context
 
     if user is None or not _session_secret():
         return {"show": False, "dot": False, "url": "", "active": False}
+    header = header_context(APP_ID, user, home_url=home)
     people = load_people()
     person = (people or {}).get(user.user_id)
     allowed = bool(person.get("phone_alerts")) if person is not None else phone_alerts_allowed(user)
@@ -136,7 +142,14 @@ def _alerts_bell_state(user, home: str) -> dict:
     ntfy_on = bool((stonepi_notify.load_destinations().get("ntfy") or {}).get("enabled"))
     show = allowed and ntfy_on  # hidden until the household has phone alerts on
     needs_setup = not sub.get("topic")  # never set up; turning alerts off keeps the topic
-    return {"show": show, "dot": show and needs_setup, "url": notifications_url(home), "active": False}
+    return {
+        "show": show,
+        "dot": show and needs_setup,
+        "url": notifications_url(home),
+        "active": False,
+        "header": header,
+        "panel": None,
+    }
 
 
 def _page_ctx(request: Request, *, active: str, user, csrf: str, extra: dict | None = None) -> dict:
@@ -186,9 +199,10 @@ def _deny_page(request: Request, template: str, *, active: str, user):
             "stonepi_home_url": home,
             "app_prefix": _prefix(),
             "stonepi_prefix": _prefix(),
-            "csrf_token": "",
+            "csrf_token": csrf_from_request(request.cookies),
             "display_count": _display_count(),
             "message": None,
+            "alerts_bell_state": _alerts_bell_state(user, home),
         },
         status_code=403,
     )

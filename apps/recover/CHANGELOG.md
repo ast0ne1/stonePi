@@ -1,5 +1,19 @@
 # Changelog — Recover
 
+## 0.3.0 — 2026-10-17
+
+### Changed
+- **Home page tidy-up** (backlog U11). From the top:
+  - A status card: "All N services running" or "2 services need attention", plus disk, failover and network (Wi-Fi / Ethernet).
+  - Services: only the ones that need attention are listed; the healthy ones fold into **Show all services**, grouped Core / Apps / Background with friendly names (unit name underneath), two columns on wide screens.
+  - Restart stays on each row. Stop and the service's logs move into a ⋯ menu; Stop is never offered for nginx or Auth.
+  - Restore from backup moves below Services and shows the newest 3 backups, with **Show all backups** for the rest.
+  - A Tools row: Logs, Network details, Reboot. **Clear failover** only shows while failover is on.
+- New services in the list: Offline library (`stonepi-kiwix`), Failover monitor and Car Thing panel. A service that is switched off (disabled, like the Car Thing or Kiwix while unused) shows as **Off**, not as a problem. All statuses come from one `systemctl show` call instead of one call per unit.
+- **Logs:** pick a service; by default it shows the failed services, else Dashboard, Auth, Notify and nginx as before.
+- **Network details:** a readable summary on top (connection, addresses, whether the router answers, Tailscale up or down); the raw output folds under **Raw output**.
+- **Shared StonePi header** (backlog U17): the Dashboard button and sign-out icon are replaced by the app switcher and avatar menu (Log out lives there). Recover still has to render when the shared packages are broken, so it falls back to its own plain Log out button when `stonepi_auth` can't load. The switcher only shows while Auth is up and you're signed in through StonePi. Signed in with the Recover password, the avatar shows "stonepi" and a Dashboard button stands in for the switcher's Home. No bell: its panel would ask Notify, which may be down.
+
 ## 0.2.0 — 2026-10-11
 
 ### Changed

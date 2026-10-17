@@ -694,25 +694,12 @@ document.querySelectorAll("[data-schedule-mode]").forEach((select) => {
   sync();
 });
 
-const modelSelect = document.querySelector("[data-model-select]");
-const modelCustom = document.querySelector("[data-model-custom]");
-if (modelSelect && modelCustom) {
-  const syncModel = () => {
-    modelCustom.hidden = modelSelect.value !== "other";
-  };
-  modelSelect.addEventListener("change", syncModel);
-  syncModel();
-}
-
-document.querySelectorAll("[data-llm-provider]").forEach((select) => {
-  const form = select.closest("form");
-  if (!form) return;
-  const sync = () => {
-    form.querySelectorAll("[data-provider-panel]").forEach((panel) => {
-      panel.hidden = panel.dataset.providerPanel !== select.value;
-    });
-  };
-  select.addEventListener("change", sync);
+// Settings → AI: the three choices look switched off while "Use AI in NewsCast" is off.
+document.querySelectorAll("[data-ai-master]").forEach((master) => {
+  const choices = master.closest("[data-ai-scope]")?.querySelector("[data-ai-choices]");
+  if (!choices) return;
+  const sync = () => choices.classList.toggle("is-off", !master.checked);
+  master.addEventListener("change", sync);
   sync();
 });
 
@@ -840,45 +827,6 @@ document.querySelectorAll("[data-paper-naming]").forEach((root) => {
   });
   renderPreview();
 });
-
-const loadOllama = document.querySelector("[data-load-ollama]");
-if (loadOllama) {
-  const form = loadOllama.closest("form");
-  const modelInput = form?.querySelector("[data-ollama-model]");
-  const pick = form?.querySelector("[data-ollama-pick]");
-  const modelSelectOllama = form?.querySelector("[data-ollama-select]");
-  loadOllama.addEventListener("click", async () => {
-    const base = form?.querySelector("[name=ollama_base_url]")?.value || "";
-    loadOllama.disabled = true;
-    try {
-      const data = await send("/api/ollama/models?base_url=" + encodeURIComponent(base));
-      const models = data.models || [];
-      if (!models.length) {
-        toast("Ollama is running, but no models are installed.", "error");
-        return;
-      }
-      if (modelSelectOllama && pick) {
-        modelSelectOllama.innerHTML = '<option value="">Choose…</option>';
-        models.forEach((name) => {
-          const option = document.createElement("option");
-          option.value = name;
-          option.textContent = name;
-          if (modelInput && modelInput.value === name) option.selected = true;
-          modelSelectOllama.appendChild(option);
-        });
-        pick.hidden = false;
-      }
-      toast(`Found ${models.length} model${models.length === 1 ? "" : "s"}.`, "ok");
-    } catch (error) {
-      toast(error.message, "error");
-    } finally {
-      loadOllama.disabled = false;
-    }
-  });
-  modelSelectOllama?.addEventListener("change", () => {
-    if (modelInput && modelSelectOllama.value) modelInput.value = modelSelectOllama.value;
-  });
-}
 
 function applyChipFilters(root) {
   const selected = {};

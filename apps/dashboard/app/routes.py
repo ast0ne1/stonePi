@@ -1233,6 +1233,7 @@ SETTINGS_TABS = [
     ("general", "General"),
     ("network", "Network"),
     ("vault", "Vault"),
+    ("ai", "AI"),
     ("automations", "Automations"),
     ("update", "Updates"),
     ("backup", "Backup"),
@@ -1242,6 +1243,7 @@ SETTINGS_LEDES = {
     "general": "Appearance, welcome message, password, and view options. Accounts stay under Users.",
     "network": "Appliance hostname, home network vs internet-facing posture, and Tailscale remote access.",
     "vault": "Encrypted secrets for apps and platform services.",
+    "ai": "AI providers, which models each kind of job uses, and their status. Keys stay in the Vault.",
     "automations": "When→then jobs: USB backup, Display push on Watch or backup.",
     "update": "GitHub Releases for app packages and the platform pack.",
     "backup": "Local schedule, USB status, restore drill, and snapshot restore.",
@@ -1252,6 +1254,7 @@ SETTINGS_HUB_SUBTEXTS = {
     "general": "Theme, welcome message, view density, and your password.",
     "network": "Hostname, LAN vs internet-facing, Tailscale.",
     "vault": "Encrypted secrets for apps.",
+    "ai": "Providers, model order and status.",
     "automations": "USB backup and display jobs.",
     "update": "GitHub Releases for packages.",
     "backup": "Local schedule, USB drill, and restore.",
@@ -1259,7 +1262,7 @@ SETTINGS_HUB_SUBTEXTS = {
 }
 SETTINGS_GROUPS = (
     ("you", "You", ("general",)),
-    ("house", "House", ("network", "vault", "automations")),
+    ("house", "House", ("network", "vault", "ai", "automations")),
     ("system", "System", ("update", "backup", "about")),
 )
 # Multi-card tabs: (panel_id, label, card_ids)
@@ -1353,11 +1356,11 @@ VAULT_KEY_CATALOG = [
     },
     {
         "group": "AI",
-        "sub": "NewsCast · Studio",
+        "sub": "Which models each job uses: Settings → AI",
         "items": [
-            {"id": "OPENAI_API_KEY", "label": "OpenAI API key", "hint": "Briefings and Studio · starts with sk-", "blurb": "NewsCast briefings and Studio (OpenAI models).", "placeholder": "sk-…"},
-            {"id": "ANTHROPIC_API_KEY", "label": "Anthropic API key", "hint": "Studio with Claude · starts with sk-ant-", "blurb": "Studio chat-build when using Claude.", "placeholder": "sk-ant-…"},
-            {"id": "STUDIO_LLM_BASE_URL", "label": "Studio LLM base URL", "hint": "Optional, for a local model", "blurb": "Optional OpenAI-compatible endpoint for Studio.", "placeholder": "http://…", "optional": True},
+            {"id": "GEMINI_API_KEY", "label": "Gemini API key", "hint": "Google AI Studio · free tier OK", "blurb": "Gemini models for every app. Then say on Settings → AI whether the key has billing.", "placeholder": "AIza…", "optional": True},
+            {"id": "ANTHROPIC_API_KEY", "label": "Anthropic API key", "hint": "Claude models · starts with sk-ant-", "blurb": "Claude models for every app.", "placeholder": "sk-ant-…", "optional": True},
+            {"id": "OPENAI_API_KEY", "label": "OpenAI API key", "hint": "GPT models · starts with sk-", "blurb": "GPT models for every app.", "placeholder": "sk-…", "optional": True},
         ],
     },
     {
@@ -1377,6 +1380,14 @@ VAULT_KEY_CATALOG = [
         ],
     },
     {
+        "group": "Music",
+        "sub": "Car Thing · Spotify",
+        "items": [
+            {"id": "SPOTIFY_CLIENT_ID", "label": "Spotify client ID", "hint": "Your Spotify developer app", "blurb": "Client ID of your own Spotify app (no secret needed). Set it in Notify → Displays → Car Thing.", "owner": "displays", "optional": True},
+            {"id": "SPOTIFY_REFRESH_TOKEN", "label": "Spotify sign-in", "hint": "Saved by Connect Spotify", "blurb": "Refresh token from Connect Spotify in Notify → Displays → Car Thing. The Car Thing service renews it.", "owner": "displays", "optional": True},
+        ],
+    },
+    {
         "group": "Calendars",
         "sub": "Google",
         "items": [
@@ -1390,6 +1401,7 @@ VAULT_KEY_CATALOG = [
         "items": [
             {"id": "NEWSCAST_NTFY_TOKEN", "label": "NewsCast ntfy (legacy)", "hint": "Unused — prefer the household token", "blurb": "Unused when Notify Destinations owns ntfy — prefer STONEPI_NTFY_TOKEN."},
             {"id": "PRICEWATCH_NTFY_TOKEN", "label": "PriceWatch ntfy (legacy)", "hint": "Unused — prefer the household token", "blurb": "Unused when Notify Destinations owns ntfy — prefer STONEPI_NTFY_TOKEN."},
+            {"id": "STUDIO_LLM_BASE_URL", "label": "Studio LLM base URL (legacy)", "hint": "Unused — set the Ollama URL on Settings → AI", "blurb": "Unused: local and OpenAI-compatible servers are set up on Settings → AI."},
         ],
     },
 ]
@@ -1591,6 +1603,14 @@ def settings_page(request: Request, tab: str | None = None, panel: str | None = 
         if _recover_password_set():
             stored_ids.add(RECOVER_PASSWORD_KEY)
         extra["vault"] = _vault_view(stored_ids)
+    elif settings_tab == "ai":
+        from app import ai_settings
+
+        try:
+            extra["ai"] = ai_settings.view()
+        except Exception as exc:  # noqa: BLE001
+            extra["ai"] = None
+            extra["error"] = extra.get("error") or f"AI settings unavailable: {exc}"
     elif settings_tab == "automations":
         import stonepi_automations as automations
 
@@ -2111,6 +2131,65 @@ def _save_recover_password(action: str, value: str, label: str) -> RedirectRespo
         f"/settings?tab=vault&msg={quote(f'{label} {verb} (root-only file, not the Vault).', safe='')}",
         status_code=303,
     )
+
+
+@router.post("/settings/ai")
+def settings_ai_save(request: Request, form: FormData = Depends(_form_body)):
+    """One form for the whole AI page: the edited lists are always saved first, then the
+    button's own action runs (so testing a model doesn't lose unsaved changes)."""
+    user, redirected = _user_or_login(request, admin=True)
+    if redirected:
+        return redirected
+    if not _require_csrf(request, form):
+        return RedirectResponse("/settings?tab=ai&err=Form+expired.+Try+again.", status_code=303)
+    from app import ai_settings
+    from stonepi_ai import AIUnavailable, health
+    from stonepi_ai.client import test_model
+
+    action = str(form.get("action") or "save").strip()
+    verb, _, arg = action.partition(":")
+    message = "AI settings saved."
+    try:
+        if form.get("state_json"):
+            ai_settings.apply_state(str(form.get("state_json")))
+        if verb == "gemini_free":
+            ai_settings.set_gemini_free(arg)
+            message = "Gemini key marked as " + ("free tier." if arg == "yes" else "paid.")
+        elif verb == "ollama_url":
+            ai_settings.set_ollama_url(str(form.get("ollama_url") or ""))
+            message = "Ollama URL saved." if str(form.get("ollama_url") or "").strip() else "Ollama URL removed."
+        elif verb == "quota":
+            ai_settings.set_quota_limit(str(form.get("quota_limit") or ""))
+            message = "Monthly AI request limit saved."
+        elif verb == "clear":
+            health.clear(arg or None)
+            message = "Status cleared; the model is tried again on the next job."
+        elif verb == "test":
+            try:
+                result = test_model(arg)
+                message = f"{result.label} answered: {result.text[:60]}"
+            except AIUnavailable as exc:
+                return RedirectResponse(f"/settings?tab=ai&err={quote(str(exc)[:300], safe='')}", status_code=303)
+    except ValueError as exc:
+        return RedirectResponse(f"/settings?tab=ai&err={quote(str(exc)[:300], safe='')}", status_code=303)
+    except OSError as exc:
+        return RedirectResponse(f"/settings?tab=ai&err={quote(f'Could not save: {exc}'[:300], safe='')}", status_code=303)
+    return RedirectResponse(f"/settings?tab=ai&msg={quote(message, safe='')}", status_code=303)
+
+
+@router.get("/api/settings/ai/ollama-models")
+def settings_ai_ollama_models(request: Request, url: str = ""):
+    user, redirected = _user_or_login(request, admin=True)
+    if redirected:
+        return redirected
+    from stonepi_ai import config as ai_config
+    from stonepi_ai.client import list_ollama_models
+
+    try:
+        target = url.strip() or ai_config.load()["providers"]["ollama"]["base_url"]
+        return JSONResponse({"ok": True, "models": list_ollama_models(target)})
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": str(exc)[:200]}, status_code=400)
 
 
 @router.post("/settings/automations")
