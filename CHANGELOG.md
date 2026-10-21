@@ -4,7 +4,43 @@ Platform version lives in [`VERSION`](VERSION). App zips use each app’s `__ver
 
 ## 0.4.0 — 2026-10-21
 
-**Web pages on the displays, a redesigned Car Thing, and a round of fixes from using StonePi on a phone.** Any page the Pi can reach (a Homepage dashboard, say) can now show on a TRMNL e-ink panel or the Car Thing, and the Car Thing gains a new System screen, a restyled Now Playing, more screensavers and a simpler editor in Notify. Notify warns before the Spotify sign-in runs out, Settings → Network can turn on HTTPS for Tailscale, two of Notify's endpoints are no longer reachable from the network, and the shared header looks the same in every app.
+**Web pages on your displays, a redesigned Car Thing, and a round of improvements across the apps from using StonePi on a phone.** NewsCast, EventTrakr, FileServe and SportGuide all get new versions; the shared header, app switcher and Health page are tidied up in every app; and two of Notify's endpoints are no longer reachable from the network.
+
+### What's new
+
+**Displays (Notify and the Car Thing)**
+- **Web pages on the displays:** any page the Pi can reach (a Homepage dashboard, say) can show on a TRMNL e-ink panel, as a Car Thing widget or as its screensaver. Set them up under Notify → Displays → Web pages.
+- **Car Thing:** a new System screen (services as cards, with uptime, memory and recent log lines, and a restart you can watch), a restyled Now Playing, four Windows 98 screensavers, and a page header you can set to Always, Auto-hide or Off. The time on the artwork screensaver has its own position, size and backing.
+- **Notify's Car Thing editor** is simpler: four tabs (Pages, Buttons, Idle, Look), with one-off setup on its own page and **Default** buttons to put StonePi's colours back.
+- **Spotify sign-in expiry:** Notify shows when the Car Thing's Spotify sign-in runs out and warns you 14 days before.
+
+**NewsCast 0.0.10**
+- Tap anywhere on a Briefing card to open or close it, not just the arrow.
+- Smaller story titles on phones, so a card shows more than its headline.
+
+**EventTrakr 0.0.9**
+- **Agenda view** (Settings → General): choose which filter chips show above your Agenda (categories, Free, sources), just for you.
+- **Price pills:** green with the price for paid events, blue for free, grey when no price is listed.
+- **Category pills** get an icon and a colour, and admins can pick each category's colour in Settings → Categories.
+
+**FileServe 0.0.9**
+- From the iPhone home-screen app, hosted pages open in a viewer with **Back**, the page's title and **Open in Safari**, so you're no longer stuck on the page.
+- The page-count pill is gone from the header.
+
+**SportGuide 0.0.9**
+- Team badges on football cards, above each team's name, downloaded to the Pi once and served from there.
+- Shorter, clearer Refresh popups.
+
+**Every app**
+- The shared header has a divider between an app's own buttons and the shared ones, and its icons are the same size in every app.
+- The app switcher highlights the app you tap straight away, instead of showing two apps selected.
+- Notify's bell opens the same "Your alerts" panel as Dashboard home, and the Notifications page has a **Back** link.
+- Health shows the address you're connected through (for example your Tailscale name), not always `stonepi.local`.
+- **Settings → Network → Turn on HTTPS** finishes HTTPS for Tailscale once it's enabled in the Tailscale admin console.
+
+**Security**
+- Notify's event and TRMNL-push endpoints are blocked at nginx and only accept JSON.
+- Captured web pages can't reach the Pi's own services.
 
 ### Added
 - **Web pages on the displays** (backlog F14; spec `ideation/web-capture.md`): any web page the Pi can reach (e.g. a self-hosted Homepage dashboard), captured with the shared headless Chromium. On **TRMNL** as its own panel: a Web page Display converts the capture for e-ink (greyscale, auto-invert for dark pages, 1/2/4-bit, threshold or dither) and POSTs the PNG to TRMNL's Webhook Image plugin, skipping unchanged images. On the **Car Thing** as a full-page widget and a screensaver style (snapshots, refreshed only while on screen). New `stonepi_browser.capture_page` and, in `stonepi_display`, `webpages` (store, CSS presets), `webcapture` (shared, coalesced capture cache), `webimage` (e-ink and LCD conversion, true greyscale PNG writer) and a `kind: "web"` Display.
