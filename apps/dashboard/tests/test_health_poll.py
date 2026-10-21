@@ -108,6 +108,12 @@ def test_overview_page_has_live_region(env, monkeypatch):
     assert "data-health-live" in html and 'data-health-settled="false"' in html
     assert 'data-health-card="newscast"' in html
     assert "data-health-label" in html
+    # The host line is the address you're on, not always <hostname>.local.
+    html = env["client"].get("/overview", headers={"x-forwarded-host": "stonepi.tail3d1e0b.ts.net"}).text
+    line = html.split("data-health-host>", 1)[1].split("</p>", 1)[0]
+    assert line.startswith("stonepi.tail3d1e0b.ts.net · StonePi 0.1.8.1")
+    html = env["client"].get("/overview", headers={"host": "192.168.0.225:8010"}).text
+    assert html.split("data-health-host>", 1)[1].startswith("192.168.0.225 · ")
 
 
 def test_service_action_triggers_fast_refresh(env, monkeypatch):

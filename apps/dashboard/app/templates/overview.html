@@ -12,7 +12,9 @@
     <div class="hero-copy">
       <h1>Health</h1>
       <p class="lede">Host status, disk, backup, listening ports, and whether each app is responding.</p>
-      <p class="muted hero-meta">{{ hostname }}.local · StonePi {{ platform_version }}</p>
+      {#- The address you're on (stonepi.local, the Tailscale name, an IP…), like the service URLs below. -#}
+      {%- set here_host = (request.headers.get('x-forwarded-host') or request.headers.get('host') or (hostname ~ '.local')).split(',')[0].strip() %}
+      <p class="muted hero-meta" data-health-host>{{ here_host.rsplit(':', 1)[0] if here_host.count(':') == 1 else here_host }} · StonePi {{ platform_version }}</p>
     </div>
     <a class="btn btn-ghost btn-with-icon" href="{{ cockpit_url }}">{{ svg('cockpit') }} Cockpit</a>
   </div>

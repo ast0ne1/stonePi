@@ -275,12 +275,13 @@
   .sp-app-img { display: block; flex: none; border-radius: 22%; }
   .sp-app-dashboard { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); border: 1px solid var(--border); text-decoration: none; color: var(--text); font: var(--type-control); }
   .sp-app-dashboard .sp-app-img { width: 32px; height: 32px; }
-  .sp-app-dashboard:hover { background: var(--surface-hover); }
+  /* Hover only with a mouse: on a phone a tapped tile kept its hover look next to the current one. */
+  @media (hover: hover) { .sp-app-dashboard:hover { background: var(--surface-hover); } }
   .sp-app-dashboard.is-current { background: var(--surface-hover); border-color: var(--border-control); }
   .sp-app-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-1); }
   .sp-app { display: grid; justify-items: center; gap: 6px; padding: var(--space-3) var(--space-1) 10px; border-radius: var(--radius-md); text-decoration: none; color: var(--text); font: 600 12px/16px var(--font-sans); border: 1px solid transparent; min-width: 0; }
   .sp-app .sp-app-img { width: 40px; height: 40px; }
-  .sp-app:hover { background: var(--surface-hover); }
+  @media (hover: hover) { .sp-app:hover { background: var(--surface-hover); } }
   .sp-app.is-current { background: var(--surface-hover); border-color: var(--border); }
   .sp-app-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sp-identity { display: flex; align-items: center; gap: var(--space-3); padding-bottom: var(--space-3); border-bottom: 1px solid var(--border); }
@@ -494,6 +495,29 @@
       pop.querySelector("[data-sp-trigger]").classList.remove("has-dot");
     }
   });
+
+  // -- App switcher: the tapped app takes the highlight at once -------------------
+  // The next app's page can take a moment (more so on a Pi just restarted), so show where
+  // you're going instead of leaving the old app highlighted.
+  function clearLoading() {
+    document.querySelectorAll(".sp-app.is-loading, .sp-app-dashboard.is-loading").forEach(function (el) {
+      el.classList.remove("is-loading", "is-current");
+    });
+    document.querySelectorAll(".sp-app[aria-current], .sp-app-dashboard[aria-current]").forEach(function (el) {
+      el.classList.add("is-current");
+    });
+  }
+  document.addEventListener("click", function (e) {
+    var tile = e.target.closest(".sp-app, .sp-app-dashboard");
+    if (!tile || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (tile.hasAttribute("aria-current")) return;
+    document.querySelectorAll(".sp-app.is-current, .sp-app-dashboard.is-current").forEach(function (el) {
+      el.classList.remove("is-current");
+    });
+    tile.classList.add("is-current", "is-loading");
+  });
+  // Back to this page from the browser's cache: undo the loading state.
+  window.addEventListener("pageshow", function (e) { if (e.persisted) clearLoading(); });
 
   // -- Appearance ---------------------------------------------------------------
   function themePref() {

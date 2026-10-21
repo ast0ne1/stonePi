@@ -2,6 +2,9 @@
 
 ## 0.4.0 — 2026-10-21
 
+### Fixed
+- **Health: the line under the title shows the address you're on** (stonepi.local, the Tailscale name, an IP…), like the service URLs below it. It always said `<hostname>.local`.
+
 ### Added
 - **Settings → Network → Turn on HTTPS** (backlog U23). Shown while Tailscale is connected but its MagicDNS name has no HTTPS yet: sets up Tailscale Serve and fetches the certificate (new `stonepi-tailscale serve`), so the first visit isn't the slow one. Serve was only tried on Connect, so turning HTTPS Certificates on in the Tailscale admin console afterwards never took effect. If they're still off, the page links to where to turn them on.
 - **Notifications: ← Back** above the title (backlog U29). It returns to the app you opened the bell from, or goes Home when there's nothing to go back to (opened from a phone alert or a bookmark).

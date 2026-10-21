@@ -939,7 +939,8 @@ STONEPI_VAULT_DIR="$DATA/vault" "$DEST/apps/dashboard/.venv/bin/python" \
   "$DEST/scripts/migrate_secrets_to_vault.py" \
   --vault-dir "$DATA/vault" \
   --newscast-db "$DATA/newscast/newscast.sqlite" \
-  --eventtrakr-db "$DATA/eventtrakr/eventtrakr.sqlite" || true
+  --eventtrakr-db "$DATA/eventtrakr/eventtrakr.sqlite" \
+  --pricewatch-db "$DATA/pricewatch/pricewatch.sqlite" || true
 
 # Recover's HTTP Basic password (a root console) lives only in root-only recover.passwd,
 # never in the Vault (every app service user can read the Vault) or stonepi.env (every app
