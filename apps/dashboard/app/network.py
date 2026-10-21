@@ -284,6 +284,8 @@ def parse_tailscale_status(raw: dict[str, Any] | None, *, wanted: bool) -> dict[
         "access_url": access_url,
         "serve_http": serve_http,
         "serve_enable_url": serve_enable_url,
+        # Only after Turn on HTTPS: whether the certificate was fetched (None = not asked).
+        "cert_ready": data.get("CertReady") if "CertReady" in data else None,
         "error": (data.get("Error") or data.get("error") or None),
     }
 
@@ -362,6 +364,30 @@ def start_login() -> dict[str, Any]:
         elif code not in (0, 124):
             raw.setdefault("Error", f"connect failed (exit {code})")
     result = parse_tailscale_status(raw, wanted=True)
+    with _cache_lock:
+        global _tailscale_cache, _tailscale_cache_at
+        _tailscale_cache = dict(result)
+        _tailscale_cache_at = time.monotonic()
+    return result
+
+
+def turn_on_https() -> dict[str, Any]:
+    """Settings > Network > Turn on HTTPS: Tailscale Serve for the MagicDNS name plus its certificate
+    (U23). Needs HTTPS certificates on for the tailnet; until then the result has serve_enable_url."""
+    clear_network_cache()
+    if not helper_available():
+        return parse_tailscale_status({"Installed": False, "BackendState": "NoState"}, wanted=tailscale_wanted())
+    code, out = _run_helper("serve", timeout=90.0)
+    raw: dict[str, Any] = {}
+    try:
+        parsed = json.loads(out) if out else {}
+        raw = parsed if isinstance(parsed, dict) else {}
+    except json.JSONDecodeError:
+        raw = {}
+    if not raw:
+        raw = _raw_status_from_helper()
+        raw.setdefault("Error", f"Turn on HTTPS failed (exit {code})")
+    result = parse_tailscale_status(raw, wanted=tailscale_wanted())
     with _cache_lock:
         global _tailscale_cache, _tailscale_cache_at
         _tailscale_cache = dict(result)

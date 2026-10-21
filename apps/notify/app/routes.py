@@ -76,15 +76,6 @@ def _approval_view(prefs: dict) -> tuple[list[dict], list[dict], int]:
     return list(groups.values()), other, count + len(other)
 
 
-def _display_count() -> int:
-    try:
-        import stonepi_display
-
-        return len(stonepi_display.load_displays())
-    except Exception:
-        return 0
-
-
 def _session_secret() -> str:
     from app.people import session_secret
 
@@ -123,14 +114,15 @@ def _login_next(path: str) -> str:
 def _alerts_bell_state(user, home: str) -> dict:
     """Shared header state (``stonepi/header.html``) with Notify's own bell, from local data.
 
-    The bell stays a plain link to the person's notifications (no panel): the panel would
-    ask Notify over HTTP about itself. Notify isn't in the app switcher (reached via the bell).
+    The bell opens the every-app panel, like Dashboard home, built in-process from the same
+    payload as ``/api/me/apps/dashboard`` (no HTTP to itself). Notify isn't in the app
+    switcher (reached via the bell).
     """
-    import stonepi_notify
-
+    from app.me_routes import _app_payload
     from app.people import load_people
-    from stonepi_auth.alerts import phone_alerts_allowed
+    from stonepi_auth.alerts import bell_panel, phone_alerts_allowed
     from stonepi_auth.header import header_context
+    from stonepi_contracts import app_status_from_body
 
     if user is None or not _session_secret():
         return {"show": False, "dot": False, "url": "", "active": False}
@@ -138,17 +130,15 @@ def _alerts_bell_state(user, home: str) -> dict:
     people = load_people()
     person = (people or {}).get(user.user_id)
     allowed = bool(person.get("phone_alerts")) if person is not None else phone_alerts_allowed(user)
-    sub = stonepi_notify.get_subscription(user.user_id) or {}
-    ntfy_on = bool((stonepi_notify.load_destinations().get("ntfy") or {}).get("enabled"))
-    show = allowed and ntfy_on  # hidden until the household has phone alerts on
-    needs_setup = not sub.get("topic")  # never set up; turning alerts off keeps the topic
+    # Hidden until the household has phone alerts on; the dot means an alert since the panel was last opened.
+    status = app_status_from_body(_app_payload(user, allowed, "dashboard"))
     return {
-        "show": show,
-        "dot": show and needs_setup,
+        "show": status["show"],
+        "dot": status["dot"],
         "url": notifications_url(home),
         "active": False,
         "header": header,
-        "panel": None,
+        "panel": bell_panel("dashboard", status, home, is_admin=bool(user.is_admin)),
     }
 
 
@@ -174,7 +164,6 @@ def _page_ctx(request: Request, *, active: str, user, csrf: str, extra: dict | N
         "error": request.query_params.get("err"),
         "message": request.query_params.get("msg"),
         "platform_managed": bool(_session_secret()),
-        "display_count": _display_count(),
         "alerts_bell_state": _alerts_bell_state(user, home),
     }
     if extra:
@@ -200,7 +189,6 @@ def _deny_page(request: Request, template: str, *, active: str, user):
             "app_prefix": _prefix(),
             "stonepi_prefix": _prefix(),
             "csrf_token": csrf_from_request(request.cookies),
-            "display_count": _display_count(),
             "message": None,
             "alerts_bell_state": _alerts_bell_state(user, home),
         },
@@ -247,11 +235,19 @@ def api_display():
     }
 
 
+def _json_request(request: Request) -> bool:
+    """A browser can only send application/json cross-origin after a CORS preflight, which
+    Notify never answers, so a web page (e.g. one being captured, F14) can't call these."""
+    return request.headers.get("content-type", "").split(";")[0].strip().lower() == "application/json"
+
+
 @router.post("/api/events")
 async def api_events(request: Request):
     """Loopback event ingest — used by stonepi_contracts.emit_event."""
     import stonepi_notify
 
+    if not _json_request(request):
+        return JSONResponse({"ok": False, "message": "send application/json"}, status_code=415)
     try:
         body = await request.json()
     except Exception:
@@ -262,10 +258,12 @@ async def api_events(request: Request):
 
 
 @router.post("/api/push-trmnl")
-def api_push_trmnl():
+def api_push_trmnl(request: Request):
     """Loopback TRMNL push for Dashboard automations."""
     from app.boot import _push_trmnl
 
+    if not _json_request(request):
+        return JSONResponse({"ok": False, "message": "send application/json"}, status_code=415)
     return _push_trmnl()
 
 
@@ -279,6 +277,7 @@ def displays_page(request: Request):
     import stonepi_display
 
     from app.carthing_routes import carthing_summary
+    from app.web_routes import web_pages_summary
 
     user, denied = _guard(request, path="/displays", active="displays", template="displays.html")
     if denied is not None:
@@ -294,7 +293,12 @@ def displays_page(request: Request):
             active="displays",
             user=user,
             csrf=csrf,
-            extra={"displays": displays, "webhook_ids": webhook_ids, "carthing": carthing_summary()},
+            extra={
+                "displays": displays,
+                "webhook_ids": webhook_ids,
+                "carthing": carthing_summary(),
+                "web_pages": web_pages_summary(),
+            },
         ),
     )
     set_csrf_cookie(response, csrf, secure=request_is_https(request))
@@ -336,6 +340,29 @@ DEVICE_CHOICES = (
 )
 
 
+def _setup_steps(display: dict, webhook_set: bool, web_page: dict | None) -> list[dict]:
+    """The Display's setup checklist. ``done`` None: a step StonePi can't see (on trmnl.com)."""
+    trmnl = display.get("trmnl") or {}
+    if display.get("kind") == "web":
+        steps = [
+            {"text": "Pick the web page and check the preview below", "done": bool(web_page and web_page.get("url"))},
+            {"text": "On trmnl.com, add a Webhook Image plugin (Plugins → Webhook Image)", "done": webhook_set or None},
+        ]
+    else:
+        steps = [
+            {"text": "Lay out widgets on the screen below", "done": bool(display.get("widgets"))},
+            {"text": "On trmnl.com, add a Private Plugin and paste the StonePi universal template into its Full markup",
+             "done": None if not webhook_set else True},
+        ]
+    steps += [
+        {"text": "Paste the plugin's webhook below and switch Push to TRMNL on",
+         "done": webhook_set and bool(trmnl.get("enabled"))},
+        {"text": "Add the plugin to your device's playlist on trmnl.com", "done": None},
+        {"text": "Push once and check it arrives", "done": bool(trmnl.get("last_push_ok"))},
+    ]
+    return steps
+
+
 @router.get("/displays/{display_id}", response_class=HTMLResponse)
 def display_detail(request: Request, display_id: str):
     import stonepi_display
@@ -350,6 +377,15 @@ def display_detail(request: Request, display_id: str):
         return RedirectResponse("/displays?err=Display+not+found", status_code=303)
     csrf = csrf_from_request(request.cookies)
     builder = _builder_context(display)
+    webhook_set = bool(stonepi_display.get_webhook(display_id))
+    web_page = None
+    also_used: list[str] = []
+    if display.get("kind") == "web":
+        from app.web_routes import page_usage
+
+        web_page = stonepi_display.get_page(display["web"]["page_id"])
+        if web_page:
+            also_used = [u for u in page_usage(web_page["id"]) if u != f"TRMNL: {display['name']}"]
     response = templates.TemplateResponse(
         request,
         "display_detail.html",
@@ -363,11 +399,18 @@ def display_detail(request: Request, display_id: str):
                 "builder": builder,
                 "available_widgets": builder["catalog"],
                 "devices": DEVICE_CHOICES,
-                "webhook_set": bool(stonepi_display.get_webhook(display_id)),
+                "webhook_set": webhook_set,
+                "web_page": web_page,
+                "also_used": also_used,
+                "presets": stonepi_display.CSS_PRESETS,
+                "setup_steps": _setup_steps(display, webhook_set, web_page),
                 "universal_template": stonepi_display.UNIVERSAL_TEMPLATE,
                 "date_formats": [(k, label) for k, (label, _) in stonepi_display.DATE_FORMATS.items()],
                 "trmnl_tiers": stonepi_display.TRMNL_TIERS,
                 "trmnl_tier": stonepi_display.trmnl_tier(display.get("trmnl")),
+                "push_limits": stonepi_display.push_limits(display),
+                "web_pages": stonepi_display.load_pages(),
+                "web_bits": stonepi_display.web_bits(display),
             },
         ),
     )
@@ -442,8 +485,33 @@ async def displays_create(request: Request):
         return RedirectResponse("/displays?err=Form+expired", status_code=303)
     name = str(form.get("name") or "").strip() or "New display"
     display_id = str(uuid.uuid4())[:8]
+    kind = "web" if str(form.get("kind") or "") == "web" else "widgets"
+    page_id = ""
+    if kind == "web":
+        # The page comes with the Display: an existing one, or a new one from the address.
+        picked = stonepi_display.get_page(str(form.get("page_id") or ""))
+        if picked:
+            page_id = picked["id"]
+        else:
+            try:
+                page_id = stonepi_display.upsert_page(
+                    {"id": stonepi_display.new_page_id(name), "name": name, "url": str(form.get("url") or "")}
+                )["id"]
+            except ValueError as exc:
+                return RedirectResponse(f"/displays?err={quote('Web page address: ' + str(exc))}", status_code=303)
     stonepi_display.upsert_display(
-        {"id": display_id, "name": name, "enabled": True, "builtin": False, "device": "og", "widgets": []}
+        {
+            "id": display_id,
+            "name": name,
+            "enabled": True,
+            "builtin": False,
+            "kind": kind,
+            "device": "og",
+            "widgets": [],
+            # Web Displays push every 15 min to start with.
+            "web": {"page_id": page_id},
+            "trmnl": {"interval_minutes": 15} if kind == "web" else {},
+        }
     )
     return RedirectResponse(f"/displays/{display_id}?msg=Display+created", status_code=303)
 
@@ -545,8 +613,10 @@ async def displays_trmnl(request: Request, display_id: str):
 
     if str(form.get("action") or "") == "push":
         from app.boot import push_one_display
+        from starlette.concurrency import run_in_threadpool
 
-        result = push_one_display(display_id)
+        # A web Display captures its page first (a few seconds of Chromium): off the event loop.
+        result = await run_in_threadpool(push_one_display, display_id)
         if result.get("skipped"):  # held back by the hourly budget or a TRMNL back-off
             return RedirectResponse(f"{back}?err={quote(str(result.get('message'))[:160])}#trmnl", status_code=303)
         if result.get("ok"):
@@ -566,8 +636,16 @@ async def displays_delete(request: Request, display_id: str):
     form = await request.form()
     if not csrf_ok_request(request.cookies, str(form.get("csrf_token") or "")):
         return RedirectResponse("/displays?err=Form+expired", status_code=303)
+    display = stonepi_display.get_display(display_id) or {}
     if not stonepi_display.delete_display(display_id):
         return RedirectResponse("/displays?err=Cannot+delete+builtin+Dashboard", status_code=303)
+    page_id = (display.get("web") or {}).get("page_id") if display.get("kind") == "web" else ""
+    if page_id:
+        from app.web_routes import page_usage
+
+        # Its web page goes too, unless another Display or the Car Thing still shows it.
+        if not page_usage(page_id) and stonepi_display.delete_page(page_id):
+            return RedirectResponse("/displays?msg=Display+and+its+web+page+deleted", status_code=303)
     return RedirectResponse("/displays?msg=Display+deleted", status_code=303)
 
 

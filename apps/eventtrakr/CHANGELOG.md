@@ -1,5 +1,15 @@
 # Changelog — EventTrakr
 
+## 0.0.9 — 2026-10-21
+
+### Added
+- **Settings → General → Agenda view** (backlog U25): tick which filter chips show above your Agenda: **Category chips**, **Free chip** and **Source chips** (all on by default, per person). Category and Free share a row, which goes only when both are off; Day chips always show. A hidden filter also stops filtering, so an old link can't leave you with a filter you can't see.
+
+### Changed
+- **Price pill with a tag icon** (backlog U26) on Agenda, Search and public agendas: **green with the amount** for paid events ("DKK 150"; long price text is cut to the amount, e.g. "120-180 kr"), **blue, icon only** for free, **grey, icon only** when no price is listed. The full price, "Free" or "Price not listed" shows on hover and to screen readers. It was a "Price: …" text badge.
+- **Category pills get an icon and a colour** (backlog U31) on Agenda, Search, public agendas and the Sources catalog: Music (note, purple), Culture (columns, amber), Community (people, sand), Food & Drink (cup, red), Business (briefcase, grey), Arts (palette, green), Sports (ball, blue), Family (heart, sand), General (tag, grey). Categories you add get a tag and a colour picked from their name, so each keeps the same colour everywhere.
+- **Choose each category's colour** in Settings → Categories (admins): every category shows its pill and a row of swatches (Purple, Blue, Green, Sand, Amber, Red, Grey); tapping one saves it, and **Auto** goes back to the default. Icons stay fixed. New `categories.color` column, added on start.
+
 ## 0.0.8 — 2026-10-11
 
 ### Changed

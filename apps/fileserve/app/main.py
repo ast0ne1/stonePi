@@ -229,7 +229,6 @@ def create_app(config: dict | None = None) -> Flask:
         from stonepi_auth.session import COOKIE_NAME, factory_admin_warning
 
         db = getattr(g, "db", None)
-        page_count = 0
         factory = False
         home = "FileServe"
         admin = is_admin()
@@ -246,7 +245,6 @@ def create_app(config: dict | None = None) -> Flask:
             viewer = current_user(db)
             if viewer is not None:
                 local_name = viewer.username
-                page_count = len(pages_svc.list_pages(db, viewer=viewer))
                 can_publish = viewer.can(capabilities.PUBLISH_PAGES)
                 must_protect = not viewer.can(capabilities.PUBLISH_UNPROTECTED)
             if not platform_managed:
@@ -261,7 +259,6 @@ def create_app(config: dict | None = None) -> Flask:
             "app_port": env.port,
             "using_factory_admin": factory,
             "homescreen_name": home,
-            "page_count": page_count,
             "current_user_is_admin": admin,
             "can_publish_pages": can_publish,
             "must_protect_pages": must_protect,
@@ -1290,6 +1287,28 @@ def create_app(config: dict | None = None) -> Flask:
                 "icons": manifest_icons("fileserve"),
             }
         )
+
+    @app.get("/hosted/view")
+    def hosted_viewer():
+        """A hosted page or file in a frame under a thin auto-hiding bar (Back, title, Open in Safari).
+
+        Used from the iOS home-screen app, which has no browser bar to go back with (U27). The
+        frame loads the page's own URL, so its sandbox CSP and any password prompt still apply.
+        """
+        target = (request.args.get("p") or "").strip()
+        parts = [p for p in target.split("/") if p]
+        if not target.startswith("/") or "?" in target or "#" in target or ".." in parts:
+            abort(404)
+        if len(parts) == 1:
+            page = pages_svc.get_root_by_slug(g.db, parts[0])
+        elif len(parts) == 3 and parts[0] == "u":
+            page = pages_svc.get_user_page(g.db, parts[1], parts[2])
+        else:
+            page = None
+        if page is None or pages_svc.is_expired(page) or (not page.enabled and not _bypasses_page_auth(page)):
+            abort(404)
+        frame_src = page.public_path + ("/" if page.page_type == "site" else "")
+        return render_template("viewer.html", page=page, frame_src=frame_src)
 
     @app.get("/u/<username>/<slug>")
     def user_public_page(username: str, slug: str):

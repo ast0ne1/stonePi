@@ -192,8 +192,20 @@ def app_alerts_status(
         with _lock:
             _app_failures[key] = now()
             return stale_or_fallback()
+    status = app_status_from_body(body)
+    with _lock:
+        _app_failures.pop(key, None)
+        _app_cache[key] = (now(), status)
+        if len(_app_cache) > 512:
+            for old in sorted(_app_cache, key=lambda k: _app_cache[k][0])[:128]:
+                _app_cache.pop(old, None)
+    return dict(status)
+
+
+def app_status_from_body(body: dict[str, Any]) -> dict[str, Any]:
+    """Bell state from Notify's ``/api/me/apps/{app}`` body (Notify itself builds the body in-process)."""
     show = bool(body.get("allowed") and body.get("available"))
-    status = {
+    return {
         "show": show,
         "dot": bool(show and body.get("unseen")),
         "reachable": True,
@@ -206,10 +218,3 @@ def app_alerts_status(
         "recent": [r for r in body.get("recent") or [] if isinstance(r, dict)],
         "seen_at": body.get("seen_at") or None,
     }
-    with _lock:
-        _app_failures.pop(key, None)
-        _app_cache[key] = (now(), status)
-        if len(_app_cache) > 512:
-            for old in sorted(_app_cache, key=lambda k: _app_cache[k][0])[:128]:
-                _app_cache.pop(old, None)
-    return dict(status)

@@ -21,12 +21,12 @@ Run the release smoke overlay from Windows: `cmd /c "scripts\push-release-smoke-
 3. Each app: header (bell, app switcher, avatar menu with light/dark/system), bottom bar, app icon as favicon
 4. Bell: panel lists recent notifications; **Clear** hides them (Notify → History still has them)
 5. Health (`/overview`) shows every app Healthy with its version, plus disk, memory and backup; Health → Cockpit opens
-6. Notify → Displays: TRMNL Display with its plan, Push now updates the panel (re-paste the universal template once for the StonePi mark); Car Thing on/off
+6. Notify → Displays: TRMNL Display with its plan, Push now updates the panel (re-paste the universal template once for the StonePi mark); a Web page Display's Preview shows the e-ink image and Push now updates its Webhook Image plugin; Car Thing on/off
 7. NewsCast: Refresh fills the Briefing source by source without reloading
 8. Users: your own Role switch is locked; another account can be changed
 9. Open via router DNS (e.g. `http://stonepi.home/`): sign-in and the app switcher stay on that host
 10. Dashboard → Settings → AI: providers show as set up, **Test** on a model answers, and NewsCast → Settings → AI can switch AI on
-11. Car Thing (if plugged in): Music → Now Playing shows the current track; Test connection in Notify → Displays → Car Thing → Music passes
+11. Car Thing (if plugged in): Music → Now Playing shows the current track; Test connection in Notify → Displays → Car Thing → Setup → Music passes; a web page widget or screensaver shows its snapshot
 
 ## 4. Commit (when you ask)
 
@@ -54,7 +54,7 @@ Every build starts with a **pre-flight**. In a git checkout it stops when `apps/
 Assets are **StonePi portal variants** (not standalone app releases):
 
 - `stonepi-<app>-<version>.zip` for every user app (catalog apps without `ships_with: platform`)
-- `stonepi-platform-<version>.zip`, which also carries the system apps (`apps/dashboard`, `apps/auth`, `apps/notify`, `apps/recover`)
+- `stonepi-platform-<version>.zip`, which also carries the system apps (`apps/dashboard`, `apps/auth`, `apps/notify`, `apps/recover`) and the Car Thing panel (`apps/carthing`)
 
 Each zip includes `STONEPI.txt`. The updater prefers `stonepi-{app}-*.zip` and still accepts legacy `{app}-*.zip` for one cycle.
 

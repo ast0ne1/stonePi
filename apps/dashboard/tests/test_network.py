@@ -208,3 +208,30 @@ def test_login_qr_encodes_the_pis_own_link(monkeypatch):
 def test_login_qr_404_without_a_pending_link(monkeypatch):
     assert _qr_client(monkeypatch, {"auth_url": None, "connected": False}).get("/api/network/tailscale/qr").status_code == 404
     assert _qr_client(monkeypatch, {"auth_url": "https://login.tailscale.com/a/x", "connected": True}).get("/api/network/tailscale/qr").status_code == 404
+
+
+def test_turn_on_https_reports_serve_cert_or_the_enable_link(monkeypatch):
+    import json
+
+    from app import network
+
+    monkeypatch.setattr(network, "helper_available", lambda: True)
+    monkeypatch.setattr(network, "tailscale_wanted", lambda: True)
+    base = {"BackendState": "Running", "Self": {"DNSName": "stonepi.tail.ts.net.", "TailscaleIPs": ["100.64.1.2"]}}
+    calls = []
+
+    def helper(cmd, timeout=0):
+        calls.append(cmd)
+        return 0, json.dumps({**base, "ServeHTTP": True, "CertReady": True})
+
+    monkeypatch.setattr(network, "_run_helper", helper)
+    ts = network.turn_on_https()
+    assert calls == ["serve"] and ts["serve_http"] and ts["cert_ready"] is True
+    assert ts["access_url"] == "https://stonepi.tail.ts.net/"
+
+    link = "https://login.tailscale.com/f/serve?node=abc"
+    monkeypatch.setattr(network, "_run_helper", lambda cmd, timeout=0: (0, json.dumps({**base, "ServeHTTP": False, "ServeEnableURL": link})))
+    ts = network.turn_on_https()
+    assert not ts["serve_http"] and ts["serve_enable_url"] == link and ts["cert_ready"] is None
+    # Plain status never reports a certificate.
+    assert network.parse_tailscale_status({**base, "ServeHTTP": True}, wanted=True)["cert_ready"] is None

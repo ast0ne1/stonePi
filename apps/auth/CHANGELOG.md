@@ -1,5 +1,10 @@
 # Changelog — Auth
 
+## 0.4.0 — 2026-10-21
+
+### Changed
+- No changes of its own: the version follows the platform. The shared header (divider before the shared icons, icon sizes) comes with `stonepi_auth` 0.3.0 in platform 0.4.0.
+
 ## 0.3.0 — 2026-10-17
 
 ### Changed

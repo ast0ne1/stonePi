@@ -45,7 +45,9 @@
           aria-label="Refresh {{ s.name }}"
           title="Refresh this source"
           {% if refresh.running %}disabled{% endif %}
-          data-confirm="Refresh {{ s.name }} from the web now? This can take a minute."
+          data-confirm="Refresh {{ s.name }}?"
+          data-confirm-detail="Fetches its schedule from the web. This can take a minute."
+          data-confirm-ok="Refresh"
         >
           {{ icon("refresh") }}
         </button>

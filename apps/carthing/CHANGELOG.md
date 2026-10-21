@@ -1,5 +1,33 @@
 # Changelog — Car Thing panel
 
+## 0.4.0 — 2026-10-21
+
+### Changed
+- **The artwork screensaver's time has its own settings** (`music.saver_time`): show or hide it, where it sits (top left to bottom right, or centre), its size and a dark backing. It now draws in the screensaver clock's face and colours, like Show time on the other screensavers; the default stays small, top right.
+- **System, redesigned.** Opening the System widget shows a health strip (CPU, memory, temperature and disk with meters that turn amber and red; uptime, last backup, host), a **Check** line when something needs attention, then every service as a card with its app icon and one line, stopped ones first and in red. A service's page shows its icon, **Running** or **Not running**, its systemd unit, what it's doing, **how long it has been running (or stopped)**, **memory**, **restarts by itself**, Notify's note and **its last log lines**, with big **Restart** (red when it's stopped) and **Open on the Car Thing** buttons. Restart confirms with the app's icon, then shows **Stopped → Starting → Running** as the panel asks the Pi every 1.5 s, and says when it's back.
+- New `GET /unit-state?unit=` (System's services only) and `v/restarting`; service details come from Dashboard (`state.unit_details`).
+- **Now Playing, restyled after Mira and Nocturne** (Music screen and the full-page music widget). The artwork sits with the title, artist, album and speaker beside it, over one of four backgrounds: **Glow** (a soft halo of the artwork's colour), **Artwork colour** (a Nocturne-style gradient), **Blurred artwork** or **Theme**. A full-width progress bar you can **tap or drag to seek** (a drag there never turns the page), then Mira's control row: **liked**, shuffle, previous, a large play/pause, next, repeat and **⋯** (Speakers and Presets). Controls show **always**, **for 4 s after a touch**, or **never** (the dial press then still plays and pauses). The accent comes from the artwork or the panel's accent, with an optional line round the screen. Turning the dial shows a **large volume bar** for a moment. **Nothing playing** shows the presets as artwork tiles, one tap to start. The artwork screensaver takes the same background.
+- The colours and the blurred background are worked out on the device once per track from the cached artwork (a 24×24 sample and a tiny canvas the browser scales up): no CSS blur or transitions.
+- The **liked tick** shows whether the song is already in Liked Songs (asked once per song) and saves or removes it. Spotify sign-ins from before this need **Reconnect** once (new `user-library-read` permission); until then the tick saves, as before.
+- **Now Playing and the page header.** The Music screen now has the same header as the pages (the config's default: titled Music, no page lit in the dots) instead of none. A full-page music widget sits in a card under an **Always** header and goes **edge to edge** under **Auto-hide** or **Off** (layout `np`). On Now Playing and full-page web pages, taps and dial turns no longer bring an auto-hidden header back (you touch those screens all the time); arriving there still does. The header markup is shared (`_strip.html`).
+- `POST /music/cmd` gains `seek` (allowed with play/pause); `save` removes the song when it's known to be liked. `/np` includes `liked`.
+
+### Fixed
+- **The time on the animated screensavers is the clock face you picked, at every size.** It's the screensaver clock's face (its own when set apart, otherwise the widgets'), drawn at Small, Medium, Large or Extra large and scaled like the widgets' faces. It used to be bold digital unless set apart, and plain digits at Small and Medium.
+
+### Added
+- **Web page widget** (backlog F14): a page from Notify → Displays → Web pages, full page, edge to edge under the top strip. The Pi captures it (Notify, headless Chromium) and the panel swaps in a fresh snapshot every minute **only while it's on screen**; the new image loads off screen first, and the last good one stays up if a capture fails.
+- **Web page screensaver:** the same snapshot over the whole screen, refreshed every 1–5 minutes while it shows, with an optional time in the corner.
+- **Four Windows 98 screensavers**, drawn on a canvas each frame (no images, no GPU), each with Speed and Show time:
+  - **Flying Through Space:** stars streaming towards you; Stars (light, normal, dense) and Coloured stars.
+  - **Mystify Your Mind:** 1–3 bouncing four-cornered shapes with fading trails (short, normal, long) that drift through the colours.
+  - **3D Flower Box:** a spinning chequered cube that morphs into a spiky flower and back; Colours: Checkerboard or A colour per side.
+  - **3D Maze:** a walk through a new maze each time, drawn at 200×120 and scaled up like the original; it keeps a hand on the left wall until it reaches the smiley at the exit. Walls: Brick, Stone or Wood; The rat wanders the corridors (on by default).
+  Dimming lays black over the finished frame, and they stop when the screen is off, like the other animations.
+- **Page header settings:** the strip (time & date, page title, weather, page dots) is set in the editor, with one default for the config that a page can override. **Always** (as before), **Auto-hide** (it shows when you arrive, touch, turn or press anything, with the page below it, and hides after 3, 5 or 10 s so the page grows into the space; a background refresh leaves it hidden) or **Off**. With Auto-hide or Off the page gets the whole 800×480, and a web page widget a full-height snapshot.
+- **Screensaver time position and size:** Show time on Bouncing logo, 3D Pipes, Web page and the Windows 98 styles sits in any corner, top or bottom centre, or the centre, at Small, Medium, Large or Extra large (the large sizes use the screensaver clock face), with an optional dark backing. Matrix has its own position and size.
+- `GET /web/<id>.png?s=widget|page|saver` serves the snapshot (only for pages the active config shows), cached on the Pi and fetched from Notify's signed `/api/internal/web/<id>.png`.
+
 ## 0.3.0 — 2026-10-17
 
 ### Added

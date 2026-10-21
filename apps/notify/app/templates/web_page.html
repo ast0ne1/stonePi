@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon as svg %}
+{% from "_filter_icon.html" import filter_icon %}
+{% block title %}{{ page.name }} · Web pages{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <a class="settings-back" href="/displays#web-pages">&larr; Displays</a>
+  <h1>{{ page.name }}</h1>
+  <p class="lede">
+    A web page the displays can show as a captured image.
+    {% if used %}Shown on {{ used|join(', ') }}.{% else %}Not shown anywhere yet: pick it in a TRMNL Web page Display or the Car Thing editor.{% endif %}
+  </p>
+</section>
+
+{% if last_error %}<p class="banner banner-muted">Last capture failed: {{ last_error }}</p>{% endif %}
+
+<section class="card stack" aria-labelledby="page-heading" data-web-page="{{ page.id }}">
+  <h2 class="section-heading" id="page-heading">{{ filter_icon('sliders') }} Page</h2>
+  <form method="post" action="/displays/web/{{ page.id }}/save" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <label>
+      Name
+      <input type="text" name="name" value="{{ page.name }}" maxlength="60" required />
+    </label>
+    <label>
+      Address
+      <input type="url" name="url" value="{{ page.url }}" required spellcheck="false" placeholder="http://192.168.0.10:3000/" />
+      <span class="hint">Opened by the Pi, so use an address the Pi can reach (an IP or a local name). Pages behind a sign-in screen will show the sign-in screen.</span>
+    </label>
+    <div class="web-grid">
+      <label>
+        Clean-up
+        <select name="preset">
+          {% for key, preset in presets.items() %}<option value="{{ key }}" {% if page.preset == key %}selected{% endif %}>{{ preset.label }}</option>{% endfor %}
+        </select>
+        <span class="hint">Flat suits dashboards with a photo or blurred background (Homepage): it leaves plain colour that turns into clean black and white on e-ink.</span>
+      </label>
+      <label>
+        Zoom
+        <input type="number" name="scale" min="0.25" max="3" step="0.05" value="{{ page.scale }}" />
+        <span class="hint">Below 1 fits more of a desktop page onto the screen; above 1 makes it bigger.</span>
+      </label>
+      <label>
+        Wait after loading (seconds)
+        <input type="number" name="settle_s" min="0" max="15" step="1" value="{{ page.settle_s }}" />
+        <span class="hint">For widgets that fill in after the page appears.</span>
+      </label>
+    </div>
+    <label>
+      Hide these parts <span class="muted">(CSS selectors, one per line)</span>
+      <textarea name="hide" rows="3" spellcheck="false" placeholder="#information-widgets&#10;.search">{{ page.hide }}</textarea>
+      <span class="hint">For Homepage, try <code>#information-widgets</code> (the top bar) or <code>footer</code>.</span>
+    </label>
+    <details class="template-details" {% if page.css %}open{% endif %}>
+      <summary>Extra CSS</summary>
+      <textarea name="css" rows="6" spellcheck="false" aria-label="Extra CSS" placeholder="body { background: #000 !important; }">{{ page.css }}</textarea>
+    </details>
+    <div class="row-actions">
+      <button type="submit" class="btn btn-primary btn-with-icon">{{ svg('check') }} Save</button>
+      <button type="button" class="btn btn-ghost btn-with-icon" data-web-preview>{{ svg('open') }} Preview</button>
+      <button type="button" class="btn btn-ghost btn-with-icon" data-web-preview-fresh>{{ svg('undo') }} Capture again</button>
+    </div>
+  </form>
+  <figure class="web-shot">
+    <img alt="Capture of {{ page.name }} at 800×480" data-web-img hidden />
+    <figcaption class="hint" data-web-status role="status">Preview shows the saved settings at 800×480 (the Car Thing and TRMNL OG size). Save first to try a change.</figcaption>
+  </figure>
+</section>
+
+<section class="card stack" aria-labelledby="delete-heading">
+  <h2 class="section-heading" id="delete-heading">{{ filter_icon('sliders') }} Delete</h2>
+  <form method="post" action="/displays/web/{{ page.id }}/delete" class="row-actions"
+    data-confirm="Delete this web page?" data-confirm-detail="{% if used %}It's shown on {{ used|join(', ') }}; they will show nothing until you pick another page.{% else %}It isn't shown anywhere.{% endif %}" data-confirm-ok="Delete">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <button type="submit" class="btn btn-danger btn-with-icon">{{ svg('trash') }} Delete web page</button>
+  </form>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/web.js?v={{ app_version }}-{{ asset_rev }}" defer></script>
+{% endblock %}

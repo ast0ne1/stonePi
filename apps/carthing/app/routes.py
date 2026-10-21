@@ -12,6 +12,7 @@ import hashlib
 import json
 import logging
 import re
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -37,6 +38,11 @@ WIDGET_LABELS = {w["id"]: w["label"] for w in carthing.WIDGETS}
 # Rows a large widget lists from its mini-app's feed (half: one column; full: two).
 ITEMS_BY_SIZE = {"small": 0, "half": 4, "full": 8}
 GRADIENT_CSS = {g["id"]: g["css"] for g in carthing.GRADIENTS}
+# Web page snapshots (F14): a page widget fills the screen under the 68px strip, or all of
+# it when the page's header auto-hides or is off ("page"); the screensaver fills it all. A
+# widget's snapshot is refreshed every minute while it shows.
+WEB_SIZES = {"widget": (800, 412), "page": (800, 480), "saver": (800, 480)}
+WEB_WIDGET_EVERY_S = 60
 
 
 class Caller:
@@ -145,14 +151,29 @@ def _client_config(caller: Caller, page: int = 0) -> dict[str, Any]:
     }
 
 
-def _widget(widget: dict, config: dict | None = None) -> dict:
+def _widget(widget: dict, config: dict | None = None, web_names: dict[str, str] | None = None, full_h: bool = False) -> dict:
     """One widget on a page: its card, plus rows/numbers when it's large."""
     wid, size = widget["id"], widget.get("size") or "small"
     view: dict[str, Any] = {"id": wid, "size": size, "label": WIDGET_LABELS.get(wid, wid)}
+    page_id = carthing.web_widget_page(wid)
+    if page_id:
+        names = web_names or {}
+        return {
+            **view,
+            "kind": "web",
+            "page_id": page_id,
+            "label": names.get(page_id, "Web page"),
+            "missing": page_id not in names,
+            "every_s": WEB_WIDGET_EVERY_S,
+            "size_key": "page" if full_h else "widget",  # the whole screen when there's no strip
+        }
     if wid in ("clock", "weather", "time"):
         return {**view, "kind": wid}
     if wid == "music":
-        return {**view, "kind": "music", "np": _np(NP_AGE["widget"]), "opts": _music_options(config or carthing.default_config())}
+        np = _np(NP_AGE["widget"])
+        cfg = config or carthing.default_config()
+        # Full page with the header on Auto-hide or Off: Now Playing edge to edge, like the Music screen.
+        return {**view, "kind": "music", "np": np, "opts": _music_options(cfg, np if size == "full" else None), "edge": size == "full" and full_h}
     data = state.feed(wid)
     card = data.get("card") or {}
     view.update(
@@ -173,6 +194,13 @@ def _widget(widget: dict, config: dict | None = None) -> dict:
     return view
 
 
+def _page_dots(cfg: dict) -> list[dict[str, Any]]:
+    return [
+        {"number": n, "name": p["name"], "allowed": f"page:{n}" in cfg["allowed_actions"]}
+        for n, p in enumerate(cfg["pages"], start=1)
+    ]
+
+
 def _page_view(caller: Caller, index: int) -> dict[str, Any]:
     """Context for home.html: one page, laid out, with its page dots."""
     cfg = caller.config
@@ -180,14 +208,21 @@ def _page_view(caller: Caller, index: int) -> dict[str, Any]:
     index = index if 0 <= index < len(pages) else 0
     page = pages[index]
     layout = carthing.page_layout(page["widgets"])
-    cols = [[_widget(w, cfg) for w in col] for col in layout["cols"]]
+    header = carthing.page_header(cfg, page)
+    full_h = header["mode"] != "always"  # the page gets the whole screen
+    web_names = state.web_page_names(caller.panel)
+    cols = [[_widget(w, cfg, web_names, full_h) for w in col] for col in layout["cols"]]
+    kind = layout["kind"]
+    if kind == "full" and cols and cols[0] and cols[0][0]["kind"] == "web":
+        kind = "web"  # edge to edge under the strip
+    elif kind == "full" and cols and cols[0] and cols[0][0].get("edge"):
+        kind = "np"  # Now Playing edge to edge (the header is Auto-hide or Off)
     return {
         "page": {"index": index, "number": index + 1, "name": page["name"], "count": len(pages)},
-        "dots": [
-            {"number": n, "name": p["name"], "allowed": f"page:{n}" in cfg["allowed_actions"]}
-            for n, p in enumerate(pages, start=1)
-        ],
-        "layout": {"kind": layout["kind"], "cols": cols, "count": sum(len(c) for c in cols)},
+        "dots": _page_dots(cfg),
+        "layout": {"kind": kind, "cols": cols, "count": sum(len(c) for c in cols)},
+        # The strip: the page's own header settings, else the config's default.
+        "header": header,
         # A clock on the page: the strip shows the page name instead of the time.
         "has_clock": any(w["id"] in ("clock", "time") for w in page["widgets"]),
         # Weather on the page already: the strip leaves it out.
@@ -250,6 +285,8 @@ def view_list(request: Request, mini: str, kind: str = Query("", alias="list")):
         if kind in ("speakers", "presets"):
             return _music_list(request, caller, kind)
         return view_music(request)
+    if mini == "system":
+        return _render(request, "system.html", caller, _system_view(state.feed("system")))
     data = state.feed(mini)
     return _render(
         request,
@@ -268,6 +305,13 @@ def view_item(request: Request, mini: str, id: str = ""):
     if item is None:
         return _render(request, "detail.html", caller, {"mini": mini, "label": MINI_LABELS.get(mini, ""), "item": None})
     can_restart = mini == "system" and bool(item.get("unit")) and "restart" in caller.config["allowed_actions"]
+    if mini == "system":
+        details = state.unit_details(item["unit"]) if item.get("unit") else {"ok": False}
+        allowed = set(caller.config["allowed_actions"])
+        opens = item["id"] if item["id"] in MINI_LABELS and item["id"] not in ("system", "music") and f"open:{item['id']}" in allowed else ""
+        return _render(request, "service.html", caller, {
+            "item": item, "svc": _service_view(item, details), "can_restart": can_restart, "opens": opens,
+        })
     paragraphs = [p.strip() for p in str(item.get("detail") or "").split("\n") if p.strip()]
     return _render(
         request,
@@ -283,6 +327,92 @@ def view_item(request: Request, mini: str, id: str = ""):
     )
 
 
+# ── System: the health strip and the services as cards; a service's own page ────────
+
+# App icon for each service (static/brand/icons/<path>.svg); others get a plain tile.
+SERVICE_ICONS = {
+    **{a: f"apps/{a}" for a in ("eventtrakr", "fileserve", "library", "newscast", "pinboard", "pricescout", "pricewatch", "sportguide", "studio")},
+    **{s: f"system/{s}" for s in ("auth", "carthing", "dashboard", "notify", "recover")},
+}
+# Meter colours: amber from the first number, red from the second.
+SYSTEM_LIMITS = {"cpu": (70, 90), "mem": (75, 90), "temp": (65, 78), "disk": (80, 92)}
+
+
+def _level(key: str, value: int | None) -> str:
+    if value is None:
+        return ""
+    warn, bad = SYSTEM_LIMITS[key]
+    return "bad" if value >= bad else "warn" if value >= warn else "ok"
+
+
+def _system_view(data: dict) -> dict[str, Any]:
+    stats = data.get("stats") or {}
+    items = [dict(it, icon=SERVICE_ICONS.get(it.get("id"), "")) for it in data.get("items") or []]
+    # Stopped services lead, then the rest in Notify's order.
+    items.sort(key=lambda it: 0 if it.get("level") == "down" else 1)
+    down = [it["title"] for it in items if it.get("level") == "down"]
+    meters = [
+        {"key": key, "label": label, "value": stats.get(key), "unit": unit, "level": _level(key, stats.get(key))}
+        for key, label, unit in (("cpu", "CPU", "%"), ("mem", "Memory", "%"), ("temp", "Temp", "°C"), ("disk", "Disk", "%"))
+    ]
+    check = list(data.get("alerts") or [])
+    if not check:
+        check = [f"{name} isn't running" for name in down]
+        check += [f"{m['label']} {m['value']}{m['unit']}" for m in meters if m["level"] == "bad"]
+        if stats.get("backup") and not stats.get("backup_ok"):
+            check.append(f"Backup {stats['backup']}")
+    return {"data": data, "stats": stats, "meters": meters, "items": items, "check": check[:4], "down": len(down)}
+
+
+def _ago(seconds: float) -> str:
+    seconds = max(0, int(seconds))
+    if seconds < 90:
+        return "just now"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes} min"
+    hours, minutes = divmod(minutes, 60)
+    if hours < 48:
+        return f"{hours} h {minutes} min" if minutes and hours < 10 else f"{hours} h"
+    days, hours = divmod(hours, 24)
+    return f"{days} d {hours} h" if hours else f"{days} d"
+
+
+def _service_view(item: dict, details: dict) -> dict[str, Any]:
+    """The service page's facts: Notify's line and note, plus what Dashboard read from systemd."""
+    running = item.get("level") != "down"
+    out: dict[str, Any] = {"running": running, "line": item.get("line") or item.get("sub") or "", "note": item.get("note") or "",
+                           "icon": SERVICE_ICONS.get(item.get("id"), ""), "since": "", "memory": "", "restarts": None, "logs": [],
+                           "details": bool(details.get("ok")) and not details.get("local")}
+    if out["details"]:
+        if details.get("state") in ("active", "inactive", "failed"):
+            running = details["state"] == "active"
+            out["running"] = running
+        if details.get("since"):
+            out["since"] = _ago(time.time() - int(details["since"]))
+        mem = details.get("memory_bytes")
+        if isinstance(mem, int) and mem > 0:
+            out["memory"] = f"{mem / 1048576:.0f} MB" if mem < 1073741824 else f"{mem / 1073741824:.1f} GB"
+        out["restarts"] = details.get("restarts")
+        out["logs"] = [line for line in details.get("logs") or [] if isinstance(line, dict)][-4:]
+        out["failed"] = details.get("state") == "failed" or details.get("result") not in ("", "success")
+    return out
+
+
+@router.get("/unit-state")
+def unit_state(request: Request, unit: str = ""):
+    """Polled by the restart screen until the service is running again (only System's units)."""
+    caller = _caller(request)
+    if not caller.ok:
+        return JSONResponse({"ok": False}, status_code=403)
+    if not any(it.get("unit") == unit for it in state.feed("system").get("items") or []):
+        return JSONResponse({"ok": False}, status_code=404)
+    if caller.preview:
+        return {"ok": True, "state": "active", "sub": "running"}
+    details = state.unit_details(unit)
+    return {"ok": bool(details.get("ok")), "state": details.get("state") or "", "sub": details.get("sub") or ""}
+
+
 @router.get("/v/weather", response_class=HTMLResponse)
 def view_weather(request: Request):
     """The large weather screen (U14): now, the next 12 hours and the week."""
@@ -295,8 +425,7 @@ def view_weather(request: Request):
 def _saver_clock(config: dict) -> dict:
     """Face and colours the screensaver's clock uses: its own when separate (U13), else the widgets'.
 
-    The Clock style always draws it; Matrix's time uses it only when separate (otherwise its
-    usual bold digital), so setting the screensaver clock apart shows on Matrix too.
+    The Clock style draws it, and so does Show time on the animated styles, at every size.
     """
     clock = config["clock"]
     own = clock.get("saver") or {}
@@ -314,7 +443,17 @@ def view_saver(request: Request):
     if _music_cfg(caller.config)["saver_artwork"] and music.player.connected():
         np = _np(NP_AGE["saver"])
         if np["playing"] and np["track"]:
-            return _render(request, "saver.html", caller, {"music": np, "weather": None, "live": None, "saver_clock": _saver_clock(caller.config)})
+            look = _music_options(caller.config)
+            return _render(request, "saver.html", caller, {"music": np, "music_look": {"look": look["look"], "accent": look["accent"]}, "weather": None, "live": None, "saver_clock": _saver_clock(caller.config)})
+    if caller.config["idle"]["saver"]["style"] == "web":
+        opts = caller.config["idle"]["saver"]["web"]
+        names = state.web_page_names(caller.panel)
+        web = {
+            "page_id": opts["page_id"],
+            "missing": opts["page_id"] not in names,
+            "every_s": int(opts["refresh_min"]) * 60,
+        }
+        return _render(request, "saver.html", caller, {"web": web, "weather": None, "live": None, "saver_clock": _saver_clock(caller.config)})
     if caller.config["idle"]["saver"]["style"] != "clock":
         # Date, weather and the live line are clock-only; the animations need no data.
         return _render(request, "saver.html", caller, {"weather": None, "live": None, "saver_clock": _saver_clock(caller.config)})
@@ -364,11 +503,24 @@ def view_restart(request: Request, unit: str = ""):
         caller,
         {
             "target": target,
+            "icon": SERVICE_ICONS.get(target.get("id"), ""),
             "needs_pin": bool(pin.get("enabled")),
             "pin_length": carthing.PIN_LENGTH,
             "locked_for": state.pin_guard.locked_for(),
         },
     )
+
+
+@router.get("/v/restarting", response_class=HTMLResponse)
+def view_restarting(request: Request, unit: str = ""):
+    """After a restart: stopped, starting, running, as panel.js polls /unit-state."""
+    caller = _caller(request)
+    if not caller.ok:
+        return _denied(request, caller)
+    target = _restart_target(caller, unit)
+    if target is None:
+        return HTMLResponse("", status_code=404)
+    return _render(request, "restarting.html", caller, {"target": target, "icon": SERVICE_ICONS.get(target.get("id"), "")})
 
 
 @router.post("/restart")
@@ -473,6 +625,34 @@ async def clientlog(request: Request):
     return Response(status_code=204)
 
 
+@router.get("/web/{name}")
+def web_image(request: Request, name: str, s: str = "widget"):
+    """A web page snapshot (F14), from Notify's capture. The panel asks only while it shows."""
+    caller = _caller(request)
+    if not caller.ok:
+        return Response(status_code=403)
+    match = re.fullmatch(r"([a-z0-9][a-z0-9-]{0,39})\.png", name)
+    if not match:
+        return Response(status_code=404)
+    page_id = match.group(1)
+    cfg = caller.config
+    where = s if s in ("saver", "page") else "widget"
+    if where == "saver":
+        opts = cfg["idle"]["saver"]["web"]
+        if cfg["idle"]["saver"]["style"] != "web" or opts["page_id"] != page_id:
+            return Response(status_code=404)
+        max_age = int(opts["refresh_min"]) * 60 - 5
+    else:
+        if f"{carthing.WEB_WIDGET_PREFIX}{page_id}" not in carthing.page_widget_ids(cfg):
+            return Response(status_code=404)
+        max_age = WEB_WIDGET_EVERY_S - 5
+    width, height = WEB_SIZES[where]
+    data = state.web_snapshot(page_id, width, height, max_age)
+    if data is None:
+        return Response(status_code=502)
+    return Response(content=data, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+
 @router.get("/bg/{asset_id}")
 def background(request: Request, asset_id: str):
     caller = _caller(request)
@@ -497,6 +677,8 @@ MUSIC_CMD_ACTION = {
     "repeat": "music:repeat",
     "save": "music:save",
     "transfer": "open:music",
+    # Dragging or tapping the progress bar: allowed wherever play/pause is.
+    "seek": "music:play_pause",
 }
 
 
@@ -508,16 +690,28 @@ def _music_cfg(config: dict) -> dict[str, Any]:
     return config.get("music") or carthing.default_music()
 
 
-def _music_options(config: dict) -> dict[str, Any]:
+def _music_options(config: dict, np: dict | None = None) -> dict[str, Any]:
+    """What Now Playing may show and do. With ``np`` (connected), the preset tiles get their artwork."""
     opts = _music_cfg(config)
     allowed = set(config["allowed_actions"])
+    # The tiles are drawn with Now Playing even while music plays (they show when it stops);
+    # each preset's artwork is looked up once.
+    want_art = np is not None and np.get("connected")
+    presets = []
+    for n, p in enumerate(opts.get("presets") or [], start=1):
+        row = {"number": n, "name": p.get("name") or "", "set": bool(p.get("uri")), "allowed": f"music:preset:{n}" in allowed, "art": ""}
+        if want_art and row["set"] and row["allowed"]:
+            row["art"] = music.player.preset_art(p["uri"])
+        presets.append(row)
+    look = opts.get("np") or dict(carthing.NP_DEFAULTS)
     return {
         "show_save": bool(opts.get("show_save")) and "music:save" in allowed,
-        "presets": [
-            {"number": n, "name": p.get("name") or "", "set": bool(p.get("uri")), "allowed": f"music:preset:{n}" in allowed}
-            for n, p in enumerate(opts.get("presets") or [], start=1)
-        ],
+        "presets": presets,
         "allowed": {cmd: action in allowed for cmd, action in MUSIC_CMD_ACTION.items()},
+        "look": look,
+        # The panel's own accent, for "The panel's accent" and covers with no clear colour.
+        "accent": (config.get("look") or {}).get("accent") or carthing.SAND,
+        "default_device": (opts.get("default_device") or {}).get("name") or "",
     }
 
 
@@ -527,7 +721,16 @@ def view_music(request: Request):
     caller = _caller(request)
     if not caller.ok:
         return _denied(request, caller)
-    return _render(request, "music.html", caller, {"np": _np(NP_AGE["screen"]), "opts": _music_options(caller.config)})
+    np = _np(NP_AGE["screen"])
+    cfg = caller.config
+    return _render(request, "music.html", caller, {
+        "np": np,
+        "opts": _music_options(cfg, np),
+        # The header follows the config's default, like the pages (no page is lit in the dots).
+        "header": carthing.page_header(cfg, {}),
+        "dots": _page_dots(cfg),
+        "weather": state.weather(cfg),
+    })
 
 
 def _music_list(request: Request, caller: Caller, kind: str):
@@ -607,7 +810,13 @@ async def music_cmd(request: Request):
         elif cmd == "repeat":
             player.repeat()
         elif cmd == "save":
-            return f"Saved {player.save()} to Liked Songs."
+            track, liked = player.save()
+            return f"Saved {track} to Liked Songs." if liked else f"Removed {track} from Liked Songs."
+        elif cmd == "seek":
+            try:
+                player.seek(int(arg))
+            except (TypeError, ValueError) as exc:
+                raise music.MusicError("bad", "That isn't a position in the song.") from exc
         elif cmd == "transfer":
             player.transfer(str(arg or ""))
         elif cmd == "preset":

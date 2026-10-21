@@ -8,12 +8,136 @@
   <a class="settings-back" href="/displays">&larr; Displays</a>
   <h1 class="carthing-title"><img class="carthing-icon carthing-icon-lg" src="/assets/brand/icons/system/trmnl.svg" width="40" height="40" alt="" />{{ display.name }}</h1>
   <p class="lede">
-    {% if display.builtin %}Built-in household overview.{% else %}Custom Display.{% endif %}
-    {{ display.widgets|length }} widget{{ '' if display.widgets|length == 1 else 's' }} ·
+    {% if display.builtin %}Built-in household overview.{% elif display.kind == 'web' %}Web page Display: a captured web page, sent as an image.{% else %}Custom Display.{% endif %}
+    {% if display.kind != 'web' %}{{ display.widgets|length }} widget{{ '' if display.widgets|length == 1 else 's' }} ·{% endif %}
     {% if display.trmnl.enabled and webhook_set %}pushing to TRMNL every {{ display.trmnl.interval_minutes }} min{% else %}TRMNL push off{% endif %}
   </p>
 </section>
 
+{% set steps_known_done = setup_steps|selectattr('done', 'equalto', false)|list|length == 0 %}
+<details class="card stack setup-steps"{% if not steps_known_done %} open{% endif %}>
+  <summary><strong>Setup</strong> · {% if display.kind == 'web' %}Web page Display → TRMNL <strong>Webhook Image</strong> plugin{% else %}Widgets Display → TRMNL <strong>Private Plugin</strong>{% endif %}</summary>
+  <ol class="setup-list">
+    {% for step in setup_steps %}
+    <li class="{{ 'is-done' if step.done else ('is-todo' if step.done == false else 'is-external') }}">
+      <span class="setup-mark" aria-hidden="true">{{ '✓' if step.done else ('○' if step.done == false else '·') }}</span>
+      <span>{{ step.text }}{% if step.done is none %} <span class="muted">(on trmnl.com; StonePi can't check this)</span>{% endif %}</span>
+    </li>
+    {% endfor %}
+  </ol>
+</details>
+
+{% if display.kind == 'web' %}
+<section class="card stack" id="web" aria-labelledby="web-heading" data-web-display="{{ display.id }}">
+  <h2 class="section-heading" id="web-heading">{{ filter_icon('display') }} Web page</h2>
+  {% if web_page %}
+  <p class="hint">
+    {% if also_used %}Also shown on {{ also_used|join(', ') }}: changes to the page's address and clean-up apply there too.{% else %}Only this Display shows <strong>{{ web_page.name }}</strong>.{% endif %}
+    <a class="text-link" href="/displays/web/{{ web_page.id }}">Colour preview and more</a>
+  </p>
+  {% else %}
+  <p class="banner banner-muted">{% if display.web.page_id %}This Display's web page was deleted. {% endif %}Add the page's address below{% if web_pages %}, or use one you already have{% endif %}.</p>
+  {% endif %}
+  <form method="post" action="/displays/{{ display.id }}/web" class="stack" data-web-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="web_settings" value="1" />
+    <label>
+      Address
+      <input type="url" name="url" value="{{ web_page.url if web_page else '' }}" required spellcheck="false" placeholder="http://192.168.0.10:3000/" />
+      <span class="hint">Opened by the Pi, so use an address the Pi can reach. Pages behind a sign-in screen show the sign-in screen.</span>
+    </label>
+    <fieldset class="stack">
+      <legend>What's captured</legend>
+      <div class="web-grid">
+        <label>
+          Clean-up
+          <select name="preset">
+            {% for key, preset in presets.items() %}<option value="{{ key }}" {% if (web_page.preset if web_page else 'flat') == key %}selected{% endif %}>{{ preset.label }}</option>{% endfor %}
+          </select>
+          <span class="hint">Flat suits dashboards with a photo or blurred background, like Homepage.</span>
+        </label>
+        <label>
+          Zoom
+          <input type="number" name="scale" min="0.25" max="3" step="0.05" value="{{ web_page.scale if web_page else 1.0 }}" />
+          <span class="hint">Below 1 fits more of a desktop page; above 1 makes it bigger.</span>
+        </label>
+        <label>
+          Wait after loading (seconds)
+          <input type="number" name="settle_s" min="0" max="15" step="1" value="{{ web_page.settle_s if web_page else 3 }}" />
+          <span class="hint">For widgets that fill in after the page appears.</span>
+        </label>
+      </div>
+      <label>
+        Hide these parts <span class="muted">(CSS selectors, one per line)</span>
+        <textarea name="hide" rows="2" spellcheck="false" placeholder="#information-widgets">{{ web_page.hide if web_page else '' }}</textarea>
+        <span class="hint">For Homepage, try <code>#information-widgets</code> (the top bar) or <code>footer</code>.</span>
+      </label>
+      <details class="template-details" {% if web_page and web_page.css %}open{% endif %}>
+        <summary>Extra CSS</summary>
+        <textarea name="css" rows="4" spellcheck="false" aria-label="Extra CSS">{{ web_page.css if web_page else '' }}</textarea>
+      </details>
+    </fieldset>
+    <fieldset class="stack">
+      <legend>On the e-ink screen</legend>
+      <div class="web-grid">
+        <label>
+          Device
+          <select name="device">
+            {% for d in devices %}<option value="{{ d.id }}" {% if display.device == d.id %}selected{% endif %}>{{ d.label }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>
+          Greys
+          <select name="bits">
+            <option value="0" {% if not display.web.bits %}selected{% endif %}>Device default ({{ 'black and white' if display.device == 'og' else '16 greys' }})</option>
+            <option value="1" {% if display.web.bits == 1 %}selected{% endif %}>Black and white (1-bit)</option>
+            <option value="2" {% if display.web.bits == 2 %}selected{% endif %}>4 greys (2-bit)</option>
+            <option value="4" {% if display.web.bits == 4 %}selected{% endif %}>16 greys (4-bit, TRMNL X)</option>
+          </select>
+          <span class="hint">4 greys needs OG firmware 1.6 or later.</span>
+        </label>
+        <label>
+          Light and dark
+          <select name="invert">
+            <option value="auto" {% if display.web.invert == 'auto' %}selected{% endif %}>Automatic: dark pages are inverted</option>
+            <option value="on" {% if display.web.invert == 'on' %}selected{% endif %}>Always invert</option>
+            <option value="off" {% if display.web.invert == 'off' %}selected{% endif %}>Never invert</option>
+          </select>
+        </label>
+        <label>
+          Black/white cut-off <output data-web-threshold-out>{{ display.web.threshold }}</output>
+          <input type="range" name="threshold" min="5" max="250" step="1" value="{{ display.web.threshold }}" data-web-threshold />
+          <span class="hint">Black and white without dithering only. Lower keeps faint text; higher drops pale backgrounds.</span>
+        </label>
+        <label class="check">
+          <input type="checkbox" name="dither" value="1" {% if display.web.dither %}checked{% endif %} />
+          <span>Dither <span class="muted">— for photos; text is crisper without</span></span>
+        </label>
+      </div>
+    </fieldset>
+    <div class="row-actions">
+      <button type="submit" class="btn btn-primary btn-with-icon">{{ svg('check') }} Save</button>
+      <button type="button" class="btn btn-ghost btn-with-icon" data-web-preview>{{ svg('open') }} Preview</button>
+      <button type="button" class="btn btn-ghost btn-with-icon" data-web-preview-fresh>{{ svg('undo') }} Capture again</button>
+    </div>
+  </form>
+  <figure class="web-shot web-shot-eink">
+    <img alt="What this Display would send to TRMNL" data-web-img hidden />
+    <figcaption class="hint" data-web-status role="status">Preview shows the exact image a push sends, with the settings above (saved or not). Capturing takes a few seconds.</figcaption>
+  </figure>
+  {% set others = web_pages|rejectattr('id', 'equalto', display.web.page_id)|list %}
+  {% if others %}
+  <form method="post" action="/displays/{{ display.id }}/web" class="create-row web-switch">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="action" value="switch" />
+    <select name="page_id" aria-label="Use another web page">
+      {% for p in others %}<option value="{{ p.id }}">{{ p.name }} ({{ p.url }})</option>{% endfor %}
+    </select>
+    <button type="submit" class="btn btn-ghost">Use this page instead</button>
+  </form>
+  {% endif %}
+</section>
+{% else %}
 <section class="card stack builder" data-display-builder aria-labelledby="builder-heading">
   <div class="builder-head">
     <h2 class="section-heading" id="builder-heading">{{ filter_icon('widgets') }} Screen</h2>
@@ -122,10 +246,15 @@
   </noscript>
 </section>
 <script type="application/json" id="builder-data">{{ builder|tojson }}</script>
+{% endif %}
 
 <section class="card stack" id="trmnl" aria-labelledby="trmnl-heading">
   <h2 class="section-heading" id="trmnl-heading">{{ filter_icon('display') }} TRMNL</h2>
+  {% if display.kind == 'web' %}
+  <p class="muted">Push this page to its own <strong>Webhook Image</strong> plugin on trmnl.com (Plugins → Webhook Image). It can sit on the same device as your other Displays: add it to the device's playlist.</p>
+  {% else %}
   <p class="muted">Push this Display to its own TRMNL private plugin. Each Display needs its own plugin and webhook.</p>
+  {% endif %}
   <form method="post" action="/displays/{{ display.id }}/trmnl" class="stack">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <label class="check">
@@ -135,8 +264,8 @@
     <label>
       Webhook URL {% if webhook_set %}<span class="muted">(saved in Vault)</span>{% endif %}
       <input type="url" name="webhook" value="" autocomplete="off" spellcheck="false"
-        placeholder="{% if webhook_set %}Leave blank to keep the saved webhook{% else %}https://trmnl.com/api/custom_plugins/…{% endif %}" />
-      <span class="hint">From the private plugin's settings on trmnl.com, under Webhook URL.</span>
+        placeholder="{% if webhook_set %}Leave blank to keep the saved webhook{% elif display.kind == 'web' %}The Webhook Image plugin's webhook URL{% else %}https://trmnl.com/api/custom_plugins/…{% endif %}" />
+      <span class="hint">{% if display.kind == 'web' %}From the Webhook Image plugin's settings on trmnl.com. Treat it like a password.{% else %}From the private plugin's settings on trmnl.com, under Webhook URL.{% endif %}</span>
     </label>
     {% if webhook_set %}
     <label class="check">
@@ -144,6 +273,14 @@
       <span>Forget the saved webhook</span>
     </label>
     {% endif %}
+    {% if display.kind == 'web' %}
+    <p class="hint">Webhook Image takes {{ push_limits.per_hour }} images an hour on any plan. StonePi sends at most {{ push_limits.budget }} an hour, and only when the image has changed.</p>
+    <label>
+      Push every (minutes)
+      <input type="number" name="interval_minutes" min="{{ push_limits.min_interval }}" max="120" value="{{ display.trmnl.interval_minutes }}" />
+      <span class="hint">{{ push_limits.min_interval }} to 120. Each push captures the page first; an unchanged image isn't sent.</span>
+    </label>
+    {% else %}
     <label>
       TRMNL plan for this device
       <select name="tier">
@@ -169,7 +306,8 @@
         <span>Older pasted markup <span class="muted">— sends every value, ignores this layout</span></span>
       </label>
     </fieldset>
-    {% if display.trmnl.template == 'legacy' %}
+    {% endif %}
+    {% if display.kind != 'web' and display.trmnl.template == 'legacy' %}
     <p class="banner banner-muted">This plugin still holds markup pasted before StonePi had multiple Displays, so the layout above isn't used yet. Paste the universal template below into the plugin, then switch to it here.</p>
     {% endif %}
     {% if display.trmnl.last_push_at %}
@@ -187,6 +325,7 @@
     </div>
   </form>
 
+  {% if display.kind != 'web' %}
   <details class="template-details">
     <summary>Universal template for the plugin</summary>
     <div class="stack">
@@ -201,6 +340,7 @@
       </div>
     </div>
   </details>
+  {% endif %}
 </section>
 
 <section class="card stack" aria-labelledby="details-heading">
@@ -224,7 +364,7 @@
   </form>
   {% if not display.builtin %}
   <form method="post" action="/displays/{{ display.id }}/delete" class="row-actions"
-    data-confirm="Delete this Display?" data-confirm-detail="Its layout and TRMNL settings are removed. The TRMNL plugin keeps showing the last push." data-confirm-ok="Delete">
+    data-confirm="Delete this Display?" data-confirm-detail="{% if display.kind == 'web' %}Its settings are removed{% if web_page and not also_used %}, and its web page too (nothing else shows it){% endif %}{% else %}Its layout and TRMNL settings are removed{% endif %}. The TRMNL plugin keeps showing the last push." data-confirm-ok="Delete">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <button type="submit" class="btn btn-danger btn-with-icon">{{ svg('trash') }} Delete Display</button>
   </form>
@@ -233,5 +373,9 @@
 {% endblock %}
 
 {% block scripts %}
+{% if display.kind == 'web' %}
+<script src="/static/js/web.js?v={{ app_version }}-{{ asset_rev }}" defer></script>
+{% else %}
 <script src="/static/js/builder.js?v={{ app_version }}-{{ asset_rev }}" defer></script>
+{% endif %}
 {% endblock %}

@@ -22,6 +22,8 @@ from app.services.cost import (
     UNSPECIFIED_COST,
     cost_badge_class,
     cost_display_label,
+    cost_pill_text,
+    cost_pill_title,
     is_free_cost,
 )
 from app.services.dedupe import compute_event_fingerprint
@@ -46,6 +48,8 @@ def _enrich_events(events: list[Event]) -> None:
         ev.is_free = is_free_cost(ev.cost)
         ev.cost_label = cost_display_label(ev.cost)
         ev.cost_badge_class = cost_badge_class(ev.cost)
+        ev.cost_pill_text = cost_pill_text(ev.cost)
+        ev.cost_pill_title = cost_pill_title(ev.cost)
 
 
 def _ordinal(n: int) -> str:
@@ -85,6 +89,15 @@ def agenda():
     day_tabs = _build_day_tabs(now)
 
     with SessionLocal() as db:
+        # Filter bars hidden in Settings → General also stop filtering (an old link can't strand you).
+        bars = settings_service.agenda_filter_bars(db, user.user_id)
+        if not bars["category"]:
+            cat_filter = "all"
+        if not bars["free"]:
+            free_only = False
+        if not bars["source"]:
+            src_filter = "all"
+
         query = select(Event).where(
             Event.user_id == user.user_id,
             Event.is_cancelled == False,
@@ -133,12 +146,14 @@ def agenda():
             .distinct()
             .order_by(EventSource.name)
         ).all()
-        source_options = [{"id": row.id, "name": row.name} for row in source_rows]
+        source_options = [{"id": row.id, "name": row.name} for row in source_rows] if bars["source"] else []
 
         _enrich_events(events)
 
     return render_template(
         "agenda.html",
+        show_category_chips=bars["category"],
+        show_free_chip=bars["free"],
         user=user,
         events=events,
         day_tabs=day_tabs,

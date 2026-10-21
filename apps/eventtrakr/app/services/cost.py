@@ -86,6 +86,35 @@ def cost_badge_class(cost: str | None) -> str:
     return "cost-paid"
 
 
+# A price as written: optional currency, an amount or range, optional currency after ("DKK 150", "150-250 kr", "€12.50").
+_PILL_AMOUNT_RE = re.compile(
+    r"(?:(?:\b[A-Z]{3}|\b[Kk]r\.?|[$€£])\s?)?\d+(?:[.,]\d+)?(?:\s?[-–]\s?\d+(?:[.,]\d+)?)?(?:\s?(?:[A-Z]{3}\b|[Kk]r\.?|,-))?"
+)
+PILL_MAX_CHARS = 16
+
+
+def cost_pill_text(cost: str | None) -> str:
+    """Text on the price pill: the amount for a paid event, nothing for free or unknown (icon only)."""
+    if is_unspecified_cost(cost) or is_free_cost(cost):
+        return ""
+    text = re.sub(r"\s+", " ", str(cost).strip())
+    if len(text) <= PILL_MAX_CHARS:
+        return text
+    match = _PILL_AMOUNT_RE.search(text)
+    if match and match.group(0).strip():
+        return match.group(0).strip()
+    return text[: PILL_MAX_CHARS - 1].rstrip() + "…"
+
+
+def cost_pill_title(cost: str | None) -> str:
+    """Tooltip / accessible name for the price pill."""
+    if is_unspecified_cost(cost):
+        return "Price not listed"
+    if is_free_cost(cost):
+        return "Free"
+    return f"Price: {str(cost).strip()}"
+
+
 def normalize_stored_cost(cost: str | None) -> str:
     """Map empty / legacy values to the current unspecified default."""
     if is_unspecified_cost(cost):

@@ -830,6 +830,29 @@ async def internal_unit_restart(request: Request):
     return {"ok": True, "message": f"Restarted {names[unit]}."}
 
 
+DETAILS_PATH = "/api/internal/units/details"
+
+
+@router.post(DETAILS_PATH)
+async def internal_unit_details(request: Request):
+    """Signed: one catalog service's state, since when, memory, restarts and last log lines
+    (the Car Thing panel's service page). Read only; only catalog units."""
+    import asyncio
+
+    from stonepi_auth.internal import verify_internal
+
+    if not verify_internal(services.session_secret(), "POST", DETAILS_PATH, request.headers):
+        return JSONResponse({"ok": False, "message": "Not allowed."}, status_code=403)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    unit = str((body if isinstance(body, dict) else {}).get("unit") or "")
+    if unit not in {item["unit"] for item in APP_CATALOG if item.get("unit")}:
+        return JSONResponse({"ok": False, "message": "Unknown service."}, status_code=400)
+    return await asyncio.to_thread(services.unit_details, unit)
+
+
 @router.post("/applications/{app_id}/{action}")
 def application_action(app_id: str, action: str, request: Request, form: FormData = Depends(_form_body)):
     user, redirected = _user_or_login(request, admin=True)
@@ -1998,6 +2021,33 @@ def settings_tailscale_connect(request: Request, form: FormData = Depends(_form_
     else:
         msg = "Connect started — waiting for authentication."
     return RedirectResponse(f"/settings?tab=network&msg={quote(msg, safe='')}", status_code=303)
+
+
+@router.post("/settings/network/tailscale/https")
+def settings_tailscale_https(request: Request, form: FormData = Depends(_form_body)):
+    """Turn on HTTPS for the MagicDNS name (Tailscale Serve + certificate), U23."""
+    user, redirected = _user_or_login(request, admin=True)
+    if redirected:
+        return redirected
+    from app import network as network_svc
+
+    if not _require_csrf_any(request, form):
+        return RedirectResponse("/settings?tab=network&err=Form+expired", status_code=303)
+    try:
+        ts = network_svc.turn_on_https()
+    except Exception as exc:  # noqa: BLE001
+        msg = str(exc) or "Could not turn on HTTPS."
+        return RedirectResponse(f"/settings?tab=network&err={quote(msg, safe='')}", status_code=303)
+    if ts.get("serve_http"):
+        msg = "HTTPS is on: open StonePi at " + (ts.get("access_url") or "its MagicDNS name") + "."
+        if ts.get("cert_ready") is False:
+            msg += " The certificate is still on its way, so the first visit may be slow."
+        return RedirectResponse(f"/settings?tab=network&msg={quote(msg, safe='')}", status_code=303)
+    if ts.get("serve_enable_url"):
+        msg = "HTTPS certificates are off for your tailnet. Turn them on with the link under HTTPS, then press Turn on HTTPS again."
+    else:
+        msg = ts.get("error") or "HTTPS isn't on yet. Check Tailscale is connected, then try again."
+    return RedirectResponse(f"/settings?tab=network&err={quote(msg, safe='')}", status_code=303)
 
 
 @router.post("/settings/network/tailscale/disconnect")

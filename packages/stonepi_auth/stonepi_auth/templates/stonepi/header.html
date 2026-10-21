@@ -89,9 +89,13 @@
 {%- set panel = (state or {}).get('panel') -%}
 {%- set account = header.get('account') -%}
 {{ _styles() }}
+{%- if (state and state.show) or header.get('apps') or account or local_name %}
+{#- Splits the app's own controls (search, Refresh…) from the shared ones; hidden when nothing comes before it. #}
+<span class="sp-divider" aria-hidden="true"></span>
+{%- endif %}
 {%- if state and state.show %}
 {%- if panel %}
-<div class="sp-pop sp-pop-bell" data-sp-pop data-sp-bell data-sp-app="{{ header.app }}" data-sp-last="{{ panel.last_at }}" data-sp-seen-url="{{ panel.seen_url }}" data-sp-clear-url="{{ panel.clear_url }}">
+<div class="sp-pop sp-pop-bell" data-sp-pop data-sp-bell data-sp-app="{{ panel.bell_app or header.app }}" data-sp-last="{{ panel.last_at }}" data-sp-seen-url="{{ panel.seen_url }}" data-sp-clear-url="{{ panel.clear_url }}">
   <button type="button" class="icon-btn sp-trigger sp-bell{% if state.dot %} has-dot{% endif %}" data-sp-trigger aria-haspopup="dialog" aria-expanded="false" aria-label="Notifications{% if state.dot %} (new){% endif %}" title="Notifications">
     {{ _icon('bell') }}<span class="sp-dot" aria-hidden="true"{% if not state.dot %} hidden{% endif %}></span>
   </button>
@@ -148,7 +152,7 @@
         {%- if panel.last %}<button type="button" class="sp-text-btn" data-sp-clear>Clear</button>{% endif %}
       </div>
       {%- if panel.last %}
-      <div data-sp-item data-at="{{ panel.last_at }}" data-app="{{ header.app }}">
+      <div data-sp-item data-at="{{ panel.last_at }}" data-app="{{ panel.bell_app or header.app }}">
         <p class="sp-last-title">{{ panel.last.title }}</p>
         <p class="sp-last-meta{% if not panel.last.ok %} is-bad{% endif %}">{{ _icon('clock') }}<span>{{ panel.last.when }}{% if panel.last.when %} · {% endif %}{{ panel.last.delivery }}</span></p>
       </div>
@@ -218,7 +222,13 @@
   /* Shared top bar: matte surface, hairline, no glass (design system: Shared header). */
   .topbar { background: var(--surface); border-bottom: 1px solid var(--border); -webkit-backdrop-filter: none; backdrop-filter: none; }
   .sp-pop { position: relative; display: inline-flex; flex: 0 0 auto; }
-  :is(.sp-pop > .icon-btn, a.icon-btn.sp-bell), .sp-search-form .icon-btn { position: relative; width: 40px; height: 40px; padding: 0; display: inline-grid; place-items: center; flex: 0 0 auto; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-raised); color: var(--text-muted); cursor: pointer; text-decoration: none; transition: color var(--duration-fast) ease-out, border-color var(--duration-fast) ease-out; }
+  /* Hairline between the app's own controls and the shared bell / switcher / avatar. */
+  .sp-divider { display: none; flex: 0 0 auto; align-self: center; width: 1px; height: 24px; margin: 0 4px; background: var(--border-control); }
+  /* Only after the app's own controls (search, Refresh…): a status pill alone doesn't count,
+     and apps hide theirs on phones with CSS, which [hidden] can't see. */
+  :not(style, script, [hidden], .status-pill) ~ .sp-divider { display: block; }
+  /* Fixed size in every app: apps give their own .icon-btn a 44px min-height, which made these 40×44. */
+  :is(.sp-pop > .icon-btn, a.icon-btn.sp-bell), .sp-search-form .icon-btn { position: relative; width: 40px; height: 40px; min-width: 0; min-height: 0; padding: 0; display: inline-grid; place-items: center; flex: 0 0 auto; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-raised); color: var(--text-muted); cursor: pointer; text-decoration: none; transition: color var(--duration-fast) ease-out, border-color var(--duration-fast) ease-out; }
   :is(.sp-pop > .icon-btn, a.icon-btn.sp-bell):hover { color: var(--text); border-color: var(--border-control); background: var(--surface-raised); }
   :is(.sp-pop > .icon-btn, a.icon-btn.sp-bell) svg, .sp-search-form .icon-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
   :is(.sp-pop > .icon-btn, a.icon-btn.sp-bell).is-active, .sp-trigger[aria-expanded="true"] { color: var(--text); border-color: var(--border-control); background: var(--surface-hover); }
@@ -226,7 +236,7 @@
   .sp-dot { position: absolute; top: 8px; right: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 2px var(--surface-raised); }
   .sp-trigger[aria-expanded="true"] .sp-dot { box-shadow: 0 0 0 2px var(--surface-hover); }
   .sp-dot[hidden] { display: none; }
-  .sp-avatar { width: 40px; height: 40px; margin: 0; border-radius: var(--radius-pill); border: 1px solid var(--border); background: var(--tint-sand-bg); color: var(--tint-sand-fg); display: inline-grid; place-items: center; font: 600 13px/1 var(--font-sans); letter-spacing: 0.02em; cursor: pointer; padding: 0; flex: 0 0 auto; transition: border-color var(--duration-fast) ease-out; }
+  .sp-avatar { width: 40px; height: 40px; min-width: 0; min-height: 0; margin: 0; border-radius: var(--radius-pill); border: 1px solid var(--border); background: var(--tint-sand-bg); color: var(--tint-sand-fg); display: inline-grid; place-items: center; font: 600 13px/1 var(--font-sans); letter-spacing: 0.02em; cursor: pointer; padding: 0; flex: 0 0 auto; transition: border-color var(--duration-fast) ease-out; }
   button.sp-avatar:hover, .sp-avatar[aria-expanded="true"] { border-color: var(--border-control); }
   .sp-avatar-lg { width: 44px; height: 44px; font-size: 15px; cursor: default; }
   .sp-drop { position: absolute; top: calc(100% + 8px); right: 0; z-index: 60; width: min(320px, calc(100vw - 24px)); max-height: min(70vh, 560px); overflow-y: auto; overscroll-behavior: contain; padding: var(--space-4); display: grid; gap: var(--space-3); background: var(--surface-raised); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-overlay); text-align: left; font: var(--type-body); }
@@ -332,6 +342,7 @@
     .topbar .sp-lockup { gap: var(--space-2); }
     .topbar .sp-lockup > .sp-wordmark { display: inline; }
     :is(.sp-pop > .icon-btn, a.icon-btn.sp-bell), .sp-avatar { width: 36px; height: 36px; }
+    .sp-divider { height: 22px; margin: 0 2px; }
   }
 </style>
 {%- endmacro %}

@@ -7,7 +7,7 @@
 | On the Pi | http://stonepi.local/auth/login |
 | Windows `run-dev.bat` | http://127.0.0.1:8011/login |
 
-Not a launcher tile. Issues the shared `stonepi` session cookie so NewsCast, FileServe, EventTrakr, Pinboard, Studio, and the Dashboard share one account.
+Not a launcher tile. Issues the shared `stonepi` session cookie, so every StonePi app (the Dashboard, Notify, Recover and the household apps) shares one account.
 
 ## Why it’s in StonePi
 

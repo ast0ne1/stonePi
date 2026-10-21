@@ -1,5 +1,12 @@
 # Changelog — Dashboard
 
+## 0.4.0 — 2026-10-21
+
+### Added
+- **Settings → Network → Turn on HTTPS** (backlog U23). Shown while Tailscale is connected but its MagicDNS name has no HTTPS yet: sets up Tailscale Serve and fetches the certificate (new `stonepi-tailscale serve`), so the first visit isn't the slow one. Serve was only tried on Connect, so turning HTTPS Certificates on in the Tailscale admin console afterwards never took effect. If they're still off, the page links to where to turn them on.
+- **Notifications: ← Back** above the title (backlog U29). It returns to the app you opened the bell from, or goes Home when there's nothing to go back to (opened from a phone alert or a bookmark).
+- Signed `POST /api/internal/units/details` (catalog units only) for the Car Thing's service page: state, since when, memory, restarts by itself and the last few log lines. `systemctl show` needs no privileges; the log lines go through the existing `stonepi-service-helper`.
+
 ## 0.3.0 — 2026-10-17
 
 ### Added

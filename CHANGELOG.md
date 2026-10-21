@@ -2,6 +2,74 @@
 
 Platform version lives in [`VERSION`](VERSION). App zips use each app’s `__version__` (see `scripts/build_release_zips.py`).
 
+## 0.4.0 — 2026-10-21
+
+**Web pages on the displays, a redesigned Car Thing, and a round of fixes from using StonePi on a phone.** Any page the Pi can reach (a Homepage dashboard, say) can now show on a TRMNL e-ink panel or the Car Thing, and the Car Thing gains a new System screen, a restyled Now Playing, more screensavers and a simpler editor in Notify. Notify warns before the Spotify sign-in runs out, Settings → Network can turn on HTTPS for Tailscale, two of Notify's endpoints are no longer reachable from the network, and the shared header looks the same in every app.
+
+### Added
+- **Web pages on the displays** (backlog F14; spec `ideation/web-capture.md`): any web page the Pi can reach (e.g. a self-hosted Homepage dashboard), captured with the shared headless Chromium. On **TRMNL** as its own panel: a Web page Display converts the capture for e-ink (greyscale, auto-invert for dark pages, 1/2/4-bit, threshold or dither) and POSTs the PNG to TRMNL's Webhook Image plugin, skipping unchanged images. On the **Car Thing** as a full-page widget and a screensaver style (snapshots, refreshed only while on screen). New `stonepi_browser.capture_page` and, in `stonepi_display`, `webpages` (store, CSS presets), `webcapture` (shared, coalesced capture cache), `webimage` (e-ink and LCD conversion, true greyscale PNG writer) and a `kind: "web"` Display.
+- **Spotify sign-in expiry warning** (backlog U21): Notify's Car Thing Music card shows when the 6-month Spotify sign-in runs out (editable), warns in the last 14 days, and a daily check sends the new admin events `carthing.spotify_expiring` / `carthing.spotify_expired` (new Car Thing group in the `stonepi_contracts` event catalog). `stonepi_display.carthing` gains `music_expiry`, `set_music_expiry` and `mark_music_alert`.
+- `stonepi-tailscale serve`: sets up Tailscale Serve for the MagicDNS name if it isn't (HTTPS → nginx :80) and has tailscaled fetch the certificate (`tailscale cert` into its own store; nothing written for nginx). Used by Dashboard → Settings → Network → Turn on HTTPS (backlog U23).
+- `stonepi_display.carthing`: `music.saver_time` (show, pos, size, backing) for the artwork screensaver's time, and `color_defaults` in the editor catalog (StonePi's accent and clock colours, for the editor's Default buttons).
+- **Car Thing: a redesigned System screen**: a health strip, a Check line, services as cards, and a service page with how long it's been running, memory, restarts and its last log lines (from Dashboard's new signed `/api/internal/units/details`), plus a restart that shows its progress.
+- **Car Thing: a restyled Now Playing** after Mira and Nocturne: four backgrounds coloured from the artwork, tap or drag to seek, a liked tick that knows (after one Spotify Reconnect), ⋯ for speakers and presets, a large volume bar, and preset tiles when nothing plays. `stonepi_display.carthing` gains `music.np` (background, controls, accent, edge); `stonepi_display.spotify` asks for `user-library-read`.
+- **Notify: a simpler Car Thing page.** The editor is the page (status pills, a config menu, four tabs: Pages, Buttons, Idle, Look) and the one-off setup (device, Spotify sign-in, saved configs, earlier versions) moves to `/displays/carthing/setup` with one Save. Page pills, a 6-space bar, draggable widget rows with Small/Half/Full, and new pages start empty. Nothing was removed.
+- **Car Thing: four more Windows 98 screensavers** (Flying Through Space, Mystify Your Mind, 3D Flower Box, 3D Maze) and a grouped Style dropdown in the editor. `stonepi_display.carthing` gains their options and `SAVER_GROUPS`.
+- **Car Thing: configurable page header and screensaver time.** The page strip can be Always, Auto-hide or Off with its contents chosen, as a config default (`header`) that a page can override; Show time on the screensavers gets a position, size and backing (`time_pos`, `time_size`, `time_backing`). `stonepi_display.carthing` gains `normalize_header` and `page_header`.
+- `deploy/install.sh` installs Playwright for Notify (it shares the Chromium download with EventTrakr and SportGuide); `scripts/run_dev.py` installs `stonepi_browser` into Notify's venv.
+
+### Changed
+- **User apps in this cut** (from Adam's iPhone and desktop review): NewsCast 0.0.10 (smaller titles on phones, tap a card to open it), EventTrakr 0.0.9 (Agenda view toggles, price pill, category icons and colours), FileServe 0.0.9 (a viewer with Back for the iPhone home-screen app), SportGuide 0.0.9 (team badges on football cards). Each app's CHANGELOG has the details.
+- **Shared header: a divider between an app's own controls and the shared ones** (backlog U30). A thin line now sits before the bell, app switcher and avatar in every app, so search and Refresh no longer run into them, mostly noticeable on phones. It hides itself when nothing comes before the shared icons (Notify, Auth's status page).
+- `stonepi_auth.alerts.bell_panel` builds a bell panel from a status Notify computed itself, and `stonepi_contracts.app_status_from_body` turns a `/api/me/apps/{app}` body into bell state (used by `app_alerts_status` too). A panel's `bell_app` keys the browser's seen/cleared marks to the panel's data rather than the app showing it.
+
+### Fixed
+- **Shared header icons are the same size in every app**: 40×40 (36×36 on phones), like the Dashboard. Apps that give their own `.icon-btn` a 44px minimum height (Studio, Pinboard, FileServe and most others) drew the bell, app switcher and avatar 40×44, or 36×44 on phones. The header now pins the size, and the Refresh icon is 20px everywhere (`stonepi_brand` `app-base.css`).
+- **The header divider only shows after an app's own controls** (search, Refresh). A status pill alone no longer counts, including ones an app hides on phones with CSS, so Pinboard and FileServe show no divider, like Studio.
+- Car Thing: the panel waits up to 120 s for a web snapshot (Notify's worst case with the Chromium lock), and each refresh downloads the image once instead of twice. The Music card renders without asking the Car Thing service; the page's status poll turns it red on `invalid_grant`. The Spotify expiry check runs once a day after 09:00 local time and retries once an hour if it fails (the full error is logged once, then one line per retry).
+- A TRMNL push holds a per-Display lock, so a **Push now** during a scheduled push is skipped instead of both passing the hourly budget check and overwriting each other's push log.
+- Captures wait at most 60 s for the shared Chromium lock (`chromium_lock(timeout=)`, new `ChromiumBusy`), so a long EventTrakr or SportGuide scrape no longer stalls every Display.
+- A web image over TRMNL's 1 MB isn't sent: the Display says to use fewer greys or turn dithering off. A 413 from TRMNL now says the image is too big instead of blaming the plugin type.
+- The capture cache's per-capture locks are reference-counted, so cache eviction can't let two captures of the same page run at once, and locks no longer pile up.
+- New web pages pick their id under the store lock (`create_page`), so two pages added at once with the same name can't overwrite each other.
+- The web page preview fails closed on a Pi with no session secret, like the Car Thing editor.
+- `stonepi-notify.service` gets `CPUWeight=50`, `IOWeight=50` and `MemoryHigh=600M` for its Chromium (no hard limit on a core service). The installer's ready check now checks that Notify can start Chromium.
+
+### Security
+- **Notify's unsigned loopback endpoints are off the edge.** `/notify/api/events` (event ingest) and `/notify/api/push-trmnl` (Dashboard automations) were reachable through nginx from the LAN and Tailscale without sign-in. nginx now returns 404 for both at every exposure level, and Notify only accepts them as `application/json`, which a web page can't send without a CORS preflight. Dashboard's automation push now sends a JSON body.
+- **Captured web pages (F14) can't call this Pi's loopback services.** `stonepi_browser.capture_page` aborts any request to a loopback address (127.0.0.1, ::1, ::ffff:127.0.0.1, localhost, or a name that resolves to one) unless it goes to the page's own origin, and blocks service workers, whose requests would skip that check. A name that changes its answer between the check and the connection (DNS rebinding) can still get through; Notify's JSON-only endpoints are the backstop. Logged capture URLs drop their query string.
+
+### App versions in this cut
+
+Platform: **0.4.0**
+
+| System (ships with platform) | Version |
+|-----|---------|
+| dashboard | 0.4.0 |
+| auth | 0.4.0 |
+| notify | 0.4.0 |
+| recover | 0.4.0 |
+| carthing | 0.4.0 |
+
+| Apps | Version |
+|-----|---------|
+| newscast | 0.0.10 |
+| fileserve | 0.0.9 |
+| eventtrakr | 0.0.9 |
+| pinboard | 0.0.8 |
+| studio | 0.0.9 |
+| pricescout | 0.0.8 |
+| sportguide | 0.0.9 |
+| pricewatch | 0.0.8 |
+| library | 0.0.8 |
+
+| Packages | Version | Why |
+|----------|---------|-----|
+| stonepi_auth | 0.3.0 | shared header: divider before the shared icons, icon sizes pinned; `bell_panel` for Notify's in-process bell |
+| stonepi_contracts | 0.1.4 | `app_status_from_body`; `carthing.spotify_expiring` / `carthing.spotify_expired` events |
+| stonepi_display | 0.7.0 | web pages on the displays (`webpages`, `webimage`, `webcapture`, TRMNL Web page Displays); Car Thing web widget and screensaver, Windows 98 screensavers, page header, System details, Now Playing look, `music.saver_time`, editor colour defaults; per-Display push lock |
+| stonepi_browser | 0.2.0 | `capture_page` (loopback blocked, no service workers); `chromium_lock(timeout=)` and `ChromiumBusy` |
+
 ## 0.3.0 — 2026-10-17
 
 **AI set up once for the whole Pi, and the Car Thing becomes a Spotify remote.** Dashboard → Settings → AI holds the providers and model order for every app, and NewsCast summarises on the Pi by default with AI as an opt-in. The Car Thing gains Spotify Now Playing and controls, new screensavers, Clock and Weather widgets and a weather screen. Also: Recover's home tidied up, the shared header on Notify, Recover and Auth, and the Car Thing counted on the Dashboard's Displays line.

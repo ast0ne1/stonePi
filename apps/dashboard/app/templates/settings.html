@@ -318,6 +318,16 @@
       </div>
       {% endif %}
     </div>
+    {% if not ts.serve_http %}
+    {#- U23: Serve is only tried on Connect; if HTTPS certificates were off then, this finishes the job. -#}
+    <form method="post" action="/settings/network/tailscale/https" class="stack" data-ts-https-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <p class="muted">HTTPS isn't on for <code>{{ ts.magicdns_name or 'the MagicDNS name' }}</code> yet. It's faster from a phone on mobile data. Turn on <strong>HTTPS Certificates</strong> in the Tailscale admin console (DNS page) if you haven't, then:</p>
+      <div class="row-actions">
+        <button type="submit" class="btn btn-primary btn-with-icon">{{ svg('lock') }} Turn on HTTPS</button>
+      </div>
+    </form>
+    {% endif %}
     <p class="muted">
       Open from a <strong>phone or laptop running the Tailscale app</strong> (same account).
       {% if ts.serve_http %}

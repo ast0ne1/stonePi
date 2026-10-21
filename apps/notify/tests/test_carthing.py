@@ -196,3 +196,76 @@ def test_draft_with_pages_reaches_the_preview():
     preview = TestClient(app).get(path, params={"draft": "1"}, headers=signed("GET", path)).json()
     assert preview["config"]["pages"][1]["widgets"] == [{"id": "clock", "size": "full"}]
     assert preview["config"]["rotation"] == {"every_s": 20, "resume_after_s": 45}
+
+
+def test_editor_layout_four_tabs_pills_and_setup_link():
+    # UX refresh: the editor is the page; Device, Spotify and configs moved to Setup.
+    page = admin_client().get("/displays/carthing").text
+    tabs = [t for t in ("pages", "controls", "idle", "look", "actions", "clock", "music") if f'data-ct-tab="{t}"' in page]
+    assert tabs == ["pages", "controls", "idle", "look"]
+    assert ">Buttons</button>" in page and "Save to panel" in page and "Use on panel" not in page
+    assert 'href="/displays/carthing/setup"' in page and "data-ct-pill-status" in page and "Showing:" in page
+    assert "data-ct-add-widget" in page and "data-ct-space" in page and 'data-ct-box="clock"' in page
+    assert 'id="device"' not in page and "data-ct-pager" not in page
+    # Never paired: the editor points to Setup instead of sending you there.
+    assert "isn't set up yet" in page
+
+
+def test_setup_page_has_device_spotify_configs_and_one_save():
+    client = admin_client()
+    client.get("/displays/carthing")  # seeds the default config
+    client.post("/displays/carthing/configs", data={"csrf_token": CSRF, "action": "copy", "config_id": "default", "name": "Night"})
+    page = client.get("/displays/carthing/setup").text
+    for anchor in ('id="device"', 'id="music"', 'id="configs"', 'id="versions"', 'id="ct-setup"'):
+        assert anchor in page
+    # The PIN, client ID and expiry fields belong to the one Save form, not their own forms.
+    assert 'name="pin" form="ct-setup"' in page and 'name="client_id" value="" form="ct-setup"' in page
+    assert "Save PIN settings" not in page and "Save client ID" not in page
+    # Editing another config: Setup's back link and the editor keep it.
+    editor = client.get("/displays/carthing?config=night").text
+    assert "Use on panel" in editor and "Editing:" in editor and "/displays/carthing/setup?config=night" in editor
+
+
+def test_setup_save_applies_only_what_changed(store):
+    client = admin_client()
+    form = {"csrf_token": CSRF}
+    nothing = client.post("/displays/carthing/setup", data={**form, "pin_enabled_was": ""}, follow_redirects=False)
+    assert nothing.headers["location"].startswith("/displays/carthing/setup?msg=Nothing")
+    done = client.post("/displays/carthing/setup", data={**form, "pin": "4821", "pin_enabled": "1", "pin_enabled_was": ""}, follow_redirects=False)
+    assert done.headers["location"].startswith("/displays/carthing/setup?msg=PIN") and done.headers["location"].endswith("#setup")
+    device = carthing.load_device()
+    assert device["pin"]["enabled"] and carthing.pin_ok("4821", device["pin"])
+    bad = client.post("/displays/carthing/setup", data={**form, "pin_enabled_was": "1", "pin_enabled": "1", "client_id": "nope", "client_id_was": ""}, follow_redirects=False)
+    assert "err=" in bad.headers["location"] and bad.headers["location"].endswith("#music")
+    # Unchanged PIN box + unchanged client ID: nothing to do.
+    same = client.post("/displays/carthing/setup", data={**form, "pin_enabled_was": "1", "pin_enabled": "1", "client_id": "", "client_id_was": ""}, follow_redirects=False)
+    assert "Nothing" in same.headers["location"]
+
+
+def test_actions_return_to_the_page_they_came_from():
+    client = admin_client()
+    client.get("/displays/carthing")  # seeds the default config
+    form = {"csrf_token": CSRF}
+    device = client.post("/displays/carthing/device", data={**form, "action": "pin"}, follow_redirects=False)
+    assert device.headers["location"].startswith("/displays/carthing/setup?")
+    client.post("/displays/carthing/configs", data={**form, "action": "copy", "config_id": "default", "name": "Night"})
+    menu = client.post("/displays/carthing/configs", data={**form, "action": "rename", "config_id": "night", "name": "Late"}, follow_redirects=False)
+    assert menu.headers["location"].startswith("/displays/carthing?") and menu.headers["location"].endswith("#editor")
+    assert "msg=Renamed" in menu.headers["location"]
+    setup = client.post("/displays/carthing/configs", data={**form, "action": "rename", "config_id": "night", "name": "Later", "return_to": "setup"}, follow_redirects=False)
+    assert setup.headers["location"].startswith("/displays/carthing/setup?") and setup.headers["location"].endswith("#configs")
+    assert "msg=Renamed" in setup.headers["location"]
+
+
+def test_system_feed_gives_the_service_page_its_parts():
+    overview = {
+        "apps": [{"id": "newscast", "n": "NewsCast", "running": True, "d": "4 feeds", "m": "Summaries on the Pi"},
+                 {"id": "pinboard", "n": "Pinboard", "running": False, "d": "—", "m": ""}],
+        "apps_up": 1, "apps_total": 2, "system": {},
+        "alerts": [{"level": "warn", "message": "Pinboard isn't running"}, {"level": "warn"}],
+    }
+    feed = carthing_routes.system_feed(overview)
+    first, second = feed["items"]
+    assert (first["running"], first["line"], first["note"]) == (True, "4 feeds", "Summaries on the Pi")
+    assert (second["running"], second["line"], second["note"]) == (False, "", "")
+    assert feed["alerts"] == ["Pinboard isn't running"]

@@ -1,0 +1,40 @@
+{% from "_icons.html" import icon %}
+{#- One service: icon, name, Running or Not running, its systemd unit; the facts (Notify's line
+    and note, and from Dashboard: since when, memory, restarts, the last log lines); then
+    Restart and, for services the panel has a screen for, Open. -#}
+<section class="screen svc-page" data-screen="item" data-app="system">
+  <header class="bar">
+    <span class="bar-title">{% if svc.icon %}<img class="bar-mark" src="static/brand/icons/{{ svc.icon }}.svg" width="28" height="28" alt="">{% endif %}{{ item.title }}</span>
+    <span class="bar-meta">System</span>
+    <span class="bar-time" data-clock-small></span>
+  </header>
+  <div class="svc-body">
+    <div class="svc-id">
+      {% if svc.icon %}<img class="svc-ico" src="static/brand/icons/{{ svc.icon }}.svg" alt="">{% else %}<span class="svc-ico sys-ico-none"></span>{% endif %}
+      <h1>{{ item.title }}</h1>
+      <span class="svc-pill{% if not svc.running %} is-down{% endif %}"><i class="sys-dot{% if not svc.running %} lv-bad{% endif %}"></i>{{ "Running" if svc.running else "Not running" }}</span>
+      {% if item.unit %}<code class="svc-unit">{{ item.unit }}</code>{% endif %}
+    </div>
+    <div class="svc-main">
+      {% if not svc.running %}<p class="svc-banner">{{ item.title }} isn't running. Restarting usually brings it back; if it stops again, the log below says why.</p>{% endif %}
+      <div class="svc-facts">
+        {% if svc.line %}<div class="svc-fact"><small>Now</small><b>{{ svc.line }}</b></div>{% endif %}
+        {% if svc.since %}<div class="svc-fact"><small>{{ "Running for" if svc.running else "Stopped for" }}</small><b>{{ svc.since }}</b></div>{% endif %}
+        {% if svc.memory %}<div class="svc-fact"><small>Memory</small><b>{{ svc.memory }}</b></div>{% endif %}
+        {% if svc.restarts is not none %}<div class="svc-fact"><small>Restarts by itself</small><b>{{ svc.restarts }}</b></div>{% endif %}
+        {% if svc.note %}<div class="svc-fact svc-wide"><small>Note</small><b>{{ svc.note }}</b></div>{% endif %}
+      </div>
+      {% if svc.logs %}
+      <div class="svc-log" data-scroller>
+        {% for line in svc.logs %}<p><time>{{ line.time }}</time>{{ line.text }}</p>{% endfor %}
+      </div>
+      {% elif not svc.details %}
+      <p class="svc-nolog">More detail appears here on the Pi (running time, memory, recent log lines).</p>
+      {% endif %}
+      <div class="svc-actions">
+        {% if can_restart %}<button class="btn {{ 'btn-danger' if not svc.running else 'btn-primary' }}" data-focus data-act="restart" data-unit="{{ item.unit }}">{{ icon("restart") }} Restart</button>{% endif %}
+        {% if opens %}<button class="btn" data-focus data-go="v/app/{{ opens }}">Open on the Car Thing</button>{% endif %}
+      </div>
+    </div>
+  </div>
+</section>

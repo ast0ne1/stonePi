@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.9 — 2026-10-21
+
+### Changed
+- The Refresh popups ask a short question ("Refresh now?") with the explanation below in body text, instead of the whole sentence as a large heading.
+
+### Added
+- **Team badges on football cards** (backlog U28). Each team's badge sits above its name, so "Home vs Away" stays on one line. Badges come from timezone.football (football-data.org and TheSportsDB images) and, for matches only WheresTheMatch lists, its club crest when there is one; a team without a badge shows its initials. Badges are downloaded to the Pi once after a refresh (from those hosts only, up to 300 KB each) and served from `/badges/`, so the cards never load images from other sites; a crest that doesn't exist is asked for again after a week. Listings gain `home`, `away`, `home_badge` and `away_badge` columns (added on start).
+
 ## 0.0.8 — 2026-10-11
 
 ### Changed

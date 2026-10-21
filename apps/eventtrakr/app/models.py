@@ -53,6 +53,8 @@ class Category(Base):
     key: Mapped[str] = mapped_column(String(60), unique=True)
     label: Mapped[str] = mapped_column(String(100))
     is_builtin: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Pill colour (a design-system tint, see services/category_style.py); "" = the category's default.
+    color: Mapped[str] = mapped_column(String(20), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

@@ -28,6 +28,7 @@ body.theme-dark {
   --line: #2A2F33;
   --good: #5CC2A6;
   --bad: #E87A63;
+  --warn: #E8B44C;
   --on-accent: #0B0D0E;
 }
 body.theme-light {
@@ -38,6 +39,7 @@ body.theme-light {
   --line: #E2DDD3;
   --good: #24685A;
   --bad: #A33A26;
+  --warn: #9A6A0C;
   --on-accent: #0B0D0E;
 }
 
@@ -100,6 +102,15 @@ button:focus { outline: none; }
 .strip-time { font-size: 34px; font-weight: 700; color: var(--clock); }
 .strip-date { font-size: 20px; color: var(--muted); margin-left: 16px; }
 .strip-name { font-size: 24px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.strip-time.after-name { margin-left: 18px; }
+/* Header off or auto-hide: the page has the whole screen. Auto-hide takes its place at the top
+   while it shows (the page sits below it, never under it), and once panel.js hides it
+   (is-hidden, a few seconds after you arrive or touch) the page grows into the space. */
+.home-full { position: relative; }
+.home-full .cards, .home-full .lay-split, .home-full .lay-full { padding-top: 16px; }
+.home-full .strip-auto:not(.is-hidden) ~ .page { padding-top: 0; }
+.strip-auto { position: relative; z-index: 4; background: var(--bg); }
+.strip-auto.is-hidden { display: none; }
 .wx { margin-left: auto; font-size: 24px; display: flex; align-items: center; }
 .wx .ico { width: 28px; height: 28px; margin-right: 8px; }
 
@@ -433,6 +444,84 @@ button:focus { outline: none; }
 .confirm-q { font-size: 34px; font-weight: 700; margin: 0 0 12px; }
 .confirm-btns { margin-top: 28px; }
 
+/* ── System: health strip, Check line, services as cards ──────────────── */
+.lv-ok { color: var(--good); }
+.lv-bad { color: var(--bad); }
+.sys-dot { display: inline-block; flex: none; width: 9px; height: 9px; border-radius: 5px; margin-right: 7px; background: var(--good); }
+.sys-dot.lv-bad { background: var(--bad); }
+.sys-dot.lv-warn { background: var(--warn); }
+.sys-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 16px 12px; }
+.sys-stats { flex: none; display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1.3fr; grid-gap: 10px; }
+.sys-stat { padding: 10px 12px 12px; border-radius: 14px; background: var(--card); min-width: 0; }
+.sys-stat small { display: block; font-size: 13px; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+.sys-stat b { display: block; margin-top: 2px; font-family: var(--font-display); font-size: 30px; font-weight: 700; }
+.sys-stat b u { text-decoration: none; margin-left: 2px; font-size: 17px; color: var(--muted); }
+.sys-meter { display: block; height: 6px; margin-top: 8px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.sys-meter i { display: block; height: 100%; background: var(--good); }
+.sys-meter i.lv-warn { background: var(--warn); }
+.sys-meter i.lv-bad { background: var(--bad); }
+.sys-health { display: flex; flex-direction: column; justify-content: center; }
+.sys-health span { display: flex; align-items: center; margin: 2px 0; font-size: 15px; white-space: nowrap; overflow: hidden; }
+.sys-health em { flex: none; width: 62px; font-style: normal; color: var(--muted); }
+.sys-check { flex: none; margin: 10px 0 0; padding: 9px 14px; border-radius: 12px; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: rgba(232, 122, 99, 0.14); border: 1px solid rgba(232, 122, 99, 0.5); }
+.sys-check b { margin-right: 8px; color: var(--bad); }
+.sys-head { flex: none; display: flex; align-items: baseline; margin: 12px 4px 8px; }
+.sys-head b { font-family: var(--font-display); font-size: 15px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.sys-head span { margin-left: 10px; font-size: 15px; }
+.sys-svcs { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 74px; grid-gap: 10px; padding: 0; margin: 0; }
+.sys-svc { display: flex; align-items: center; min-width: 0; padding: 0 12px; border: 3px solid transparent; border-radius: 14px; background: var(--card); color: var(--fg); text-align: left; }
+.sys-svc.is-down { background: rgba(232, 122, 99, 0.12); border-color: rgba(232, 122, 99, 0.55); }
+.sys-svc.is-focus { border-color: var(--accent) !important; }
+.sys-ico { flex: none; width: 36px; height: 36px; margin-right: 10px; border-radius: 9px; }
+.sys-ico-none { display: inline-block; background: var(--line); }
+.sys-svc-text { min-width: 0; }
+.sys-svc-text strong { display: block; font-family: var(--font-display); font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sys-svc-text span { display: flex; align-items: center; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; }
+.sys-svc.is-down .sys-svc-text span { color: var(--bad); }
+
+/* A service: who it is on the left, the facts and the buttons on the right. */
+.svc-body { flex: 1; min-height: 0; display: flex; padding: 4px 24px 16px; }
+.svc-id { flex: none; width: 240px; display: flex; flex-direction: column; align-items: flex-start; }
+.svc-ico { width: 96px; height: 96px; border-radius: 22px; }
+.svc-id h1 { margin: 14px 0 8px; font-family: var(--font-display); font-size: 32px; line-height: 1.1; }
+.svc-pill { display: inline-flex; align-items: center; height: 34px; padding: 0 14px; border-radius: 17px; font-size: 16px; font-weight: 600;
+  background: rgba(92, 194, 166, 0.16); color: var(--good); }
+.svc-pill.is-down { background: rgba(232, 122, 99, 0.16); color: var(--bad); }
+.svc-unit { margin-top: auto; font-size: 14px; color: var(--muted); }
+.svc-main { flex: 1; min-width: 0; display: flex; flex-direction: column; margin-left: 24px; }
+.svc-banner { flex: none; margin: 0 0 10px; padding: 10px 14px; border-radius: 14px; font-size: 16px;
+  background: rgba(232, 122, 99, 0.14); border: 1px solid rgba(232, 122, 99, 0.5); }
+.svc-facts { flex: none; display: grid; grid-template-columns: 1fr 1fr; grid-gap: 10px; }
+.svc-fact { min-width: 0; padding: 10px 14px; border-radius: 14px; background: var(--card); }
+.svc-fact small { display: block; font-size: 13px; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+.svc-fact b { display: block; margin-top: 3px; font-family: var(--font-display); font-size: 21px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.svc-wide { grid-column: 1 / -1; }
+.svc-wide b { font-family: var(--font-sans); font-size: 17px; font-weight: 400; white-space: normal; }
+.svc-log { flex: 1; min-height: 0; margin-top: 10px; padding: 8px 12px; border-radius: 12px; background: #000; overflow-y: auto;
+  font-family: "DejaVu Sans Mono", ui-monospace, monospace; font-size: 13px; line-height: 1.45; color: var(--muted); }
+.svc-log p { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.svc-log time { margin-right: 8px; color: var(--fg); }
+.svc-nolog { flex: 1; margin: 12px 2px 0; font-size: 15px; color: var(--muted); }
+.svc-actions { flex: none; display: flex; margin-top: 12px; }
+.svc-actions .btn { margin: 0 12px 0 0; padding: 16px 26px; border-radius: 32px; }
+.btn-danger { background: var(--bad); border-color: var(--bad); color: #0B0D0E; }
+.btn-danger.is-focus { border-color: var(--fg) !important; }
+
+/* Restart: confirm (restart.html) and progress (restarting.html), centred with the app's icon. */
+.restart .confirm { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 48px 24px; text-align: center; }
+.restart .confirm .svc-ico { width: 84px; height: 84px; border-radius: 20px; margin-bottom: 14px; }
+.restarting .rs-card { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 48px 24px; text-align: center; }
+.rs-card .svc-ico { width: 84px; height: 84px; border-radius: 20px; }
+.rs-card h1 { margin: 16px 0 10px; font-family: var(--font-display); font-size: 32px; }
+.rs-steps { display: flex; margin: 6px 0 18px; }
+.rs-step { display: flex; align-items: center; margin: 0 12px; font-size: 18px; color: var(--muted); }
+.rs-step i { display: inline-block; width: 22px; height: 22px; margin-right: 8px; border: 3px solid currentColor; border-radius: 11px; }
+.rs-step.is-now { color: var(--fg); }
+.rs-step.is-done { color: var(--good); }
+.rs-step.is-done i { background: var(--good); }
+.rs-step.is-bad { color: var(--bad); }
+
 /* Shown while the USB link to the Pi is down: the screen keeps its last page, so say so. */
 .offline {
   position: absolute;
@@ -629,30 +718,48 @@ button:focus { outline: none; }
   35% { transform: scale(1.22); }
   100% { transform: scale(1); }
 }
-.lg-time {
-  position: absolute;
-  right: 28px;
-  bottom: 22px;
-  font-family: var(--font-display);
-  font-size: 30px;
-  font-weight: 600;
-  opacity: 0.7;
-}
 
-/* Matrix: the rain is a canvas; the time sits on a dark backing so it reads over it. */
+/* Matrix: the rain is a canvas; its time (.sv-t) sits on a dark backing so it reads over it. */
 .saver-matrix { background: #000; }
 .saver-matrix canvas { position: absolute; left: 0; top: 0; width: 800px; height: 480px; }
-.mx-time {
-  position: relative;
-  padding: 18px 40px 24px;
-  border-radius: 28px;
-  background: rgba(0, 0, 0, 0.82);
-}
-.mx-time:not(.face-words) .clock { font-size: 150px; } /* any face; the word clock keeps its own size */
 
 /* 3D Pipes: a transparent canvas over the screensaver background. */
 .saver-pipes { display: block; }
 .saver-pipes canvas { position: absolute; left: 0; top: 0; width: 800px; height: 480px; }
+
+/* Windows 98 screensavers (Starfield, Mystify, Flower Box, Maze): an opaque canvas drawn
+   whole each frame. */
+.saver-canvas { display: block; background: #000; }
+.saver-canvas canvas { position: absolute; left: 0; top: 0; width: 800px; height: 480px; }
+
+/* Show time on an animated screensaver: position, size and an optional backing (Idle tab).
+   Every size is the screensaver clock's face, drawn at its full-screen size and scaled with
+   zoom (as the widgets do), so positions and the backing stay in real pixels. The tall faces
+   (analogue, stacked) and the word clock get smaller factors to end up about as tall. */
+.sv-t { position: absolute; z-index: 2; color: var(--clock); font-family: var(--font-display); font-weight: 600; line-height: 1.1; }
+.sv-t.face-stacked { padding-left: 0; }
+.sv-t.tsize-small { opacity: 0.85; }
+.sv-t.tsize-small .clock { zoom: 0.18; }
+.sv-t.tsize-medium .clock { zoom: 0.3; }
+.sv-t.tsize-large .clock { zoom: 0.55; }
+.sv-t.tsize-xl .clock { zoom: 0.9; }
+.sv-t.face-analogue.tsize-small .clock, .sv-t.face-stacked.tsize-small .clock { zoom: 0.11; }
+.sv-t.face-analogue.tsize-medium .clock, .sv-t.face-stacked.tsize-medium .clock { zoom: 0.18; }
+.sv-t.face-analogue.tsize-large .clock, .sv-t.face-stacked.tsize-large .clock { zoom: 0.33; }
+.sv-t.face-analogue.tsize-xl .clock, .sv-t.face-stacked.tsize-xl .clock { zoom: 0.54; }
+.sv-t.face-words.tsize-small .clock { zoom: 0.25; }
+.sv-t.face-words.tsize-medium .clock { zoom: 0.4; }
+.sv-t.face-words.tsize-large .clock { zoom: 0.65; }
+.sv-t.face-words.tsize-xl .clock { zoom: 1; }
+.sv-t-back { background: rgba(0, 0, 0, 0.62); border-radius: 12px; padding: 6px 14px; opacity: 1; }
+.sv-t-back.tsize-large, .sv-t-back.tsize-xl { border-radius: 28px; padding: 18px 40px 24px; background: rgba(0, 0, 0, 0.82); }
+.tpos-top-left { left: 28px; top: 22px; }
+.tpos-top-center { left: 50%; top: 22px; transform: translateX(-50%); }
+.tpos-top-right { right: 28px; top: 22px; }
+.tpos-center { left: 50%; top: 50%; transform: translate(-50%, -50%); }
+.tpos-bottom-left { left: 28px; bottom: 22px; }
+.tpos-bottom-center { left: 50%; bottom: 22px; transform: translateX(-50%); }
+.tpos-bottom-right { right: 28px; bottom: 22px; }
 
 /* ── Dimmed / off (palette swap, no overlays) ─────────────────────── */
 body.dim, body.dim .view { background: #000; }
@@ -674,7 +781,6 @@ body.off .saver-inner { visibility: hidden; }
 body.theme-light .bar-mark { content: url("../brand/logos/stonepi-mark-flat-light.svg"); }
 
 /* ── Music (F7): Now Playing, music widget, artwork screensaver ─────── */
-.np { display: flex; flex: 1; min-height: 0; padding: 20px 24px 18px; }
 .np-art { position: relative; flex: none; width: 300px; height: 300px; border-radius: 14px; overflow: hidden; background: var(--card); }
 .np-art img { display: block; width: 100%; height: 100%; }
 .np-art-empty { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--muted); }
@@ -689,29 +795,6 @@ body.theme-light .bar-mark { content: url("../brand/logos/stonepi-mark-flat-ligh
 .np-line i { display: block; height: 100%; background: var(--accent); }
 .np-pos, .np-dur { flex: none; min-width: 40px; }
 .np-dur { text-align: right; }
-.np-controls { display: flex; align-items: center; margin-top: 14px; }
-.np-btn { display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; margin-right: 8px; border: 3px solid transparent; border-radius: 50%; background: var(--card); }
-.np-btn .ico { width: 28px; height: 28px; }
-.np-prev { order: 1; }
-.np-play { order: 2; width: 76px; height: 76px; background: var(--accent); color: var(--on-accent); }
-.np-play .ico { width: 34px; height: 34px; }
-.np-play .i-pause, .np-play.is-playing .i-play { display: none; }
-.np-play.is-playing .i-pause { display: inline; }
-.np-play.is-focus { border-color: var(--fg) !important; }
-.np-next { order: 3; margin-right: 18px; }
-.np-small { order: 4; width: 52px; height: 52px; color: var(--muted); }
-.np-small .ico { width: 22px; height: 22px; }
-.np-small.on { color: var(--accent); }
-.np-repeat { position: relative; }
-.np-repeat b { position: absolute; right: 9px; bottom: 7px; font-size: 11px; display: none; }
-.np-repeat[data-repeat="track"] b { display: block; }
-.np-foot { display: flex; align-items: center; margin-top: auto; }
-.np-chip { display: flex; align-items: center; height: 52px; padding: 0 16px; margin-right: 10px; border: 3px solid transparent; border-radius: 26px; background: var(--card); font-size: 17px; }
-.np-chip .ico { width: 20px; height: 20px; margin-right: 8px; }
-.np-vol { display: flex; align-items: center; flex: 1; min-width: 0; margin-left: 6px; color: var(--muted); }
-.np-vol .ico { width: 22px; height: 22px; flex: none; }
-.np-vol-line { flex: 1; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin-left: 10px; }
-.np-vol-line i { display: block; height: 100%; background: var(--fg); }
 
 .w-music { padding: 6px 8px 10px; }
 .w-icon-ico { width: 28px; height: 28px; margin-right: 8px; vertical-align: -7px; color: var(--accent); }
@@ -735,7 +818,147 @@ body.theme-light .bar-mark { content: url("../brand/logos/stonepi-mark-flat-ligh
 .sm-time { position: absolute; right: 28px; top: 20px; font-family: var(--font-display); font-size: 30px; font-weight: 600; opacity: 0.7; }
 /* The full-page music widget is Now Playing itself, inside the page's card. */
 .w-music-full { padding: 0; }
-.np-in-card { padding: 16px 18px 14px; }
-.np-where { display: flex; align-items: center; font-size: 15px; color: var(--muted); margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.np-where .ico { width: 16px; height: 16px; margin-right: 6px; flex: none; }
-.np-where span:empty { display: none; }
+
+/* ── Now Playing (after Mira) ─────────────────────────────────────────
+   The Music screen and the full-page music widget. panel.js sets --np-bg, --np-bg2,
+   --np-accent, --np-on-accent, --np-glow and --np-glow2 from the artwork once per track, and
+   paints the blurred background into a small canvas the browser scales up (no CSS blur). */
+.np2 {
+  position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column;
+  padding: 26px 32px 14px; overflow: hidden; color: #F5F2EC; background: #0B0D0E;
+  --np-bg: #1F2326; --np-bg2: #0B0D0E; --np-on-accent: #0B0D0E;
+  --np-glow: rgba(199, 187, 168, 0.5); --np-glow2: rgba(199, 187, 168, 0.14);
+}
+.np2.bg-art { background: linear-gradient(135deg, var(--np-bg) 0%, var(--np-bg2) 85%); }
+.np2.bg-theme { background: var(--bg); color: var(--fg); }
+.np2-blur { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: none; }
+.np2.bg-blur .np2-blur { display: block; }
+.np2.edge:after { content: ""; position: absolute; left: 0; top: 0; right: 0; bottom: 0; border: 3px solid var(--np-accent); opacity: 0.55; pointer-events: none; }
+.np2 > * { position: relative; }
+.np2 > .np2-blur, .np2 > .np2-vol, .np2 > .np2-sheet { position: absolute; }
+
+/* The artwork with its title beside it; Glow puts a soft disc of its colour behind it. */
+.np2-top { flex: 1; min-height: 0; display: flex; align-items: center; }
+.np2-artbox { position: relative; flex: none; width: 240px; height: 240px; }
+.np2-glow { position: absolute; left: -150px; top: -150px; right: -150px; bottom: -150px; display: none;
+  background: radial-gradient(circle closest-side, var(--np-glow) 0, var(--np-glow2) 55%, rgba(0, 0, 0, 0) 100%); }
+.bg-glow .np2-glow { display: block; }
+.np2-art { position: relative; width: 100%; height: 100%; border-radius: 10px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35); background: rgba(255, 255, 255, 0.08); }
+.np2-text { flex: 1; min-width: 0; margin-left: 32px; display: flex; flex-direction: column; justify-content: center; }
+.np2-where { display: flex; align-items: center; font-size: 16px; opacity: 0.7; margin-bottom: 12px; white-space: nowrap; overflow: hidden; }
+.np2-where .ico { width: 17px; height: 17px; margin-right: 8px; flex: none; }
+.np2-track { font-family: var(--font-display); font-weight: 700; font-size: 40px; line-height: 1.1; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.np2-artist { font-size: 24px; margin-top: 10px; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np2-album { font-size: 18px; margin-top: 4px; opacity: 0.55; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np2-album:empty { display: none; }
+
+/* Full-width progress: tap or drag the line to seek (a tall hit area round a thin line). */
+.np2-bar { flex: none; margin-top: 14px; color: inherit; opacity: 0.9; }
+.np2-seek { flex: 1; padding: 14px 0; margin: 0 12px; }
+.np2 .np-line { display: block; position: relative; height: 5px; margin: 0; overflow: visible; background: rgba(255, 255, 255, 0.22); }
+.np2.bg-theme .np-line { background: var(--line); }
+.np2 .np-line i { position: relative; border-radius: 3px; background: var(--np-accent); }
+.np2 [data-np-seek] .np-line i:after { content: ""; position: absolute; right: -7px; top: -5px; width: 15px; height: 15px; border-radius: 8px; background: #F5F2EC; }
+.np2.is-seeking .np-line i:after { width: 21px; height: 21px; right: -10px; top: -8px; border-radius: 11px; }
+
+/* The control row: liked · shuffle prev PLAY next repeat · ⋯ ("touch" shows it for 4 s). */
+.np2-ctl { flex: none; height: 84px; display: none; align-items: center; justify-content: center; }
+.np2.ctl-shown .np2-ctl { display: flex; }
+.np2-btn { display: flex; align-items: center; justify-content: center; width: 60px; height: 60px; padding: 0; border: 3px solid transparent; border-radius: 50%; background: none; color: inherit; }
+.np2-btn .ico { width: 28px; height: 28px; }
+.np2-btn.is-focus { border-color: currentColor !important; }
+.np2-shuffle { order: 1; opacity: 0.8; }
+.np2-prev { order: 2; }
+.np2-play { order: 3; width: 76px; height: 76px; margin: 0 14px; background: #F5F2EC; color: #0B0D0E; }
+.np2.bg-theme .np2-play { background: var(--fg); color: var(--bg); }
+.np2-play .ico { width: 34px; height: 34px; }
+.np2-play .i-pause, .np2-play.is-playing .i-play { display: none; }
+.np2-play.is-playing .i-pause { display: inline; }
+.np2-play.is-focus { border-color: var(--np-accent) !important; }
+.np2-next { order: 4; }
+.np2-repeat { order: 5; position: relative; opacity: 0.8; }
+.np2-repeat b { position: absolute; right: 10px; bottom: 8px; font-size: 11px; display: none; }
+.np2-repeat[data-repeat="track"] b { display: block; }
+.np2-shuffle .ico, .np2-repeat .ico { width: 25px; height: 25px; }
+.np2-shuffle.on, .np2-repeat.on { opacity: 1; color: var(--np-accent); }
+/* Liked: a filled tick in the accent once the song is in Liked Songs, a + until then. */
+.np2-liked { order: 0; margin-right: auto; }
+.np2-liked span { display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 19px; background: rgba(255, 255, 255, 0.14); }
+.np2-liked .ico { width: 22px; height: 22px; }
+.np2-liked .i-on, .np2-liked.on .i-off { display: none; }
+.np2-liked.on .i-on { display: inline; stroke-width: 3; }
+.np2-liked.on span { background: var(--np-accent); color: var(--np-on-accent); }
+.np2-more { order: 6; margin-left: auto; opacity: 0.85; }
+
+/* Turning the dial: a big volume bar for a moment, over the control row. */
+.np2-vol { left: 150px; right: 150px; bottom: 26px; height: 64px; padding: 0 26px; border-radius: 32px; background: rgba(0, 0, 0, 0.82); color: #F5F2EC; display: none; align-items: center; z-index: 3; }
+.np2-vol.is-on { display: flex; }
+.np2-vol .ico { width: 30px; height: 30px; flex: none; margin-right: 18px; }
+.np2-vol-line { flex: 1; height: 10px; border-radius: 5px; background: rgba(255, 255, 255, 0.22); overflow: hidden; }
+.np2-vol-line i { display: block; height: 100%; background: var(--np-accent); }
+.np2-vol b { width: 54px; text-align: right; font: 600 22px var(--font-display); }
+
+/* ⋯: speakers and presets. */
+.np2-sheet { right: 18px; bottom: 96px; width: 300px; padding: 6px; border-radius: 16px; background: #16191B; border: 1px solid rgba(255, 255, 255, 0.14); color: #F5F2EC; z-index: 4; }
+.np2-row { display: flex; align-items: center; width: 100%; height: 58px; padding: 0 14px; border: 3px solid transparent; border-radius: 12px; background: none; color: inherit; font-size: 20px; text-align: left; }
+.np2-row + .np2-row { margin-top: 4px; }
+.np2-row .ico { width: 22px; height: 22px; margin-right: 14px; flex: none; }
+.np2-row small { margin-left: auto; font-size: 15px; opacity: 0.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
+
+/* Nothing playing: the presets as tiles, one tap to start. */
+.np2-idle { display: none; flex: 1; min-height: 0; flex-direction: column; }
+.np2.idle .np2-idle { display: flex; }
+.np2.idle .np2-top, .np2.idle .np2-bar, .np2.idle .np2-ctl { display: none; }
+.np2-idle-head { font: 700 34px var(--font-display); margin-top: 8px; }
+.np2-idle-sub { font-size: 19px; opacity: 0.7; margin-top: 6px; }
+.np2-tiles { display: grid; grid-template-columns: repeat(4, 1fr); grid-gap: 16px; margin-top: 22px; }
+.np2-tile { display: block; padding: 10px; border: 3px solid transparent; border-radius: 14px; background: rgba(255, 255, 255, 0.08); color: inherit; text-align: left; min-width: 0; }
+.np2-tile img, .np2-tile-empty { display: block; width: 100%; height: 150px; object-fit: cover; border-radius: 10px; }
+.np2-tile-empty { display: flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, 0.08); }
+.np2-tile-empty .ico { width: 40%; height: 40%; opacity: 0.6; }
+.np2-tile b { display: block; margin-top: 10px; font: 600 18px var(--font-display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np2-tile span { display: block; margin-top: 2px; font-size: 14px; opacity: 0.65; }
+.np2-none { grid-column: 1 / -1; font-size: 18px; opacity: 0.75; }
+
+/* In a page (full-page widget under the strip): a little smaller. */
+.np2-card { padding: 16px 22px 8px; border-radius: inherit; }
+.np2-card .np2-artbox { width: 190px; height: 190px; }
+.np2-card .np2-track { font-size: 32px; }
+.np2-card .np2-artist { font-size: 20px; margin-top: 6px; }
+.np2-card .np2-ctl { height: 72px; }
+.np2-card .np2-play { width: 64px; height: 64px; }
+.np2-card .np2-tile img, .np2-card .np2-tile-empty { height: 110px; }
+
+/* The artwork screensaver takes the same background (no controls: a tap wakes the panel). */
+.np2-saver { --np-bg: #1F2326; --np-bg2: #0B0D0E; --np-glow: rgba(199, 187, 168, 0.5); --np-glow2: rgba(199, 187, 168, 0.14); }
+.np2-saver.bg-art { background: linear-gradient(135deg, var(--np-bg) 0%, var(--np-bg2) 85%); }
+.np2-saver.bg-glow, .np2-saver.bg-blur { background: #0B0D0E; }
+.np2-saver.bg-blur .np2-blur { display: block; }
+.np2-saver.edge:after { content: ""; position: absolute; left: 0; top: 0; right: 0; bottom: 0; border: 3px solid var(--np-accent); opacity: 0.55; pointer-events: none; }
+.np2-saver > .sm-artbox, .np2-saver > .sm-main { position: relative; }
+.sm-artbox { width: 320px; height: 320px; }
+.sm-artbox .sm-art { width: 100%; height: 100%; }
+.np2-saver .sm-main .np-line i { background: var(--np-accent); }
+
+/* ── Web page (F14): a snapshot under the strip, or the whole screensaver ── */
+.lay-web { flex: 1; min-height: 0; position: relative; }
+/* Full-page Now Playing with the header on Auto-hide or Off: edge to edge, no card. */
+.lay-np { flex: 1; min-height: 0; display: flex; }
+.lay-np .col { display: flex; flex: 1; min-width: 0; }
+.lay-np .w-music-full { flex: 1; padding: 0; border: 0; border-radius: 0; background: none; }
+.lay-web .col { display: block; height: 100%; }
+.w-web { position: relative; width: 800px; height: 412px; overflow: hidden; }
+.w-web-full { height: 480px; }
+.saver-web { background: #000; }
+.web-img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top left; }
+.web-msg {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  top: 50%;
+  margin: 0;
+  transform: translateY(-50%);
+  font-size: 22px;
+  text-align: center;
+  color: var(--muted);
+}

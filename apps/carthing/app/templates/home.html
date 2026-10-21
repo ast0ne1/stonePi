@@ -1,22 +1,10 @@
-{% from "_icons.html" import weather_inline %}
 {% from "_widgets.html" import widget %}
-<section class="screen home" data-screen="home" data-page="{{ page.index }}" data-url="v/home?page={{ page.number }}">
-  <header class="strip">
-    {% if has_clock %}
-    <span class="strip-name">{{ page.name }}</span>
-    {% else %}
-    <span class="strip-time" data-clock-small></span>
-    <span class="strip-date" data-date></span>
-    {% endif %}
-    {% if dots|length > 1 %}
-    <nav class="dots" aria-label="Pages">
-      {% for d in dots %}
-      <span class="dot{% if d.number == page.number %} on{% endif %}"{% if d.allowed %} data-page-go="{{ d.number }}"{% endif %} title="{{ d.name }}"><i></i></span>
-      {% endfor %}
-    </nav>
-    {% endif %}
-    {% if not has_forecast %}{{ weather_inline(weather) }}{% endif %}
-  </header>
+{% from "_strip.html" import strip %}
+{#- The strip: the page's header settings, else the config's default. "auto" lays the page out
+    full screen below the strip, which panel.js hides after hide_after_s. -#}
+{% set hd = header %}
+<section class="screen home{% if hd.mode != 'always' %} home-full{% endif %}" data-screen="home" data-page="{{ page.index }}" data-url="v/home?page={{ page.number }}">
+  {{ strip(hd, page.name, dots, page.number, has_clock, has_forecast, weather) }}
   {% if layout.count %}
   <div class="page lay-{{ layout.kind }}{% if layout.kind == 'grid' %} cards cards-{{ layout.count }}{% endif %}">
     {% if layout.kind == "grid" %}

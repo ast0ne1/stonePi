@@ -1,0 +1,6 @@
+{#- Category pill: its own icon and design-system tint (``category_style`` filter). -#}
+{% from "_icons.html" import icon %}
+{% macro category_pill(label) -%}
+{%- set style = label | category_style -%}
+<span class="badge category tint-{{ style.tint }}">{{ icon(style.icon) }}<span>{{ label }}</span></span>
+{%- endmacro %}

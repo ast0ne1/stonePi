@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.10 — 2026-10-21
+
+### Changed
+- **Smaller story titles on phones** (backlog U24a): Briefing card titles are 1.15rem below 560 px (were 1.45rem), so a card shows more than its headline on a small phone.
+- **Tap anywhere on a Briefing card to open or close it** (backlog U24b), not just the chevron. Links, the open-article icon and the long-read and Saved buttons still do their own thing, and selecting text doesn't toggle the card. The chevron stays, for the keyboard.
+
 ## 0.0.9 — 2026-10-17
 
 ### Added

@@ -142,6 +142,21 @@ def test_header_tools_standalone_shows_avatar_with_logout_only():
     assert "Log out" in html and "Manage account" not in html
 
 
+def test_header_tools_divider_leads_the_shared_group(fake_status):
+    state = alerts.bell_context(_user(), session_cookie="c", home_url=PI, app_id="pricewatch")
+    html = _render("{{ header_tools(s) }}", s=state)
+    assert html.index('class="sp-divider"') < html.index("data-sp-bell")
+    # Nothing to show (signed out, no local name): no stray divider.
+    empty = alerts.bell_context(None, session_cookie=None, home_url="", enabled=False, app_id="eventtrakr")
+    assert 'class="sp-divider"' not in _render("{{ header_tools(s) }}", s=empty)
+
+
+def test_bell_panel_keys_browser_marks_to_its_data():
+    status = {"show": True, "reachable": True, "allowed": True, "available": True, "enabled": True, "events": [], "recent": []}
+    panel = alerts.bell_panel("dashboard", status, PI)
+    assert panel["bell_app"] == "dashboard" and panel["every_app"] and panel["seen_url"].endswith("/api/me/apps/dashboard/seen")
+
+
 def test_header_search_and_fab():
     html = _render('{{ header_search("/search", "Search all events and articles", app="eventtrakr") }}{{ header_fab("/add-event", "Add") }}')
     assert 'action="/search"' in html and 'name="q"' in html and 'placeholder="Search all events and articles"' in html

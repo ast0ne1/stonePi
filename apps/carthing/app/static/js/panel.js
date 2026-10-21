@@ -180,7 +180,11 @@
   var pinDigits = "";
   var loading = false;
 
-  function focusables() { return view.querySelectorAll("[data-focus]"); }
+  function focusables() {
+    var all = view.querySelectorAll("[data-focus]"), out = [];
+    for (var i = 0; i < all.length; i++) if (all[i].offsetParent !== null) out.push(all[i]);
+    return out;
+  }
   function setFocus(i) {
     var items = focusables();
     if (!items.length) { focusIndex = 0; return; }
@@ -197,7 +201,8 @@
     return s && screenKind() !== "home" ? s.getAttribute("data-app") : "";
   }
 
-  function load(url, push, focus) {
+  // quiet: a background refresh (new feed data, link back), which leaves an auto-hidden strip hidden.
+  function load(url, push, focus, quiet) {
     loading = true;
     return fetch(url, { credentials: "same-origin" }).then(function (r) {
       if (r.status === 403) { location.reload(); return null; }
@@ -206,12 +211,35 @@
       loading = false;
       if (html === null) { toast("Couldn’t load that."); return; }
       if (push && current !== url) stack.push({ url: current, focus: focusIndex });
+      var stripWasHidden = quiet && url === current && !!view.querySelector("[data-strip-auto].is-hidden");
       current = url;
       view.innerHTML = html;
       pinDigits = "";
       setFocus(focus || 0);
       paintTime(true);
+      npLook(null);
+      if (screenKind() === "restarting") rsWatch();
+      var strip = stripWasHidden && view.querySelector("[data-strip-auto]");
+      if (strip) strip.classList.add("is-hidden");
+      else showStrip();
     }).catch(function (err) { loading = false; fail(url, err); });
+  }
+
+  // Auto-hide header: shown (with the page below it) when you arrive on a page or touch, turn
+  // or press anything, then hidden after the page's hide_after_s so the page has the screen.
+  var stripTimer = null;
+  function showStrip() {
+    var strip = view.querySelector("[data-strip-auto]");
+    clearTimeout(stripTimer);
+    if (!strip) return;
+    strip.classList.remove("is-hidden");
+    stripTimer = setTimeout(function () { strip.classList.add("is-hidden"); }, Number(strip.getAttribute("data-strip-auto")) * 1000);
+  }
+  // A touch, press or turn: the strip comes back, except over Now Playing or a full web page,
+  // where you touch the screen all the time (only arriving there shows it).
+  function stripOnInput() {
+    if (view.querySelector('[data-screen="music"], [data-np-full], .lay-web')) return;
+    showStrip();
   }
   // Home = the page you were on; the "home" action goes to page 1.
   function goHome() { stack = []; pageShownAt = Date.now(); return load(pageUrl(pageIndex), false); }
@@ -273,6 +301,7 @@
     var key = el.getAttribute("data-key");
     if (go) return load(go, true);
     if (key) return pinKey(key);
+    if (el.hasAttribute("data-np-more")) return npSheet();
     var mus = el.getAttribute("data-music");
     if (mus) return musicCmd(mus);
     if (el.hasAttribute("data-device")) {
@@ -306,11 +335,58 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ unit: unit, pin: pin })
     }).then(function (r) { return r.json(); }).then(function (res) {
-      if (res.ok) { toast(res.message || "Restarted."); goHome(); return; }
+      // Restarted: the progress screen takes the confirm's place (Back returns to the service).
+      if (res.ok) { load("v/restarting?unit=" + encodeURIComponent(unit), false); return; }
       var msg = view.querySelector("[data-pin-msg]");
       if (msg) { msg.textContent = res.message || "That didn’t work."; msg.classList.add("bad"); pinDigits = ""; paintPin(); }
       else toast(res.message || "That didn’t work.");
     }).catch(function (err) { fail("restart", err); });
+  }
+
+  // After a restart: ask the Pi every 1.5 s until the service runs again (stopped → starting →
+  // running), then offer the way back. Gives up quietly after 45 s.
+  var rsTimer = null;
+  function rsWatch() {
+    var box = view.querySelector("[data-restarting]");
+    clearTimeout(rsTimer);
+    if (!box) return;
+    var unit = box.getAttribute("data-restarting"), started = Date.now();
+    function step(name, cls) {
+      var el = box.querySelector('[data-rs-step="' + name + '"]');
+      if (el) el.className = "rs-step " + cls;
+    }
+    function finish(title, msg) {
+      box.querySelector("[data-rs-title]").textContent = title;
+      box.querySelector("[data-rs-msg]").textContent = msg;
+      var back = box.querySelector("[data-rs-back]");
+      back.hidden = false;
+      var items = focusables();
+      for (var i = 0; i < items.length; i++) if (items[i] === back) setFocus(i);
+    }
+    function ask() {
+      if (!view.contains(box)) return; // left the screen
+      fetch("unit-state?unit=" + encodeURIComponent(unit), { credentials: "same-origin" }).then(function (r) {
+        return r.ok ? r.json() : null;
+      }).then(function (st) {
+        if (st && st.ok && st.state === "active" && (!st.sub || st.sub === "running")) {
+          step("starting", "is-done");
+          step("running", "is-done");
+          finish(box.querySelector("[data-rs-title]").getAttribute("data-done"), "Running again.");
+          return;
+        }
+        if (st && st.state === "failed") {
+          step("running", "is-bad");
+          finish("It didn't start", "Open the service again to see its last log lines.");
+          return;
+        }
+        if (Date.now() - started > 45000) {
+          finish(box.querySelector("[data-rs-title]").getAttribute("data-slow"), "Check it again from System in a moment.");
+          return;
+        }
+        rsTimer = setTimeout(ask, 1500);
+      }).catch(function () { rsTimer = setTimeout(ask, 1500); }); // Dashboard itself may be restarting
+    }
+    rsTimer = setTimeout(ask, 800);
   }
 
   // ── Actions ────────────────────────────────────────────────────────────
@@ -374,10 +450,17 @@
   function volStep(dir) {
     if (!allowed(dir > 0 ? "music:vol_up" : "music:vol_down")) return;
     volClicks += dir;
-    var bar = npRoot().querySelector("[data-np-vol] i");
+    var vol = npRoot().querySelector("[data-np-vol]");
+    var bar = vol && vol.querySelector("i");
     if (bar) {
       var now = parseFloat(bar.style.width) || 0;
-      bar.style.width = Math.max(0, Math.min(100, now + dir * cfg.music.step)) + "%";
+      var level = Math.max(0, Math.min(100, now + dir * cfg.music.step));
+      bar.style.width = level + "%";
+      var n = vol.querySelector("[data-np-vol-n]");
+      if (n) n.textContent = level;
+      vol.classList.add("is-on");
+      clearTimeout(volStep.shown);
+      volStep.shown = setTimeout(function () { vol.classList.remove("is-on"); }, 1500);
     }
     clearTimeout(volTimer);
     volTimer = setTimeout(function () {
@@ -430,6 +513,10 @@
     for (i = 0; i < nodes.length; i++) nodes[i].classList.toggle("is-playing", !!st.playing);
     nodes = root.querySelectorAll('[data-music="shuffle"]');
     for (i = 0; i < nodes.length; i++) nodes[i].classList.toggle("on", !!st.shuffle);
+    nodes = root.querySelectorAll('[data-music="save"]');
+    for (i = 0; i < nodes.length; i++) nodes[i].classList.toggle("on", st.liked === true);
+    nodes = root.querySelectorAll(".np2-where");
+    for (i = 0; i < nodes.length; i++) nodes[i].hidden = !st.device;
     nodes = root.querySelectorAll('[data-music="repeat"]');
     for (i = 0; i < nodes.length; i++) { nodes[i].classList.toggle("on", st.repeat !== "off"); nodes[i].setAttribute("data-repeat", st.repeat); }
     var d = st.device;
@@ -437,10 +524,155 @@
     for (i = 0; i < nodes.length; i++) {
       var hasVol = !!(d && d.supports_volume && d.volume !== null);
       nodes[i].hidden = !hasVol;
-      if (hasVol && !volClicks) nodes[i].querySelector("i").style.width = d.volume + "%";
+      if (hasVol && !volClicks) {
+        nodes[i].querySelector("i").style.width = d.volume + "%";
+        var num = nodes[i].querySelector("[data-np-vol-n]");
+        if (num) num.textContent = d.volume;
+      }
     }
+    npPlaying = !!st.playing;
+    npLook(st);
     paintBars();
   }
+  // ── Now Playing look: colours from the artwork, blurred background, controls on touch ──
+  // Once per track: the artwork (same origin, art/<key>) is drawn into a 24×24 canvas, its
+  // most common colour becomes the background and its liveliest bright colour the accent.
+  // Blurred artwork is the cover drawn tiny and stretched (the browser's smoothing does the
+  // blur), so the device never runs a CSS blur. Plain ES5 for the firmware's Chromium.
+  var npTouchedAt = 0, npPlaying = false;
+  function hsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    var max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, h = 0, s = 0, d = max - min;
+    if (d) {
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+      h /= 6;
+    }
+    return [h, s, l];
+  }
+  function hslCss(h, s, l, a) {
+    return "hsla(" + Math.round(h * 360) + "," + Math.round(s * 100) + "%," + Math.round(l * 100) + "%," + (a === undefined ? 1 : a) + ")";
+  }
+  function artColours(img) {
+    var c = document.createElement("canvas");
+    c.width = 24; c.height = 24;
+    var x = c.getContext("2d");
+    x.drawImage(img, 0, 0, 24, 24);
+    var px;
+    try { px = x.getImageData(0, 0, 24, 24).data; } catch (e) { return null; }
+    var buckets = {}, i, key;
+    for (i = 0; i < px.length; i += 4) {
+      key = (px[i] >> 5) + "," + (px[i + 1] >> 5) + "," + (px[i + 2] >> 5);
+      var b = buckets[key] || (buckets[key] = { n: 0, r: 0, g: 0, b: 0 });
+      b.n += 1; b.r += px[i]; b.g += px[i + 1]; b.b += px[i + 2];
+    }
+    var main = null, lively = null, best = -1;
+    for (key in buckets) {
+      var k = buckets[key], col = hsl(k.r / k.n, k.g / k.n, k.b / k.n);
+      k.h = col;
+      if (!main || k.n > main.n) main = k;
+      var score = col[1] * (0.4 + Math.min(col[2], 0.6)) * Math.sqrt(k.n);
+      if (col[1] > 0.25 && col[2] > 0.15 && col[2] < 0.92 && score > best) { best = score; lively = k; }
+    }
+    var h = main.h[0], s = main.h[1];
+    return {
+      bg: hslCss(h, s > 0.08 ? Math.max(Math.min(s, 0.6), 0.25) : 0, 0.32),
+      bg2: hslCss(h, Math.min(s, 0.5), 0.09),
+      accent: lively ? [lively.h[0], Math.max(lively.h[1], 0.55), Math.max(0.58, Math.min(lively.h[2], 0.7))] : null
+    };
+  }
+  function paintBlur(el, img) {
+    var canvas = el.querySelector("[data-np-blur]");
+    if (!canvas) return;
+    var tiny = document.createElement("canvas");
+    tiny.width = 16; tiny.height = 10;
+    var w = img.naturalWidth, h = img.naturalHeight, ch = w * 10 / 16;
+    tiny.getContext("2d").drawImage(img, 0, Math.max(0, (h - ch) / 2), w, Math.min(h, ch), 0, 0, 16, 10);
+    var x = canvas.getContext("2d");
+    x.imageSmoothingEnabled = true;
+    x.drawImage(tiny, 0, 0, canvas.width, canvas.height);
+    x.fillStyle = "rgba(0,0,0,0.48)";
+    x.fillRect(0, 0, canvas.width, canvas.height);
+  }
+  function applyArt(el, img) {
+    var mine = el.getAttribute("data-accent-mode") === "art";
+    var cols = img && img.naturalWidth ? artColours(img) : null;
+    var acc = cols && mine && cols.accent ? cols.accent : null;
+    var accent = acc ? hslCss(acc[0], acc[1], acc[2]) : el.getAttribute("data-accent");
+    var st = el.style;
+    st.setProperty("--np-accent", accent);
+    st.setProperty("--np-bg", cols ? cols.bg : "#1F2326");
+    st.setProperty("--np-bg2", cols ? cols.bg2 : "#0B0D0E");
+    // Text on the accent: dark on a light accent, white otherwise (rough luminance).
+    var light = acc ? acc[2] > 0.62 : true;
+    st.setProperty("--np-on-accent", light ? "#0B0D0E" : "#FFFFFF");
+    st.setProperty("--np-glow", acc ? hslCss(acc[0], acc[1], acc[2], 0.5) : "rgba(199,187,168,0.45)");
+    st.setProperty("--np-glow2", acc ? hslCss(acc[0], acc[1], acc[2], 0.14) : "rgba(199,187,168,0.12)");
+    if (img && img.naturalWidth && el.classList.contains("bg-blur")) paintBlur(el, img);
+  }
+  function npLook(st) {
+    var looks = npRoot().querySelectorAll("[data-np-look]");
+    for (var i = 0; i < looks.length; i++) {
+      var el = looks[i];
+      if (st) el.classList.toggle("idle", !st.track && el.classList.contains("np2"));
+      else {
+        // Just rendered: the play state is in the markup until the next read.
+        var bar = el.querySelector("[data-np-bar]");
+        if (bar) npPlaying = bar.getAttribute("data-playing") === "1";
+      }
+      var img = el.querySelector("[data-np-art]");
+      var src = img && !img.hidden ? img.getAttribute("src") : "";
+      if (el.getAttribute("data-art-done") !== src) {
+        el.setAttribute("data-art-done", src);
+        if (!src) applyArt(el, null);
+        else if (img.complete && img.naturalWidth) applyArt(el, img);
+        else img.onload = (function (e, im) { return function () { applyArt(e, im); }; })(el, img);
+      }
+      // The control row: always, never, or for 4 s after a touch, press or turn (and while paused).
+      var c = el.getAttribute("data-controls");
+      var touched = Date.now() - npTouchedAt < 4000;
+      el.classList.toggle("ctl-shown", c === "always" || (c === "touch" && (touched || !npPlaying)));
+    }
+  }
+  function npTouched() {
+    if (!npShown()) return;
+    npTouchedAt = Date.now();
+    npLook(null);
+    clearTimeout(npTouched.timer);
+    npTouched.timer = setTimeout(function () { npLook(null); }, 4100);
+  }
+  function npSheet(open) {
+    var sheet = view.querySelector("[data-np-sheet]");
+    if (!sheet) return;
+    sheet.hidden = open === undefined ? !sheet.hidden : !open;
+    if (!sheet.hidden) {
+      var first = sheet.querySelector("[data-focus]");
+      var items = focusables();
+      for (var i = 0; i < items.length; i++) if (items[i] === first) setFocus(i);
+    }
+  }
+  // Seeking: tap the progress line, or drag along it (never a swipe to another page).
+  function seekRatio(line, x) {
+    var r = line.getBoundingClientRect();
+    return r.width ? Math.max(0, Math.min(1, (x - r.left) / r.width)) : 0;
+  }
+  function seekPreview(seek, x) {
+    var bar = seek.closest("[data-np-bar]"), dur = +bar.getAttribute("data-duration");
+    var ratio = seekRatio(seek.querySelector(".np-line"), x);
+    seek.querySelector(".np-line i").style.width = Math.round(ratio * 1000) / 10 + "%";
+    var p = bar.querySelector("[data-np-pos]");
+    if (p && dur) p.textContent = fmt(ratio * dur);
+    return Math.round(ratio * dur);
+  }
+  function seekTo(seek, x) {
+    var bar = seek.closest("[data-np-bar]");
+    var ms = seekPreview(seek, x);
+    if (!+bar.getAttribute("data-duration")) return;
+    bar.setAttribute("data-progress", ms);
+    bar.setAttribute("data-at", Date.now() + clockOffset);
+    musicCmd("seek", ms);
+  }
+
   // Progress bars move every second between reads (the Pi's clock, not the device's).
   function paintBars() {
     var nodes = npRoot().querySelectorAll("[data-np-bar]");
@@ -807,7 +1039,481 @@
     };
   }
 
-  var SAVERS = { logo: logoSaver, matrix: matrixSaver, pipes: pipesSaver };
+  // ── Windows 98 screensavers, drawn whole each frame on an opaque canvas ──
+  // Dimming (no backlight) lays black over the finished frame, so their colours need no
+  // per-colour scaling and recolor() has nothing to do.
+  function svDim(ctx) {
+    if (paletteF >= 1) return;
+    ctx.fillStyle = "rgba(0,0,0," + (1 - paletteF).toFixed(3) + ")";
+    ctx.fillRect(0, 0, 800, 480);
+  }
+  function svNoop() {}
+
+  // Flying Through Space: stars stream out of the centre towards you, growing and brightening
+  // as they come. Each star keeps its x/y and closes in on z; past the screen it starts again
+  // far away. Stars are bucketed by brightness so a frame changes fill colour only a few times.
+  var SF_COUNT = { light: 220, normal: 420, dense: 760 };
+  var SF_Z_S = 0.42, SF_FOCAL = 360, SF_NEAR = 0.04, SF_LEVELS = 8;
+  var SF_COLORS = ["#FFFFFF", "#9FC5FF", "#FFE08A", "#FF9F9F", "#B6FFB0", "#E0B0FF"];
+  function starfieldSaver(el) {
+    var o = cfg.idle.saver.starfield;
+    var ctx = el.querySelector("[data-sv]").getContext("2d");
+    var rate = SF_Z_S * (SPEEDS[o.speed] || 1);
+    var stars = [];
+    function place(s, far) {
+      s.x = (Math.random() * 2 - 1) * 1.15; // most of them start on screen
+      s.y = (Math.random() * 2 - 1) * 0.7;
+      s.z = far ? 1 : SF_NEAR + Math.random() * (1 - SF_NEAR);
+      s.c = Math.floor(Math.random() * SF_COLORS.length);
+    }
+    for (var i = 0; i < (SF_COUNT[o.density] || SF_COUNT.normal); i++) { var s = {}; place(s, false); stars.push(s); }
+    // Fill colours per brightness level (and colour, when coloured).
+    var fills = [];
+    for (var c = 0; c < SF_COLORS.length; c++) {
+      fills.push([]);
+      for (var l = 0; l < SF_LEVELS; l++) fills[c].push(hexScale(o.color ? SF_COLORS[c] : "#FFFFFF", (l + 1) / SF_LEVELS));
+    }
+    var buckets = [];
+    return {
+      frame: function (dt) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, 800, 480);
+        buckets.length = 0;
+        for (var i = 0; i < stars.length; i++) {
+          var s = stars[i];
+          s.z -= rate * dt;
+          var sx = 400 + (s.x / s.z) * SF_FOCAL, sy = 240 + (s.y / s.z) * SF_FOCAL;
+          if (s.z <= SF_NEAR || sx < -4 || sx > 804 || sy < -4 || sy > 484) { place(s, true); continue; }
+          var near = 1 - s.z; // 0 far .. 1 close
+          var level = Math.min(SF_LEVELS - 1, Math.floor((0.3 + 0.7 * near) * SF_LEVELS)); // far ones still show
+          var k = (o.color ? s.c : 0) * SF_LEVELS + level;
+          (buckets[k] || (buckets[k] = [])).push(sx, sy, 1.2 + near * near * 3.6);
+        }
+        for (var b = 0; b < buckets.length; b++) {
+          var list = buckets[b];
+          if (!list) continue;
+          ctx.fillStyle = fills[Math.floor(b / SF_LEVELS)][b % SF_LEVELS];
+          for (var j = 0; j < list.length; j += 3) ctx.fillRect(list[j] - list[j + 2] / 2, list[j + 1] - list[j + 2] / 2, list[j + 2], list[j + 2]);
+        }
+        svDim(ctx);
+      },
+      recolor: svNoop
+    };
+  }
+
+  // Mystify Your Mind: four-cornered shapes whose corners bounce off the edges, each leaving a
+  // trail of earlier outlines that fade out, while its colour drifts round the wheel. A trail
+  // copy is taken MY_COPIES_S times a second, so the trail's length on screen follows speed.
+  var MY_PX_S = 150, MY_COPIES_S = 14, MY_HUE_S = 14;
+  var MY_TRAIL = { short: 5, normal: 11, long: 20 };
+  function mystifySaver(el) {
+    var o = cfg.idle.saver.mystify;
+    var ctx = el.querySelector("[data-sv]").getContext("2d");
+    var speed = SPEEDS[o.speed] || 1, keep = MY_TRAIL[o.trail] || MY_TRAIL.normal;
+    var shapes = [];
+    for (var n = 0; n < o.shapes; n++) {
+      var pts = [];
+      for (var p = 0; p < 4; p++) {
+        var ang = Math.random() * Math.PI * 2, v = MY_PX_S * (0.6 + Math.random() * 0.8);
+        pts.push({ x: 40 + Math.random() * 720, y: 40 + Math.random() * 400, vx: Math.cos(ang) * v, vy: Math.sin(ang) * v });
+      }
+      shapes.push({ pts: pts, hue: n * (360 / o.shapes) + Math.random() * 40, trail: [] });
+    }
+    var acc = 0;
+    function outline(poly) {
+      ctx.beginPath();
+      ctx.moveTo(poly[0], poly[1]);
+      for (var i = 2; i < poly.length; i += 2) ctx.lineTo(poly[i], poly[i + 1]);
+      ctx.closePath();
+      ctx.stroke();
+    }
+    return {
+      frame: function (dt) {
+        dt *= speed;
+        acc += dt * MY_COPIES_S;
+        var copy = acc >= 1;
+        if (copy) acc -= Math.floor(acc);
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, 800, 480);
+        ctx.lineWidth = 2;
+        for (var s = 0; s < shapes.length; s++) {
+          var sh = shapes[s], poly = [];
+          sh.hue = (sh.hue + MY_HUE_S * dt) % 360;
+          for (var i = 0; i < sh.pts.length; i++) {
+            var q = sh.pts[i];
+            q.x += q.vx * dt;
+            q.y += q.vy * dt;
+            if (q.x < 0 || q.x > 800) { q.x = Math.max(0, Math.min(800, q.x)); q.vx = -q.vx; }
+            if (q.y < 0 || q.y > 480) { q.y = Math.max(0, Math.min(480, q.y)); q.vy = -q.vy; }
+            poly.push(q.x, q.y);
+          }
+          if (copy) {
+            sh.trail.push(poly);
+            if (sh.trail.length > keep) sh.trail.shift();
+          }
+          // Oldest first and faintest; the live outline last, at full colour.
+          for (var t = 0; t < sh.trail.length; t++) {
+            ctx.strokeStyle = "hsl(" + Math.round(sh.hue) + ",100%," + Math.round(12 + 38 * (t + 1) / (sh.trail.length + 1)) + "%)";
+            outline(sh.trail[t]);
+          }
+          ctx.strokeStyle = "hsl(" + Math.round(sh.hue) + ",100%,60%)";
+          outline(poly);
+        }
+        svDim(ctx);
+      },
+      recolor: svNoop
+    };
+  }
+
+  // 3D Flower Box: a spinning cube, each side a grid of FB_N × FB_N tiles, that swells into a
+  // round, spiky "flower" and back again. Every grid point lies on the cube; morphing moves it
+  // towards the sphere through it, and points in the middle of each tile also push out as
+  // spikes. Tiles are flat-shaded by their facing to a light and drawn back to front.
+  var FB_N = 6, FB_SPIN_S = 0.55, FB_MORPH_S = 0.16, FB_R = 1.3, FB_SPIKE = 0.85;
+  var FB_D = 5.2, FB_SCALE = 570; // camera distance; scale: the cube ~220 px, the full flower ~470 px
+  var FB_LIGHT = (function () { var v = [-0.45, -0.55, -0.7], l = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]); return [v[0] / l, v[1] / l, v[2] / l]; })();
+  var FB_PAIRS = [["#E53935", "#FFD54F"], ["#1E88E5", "#E0F2F1"], ["#43A047", "#F48FB1"],
+    ["#8E24AA", "#80DEEA"], ["#FB8C00", "#3949AB"], ["#00ACC1", "#FFF176"]];
+  function rgbOf(hex) { var n = parseInt(hex.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+  function flowerboxSaver(el) {
+    var o = cfg.idle.saver.flowerbox;
+    var ctx = el.querySelector("[data-sv]").getContext("2d");
+    var speed = SPEEDS[o.speed] || 1;
+    // Each side: an origin corner and two edge vectors spanning it.
+    var SIDES = [
+      [[-1, -1, 1], [2, 0, 0], [0, 2, 0]], [[1, -1, -1], [-2, 0, 0], [0, 2, 0]],
+      [[1, -1, 1], [0, 0, -2], [0, 2, 0]], [[-1, -1, -1], [0, 0, 2], [0, 2, 0]],
+      [[-1, -1, -1], [2, 0, 0], [0, 0, 2]], [[-1, 1, 1], [2, 0, 0], [0, 0, -2]]
+    ];
+    var pts = [], tiles = [];
+    for (var f = 0; f < SIDES.length; f++) {
+      var s = SIDES[f], base = pts.length;
+      for (var j = 0; j <= FB_N; j++) {
+        for (var i = 0; i <= FB_N; i++) {
+          var c = [s[0][0] + s[1][0] * i / FB_N + s[2][0] * j / FB_N, s[0][1] + s[1][1] * i / FB_N + s[2][1] * j / FB_N,
+            s[0][2] + s[1][2] * i / FB_N + s[2][2] * j / FB_N];
+          var len = Math.sqrt(c[0] * c[0] + c[1] * c[1] + c[2] * c[2]);
+          // Spikes on the odd grid points: never on an edge, so neighbouring sides agree.
+          pts.push({ c: c, d: [c[0] / len, c[1] / len, c[2] / len], spike: i % 2 && j % 2 ? 1 : 0 });
+        }
+      }
+      for (j = 0; j < FB_N; j++) {
+        for (i = 0; i < FB_N; i++) {
+          var a = base + j * (FB_N + 1) + i;
+          var pair = FB_PAIRS[f];
+          var hex = o.colors === "faces" ? pair[0] : pair[(i + j) % 2];
+          tiles.push({ v: [a, a + 1, a + FB_N + 2, a + FB_N + 1], rgb: rgbOf(hex) });
+        }
+      }
+    }
+    var ax = 0.4, ay = 0.2, az = 0, phase = 0;
+    var cam = new Array(pts.length), scr = new Array(pts.length);
+    return {
+      frame: function (dt) {
+        dt *= speed;
+        ax += FB_SPIN_S * dt * 0.7;
+        ay += FB_SPIN_S * dt;
+        az += FB_SPIN_S * dt * 0.35;
+        phase += FB_MORPH_S * dt * Math.PI * 2;
+        var m = (1 - Math.cos(phase)) / 2; // 0 cube .. 1 flower
+        var cx = Math.cos(ax), sx = Math.sin(ax), cy = Math.cos(ay), sy = Math.sin(ay), cz = Math.cos(az), sz = Math.sin(az);
+        for (var k = 0; k < pts.length; k++) {
+          var p = pts[k], r = FB_R + FB_SPIKE * p.spike;
+          var x = p.c[0] * (1 - m) + p.d[0] * r * m, y = p.c[1] * (1 - m) + p.d[1] * r * m, z = p.c[2] * (1 - m) + p.d[2] * r * m;
+          var t1 = y * cx - z * sx; z = y * sx + z * cx; y = t1; // about x
+          t1 = x * cy + z * sy; z = -x * sy + z * cy; x = t1; // about y
+          t1 = x * cz - y * sz; y = x * sz + y * cz; x = t1; // about z
+          cam[k] = [x, y, z];
+          var q = FB_SCALE / (FB_D + z);
+          scr[k] = [400 + x * q, 240 + y * q];
+        }
+        var order = [];
+        for (var t = 0; t < tiles.length; t++) {
+          var v = tiles[t].v, A = cam[v[0]], B = cam[v[1]], C = cam[v[2]], D = cam[v[3]];
+          // Normal from the diagonals, turned outwards (away from the centre).
+          var e1 = [C[0] - A[0], C[1] - A[1], C[2] - A[2]], e2 = [D[0] - B[0], D[1] - B[1], D[2] - B[2]];
+          var nx = e1[1] * e2[2] - e1[2] * e2[1], ny = e1[2] * e2[0] - e1[0] * e2[2], nz = e1[0] * e2[1] - e1[1] * e2[0];
+          var mx = A[0] + B[0] + C[0] + D[0], my = A[1] + B[1] + C[1] + D[1], mz = A[2] + B[2] + C[2] + D[2];
+          if (nx * mx + ny * my + nz * mz < 0) { nx = -nx; ny = -ny; nz = -nz; }
+          var nl = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+          var lit = Math.max(0, (nx * FB_LIGHT[0] + ny * FB_LIGHT[1] + nz * FB_LIGHT[2]) / nl);
+          order.push({ t: t, z: mz, lit: 0.22 + 0.78 * lit });
+        }
+        order.sort(function (a, b) { return b.z - a.z; }); // far first
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, 800, 480);
+        for (var w = 0; w < order.length; w++) {
+          var tile = tiles[order[w].t], f2 = order[w].lit, rgb = tile.rgb, vv = tile.v;
+          ctx.fillStyle = "rgb(" + Math.round(rgb[0] * f2) + "," + Math.round(rgb[1] * f2) + "," + Math.round(rgb[2] * f2) + ")";
+          ctx.beginPath();
+          ctx.moveTo(scr[vv[0]][0], scr[vv[0]][1]);
+          ctx.lineTo(scr[vv[1]][0], scr[vv[1]][1]);
+          ctx.lineTo(scr[vv[2]][0], scr[vv[2]][1]);
+          ctx.lineTo(scr[vv[3]][0], scr[vv[3]][1]);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = ctx.fillStyle; // closes hairline gaps between neighbouring tiles
+          ctx.lineWidth = 0.75;
+          ctx.stroke();
+        }
+        svDim(ctx);
+      },
+      recolor: svNoop
+    };
+  }
+
+  // 3D Maze: walking a fresh maze, Wolfenstein-style. A raycaster draws it at MZ_RW × MZ_RH
+  // (chunky pixels, like the original) into an offscreen canvas that is scaled up 4×, which
+  // keeps it cheap with no GPU. Textures are made here, so there are no image files. The
+  // walker keeps its left hand on the wall, which in a maze with no loops always reaches the
+  // exit (the smiley); then a new maze starts. A rat wanders the corridors.
+  var MZ_W = 8, MZ_H = 8, MZ_RW = 200, MZ_RH = 120, MZ_TEX = 64;
+  var MZ_FOV = 0.66, MZ_MOVE_S = 1.6, MZ_TURN_S = 2.2, MZ_FOG = 9, MZ_RAT_S = 1.2, MZ_HOLD_S = 1.2;
+  var MZ_DX = [1, 0, -1, 0], MZ_DY = [0, 1, 0, -1]; // east, south, west, north (y grows down)
+  function mzRng(seed) { var s = seed >>> 0; return function () { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+  function mzPix(r, g, b, a) {
+    return ((a === undefined ? 255 : a) << 24 | Math.max(0, Math.min(255, b)) << 16 | Math.max(0, Math.min(255, g)) << 8 | Math.max(0, Math.min(255, r))) >>> 0;
+  }
+  function mzTexture(kind) {
+    var T = MZ_TEX, out = new Uint32Array(T * T), rnd = mzRng(kind.length * 977 + 13);
+    for (var y = 0; y < T; y++) {
+      for (var x = 0; x < T; x++) {
+        var n = (rnd() - 0.5) * 30, c;
+        if (kind === "brick") {
+          var row = Math.floor(y / 16), bx = (x + (row % 2) * 16) % 32;
+          c = (y % 16 < 2 || bx < 2) ? [168 + n / 3, 162 + n / 3, 150 + n / 3] : [148 + n, 52 + n / 2, 38 + n / 2];
+        } else if (kind === "stone") {
+          var srow = Math.floor(y / 21), sx2 = (x + srow * 11) % 32;
+          c = (y % 21 < 2 || sx2 < 2) ? [58, 58, 64] : [118 + n, 118 + n, 124 + n];
+        } else if (kind === "wood") {
+          var plank = Math.floor(x / 16), grain = Math.sin(y * 0.35 + plank * 7 + Math.sin(x * 0.9) * 1.5) * 14;
+          c = x % 16 < 1 ? [70, 44, 24] : [138 + grain + n / 2, 92 + grain / 2 + n / 3, 52 + n / 4];
+        } else if (kind === "floor") {
+          var on = (Math.floor(x / 32) + Math.floor(y / 32)) % 2;
+          c = on ? [92 + n / 2, 92 + n / 2, 98 + n / 2] : [70 + n / 2, 70 + n / 2, 76 + n / 2];
+        } else { // ceiling
+          c = (x % 32 < 1 || y % 32 < 1) ? [28, 32, 52] : [44 + n / 3, 50 + n / 3, 82 + n / 3];
+        }
+        out[y * T + x] = mzPix(Math.round(c[0]), Math.round(c[1]), Math.round(c[2]));
+      }
+    }
+    return out;
+  }
+  // Sprites, 32×32 with see-through pixels: the rat (side on) and the exit's smiley.
+  function mzSprite(kind) {
+    var S = 32, out = new Uint32Array(S * S);
+    function inEllipse(x, y, cx, cy, rx, ry) { var a = (x - cx) / rx, b = (y - cy) / ry; return a * a + b * b <= 1; }
+    for (var y = 0; y < S; y++) {
+      for (var x = 0; x < S; x++) {
+        var px = 0;
+        if (kind === "rat") {
+          if (inEllipse(x, y, 15, 24, 10, 6)) px = mzPix(112, 108, 112);
+          if (inEllipse(x, y, 25, 22, 5, 4)) px = mzPix(124, 120, 124);
+          if (inEllipse(x, y, 23, 17, 2, 2.5)) px = mzPix(214, 150, 160);
+          if (x === 27 && y === 21) px = mzPix(10, 10, 10);
+          if (x === 30 && y === 23) px = mzPix(214, 150, 160);
+          if (x <= 6 && Math.abs(y - (26 + (6 - x) * 0.5)) < 0.8) px = mzPix(200, 140, 150); // tail
+          if ((x === 10 || x === 20) && y >= 29 && y <= 31) px = mzPix(90, 86, 90); // legs
+        } else {
+          var d = Math.sqrt((x - 15.5) * (x - 15.5) + (y - 15.5) * (y - 15.5));
+          if (d <= 14) px = d > 13 ? mzPix(150, 110, 0) : mzPix(255, 214, 40);
+          if (inEllipse(x, y, 11, 12, 1.6, 2.6) || inEllipse(x, y, 20, 12, 1.6, 2.6)) px = mzPix(20, 20, 20);
+          if (d > 7.5 && d < 9.5 && y > 17) px = mzPix(20, 20, 20); // smile
+        }
+        out[y * S + x] = px;
+      }
+    }
+    return out;
+  }
+  function mzShade(c, f) {
+    return ((c & 0xFF000000) | ((((c >> 16) & 255) * f) << 16) | ((((c >> 8) & 255) * f) << 8) | ((c & 255) * f)) >>> 0;
+  }
+  function mazeSaver(el) {
+    var o = cfg.idle.saver.maze;
+    var ctx = el.querySelector("[data-sv]").getContext("2d");
+    var speed = SPEEDS[o.speed] || 1;
+    var off = document.createElement("canvas");
+    off.width = MZ_RW;
+    off.height = MZ_RH;
+    var octx = off.getContext("2d"), img = octx.createImageData(MZ_RW, MZ_RH);
+    var buf = new Uint32Array(img.data.buffer), zbuf = new Float32Array(MZ_RW);
+    var wallTex = mzTexture(o.walls || "brick"), floorTex = mzTexture("floor"), ceilTex = mzTexture("ceiling");
+    var ratTex = mzSprite("rat"), smileTex = mzSprite("smile");
+    var GW = MZ_W * 2 + 1, GH = MZ_H * 2 + 1;
+    var map, walker, rat, exit, hold = 0, bob = 0;
+
+    function open(x, y) { return x >= 0 && y >= 0 && x < GW && y < GH && map[y * GW + x] === 0; }
+    function build() {
+      map = new Uint8Array(GW * GH);
+      for (var i = 0; i < map.length; i++) map[i] = 1;
+      // Depth-first carving from the first cell: a maze with exactly one way between any two cells.
+      var stack = [[0, 0]], seen = {};
+      seen["0,0"] = true;
+      map[1 * GW + 1] = 0;
+      while (stack.length) {
+        var c = stack[stack.length - 1], next = [];
+        for (var d = 0; d < 4; d++) {
+          var nx = c[0] + MZ_DX[d], ny = c[1] + MZ_DY[d];
+          if (nx >= 0 && ny >= 0 && nx < MZ_W && ny < MZ_H && !seen[nx + "," + ny]) next.push(d);
+        }
+        if (!next.length) { stack.pop(); continue; }
+        var dd = next[Math.floor(Math.random() * next.length)], n2 = [c[0] + MZ_DX[dd], c[1] + MZ_DY[dd]];
+        seen[n2[0] + "," + n2[1]] = true;
+        map[(2 * c[1] + 1 + MZ_DY[dd]) * GW + 2 * c[0] + 1 + MZ_DX[dd]] = 0; // the wall between
+        map[(2 * n2[1] + 1) * GW + 2 * n2[0] + 1] = 0;
+        stack.push(n2);
+      }
+      // The exit: the cell farthest from the start.
+      var dist = {}, queue = [[1, 1]], far = [1, 1];
+      dist["1,1"] = 0;
+      while (queue.length) {
+        var q = queue.shift();
+        for (var k = 0; k < 4; k++) {
+          var x2 = q[0] + MZ_DX[k], y2 = q[1] + MZ_DY[k], key = x2 + "," + y2;
+          if (!open(x2, y2) || key in dist) continue;
+          dist[key] = dist[q[0] + "," + q[1]] + 1;
+          if (x2 % 2 && y2 % 2 && dist[key] > dist[far[0] + "," + far[1]]) far = [x2, y2];
+          queue.push([x2, y2]);
+        }
+      }
+      exit = far;
+      var dir = open(2, 1) ? 0 : 1;
+      walker = { x: 1, y: 1, dir: dir, ang: dir * Math.PI / 2, act: null, mustMove: false };
+      rat = { x: exit[0], y: exit[1], from: null, to: null, t: 0 };
+      hold = 0;
+    }
+    function plan() {
+      var w = walker, l = (w.dir + 3) % 4, r = (w.dir + 1) % 4;
+      if (w.x === exit[0] && w.y === exit[1]) { hold = MZ_HOLD_S; return; }
+      if (w.mustMove || (!open(w.x + MZ_DX[l], w.y + MZ_DY[l]) && open(w.x + MZ_DX[w.dir], w.y + MZ_DY[w.dir]))) {
+        w.mustMove = false;
+        w.act = { kind: "move", t: 0, fx: w.x, fy: w.y, tx: w.x + MZ_DX[w.dir], ty: w.y + MZ_DY[w.dir] };
+      } else {
+        var to = open(w.x + MZ_DX[l], w.y + MZ_DY[l]) ? l : open(w.x + MZ_DX[r], w.y + MZ_DY[r]) ? r : r;
+        w.mustMove = to === l || open(w.x + MZ_DX[to], w.y + MZ_DY[to]);
+        w.act = { kind: "turn", t: 0, from: w.ang, to: w.ang + (to === l ? -1 : 1) * Math.PI / 2, dir: to };
+      }
+    }
+    function advance(dt) {
+      if (hold > 0) { hold -= dt; if (hold <= 0) build(); return; }
+      var w = walker;
+      if (!w.act) plan();
+      if (!w.act) return;
+      var a = w.act;
+      a.t = Math.min(1, a.t + dt * (a.kind === "move" ? MZ_MOVE_S : MZ_TURN_S));
+      var e = a.t * a.t * (3 - 2 * a.t); // ease in and out
+      if (a.kind === "turn") w.ang = a.from + (a.to - a.from) * e;
+      if (a.t >= 1) {
+        if (a.kind === "move") { w.x = a.tx; w.y = a.ty; } else { w.dir = a.dir; w.ang = a.to; }
+        w.act = null;
+      }
+    }
+    function moveRat(dt) {
+      if (!rat.to) {
+        var opts = [];
+        for (var d = 0; d < 4; d++) {
+          var nx = rat.x + MZ_DX[d], ny = rat.y + MZ_DY[d];
+          if (open(nx, ny) && !(rat.from && rat.from[0] === nx && rat.from[1] === ny)) opts.push([nx, ny]);
+        }
+        rat.to = opts.length ? opts[Math.floor(Math.random() * opts.length)] : rat.from;
+        rat.t = 0;
+      }
+      rat.t += dt * MZ_RAT_S;
+      if (rat.t >= 1) { rat.from = [rat.x, rat.y]; rat.x = rat.to[0]; rat.y = rat.to[1]; rat.to = null; rat.t = 0; }
+    }
+    function fog(dist) { return Math.max(0.12, 1 - dist / MZ_FOG); }
+    function render() {
+      var w = walker, a = w.act, px = w.x + 0.5, py = w.y + 0.5;
+      if (a && a.kind === "move") {
+        var e = a.t * a.t * (3 - 2 * a.t);
+        px = a.fx + (a.tx - a.fx) * e + 0.5;
+        py = a.fy + (a.ty - a.fy) * e + 0.5;
+      }
+      var dirX = Math.cos(w.ang), dirY = Math.sin(w.ang), plX = -dirY * MZ_FOV, plY = dirX * MZ_FOV;
+      var W = MZ_RW, H = MZ_RH, T = MZ_TEX, half = H / 2, x, y;
+      // Floor and ceiling, a row at a time.
+      for (y = Math.floor(half) + 1; y < H; y++) {
+        var rowDist = half / (y - half), f = fog(rowDist);
+        var fx = px + rowDist * (dirX - plX), fy = py + rowDist * (dirY - plY);
+        var stX = rowDist * 2 * plX / W, stY = rowDist * 2 * plY / W, top = (H - y - 1) * W, bot = y * W;
+        for (x = 0; x < W; x++) {
+          var tx = (fx * T) & (T - 1), ty = (fy * T) & (T - 1);
+          buf[bot + x] = mzShade(floorTex[ty * T + tx], f);
+          buf[top + x] = mzShade(ceilTex[ty * T + tx], f);
+          fx += stX;
+          fy += stY;
+        }
+      }
+      // Walls: one ray per column, stepped cell by cell until it meets a wall.
+      for (x = 0; x < W; x++) {
+        var camX = 2 * x / W - 1, rx = dirX + plX * camX, ry = dirY + plY * camX;
+        var mx = Math.floor(px), my = Math.floor(py);
+        var ddx = rx === 0 ? 1e30 : Math.abs(1 / rx), ddy = ry === 0 ? 1e30 : Math.abs(1 / ry);
+        var sX = rx < 0 ? -1 : 1, sY = ry < 0 ? -1 : 1;
+        var sdx = (rx < 0 ? px - mx : mx + 1 - px) * ddx, sdy = (ry < 0 ? py - my : my + 1 - py) * ddy, side = 0;
+        for (var guard = 0; guard < 64; guard++) {
+          if (sdx < sdy) { sdx += ddx; mx += sX; side = 0; } else { sdy += ddy; my += sY; side = 1; }
+          if (!open(mx, my)) break;
+        }
+        var dist = side === 0 ? sdx - ddx : sdy - ddy;
+        if (dist < 0.05) dist = 0.05;
+        zbuf[x] = dist;
+        var lh = H / dist, start = Math.max(0, Math.floor(half - lh / 2)), end = Math.min(H - 1, Math.floor(half + lh / 2));
+        var hit = side === 0 ? py + dist * ry : px + dist * rx;
+        var texX = Math.floor((hit - Math.floor(hit)) * T);
+        if ((side === 0 && rx > 0) || (side === 1 && ry < 0)) texX = T - texX - 1;
+        var shade = fog(dist) * (side ? 0.72 : 1), step = T / lh, pos = (start - half + lh / 2) * step;
+        for (y = start; y <= end; y++) {
+          buf[y * W + x] = mzShade(wallTex[(Math.floor(pos) & (T - 1)) * T + texX], shade);
+          pos += step;
+        }
+      }
+      // Sprites: the smiley at the exit (floating, bobbing) and the rat (on the floor).
+      var sprites = [{ x: exit[0] + 0.5, y: exit[1] + 0.5, tex: smileTex, size: 0.5, floor: false }];
+      if (o.rat) {
+        var rt = rat.to ? rat.t : 0, rxp = rat.to ? rat.x + (rat.to[0] - rat.x) * rt : rat.x, ryp = rat.to ? rat.y + (rat.to[1] - rat.y) * rt : rat.y;
+        sprites.push({ x: rxp + 0.5, y: ryp + 0.5, tex: ratTex, size: 0.32, floor: true });
+      }
+      var inv = 1 / (plX * dirY - dirX * plY);
+      sprites.sort(function (s1, s2) { return ((s2.x - px) * (s2.x - px) + (s2.y - py) * (s2.y - py)) - ((s1.x - px) * (s1.x - px) + (s1.y - py) * (s1.y - py)); });
+      for (var s = 0; s < sprites.length; s++) {
+        var sp = sprites[s], ox = sp.x - px, oy = sp.y - py;
+        var tX = inv * (dirY * ox - dirX * oy), tY = inv * (-plY * ox + plX * oy);
+        if (tY <= 0.15) continue;
+        var cx = Math.floor(W / 2 * (1 + tX / tY)), size = Math.abs(H / tY) * sp.size;
+        var bottom = sp.floor ? half + H / (2 * tY) : half + Math.sin(bob) * 4 + size / 2;
+        var y0 = Math.floor(bottom - size), x0 = Math.floor(cx - size / 2), sf = fog(tY);
+        for (var sx = Math.max(0, x0); sx < Math.min(W, x0 + size); sx++) {
+          if (tY >= zbuf[sx]) continue;
+          var u = Math.floor((sx - x0) * 32 / size);
+          for (var sy = Math.max(0, y0); sy < Math.min(H, y0 + size); sy++) {
+            var c = sp.tex[Math.floor((sy - y0) * 32 / size) * 32 + u];
+            if (c >>> 24) buf[sy * W + sx] = mzShade(c, sf);
+          }
+        }
+      }
+      octx.putImageData(img, 0, 0);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(off, 0, 0, 800, 480);
+      svDim(ctx);
+    }
+    build();
+    return {
+      frame: function (dt) {
+        dt *= speed;
+        bob += dt * 3;
+        advance(dt);
+        if (o.rat) moveRat(dt);
+        render();
+      },
+      recolor: svNoop
+    };
+  }
+
+  var SAVERS = {
+    logo: logoSaver, matrix: matrixSaver, pipes: pipesSaver,
+    starfield: starfieldSaver, mystify: mystifySaver, flowerbox: flowerboxSaver, maze: mazeSaver
+  };
   function startAnim() {
     stopAnim();
     var el = saver.querySelector("[data-saver]");
@@ -841,7 +1547,7 @@
     if (mode === "saver") return;
     mode = "saver";
     // Never leave a PIN pad or restart prompt up behind the screensaver.
-    if (screenKind() === "restart") goHome();
+    if (screenKind() === "restart" || screenKind() === "restarting") goHome();
     return fetch("v/saver", { credentials: "same-origin" }).then(function (r) {
       if (r.status === 403) { location.reload(); return null; }
       return r.ok ? r.text() : null;
@@ -851,6 +1557,7 @@
       saver.hidden = false;
       view.hidden = true;
       paintTime(true);
+      npLook(null);
       startAnim();
       applyLevel(true);
     }).catch(function () {});
@@ -871,6 +1578,7 @@
       saver.innerHTML = html;
       paintTime(true);
       paintBars();
+      npLook(null);
       startAnim();
       applyLevel(true);
     }).catch(function () {});
@@ -882,12 +1590,17 @@
     saver.hidden = true;
     view.hidden = false;
     paintTime(true);
+    showStrip();
     applyLevel(true);
   }
 
   function onInput(id) {
     lastInput = Date.now();
     if (mode !== "active") { wake(); return; }
+    stripOnInput();
+    npTouched();
+    // Now Playing with its controls set to Never: the dial press still plays and pauses.
+    if (id === "dial_press" && npShown() && !view.querySelector(".np2.ctl-shown") && allowed("music:play_pause")) return musicCmd("play_pause");
     if (dialIsVolume(id)) return volStep(id === "dial_cw" ? 1 : -1);
     perform(cfg.controls[id]);
   }
@@ -931,6 +1644,16 @@
   var touch = null;
   document.addEventListener("pointerdown", function (e) {
     touch = { x: e.clientX, y: e.clientY, t: Date.now(), target: e.target };
+    touch.seek = mode === "active" && e.target.closest ? e.target.closest("[data-np-seek]") : null;
+    if (touch.seek) {
+      var np = touch.seek.closest(".np2");
+      if (np) np.classList.add("is-seeking");
+      seekPreview(touch.seek, e.clientX);
+    }
+    if (mode === "active") stripOnInput();
+  });
+  document.addEventListener("pointermove", function (e) {
+    if (touch && touch.seek) seekPreview(touch.seek, e.clientX);
   });
   // The browser took the gesture over (native scroll in a list): not a tap or a swipe.
   document.addEventListener("pointercancel", function () {
@@ -942,6 +1665,7 @@
     var dx = e.clientX - touch.x, dy = e.clientY - touch.y, dt = Date.now() - touch.t, start = touch.target;
     touch = null;
     if (mode !== "active") { lastInput = Date.now(); wake(); return; }
+    if (seekRelease(start, e)) return;
     var ax = Math.abs(dx), ay = Math.abs(dy);
     if (dt < 500 && Math.max(ax, ay) >= 60) {
       if (ax > ay) return onInput(dx < 0 ? "swipe_left" : "swipe_right");
@@ -952,6 +1676,9 @@
     }
     if (ax > 12 || ay > 12) { lastInput = Date.now(); return; } // a scroll, not a tap
     lastInput = Date.now();
+    npTouched();
+    var sheet = view.querySelector("[data-np-sheet]");
+    if (sheet && !sheet.hidden && start && start.closest && !start.closest("[data-np-sheet], [data-np-more]")) npSheet(false);
     var dot = start && start.closest ? start.closest("[data-page-go]") : null;
     if (dot) return perform("page:" + dot.getAttribute("data-page-go"));
     var el = start && start.closest ? start.closest("[data-focus]") : null;
@@ -960,6 +1687,17 @@
     for (var i = 0; i < items.length; i++) if (items[i] === el) setFocus(i);
     activate(el);
   });
+
+  // A press that started on the progress line: seek to where the finger came up.
+  function seekRelease(start, e) {
+    var seek = start && start.closest ? start.closest("[data-np-seek]") : null;
+    if (!seek) return false;
+    var np = seek.closest(".np2");
+    if (np) np.classList.remove("is-seeking");
+    lastInput = Date.now();
+    seekTo(seek, e.clientX);
+    return true;
+  }
 
   function toast(text) {
     toastEl.textContent = text;
@@ -998,6 +1736,58 @@
     report("unhandled: " + String(e.reason && e.reason.message || e.reason));
   });
 
+  // ── Web page snapshots (F14): a fresh one every data-web-every s, only while it shows ──
+  // The Pi captures the page (Notify) and caches it, so asking costs the device one image.
+  // The new image loads off screen first, so the old one stays up until it's ready.
+  function refreshWeb() {
+    if (document.hidden) return;
+    var imgs = (mode === "saver" ? saver : view).querySelectorAll("img[data-web-every]");
+    var now = Date.now();
+    for (var i = 0; i < imgs.length; i++) {
+      var img = imgs[i];
+      var at = Number(img.getAttribute("data-web-at") || 0);
+      if (!at) { img.setAttribute("data-web-at", String(now)); continue; }
+      if (img.getAttribute("data-web-loading") || now - at < Number(img.getAttribute("data-web-every")) * 1000) continue;
+      loadWeb(img);
+    }
+  }
+  // The fresh image loads into a copy that replaces the old one, so each refresh is one
+  // download (the snapshot is no-store, so setting the old img's src would fetch it again).
+  function loadWeb(img) {
+    var next = img.getAttribute("src").split("&r=")[0] + "&r=" + Date.now();
+    var fresh = document.createElement("img");
+    for (var a = 0; a < img.attributes.length; a++) {
+      var attr = img.attributes[a];
+      if (attr.name !== "src" && attr.name !== "data-web-loading") fresh.setAttribute(attr.name, attr.value);
+    }
+    img.setAttribute("data-web-loading", "1");
+    fresh.onload = function () {
+      fresh.onload = fresh.onerror = null;
+      fresh.setAttribute("data-web-at", String(Date.now()));
+      if (img.parentNode) {
+        img.parentNode.replaceChild(fresh, img);
+        webShown(fresh, true);
+      }
+    };
+    fresh.onerror = function () { // keep the last image
+      fresh.onload = fresh.onerror = null;
+      img.removeAttribute("data-web-loading");
+      img.setAttribute("data-web-at", String(Date.now()));
+    };
+    fresh.src = next;
+  }
+  function webShown(img, ok) {
+    var msg = img.parentNode && img.parentNode.querySelector("[data-web-msg]");
+    if (msg) msg.hidden = ok;
+    img.style.visibility = ok ? "" : "hidden";
+  }
+  document.addEventListener("load", function (e) {
+    if (e.target && e.target.hasAttribute && e.target.hasAttribute("data-web-every")) webShown(e.target, true);
+  }, true);
+  document.addEventListener("error", function (e) {
+    if (e.target && e.target.hasAttribute && e.target.hasAttribute("data-web-every")) webShown(e.target, false);
+  }, true);
+
   // ── Check in with the Pi every 15 s (every 3 s while the link is down) ──
   // The panel reaches the Pi only through the USB link (adb reverse). When that drops the
   // screen keeps its last page, so a banner says so, and the view reloads once it's back.
@@ -1010,7 +1800,7 @@
     if (up) {
       toastEl.hidden = true;
       if (mode === "saver") refreshSaver();
-      else load(current, false, focusIndex);
+      else load(current, false, focusIndex, true);
     }
   }
   var frev = "";
@@ -1030,7 +1820,7 @@
       if (backlight !== !!t.backlight) { backlight = !!t.backlight; applyLevel(true); }
       if (frev && t.frev !== frev) {
         if (mode === "saver") refreshSaver();
-        else if (screenKind() === "home" || screenKind() === "app" || screenKind() === "weather") load(current, false, focusIndex);
+        else if (screenKind() === "home" || screenKind() === "app" || screenKind() === "weather") load(current, false, focusIndex, true);
       }
       frev = t.frev;
     }).catch(function () {
@@ -1060,6 +1850,7 @@
   setInterval(function () {
     paintTime(false);
     paintBars();
+    refreshWeb();
     var idle = (Date.now() - lastInput) / 1000;
     var saverAfter = cfg.idle.screensaver_after_s;
     // 0 = no screensaver by day; quiet hours still bring it after a minute untouched.
@@ -1088,6 +1879,7 @@
 
   setFocus(0);
   paintTime(true);
+  showStrip(); // the first page comes with the shell, not through load()
   applyLevel(true);
   tick();
   // Notify's editor reloads the preview with ?saver=1 after a screensaver change.

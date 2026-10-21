@@ -46,6 +46,8 @@ Household “what’s worth reading today” without five news apps — fetch, d
 
 Search (stories, favourites, Saved long-reads) is in the header.
 
+On the Briefing, tap anywhere on a card to open or close it. Links, the open-article icon and the long-read and Saved buttons keep their own job, and selecting text doesn't toggle the card; the chevron stays for the keyboard. On phones, story titles are smaller so a card shows more than its headline.
+
 ## Integrations (this app)
 
 | Integration | Role |

@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import threading
 import time
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -83,6 +84,10 @@ def _api_csrf_ok(request: Request) -> bool:
     return csrf_ok_request(request.cookies, header_token=request.headers.get("x-stonepi-csrf") or "")
 
 
+# Device, Spotify and earlier versions live on the Setup page; everything else on the editor.
+SETUP_ANCHORS = {"device", "music", "configs", "versions", "setup"}
+
+
 def _back(msg: str = "", err: str = "", anchor: str = "", config_id: str = "") -> RedirectResponse:
     parts = []
     if config_id:
@@ -92,7 +97,8 @@ def _back(msg: str = "", err: str = "", anchor: str = "", config_id: str = "") -
     if err:
         parts.append(f"err={quote(err)}")
     query = ("?" + "&".join(parts)) if parts else ""
-    return RedirectResponse(f"/displays/carthing{query}{('#' + anchor) if anchor else ''}", status_code=303)
+    path = "/displays/carthing/setup" if anchor in SETUP_ANCHORS else "/displays/carthing"
+    return RedirectResponse(f"{path}{query}{('#' + anchor) if anchor else ''}", status_code=303)
 
 
 def run_helper(action: str) -> dict:
@@ -132,7 +138,10 @@ def _panel_signed(method: str, path: str, timeout: float = 3.0, **kwargs) -> htt
 def internal_state(request: Request, draft: str = ""):
     if not _internal_ok(request):
         return JSONResponse({"ok": False}, status_code=403)
+    from app.web_routes import web_pages_for_editor
+
     state = carthing.public_state()
+    state["web_pages"] = web_pages_for_editor()  # names for web widgets (F14)
     if draft:
         with _draft_lock:
             cfg = _draft["config"]
@@ -189,6 +198,10 @@ def system_feed(overview: dict) -> dict:
                 "level": "up" if running else "down",
                 "unit": units.get(app_id) or "",
                 "detail": "\n".join(detail),
+                # The panel's service page shows these on their own.
+                "running": running,
+                "line": str(row.get("d") or "") if row.get("d") not in (None, "—") else "",
+                "note": str(row.get("m") or ""),
             }
         )
     up, total = int(overview.get("apps_up") or 0), int(overview.get("apps_total") or 0)
@@ -220,6 +233,8 @@ def system_feed(overview: dict) -> dict:
             "backup": str(overview.get("backup_when") or ""),
             "backup_ok": bool(overview.get("backup_ok")),
         },
+        # Notify's health check: what needs attention (the panel's Check line).
+        "alerts": [str(a.get("message") or "")[:120] for a in overview.get("alerts") or [] if isinstance(a, dict) and a.get("message")][:4],
         "items": items,
         "refresh_s": 30,
     }
@@ -293,13 +308,27 @@ def _status() -> dict:
     return data
 
 
-@router.get("/displays/carthing", response_class=HTMLResponse)
-def carthing_page(request: Request, config: str = ""):
+def editor_catalog() -> dict[str, Any]:
+    """The editor's catalog plus Notify's web pages: one full-page widget each (F14)."""
+    from app.web_routes import web_pages_for_editor
+
+    cat = carthing.editor_catalog()
+    pages = web_pages_for_editor()
+    cat["web_pages"] = pages
+    cat["widgets"] = cat["widgets"] + [
+        {"id": f"{carthing.WEB_WIDGET_PREFIX}{p['id']}", "label": f"Web: {p['name']}", "source": "web", "sizes": ["full"]}
+        for p in pages
+    ]
+    return cat
+
+
+def _render_carthing(request: Request, template: str, path: str, config: str):
+    """The editor and the Setup page share their data: device, configs, Spotify."""
     from app.routes import _guard, _page_ctx, templates
 
     if not _secret() and not _auth_optional():
         return HTMLResponse("StonePi sign-in isn't configured, so the Car Thing editor is locked.", status_code=403)
-    user, denied = _guard(request, path="/displays/carthing", active="displays", template="carthing.html")
+    user, denied = _guard(request, path=path, active="displays", template=template)
     if denied is not None:
         return denied
     rows = carthing.list_configs()
@@ -307,12 +336,13 @@ def carthing_page(request: Request, config: str = ""):
     editing = carthing.get_config(config) if config else None
     if editing is None:
         editing = carthing.active_config()
-    with _draft_lock:
-        _draft["config"] = editing
+    if template == "carthing.html":
+        with _draft_lock:
+            _draft["config"] = editing
     csrf = csrf_from_request(request.cookies)
     response = templates.TemplateResponse(
         request,
-        "carthing.html",
+        template,
         _page_ctx(
             request,
             active="displays",
@@ -320,10 +350,12 @@ def carthing_page(request: Request, config: str = ""):
             csrf=csrf,
             extra={
                 "device": device,
+                # Never switched on or paired: the editor points to Setup first.
+                "first_run": not device["enabled"] and not device["token_hash"],
                 "configs": rows,
                 "editing": editing,
                 "snapshots": carthing.list_snapshots(editing["id"]),
-                "editor": {"config": editing, "catalog": carthing.editor_catalog(), "active": device["active_config"]},
+                "editor": {"config": editing, "catalog": editor_catalog(), "active": device["active_config"]},
                 "pin_length": carthing.PIN_LENGTH,
                 "music": music_view(request),
             },
@@ -331,6 +363,17 @@ def carthing_page(request: Request, config: str = ""):
     )
     set_csrf_cookie(response, csrf, secure=request_is_https(request))
     return response
+
+
+@router.get("/displays/carthing", response_class=HTMLResponse)
+def carthing_page(request: Request, config: str = ""):
+    return _render_carthing(request, "carthing.html", "/displays/carthing", config)
+
+
+@router.get("/displays/carthing/setup", response_class=HTMLResponse)
+def carthing_setup_page(request: Request, config: str = ""):
+    """Device, Spotify sign-in, saved configs and earlier versions: set once, then left alone."""
+    return _render_carthing(request, "carthing_setup.html", "/displays/carthing/setup", config)
 
 
 @router.get("/api/carthing/status")
@@ -505,6 +548,55 @@ async def device_action(request: Request):
     return _back(err="Unknown action.")
 
 
+@router.post("/displays/carthing/setup")
+async def setup_save(request: Request):
+    """The Setup page's one Save: the PIN, the Spotify client ID and the sign-in expiry date.
+
+    Only what changed is applied (each field's ``*_was`` holds what the page showed); the
+    first problem stops the rest so nothing is half-saved silently.
+    """
+    form, denied = await _form(request)
+    if denied is not None:
+        return denied
+    done: list[str] = []
+    # Admin PIN
+    pin = str(form.get("pin") or "").strip()
+    pin_on = str(form.get("pin_enabled") or "") in {"1", "on", "true"}
+    pin_was = str(form.get("pin_enabled_was") or "") == "1"
+    if pin or pin_on != pin_was:
+        try:
+            carthing.set_pin(pin or None, enabled=pin_on)
+        except ValueError as exc:
+            return _back(err=str(exc), anchor="device")
+        done.append(f"PIN saved and {'on' if pin_on else 'off'}" if pin else f"PIN {'on' if pin_on else 'off'}")
+    # Spotify client ID
+    if "client_id" in form:
+        client_id = str(form.get("client_id") or "").strip()
+        if client_id != str(form.get("client_id_was") or "").strip():
+            if not spotify.valid_client_id(client_id):
+                return _back(err="A Spotify client ID is 32 letters and digits, from your Spotify app's Settings page.", anchor="music")
+            if not _vault_save(spotify.CLIENT_ID_KEY, client_id):
+                return _back(err="The vault couldn't save the client ID. Check Settings → Vault.", anchor="music")
+            _tell_panel_music_changed()
+            done.append("client ID saved (now press Connect Spotify)")
+    # Spotify sign-in expiry: a set date, or back to 6 months from connecting
+    if form.get("expiry_reset"):
+        carthing.set_music_expiry("")
+        done.append("expiry set back to 6 months from connecting")
+    elif "expires_on" in form:
+        value = str(form.get("expires_on") or "").strip()
+        if value and value != str(form.get("expires_on_was") or "").strip():
+            try:
+                carthing.set_music_expiry(value)
+            except ValueError as exc:
+                return _back(err=str(exc), anchor="music")
+            done.append("expiry date saved")
+    if not done:
+        return _back(msg="Nothing changed.", anchor="setup")
+    text = "; ".join(done)
+    return _back(msg=text[0].upper() + text[1:] + ".", anchor="setup")
+
+
 @router.post("/displays/carthing/configs")
 async def config_action(request: Request):
     form, denied = await _form(request)
@@ -513,35 +605,37 @@ async def config_action(request: Request):
     action = str(form.get("action") or "")
     config_id = str(form.get("config_id") or "")
     name = str(form.get("name") or "").strip()
+    # The editor's Showing menu and the Setup page's Saved configs both post here; go back to the one used.
+    here = "configs" if str(form.get("return_to") or "") == "setup" else "editor"
     try:
         if action == "activate":
             cfg = carthing.activate_config(config_id)
-            return _back(msg=f"“{cfg['name']}” is now on the Car Thing.", anchor="configs", config_id=cfg["id"])
+            return _back(msg=f"“{cfg['name']}” is now on the Car Thing.", anchor=here, config_id=cfg["id"])
         if action == "copy":
             cfg = carthing.copy_config(config_id, name)
             return _back(msg=f"Saved a copy as “{cfg['name']}”.", anchor="editor", config_id=cfg["id"])
         if action == "rename":
             cfg = carthing.rename_config(config_id, name)
-            return _back(msg="Renamed.", anchor="configs", config_id=cfg["id"])
+            return _back(msg="Renamed.", anchor=here, config_id=cfg["id"])
         if action == "delete":
             carthing.delete_config(config_id)
-            return _back(msg="Config deleted.", anchor="configs")
+            return _back(msg="Config deleted.", anchor=here)
         if action == "restore":
             cfg = carthing.restore_snapshot(config_id, str(form.get("snapshot") or ""))
             return _back(msg="Earlier version restored.", anchor="editor", config_id=cfg["id"])
         if action == "import":
             upload = form.get("file")
             if upload is None or not hasattr(upload, "read"):
-                return _back(err="Choose a config file to import.", anchor="configs")
+                return _back(err="Choose a config file to import.", anchor=here)
             raw = await upload.read(512 * 1024)
             try:
                 data = json.loads(raw.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
-                return _back(err="That file isn't a Car Thing config.", anchor="configs")
+                return _back(err="That file isn't a Car Thing config.", anchor=here)
             cfg = carthing.import_config(data, name=name)
             return _back(msg=f"Imported as “{cfg['name']}”.", anchor="editor", config_id=cfg["id"])
     except ValueError as exc:
-        return _back(err=str(exc), anchor="configs", config_id=config_id if action != "delete" else "")
+        return _back(err=str(exc), anchor=here, config_id=config_id if action != "delete" else "")
     return _back(err="Unknown action.")
 
 
@@ -643,16 +737,108 @@ def _tell_panel_music_changed() -> None:
     _panel_signed("POST", "/internal/music/reset")
 
 
+def _music_error_code() -> str:
+    """The panel service's last Spotify token error ("invalid_grant" = sign-in gone), or ""."""
+    music = _status().get("music")
+    return str(music.get("error_code") or "") if isinstance(music, dict) else ""
+
+
 def music_view(request: Request) -> dict[str, Any]:
     client_id = _vault_secret(spotify.CLIENT_ID_KEY)
+    connected = bool(client_id and _vault_secret(spotify.REFRESH_TOKEN_KEY))
+    account = carthing.music_account()
     return {
         "client_id": client_id,
-        "connected": bool(client_id and _vault_secret(spotify.REFRESH_TOKEN_KEY)),
-        "account": carthing.music_account(),
+        "connected": connected,
+        "account": account,
+        # From the date alone: the page's status poll turns it red if the panel service
+        # reports invalid_grant, so rendering never waits on that service.
+        "expiry": carthing.music_expiry(account) if connected else None,
+        "warn_days": carthing.MUSIC_WARN_DAYS,
         "https_redirect": _https_redirect(request),
         "loopback_redirect": spotify.LOOPBACK_REDIRECT,
         "awaiting_paste": _paste_pending(),
     }
+
+
+# ── Spotify sign-in expiry alerts (U21): checked once a day by the scheduler ──
+
+_expiry_checked_on = ""
+
+
+def check_music_expiry(today: date | None = None) -> str:
+    """Send the admin "expiring" (last 14 days) and "expired" alerts, once per expiry date.
+
+    Returns the alert sent ("soon", "expired" or "")."""
+    if not _vault_secret(spotify.REFRESH_TOKEN_KEY):
+        return ""
+    account = carthing.music_account()
+    expiry = carthing.music_expiry(account, error_code=_music_error_code(), today=today)
+    if expiry is None or expiry["state"] == "ok":
+        return ""
+    kind = "soon" if expiry["state"] == "soon" else "expired"
+    if account["alerts"].get(kind) == expiry["expires_on"]:
+        return ""
+    import stonepi_notify
+
+    day = date.fromisoformat(expiry["expires_on"])
+    when = f"{day.day} {day:%b %Y}"
+    if kind == "soon":
+        event = {
+            "id": "carthing.spotify_expiring",
+            "title": "Spotify sign-in expiring",
+            "summary": f"The Car Thing's Spotify sign-in runs out around {when}. Reconnect it in Notify → Displays → Car Thing.",
+            "severity": "warning",
+        }
+    else:
+        event = {
+            "id": "carthing.spotify_expired",
+            "title": "Spotify sign-in expired",
+            "summary": "The Car Thing can't show or control music until you reconnect Spotify in Notify → Displays → Car Thing.",
+            "severity": "critical",
+        }
+    stonepi_notify.ingest_event(
+        {
+            **event,
+            "source": "carthing",
+            "audience": "admin",
+            "dedupe_key": f"{event['id']}:{expiry['expires_on']}",
+            "url": "/notify/displays/carthing/setup#music",
+        }
+    )
+    carthing.mark_music_alert(kind, expiry["expires_on"])
+    return kind
+
+
+EXPIRY_CHECK_HOUR = 9  # local time: the alert lands in the morning, not after midnight
+EXPIRY_RETRY = timedelta(hours=1)
+_expiry_retry_at: datetime | None = None
+_expiry_failures = 0  # failed runs in a row: the first logs the traceback, later ones a line
+
+
+def check_music_expiry_daily(now: datetime | None = None) -> None:
+    """Scheduler tick (every minute): run check_music_expiry once a day, from 09:00 local
+    time. A failed run is retried once an hour rather than skipping the day."""
+    global _expiry_checked_on, _expiry_retry_at, _expiry_failures
+    now = now or datetime.now().astimezone()
+    today = now.date().isoformat()
+    if _expiry_checked_on == today or now.hour < EXPIRY_CHECK_HOUR:
+        return
+    if _expiry_retry_at is not None and now < _expiry_retry_at:
+        return
+    try:
+        check_music_expiry(now.date())
+    except Exception as exc:  # noqa: BLE001
+        _expiry_failures += 1
+        if _expiry_failures == 1:
+            logger.exception("spotify: expiry check failed; retrying hourly")
+        else:
+            logger.warning("spotify: expiry check still failing (%d in a row): %s", _expiry_failures, str(exc)[:160])
+        _expiry_retry_at = now + EXPIRY_RETRY
+        return
+    if _expiry_failures:
+        logger.info("spotify: expiry check working again after %d failures", _expiry_failures)
+    _expiry_checked_on, _expiry_retry_at, _expiry_failures = today, None, 0
 
 
 def _finish_sign_in(code: str, state: str) -> tuple[str, str]:
@@ -761,6 +947,14 @@ async def music_action(request: Request):
         carthing.clear_music_account()
         _tell_panel_music_changed()
         return _back(msg="Spotify disconnected. To revoke it fully, remove StonePi under Manage apps on your Spotify account page.", anchor="music")
+    if action == "expiry":
+        # "Reset" (or an empty date) goes back to 6 months from connecting.
+        value = "" if form.get("reset") else str(form.get("expires_on") or "").strip()
+        try:
+            day = carthing.set_music_expiry(value)
+        except ValueError as exc:
+            return _back(err=str(exc), anchor="music")
+        return _back(msg="Expiry date saved." if day else "Expiry set back to 6 months from connecting.", anchor="music")
     return _back(err="Unknown action.", anchor="music")
 
 

@@ -145,6 +145,21 @@ TRMNL_DEFAULTS: dict[str, Any] = {
     "last_skip_message": None,
 }
 DISPLAY_DEVICES = ("og", "v2")
+# Display kinds: "widgets" (the universal template, merge_variables) or "web" (F14: a
+# captured web page POSTed as a PNG to TRMNL's Webhook Image plugin).
+DISPLAY_KINDS = ("widgets", "web")
+# Webhook Image takes 12 uploads an hour whatever the plan (help.trmnl.com, Webhook Image).
+WEB_IMAGE_LIMITS: dict[str, Any] = {
+    "id": "webhook_image", "label": "Webhook Image", "per_hour": 12, "budget": 10, "min_interval": 5,
+}
+WEB_DEFAULTS: dict[str, Any] = {
+    "page_id": "",
+    "bits": 0,  # 0 = the device's default (OG 1-bit, X 4-bit)
+    "dither": False,
+    "invert": "auto",
+    "threshold": 128,
+}
+DEVICE_BITS = {"og": 1, "v2": 4}
 MIN_INTERVAL_MIN = min(tier["min_interval"] for tier in TRMNL_TIERS.values())
 MAX_INTERVAL_MIN = 120
 
@@ -155,6 +170,38 @@ def trmnl_tier(trmnl: dict[str, Any] | None) -> dict[str, Any]:
     if key not in TRMNL_TIERS:
         key = DEFAULT_TRMNL_TIER
     return {"id": key, **TRMNL_TIERS[key]}
+
+
+def push_limits(display: dict[str, Any]) -> dict[str, Any]:
+    """Hourly budget and minimum interval: the plugin's (Webhook Image) or the plan's."""
+    if display.get("kind") == "web":
+        return dict(WEB_IMAGE_LIMITS)
+    return trmnl_tier(display.get("trmnl"))
+
+
+def web_bits(display: dict[str, Any]) -> int:
+    """Bits per pixel a web Display sends: its choice, else the device's default."""
+    bits = int((display.get("web") or {}).get("bits") or 0)
+    return bits if bits in (1, 2, 4) else DEVICE_BITS.get(display.get("device") or "og", 1)
+
+
+def _normalize_web(raw: Any) -> dict[str, Any]:
+    data = raw if isinstance(raw, dict) else {}
+    out = dict(WEB_DEFAULTS)
+    out["page_id"] = str(data.get("page_id") or "").strip()[:40]
+    try:
+        out["bits"] = int(data.get("bits") or 0)
+    except (TypeError, ValueError):
+        out["bits"] = 0
+    if out["bits"] not in (0, 1, 2, 4):
+        out["bits"] = 0
+    out["dither"] = bool(data.get("dither"))
+    out["invert"] = data.get("invert") if data.get("invert") in ("auto", "on", "off") else "auto"
+    try:
+        out["threshold"] = max(5, min(250, int(data.get("threshold") or WEB_DEFAULTS["threshold"])))
+    except (TypeError, ValueError):
+        out["threshold"] = WEB_DEFAULTS["threshold"]
+    return out
 
 
 def _normalize_widget(raw: dict[str, Any]) -> dict[str, Any] | None:
@@ -186,7 +233,7 @@ def _normalize_widget(raw: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def _normalize_trmnl(raw: Any) -> dict[str, Any]:
+def _normalize_trmnl(raw: Any, kind: str = "widgets") -> dict[str, Any]:
     data = raw if isinstance(raw, dict) else {}
     out = dict(TRMNL_DEFAULTS)
     for key in out:
@@ -194,7 +241,7 @@ def _normalize_trmnl(raw: Any) -> dict[str, Any]:
             out[key] = data[key]
     out["enabled"] = bool(out["enabled"])
     out["tier"] = out["tier"] if out.get("tier") in TRMNL_TIERS else DEFAULT_TRMNL_TIER
-    floor = TRMNL_TIERS[out["tier"]]["min_interval"]
+    floor = WEB_IMAGE_LIMITS["min_interval"] if kind == "web" else TRMNL_TIERS[out["tier"]]["min_interval"]
     try:
         out["interval_minutes"] = max(floor, min(MAX_INTERVAL_MIN, int(out["interval_minutes"])))
     except (TypeError, ValueError):
@@ -215,7 +262,9 @@ def _normalize_display(raw: dict[str, Any]) -> dict[str, Any] | None:
         device = "og"
     title_bar = str(raw.get("title_bar") or "bottom").strip().lower()
     date_format = str(raw.get("date_format") or DEFAULT_DATE_FORMAT).strip().lower()
-    widgets_raw = raw.get("widgets") if isinstance(raw.get("widgets"), list) else []
+    kind = str(raw.get("kind") or "widgets")
+    kind = kind if kind in DISPLAY_KINDS and display_id != BUILTIN_DASHBOARD_ID else "widgets"
+    widgets_raw = raw.get("widgets") if isinstance(raw.get("widgets"), list) and kind == "widgets" else []
     widgets = []
     for item in widgets_raw:
         if isinstance(item, dict):
@@ -227,11 +276,13 @@ def _normalize_display(raw: dict[str, Any]) -> dict[str, Any] | None:
         "name": name,
         "enabled": bool(raw.get("enabled", True)),
         "builtin": bool(raw.get("builtin")) or display_id == BUILTIN_DASHBOARD_ID,
+        "kind": kind,
         "device": device,
         "title_bar": title_bar if title_bar in TITLE_BAR_POSITIONS else "bottom",
         "date_format": date_format if date_format in DATE_FORMATS else DEFAULT_DATE_FORMAT,
         "widgets": place_widgets(widgets, device),
-        "trmnl": _normalize_trmnl(raw.get("trmnl")),
+        "trmnl": _normalize_trmnl(raw.get("trmnl"), kind),
+        "web": _normalize_web(raw.get("web")),
     }
 
 

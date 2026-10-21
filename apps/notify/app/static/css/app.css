@@ -86,21 +86,6 @@ input, select { font-size: 16px; }
   stroke-linejoin: round;
 }
 
-.status-pill {
-  margin: 0;
-  min-width: 2rem;
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
-  text-align: center;
-  color: var(--muted);
-  background: var(--wash);
-  border: 1px solid var(--line);
-  white-space: nowrap;
-}
 
 .theme-switch {
   display: inline-flex;
@@ -1339,6 +1324,11 @@ details.alerts-section[open] > summary .section-heading::after { transform: rota
 .ct-status { display: flex; align-items: center; gap: 8px; margin: 0; }
 .ct-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
 .ct-dot.on { background: var(--ok); }
+/* Spotify sign-in expiry (U21): plain, then amber in the last 14 days, red once it's gone. */
+.ct-expiry > p { margin: 0; }
+.ct-expiry.is-soon, .ct-expiry.is-expired, .ct-expiry.is-revoked { padding: 10px 12px; border-radius: 8px; border: 1px solid; }
+.ct-expiry.is-soon { background: color-mix(in srgb, var(--warning) 14%, var(--card)); border-color: color-mix(in srgb, var(--warning) 45%, var(--line)); }
+.ct-expiry.is-expired, .ct-expiry.is-revoked { background: color-mix(in srgb, var(--error) 14%, var(--card)); border-color: color-mix(in srgb, var(--error) 45%, var(--line)); }
 .ct-pin { border-top: 1px solid var(--line); padding-top: 14px; }
 .ct-pin h3 { margin: 0; font-size: 1rem; }
 .ct-configs { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
@@ -1358,35 +1348,138 @@ details.alerts-section[open] > summary .section-heading::after { transform: rota
 .ct-snapshots { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
 .ct-snapshots li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .ct-snapshots form { margin: 0; }
-.ct-editor-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
-.ct-editor-head .section-heading { margin: 0; }
+/* Status pills under the title, the config menu, and Setup beside the title. */
+.ct-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ct-title-row .carthing-title { margin: 0; }
+.ct-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.ct-chip {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 14px;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--card); color: var(--ink);
+  font: inherit; font-size: 0.9rem; text-decoration: none; cursor: pointer; list-style: none;
+}
+.ct-chip::-webkit-details-marker { display: none; }
+.ct-chip:hover { background: color-mix(in srgb, var(--ink) 6%, var(--card)); }
+.ct-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ct-chip svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ct-chip .muted { white-space: nowrap; }
+.ct-chip.is-warn { border-color: var(--warning); }
+.ct-chip.is-warn .muted { color: color-mix(in srgb, var(--warning) 70%, var(--ink)); }
+.ct-chip.is-bad { border-color: var(--error); }
+.ct-chip.is-bad .muted { color: var(--error); }
+.ct-menu { position: relative; }
+.ct-menu[open] > .ct-chip svg { transform: rotate(180deg); }
+.ct-menu-pop {
+  position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; width: min(560px, calc(100vw - 32px));
+  padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--card);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+
+/* Editor: tabs and the one Save in a row that stays in view. */
+.ct-tabbar {
+  position: sticky; top: 0; z-index: 9; display: flex; flex-wrap: wrap; align-items: center;
+  justify-content: space-between; gap: 10px; margin: -4px 0 0; padding: 8px 0 10px;
+  background: var(--card); border-bottom: 1px solid var(--line);
+}
+/* From 1024px the StonePi header sticks to the top too: the tabs stop just under it. */
+@media (min-width: 1024px) {
+  .ct-tabbar { top: var(--topbar-height); }
+}
+.ct-save-row { flex-wrap: nowrap; align-items: center; }
+.ct-save-row .btn { width: auto; }
+.ct-save-row form { margin: 0; }
+.ct-save-row [data-ct-dirty] { white-space: nowrap; }
 .ct-layout { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
 @media (min-width: 1000px) {
   .ct-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); align-items: start; }
   .ct-device-wrap { position: sticky; top: calc(var(--topbar-height) + 12px); }
 }
 .ct-tabs { flex-wrap: wrap; }
-.ct-order { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.ct-order li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.ct-order-btns { display: flex; gap: 4px; }
-.ct-order-btns .btn { min-width: 40px; padding: 4px 10px; }
-.ct-pages { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.ct-pages li {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: 4px 6px 4px 4px; border: 1px solid var(--line); border-radius: 12px;
+.ct-sub { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.ct-label { font-size: 0.78rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.ct-label .muted { text-transform: none; letter-spacing: 0; font-weight: 400; }
+
+/* Pages: pills (drag to reorder), the name and Delete page, the header line. */
+.ct-pills { display: flex; flex-wrap: wrap; gap: 8px; touch-action: pan-y; }
+.ct-pill {
+  min-height: 40px; max-width: 220px; padding: 0 16px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--card); color: var(--ink); font: inherit; font-weight: 600; cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.ct-pages li.is-on { border-color: var(--accent); }
-.ct-page-pick {
-  flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px;
-  min-height: var(--tap); padding: 6px 8px; border: 0; background: none; color: inherit;
-  font: inherit; text-align: left; cursor: pointer; border-radius: 8px;
+.ct-pill[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--card); }
+.ct-pill:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ct-pill-add { width: 40px; padding: 0; border-style: dashed; }
+.ct-pill-add:disabled { opacity: 0.4; cursor: not-allowed; }
+.ct-pill.is-drag, .ct-wrow.is-drag { opacity: 0.45; }
+.ct-pill.is-drop, .ct-wrow.is-drop { box-shadow: 0 0 0 2px var(--accent); }
+.ct-name-row { display: flex; align-items: flex-end; gap: 16px; }
+.ct-page-name { display: grid; gap: 4px; flex: 1; max-width: 360px; }
+.ct-del { flex: none; min-height: var(--tap); padding: 0 4px; border: 0; background: none; color: var(--error); font: inherit; font-weight: 600; cursor: pointer; }
+.ct-hdr-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 8px 8px 14px; border: 1px solid var(--line); border-radius: 12px; }
+.ct-hdr-line .btn { width: auto; flex: none; }
+
+/* On this page: the 6-space bar and a row per widget. */
+.ct-space { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+.ct-space i { height: 7px; border-radius: 4px; background: var(--line); }
+.ct-space-n { font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.8rem; color: var(--muted); }
+.tint-sand { background: var(--tint-sand-fg) !important; }
+.tint-sky { background: var(--tint-sky-fg) !important; }
+.tint-moss { background: var(--tint-moss-fg) !important; }
+.tint-amethyst { background: var(--tint-amethyst-fg) !important; }
+.tint-ember { background: var(--tint-ember-fg) !important; }
+.tint-rust { background: var(--tint-rust-fg) !important; }
+.ct-wrows { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ct-wrow {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 6px 6px 2px;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--card);
 }
-.ct-page-pick strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
-.ct-page-pick:focus-visible { outline: 2px solid var(--focus); }
-.ct-page-name { display: grid; gap: 4px; max-width: 320px; }
-.ct-widgets li { flex-wrap: wrap; }
-.ct-widgets li .check { flex: 1 1 160px; }
-.ct-widgets select { width: auto; min-width: 120px; }
+.ct-wrow.is-open { border-color: var(--ink); }
+.ct-grip {
+  flex: none; width: 28px; min-height: var(--tap); padding: 0; border: 0; background: none;
+  color: var(--muted); font-size: 1.1rem; cursor: grab; touch-action: none; border-radius: 8px;
+}
+.ct-grip:focus-visible { outline: 2px solid var(--focus); }
+.ct-wdot { flex: none; width: 10px; height: 10px; border-radius: 50%; }
+.ct-wname { flex: 1 1 0; min-width: 0; display: grid; }
+.ct-wname strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ct-wname small { color: var(--muted); font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ct-sizes { flex: none; display: inline-flex; padding: 3px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 7%, var(--card)); }
+.ct-sizes button {
+  min-height: 32px; padding: 0 11px; border: 0; border-radius: 999px; background: none;
+  color: var(--muted); font: inherit; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+}
+.ct-sizes button[aria-pressed="true"] { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14); }
+.ct-sizes button:disabled { opacity: 0.35; cursor: not-allowed; }
+.ct-sizes button:focus-visible { outline: 2px solid var(--focus); }
+.ct-wbtn { flex: none; width: 40px; min-width: 40px; padding: 0; display: inline-grid; place-items: center; }
+.ct-wbtn svg { width: 18px; height: 18px; }
+.ct-wbody { flex-basis: 100%; padding: 12px 8px 6px 38px; margin-top: 4px; border-top: 1px solid var(--line); }
+.ct-add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.ct-add select { width: auto; border-style: dashed; font-weight: 600; }
+.ct-add .hint { margin: 0; flex: 1; min-width: 180px; }
+.ct-web-add { padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; }
+.ct-turn { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 12px; background: color-mix(in srgb, var(--ink) 5%, var(--card)); }
+.ct-turn [data-ct-turn-text] { flex: 1; }
+
+/* Folded sections: What this config may do, Look's Clock and Music. */
+.ct-fold { border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
+.ct-fold > summary { cursor: pointer; font-weight: 600; }
+.ct-fold[open] > summary { margin-bottom: 10px; }
+.ct-fold-btn { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
+.ct-fold-btn svg { width: 16px; height: 16px; transform: rotate(-90deg); transition: transform 0.15s; }
+.ct-fold-btn[aria-expanded="true"] svg { transform: none; }
+.ct-controls .ct-group-row th { padding-top: 14px; font-size: 0.78rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.ct-controls .ct-group-row .muted { text-transform: none; letter-spacing: 0; font-weight: 400; }
+
+/* Setup: one Save for the PIN, client ID and expiry date. */
+.ct-savebar {
+  position: sticky; bottom: 12px; z-index: 10; display: flex; align-items: center; gap: 10px;
+  margin-top: 16px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 14px;
+  background: var(--card); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+}
+.ct-savebar > span { flex: 1; color: var(--muted); }
+.ct-savebar .btn { width: auto; }
+.ct-savebar.is-dirty { border-color: var(--accent); }
+.ct-savebar.is-dirty > span { color: var(--ink); font-weight: 600; }
 .ct-controls { width: 100%; border-collapse: collapse; }
 .ct-controls th { text-align: left; font-weight: 500; padding: 4px 8px 4px 0; width: 45%; }
 .ct-controls td { padding: 4px 0; }
@@ -1405,6 +1498,7 @@ details.alerts-section[open] > summary .section-heading::after { transform: rota
 .ct-swatch.wide { width: 92px; height: 52px; color: #f5f1e8; font-size: 0.8rem; display: flex; align-items: flex-end; padding: 4px 6px; }
 .ct-swatch.is-on { outline: 3px solid var(--focus); outline-offset: 2px; }
 .ct-bg-thumb { width: 240px; max-width: 100%; aspect-ratio: 5 / 3; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); }
+.ct-saver-pick { max-width: 320px; }
 .ct-faces { display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
 .ct-face { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
 .ct-face:has(input:checked) { border-color: var(--accent); }
@@ -1436,9 +1530,6 @@ details.alerts-section[open] > summary .section-heading::after { transform: rota
 .ct-co-dial .ct-co span { display: block; white-space: nowrap; text-overflow: ellipsis; text-align: left; }
 .ct-device-body { position: relative; }
 .ct-under { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-top: 6px; }
-.ct-pager { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.ct-pager span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9rem; }
-.ct-pager .btn { min-width: var(--tap); padding: 4px 10px; flex: none; }
 /* Dial and Back labels sit under the drawing's dial and back button (x 473-640 of 640). */
 .ct-co-right { flex: none; width: 26%; min-width: 110px; display: grid; gap: 3px; }
 .ct-co-back { margin: 0; }
@@ -1472,12 +1563,76 @@ details.alerts-section[open] > summary .section-heading::after { transform: rota
 .ct-swipe-up { top: 3%; left: 35%; width: 30%; height: 18%; }
 .ct-swipe-down { bottom: 3%; left: 35%; width: 30%; height: 18%; }
 .ct-co-swipes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; flex: 0 1 48%; min-width: 0; }
-.ct-under .ct-pager { flex: 1 1 auto; min-width: 7.5rem; }
 .ct-co-swipes .ct-co { margin: 0; }
-.ct-controls .ct-group-row th { padding-top: 14px; font-weight: 700; text-align: left; }
+.ct-controls .ct-group-row th { text-align: left; }
 .ct-arrow { display: inline-block; width: 1.2em; text-align: center; color: var(--accent); }
 
 /* Car Thing and TRMNL: their icons only here (Displays cards, page headings). */
 .carthing-title { display: flex; align-items: center; gap: var(--space-3); }
 .carthing-icon { flex: 0 0 auto; width: 32px; height: 32px; border-radius: var(--radius-icon); }
 .carthing-icon-lg { width: 40px; height: 40px; }
+
+/* Two fields + a button (Add Display with its kind, Add web page with its address). */
+.create-row select { width: 100%; }
+@media (min-width: 560px) {
+  .create-row-3 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+}
+
+/* Web pages (F14): settings grid and capture previews. */
+.web-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.web-grid label { display: grid; gap: 4px; align-content: start; }
+.web-url { overflow-wrap: anywhere; }
+.web-shot { margin: 0; display: grid; gap: 8px; }
+.web-shot img {
+  display: block;
+  width: 100%;
+  max-width: 800px;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+/* Add a Display: one card per kind, each naming the TRMNL plugin it needs. */
+.display-create { margin-bottom: 1rem; }
+.display-create fieldset { border: 0; padding: 0; margin: 0; }
+.display-create legend { font-weight: 700; margin-bottom: 8px; }
+.kind-cards { display: grid; gap: 10px; }
+@media (min-width: 640px) { .kind-cards { grid-template-columns: 1fr 1fr; } }
+.kind-card {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+}
+.kind-card:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.kind-card input { margin-top: 4px; flex: none; }
+.kind-card-body { display: grid; gap: 4px; }
+.kind-plugin { color: var(--muted); font-size: 0.9em; }
+.plugin-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.85em;
+}
+
+/* Display setup checklist. */
+.setup-steps summary { cursor: pointer; }
+.setup-list { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.setup-list li { display: flex; gap: 10px; align-items: baseline; }
+.setup-mark { flex: none; width: 1.2em; text-align: center; font-weight: 700; }
+.setup-list .is-done { color: var(--muted); }
+.setup-list .is-done .setup-mark { color: var(--accent); }
+.web-switch { margin-top: 8px; }
+
+/* Car Thing editor: a colour with its "Default" button, and options nested under a tick box. */
+.ct-color-row { display: flex; align-items: center; gap: 8px; }
+.ct-color-row { justify-content: flex-start; }
+.ct-units { display: grid; gap: 4px; max-width: 220px; }
+.ct-color-row input[type="color"] { flex: 0 0 auto; }
+.ct-reset.btn { flex: 0 0 auto; min-height: 0; height: 28px; padding: 0 10px; font-size: 0.8rem; border-radius: 8px; }
+.ct-indent { margin-left: 26px; padding-left: 12px; border-left: 2px solid var(--line, var(--border)); }

@@ -1,0 +1,20 @@
+{#- After a restart: panel.js polls unit-state every 1.5 s and moves the steps along
+    (stopped → starting → running), then offers the way back. -#}
+<section class="screen restarting" data-screen="restarting" data-restarting="{{ target.unit }}">
+  <header class="bar">
+    <span class="bar-title">{% if icon %}<img class="bar-mark" src="static/brand/icons/{{ icon }}.svg" width="28" height="28" alt="">{% endif %}Restart</span>
+    <span class="bar-meta">{{ target.title }}</span>
+    <span class="bar-time" data-clock-small></span>
+  </header>
+  <div class="rs-card">
+    {% if icon %}<img class="svc-ico" src="static/brand/icons/{{ icon }}.svg" alt="">{% endif %}
+    <h1 data-rs-title data-done="{{ target.title }} is back" data-slow="{{ target.title }} is taking a while">Restarting {{ target.title }}…</h1>
+    <div class="rs-steps">
+      <span class="rs-step is-done" data-rs-step="stopped"><i></i>Stopped</span>
+      <span class="rs-step is-now" data-rs-step="starting"><i></i>Starting</span>
+      <span class="rs-step" data-rs-step="running"><i></i>Running</span>
+    </div>
+    <p class="meta" data-rs-msg>This takes a few seconds.</p>
+    <button class="btn btn-primary" data-focus data-act="back" data-rs-back hidden>Back to {{ target.title }}</button>
+  </div>
+</section>

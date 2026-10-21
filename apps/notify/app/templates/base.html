@@ -23,7 +23,6 @@
         <a class="brand" href="/">{% include "_brand_mark.html" %}Notify</a>
       </div>
       <div class="topbar-actions">
-        <p class="status-pill" title="{{ display_count|default(0) }} display{{ '' if (display_count|default(0)) == 1 else 's' }} configured">{{ display_count|default(0) }}</p>
         {% if user %}
         {{ header_tools(alerts_bell_state, logout_action="/logout", csrf_token=csrf_token) }}
         {% endif %}

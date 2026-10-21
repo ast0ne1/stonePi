@@ -106,6 +106,11 @@ def _ensure_schema() -> None:
             # written back when this column was still required).
             conn.execute(text("ALTER TABLE event_sources DROP COLUMN category_filter"))
 
+        # Category pill colour chosen in Settings → Categories (empty = the default for that category).
+        category_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(categories)")).fetchall()}
+        if "color" not in category_cols:
+            conn.execute(text("ALTER TABLE categories ADD COLUMN color VARCHAR(20) DEFAULT ''"))
+
 
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()

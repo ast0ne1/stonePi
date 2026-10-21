@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
+{% from "_category_pill.html" import category_pill %}
 
 {% block title %}Settings · EventTrakr{% endblock %}
 
@@ -78,6 +79,26 @@
     {% endif %}
 
     <button type="submit" class="btn btn-primary btn-with-icon" style="margin-top: 10px;">{{ icon('check') }} Save General Settings</button>
+  </form>
+</div>
+
+<div class="card" id="agenda-view">
+  <h2 class="section-heading">{{ icon('filter') }} Agenda view</h2>
+  <p class="form-hint" style="margin-bottom: 12px;">Which filter chips show above your Agenda. Day chips always show. Just for you.</p>
+  <form method="post" action="/settings/agenda-view">
+    <label class="check-row">
+      <input type="checkbox" name="show_category" value="1" {% if agenda_bars.category %}checked{% endif %} />
+      <span>Category chips</span>
+    </label>
+    <label class="check-row">
+      <input type="checkbox" name="show_free" value="1" {% if agenda_bars.free %}checked{% endif %} />
+      <span>Free chip</span>
+    </label>
+    <label class="check-row">
+      <input type="checkbox" name="show_source" value="1" {% if agenda_bars.source %}checked{% endif %} />
+      <span>Source chips</span>
+    </label>
+    <button type="submit" class="btn btn-primary btn-with-icon" style="margin-top: 10px;">{{ icon('check') }} Save Agenda view</button>
   </form>
 </div>
 </div>
@@ -369,6 +390,7 @@
   <h2 class="section-heading">{{ icon('tag') }} Event Categories</h2>
   <p class="form-hint" style="margin-bottom: 16px;">
     Each source is assigned one of these under Settings → Sources -- its events are labelled with that category, instead of whatever the source itself calls things.
+    {% if user.role == 'admin' %}Pick a colour for each category's pill; Auto keeps its default.{% endif %}
   </p>
 
   <ul class="category-edit-list">
@@ -389,6 +411,23 @@
         <button class="icon-btn" type="submit" aria-label="Remove {{ cat.label }}" title="Remove category">{{ icon('trash') }}</button>
       </form>
       {% endif %}
+      <div class="category-colors-row">
+        {{ category_pill(cat.label) }}
+        {% if user.role == 'admin' %}
+        {%- set default_tint = category_default_tints.get(cat.key) %}
+        <form method="post" action="/settings/categories/{{ cat.key }}/color" class="category-colors" data-autosubmit role="radiogroup" aria-label="{{ cat.label }} colour">
+          <label class="color-swatch is-default tint-{{ default_tint }}" title="Default ({{ dict(category_tints).get(default_tint, default_tint) }})">
+            <input type="radio" name="color" value=""{% if not cat.color %} checked{% endif %} aria-label="Default colour" /><span>Auto</span>
+          </label>
+          {% for tint, name in category_tints %}
+          <label class="color-swatch tint-{{ tint }}" title="{{ name }}">
+            <input type="radio" name="color" value="{{ tint }}"{% if cat.color == tint %} checked{% endif %} aria-label="{{ name }}" /><span></span>
+          </label>
+          {% endfor %}
+          <noscript><button class="btn btn-outline btn-sm" type="submit">Save colour</button></noscript>
+        </form>
+        {% endif %}
+      </div>
     </li>
     {% endfor %}
   </ul>

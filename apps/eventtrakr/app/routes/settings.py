@@ -8,7 +8,7 @@ from stonepi_auth.http import portal_home_url
 from app.config import env
 from app.db import SessionLocal
 from app.models import CalendarConnection, Category, EventSource, User
-from app.services import auth, brightdata, capabilities, categories, hostname, passwords, settings, tls, update
+from app.services import auth, brightdata, capabilities, categories, category_style, hostname, passwords, settings, tls, update
 from app.services.scrapers import brightdata_facebook
 from app import __github__, __github_user__, __version__ as app_version
 
@@ -30,7 +30,7 @@ SETTINGS_TABS = [
     ("about", "About"),
 ]
 SETTINGS_LEDES = {
-    "general": "Default location and your account password. Theme is under Appearance in your avatar menu.",
+    "general": "Default location, Agenda view and your account password. Theme is under Appearance in your avatar menu.",
     "privacy": "What others can see on your public calendar and favourites.",
     "schedule": "How often sources sync across EventTrakr.",
     "notifications": "Phone alerts for your favourites and followed accounts, and how early they arrive.",
@@ -45,7 +45,7 @@ SETTINGS_LEDES = {
     "about": "App name, description, GitHub, and the version running here.",
 }
 SETTINGS_HUB_SUBTEXTS = {
-    "general": "Location and account password.",
+    "general": "Location, Agenda view and password.",
     "privacy": "Public agenda and favourites.",
     "schedule": "How often sources sync.",
     "notifications": "Personal alerts and lead time.",
@@ -157,6 +157,7 @@ def view_settings():
         public_url = hostname.get_public_base_url(is_https)
 
         default_loc = db_user.default_location if db_user else env.default_location
+        agenda_bars = settings.agenda_filter_bars(db, user.user_id)
         is_public = db_user.is_public if db_user else False
         favourites_public = db_user.favourites_public if db_user else False
         global_schedule = settings.get_global_schedule(db, env.default_sync_interval_minutes)
@@ -209,6 +210,7 @@ def view_settings():
         lan_url=lan_url,
         public_url=public_url,
         default_location=default_loc,
+        agenda_bars=agenda_bars,
         is_public=is_public,
         favourites_public=favourites_public,
         global_schedule=global_schedule,
@@ -217,6 +219,8 @@ def view_settings():
         global_keyword_include=global_keyword_include,
         global_keyword_exclude=global_keyword_exclude,
         category_list=category_list,
+        category_tints=category_style.TINTS,
+        category_default_tints={cat.key: category_style.default_tint(cat.label) for cat in category_list},
         brightdata_configured=brightdata_configured,
         brightdata_usage=brightdata_usage,
         brightdata_search_limit=brightdata_facebook.SEARCH_LIMIT,
@@ -273,6 +277,17 @@ def save_general():
             db.commit()
             flash("General settings updated.", "success")
 
+    return redirect(url_for("settings.view_settings", tab="general"))
+
+
+@bp.route("/agenda-view", methods=["POST"])
+@auth.login_required
+def save_agenda_view():
+    user = auth.get_current_user()
+    shown = {bar: request.form.get(f"show_{bar}") == "1" for bar in settings.AGENDA_FILTER_BARS}
+    with SessionLocal() as db:
+        settings.set_agenda_filter_bars(db, user.user_id, shown)
+    flash("Agenda view updated.", "success")
     return redirect(url_for("settings.view_settings", tab="general"))
 
 
@@ -429,6 +444,25 @@ def rename_category(key: str):
             db.commit()
             flash("Category renamed.", "success")
 
+    return redirect(url_for("settings.view_settings", tab="categories"))
+
+
+@bp.route("/categories/<key>/color", methods=["POST"])
+@auth.admin_required
+def set_category_color(key: str):
+    from app.services.category_style import TINT_IDS, forget_chosen_colours
+
+    color = request.form.get("color", "").strip()
+    if color and color not in TINT_IDS:
+        flash("Pick one of the listed colours.", "error")
+        return redirect(url_for("settings.view_settings", tab="categories"))
+    with SessionLocal() as db:
+        cat = db.execute(select(Category).where(Category.key == key)).scalar_one_or_none()
+        if cat:
+            cat.color = color  # "" = back to the category's default
+            db.commit()
+            forget_chosen_colours()
+            flash(f"{cat.label} colour updated.", "success")
     return redirect(url_for("settings.view_settings", tab="categories"))
 
 

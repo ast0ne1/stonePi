@@ -1,6 +1,7 @@
 from .capabilities_render import enrich_widget_for_destination, present_interaction
 from .displays import (
     BUILTIN_DASHBOARD_ID,
+    DISPLAY_KINDS,
     TRMNL_DEFAULTS,
     TRMNL_TIERS,
     available_widgets,
@@ -10,14 +11,17 @@ from .displays import (
     load_displays,
     migrate_from_legacy_display_json,
     normalize_display,
+    push_limits,
     save_displays,
     trmnl_tier,
     update_trmnl_status,
     upsert_display,
+    web_bits,
 )
 from .grid import DEVICE_GRIDS, allowed_sizes, device_grid, footprint, layout_rows, place_widgets
 from .push import (
     PAYLOAD_LIMIT_BYTES,
+    WEB_SCREENS,
     display_payload,
     payload_limit,
     get_webhook,
@@ -25,16 +29,21 @@ from .push import (
     push_due,
     pushable_displays,
     set_webhook,
+    web_image,
     webhook_key,
 )
 from .render import PREVIEW_SCREENS, preview_document, render_markup
 from .templates import DATE_FORMATS, UNIVERSAL_TEMPLATE, WIDGET_SNIPPETS, format_updated, snippet_keys
 from .variables import MERGE_VARIABLE_KEYS, SAMPLE_VARIABLES, build_merge_variables
+from .webpages import CSS_PRESETS, create_page, delete_page, get_page, load_pages, new_page_id, upsert_page
 
 __all__ = [
     "DATE_FORMATS",
     "format_updated",
     "BUILTIN_DASHBOARD_ID",
+    "CSS_PRESETS",
+    "create_page",
+    "DISPLAY_KINDS",
     "DEVICE_GRIDS",
     "MERGE_VARIABLE_KEYS",
     "PAYLOAD_LIMIT_BYTES",
@@ -43,28 +52,34 @@ __all__ = [
     "TRMNL_DEFAULTS",
     "TRMNL_TIERS",
     "UNIVERSAL_TEMPLATE",
+    "WEB_SCREENS",
     "WIDGET_SNIPPETS",
     "allowed_sizes",
     "available_widgets",
     "build_merge_variables",
     "configure_displays",
     "delete_display",
+    "delete_page",
     "device_grid",
     "display_payload",
     "payload_limit",
     "enrich_widget_for_destination",
     "footprint",
     "get_display",
+    "get_page",
     "get_webhook",
     "layout_rows",
     "load_displays",
+    "load_pages",
     "migrate_from_legacy_display_json",
+    "new_page_id",
     "normalize_display",
     "place_widgets",
     "present_interaction",
     "preview_document",
     "push_display",
     "push_due",
+    "push_limits",
     "pushable_displays",
     "render_markup",
     "save_displays",
@@ -73,5 +88,8 @@ __all__ = [
     "trmnl_tier",
     "update_trmnl_status",
     "upsert_display",
+    "upsert_page",
+    "web_bits",
+    "web_image",
     "webhook_key",
 ]

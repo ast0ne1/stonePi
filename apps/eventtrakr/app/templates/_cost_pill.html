@@ -1,0 +1,5 @@
+{#- Price pill (backlog U26): tag icon, green with the amount when paid, blue for free, grey when not listed. -#}
+{% from "_icons.html" import icon %}
+{% macro cost_pill(ev) -%}
+<span class="badge cost-pill {{ ev.cost_badge_class }}{% if not ev.cost_pill_text %} is-icon-only{% endif %}" title="{{ ev.cost_pill_title }}" aria-label="{{ ev.cost_pill_title }}" role="img">{{ icon('tag') }}{% if ev.cost_pill_text %}<span aria-hidden="true">{{ ev.cost_pill_text }}</span>{% endif %}</span>
+{%- endmacro %}

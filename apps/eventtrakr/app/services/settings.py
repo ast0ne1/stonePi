@@ -134,6 +134,19 @@ def set_user_value(db: Session, user_id: int, key: str, value: str) -> None:
     db.commit()
 
 
+# Agenda filter bars a person can hide (Settings → General → Agenda view); all shown by default.
+AGENDA_FILTER_BARS = ("category", "free", "source")
+
+
+def agenda_filter_bars(db: Session, user_id: int) -> dict[str, bool]:
+    return {bar: get_user_value(db, user_id, f"agenda_show_{bar}", "1") != "0" for bar in AGENDA_FILTER_BARS}
+
+
+def set_agenda_filter_bars(db: Session, user_id: int, shown: dict[str, bool]) -> None:
+    for bar in AGENDA_FILTER_BARS:
+        set_user_value(db, user_id, f"agenda_show_{bar}", "1" if shown.get(bar) else "0")
+
+
 def https_enabled(db: Session) -> bool:
     return get_value(db, "https_enabled", "0") in ("1", "true", "yes")
 

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-stonepi-prefix="{{ stonepi_prefix or '' }}">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -10,6 +10,7 @@
     {{ brand_head("fileserve", fonts_rev) }}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ asset_rev }}" />
     {{ brand_tail(fonts_rev) }}
+    <script src="{{ url_for('static', filename='js/hosted-viewer.js') }}?v={{ asset_rev }}" defer></script>
   </head>
   <body class="login-body">
     <div class="login-shell browse-shell">
@@ -25,7 +26,7 @@
         <ul class="feed-list browse-list">
           {% for page in pages %}
           <li class="card feed-card">
-            <h2 class="feed-title"><a class="browse-title" href="{{ page.public_path }}">{{ page.title }}</a></h2>
+            <h2 class="feed-title"><a class="browse-title" href="{{ page.public_path }}" data-hosted-path="{{ page.public_path }}">{{ page.title }}</a></h2>
             {% if page.description %}<p class="feed-note">{{ page.description }}</p>{% endif %}
             <p class="feed-kicker">
               <span class="chip chip-quiet">{{ page.type_label }}</span>

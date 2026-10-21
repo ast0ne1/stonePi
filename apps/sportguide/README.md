@@ -15,8 +15,8 @@ See AFL, Cricket, Rugby, and Football kick-offs and channels without juggling gu
 
 ## What it does
 
-- **Now** — on now + next ~24h, filter by sport (image tiles) and Football league chips
-- **Sources** — AusSportGuide (AU) + WheresTheMatch (Euro Football); daily auto-refresh or manual Refresh
+- **Now** — on now + next ~24h, filter by sport (image tiles) and Football league chips; Football cards show each team's badge above its name (initials when there is no badge)
+- **Sources** — AusSportGuide (AU) + timezone.football and WheresTheMatch (Football); daily auto-refresh or manual Refresh (the popup asks "Refresh now?" with the detail below)
 - **Settings** — city + IANA timezone; About
 
 ## Data sources
@@ -24,10 +24,17 @@ See AFL, Cricket, Rugby, and Football kick-offs and channels without juggling gu
 | Source | Owns |
 |--------|------|
 | **[AusSportGuide](https://ausportguide.com/)** | AFL, Cricket, Rugby (Kayo / Fox / FTA cues) |
-| **[WheresTheMatch](https://www.wheresthematch.com/?sportid=1)** | Football leagues + UK/Euro channels |
-| **timezone.football** (fallback) | Euro Football TV week if WheresTheMatch HTML is sparse |
+| **timezone.football** | Football fixtures, competitions and channels in the Pi's own country; team badges |
+| **[WheresTheMatch](https://www.wheresthematch.com/?sportid=1)** | UK Football channels, merged into the same match (marked "(UK)" outside the UK) |
 
-Playwright + Chromium scrapes only — no paid APIs, mocks, or ICS. Labels use **Football** (never “soccer”).
+AusSportGuide is scraped with Playwright + Chromium. The two Football guides are read over plain HTTP, with Chromium only when a site refuses a plain request. No paid APIs, mocks, or ICS. Labels use **Football** (never “soccer”).
+
+### Team badges
+
+- Badges come from timezone.football (crests.football-data.org and TheSportsDB images). For matches only WheresTheMatch lists, its club crest is guessed from the team page and is often missing.
+- After a refresh, missing badges are downloaded to the Pi once: from those hosts only, PNG, GIF, JPEG or WebP up to 300 KB each (no SVG). They are served from `/badges/`, so cards never load images from other sites.
+- A badge that couldn't be fetched is asked for again after a week. Until then the card shows the team's initials.
+- Listings carry `home`, `away`, `home_badge` and `away_badge` columns (added on start).
 
 Household personal use on your LAN. Do not redistribute scraped schedules.
 
@@ -37,10 +44,6 @@ Household personal use on your LAN. Do not redistribute scraped schedules.
 - Install installs Playwright browsers (`install_app … playwright`)
 - Display scrape: `GET /api/display` (`N on now` in the look-ahead window)
 
-## Pi update
+## Updating on the Pi
 
-```bat
-cmd /c "scripts\push-sportguide-fixes.cmd -Apply"
-```
-
-Uploads a posix-path zip + bootstrap, then `sudo bash` applies under `/opt/stonepi` (venv, Playwright Chromium, unit, nginx).
+SportGuide updates with StonePi: install a new release from Dashboard → Settings → Updates. The installer sets up its venv, Playwright's Chromium, the service and nginx.

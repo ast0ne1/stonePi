@@ -56,6 +56,11 @@ def init_db() -> None:
             );
             """
         )
+        # U28: teams and their badge URLs, for football rows.
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(listings)").fetchall()}
+        for col in ("home", "away", "home_badge", "away_badge"):
+            if col not in cols:
+                conn.execute(f"ALTER TABLE listings ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
         for sid, name in (
             ("ausportguide", "AusSportGuide"),
             ("wheresthematch", "timezone.football + WheresTheMatch"),
@@ -172,8 +177,9 @@ def replace_source_listings(source_id: str, rows: list[dict[str, Any]]) -> int:
                 """
                 INSERT INTO listings (
                   external_id, source_id, sport, league, title,
-                  starts_at, ends_at, channels_json, source_url, seen_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  starts_at, ends_at, channels_json, source_url, seen_at,
+                  home, away, home_badge, away_badge
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     row["external_id"],
@@ -186,6 +192,10 @@ def replace_source_listings(source_id: str, rows: list[dict[str, Any]]) -> int:
                     channels_json,
                     row.get("source_url"),
                     now,
+                    row.get("home") or "",
+                    row.get("away") or "",
+                    row.get("home_badge") or "",
+                    row.get("away_badge") or "",
                 ),
             )
         conn.execute(

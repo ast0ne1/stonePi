@@ -23,7 +23,7 @@ case "$cmd" in
     python3 -c 'import json; print(json.dumps({"ok": False, "installed": False}))'
     exit 1
     ;;
-  status|up|down)
+  status|up|down|serve)
     if ! have_tailscale; then
       python3 -c 'import json; print(json.dumps({"Installed": False, "BackendState": "NoState"}))'
       exit 0
@@ -476,6 +476,51 @@ def do_up() -> None:
     emit(data, url, enable_serve=True)
 
 
+CERT_TIMEOUT_S = 60.0
+
+
+def warm_cert(dns_name: str) -> bool:
+    """Have tailscaled fetch the HTTPS certificate now (into its own store, which Serve uses),
+    so the first visit isn't the slow one. The key goes nowhere; nothing is written for nginx."""
+    name = (dns_name or "").rstrip(".")
+    if not name.endswith(".ts.net"):
+        return False
+    try:
+        proc = subprocess.run(
+            ["tailscale", "cert", "--cert-file", "/dev/null", "--key-file", "/dev/null", name],
+            capture_output=True,
+            text=True,
+            timeout=CERT_TIMEOUT_S,
+            stdin=subprocess.DEVNULL,
+        )
+        dbg("cert %s exit=%s err=%r" % (name, proc.returncode, (proc.stderr or "")[:200]))
+        return proc.returncode == 0
+    except Exception as exc:
+        dbg("cert %s failed: %s" % (name, exc))
+        return False
+
+
+def do_serve() -> None:
+    """Turn on HTTPS (Settings > Network): set up Serve (MagicDNS name > nginx :80) if it isn't,
+    then fetch the certificate. When HTTPS certificates are off for the tailnet, the output carries
+    ServeEnableURL (turn them on in the Tailscale admin console, then press this again)."""
+    data = status_json()
+    if str(data.get("BackendState") or "") != "Running":
+        data["Error"] = "Connect Tailscale first."
+        emit(data, enable_serve=False)
+        return
+    ok, enable_url = ensure_http_serve()
+    out = status_json()
+    out["Installed"] = True
+    out["ServeHTTP"] = serve_http_configured()
+    if out["ServeHTTP"]:
+        dns = str(((out.get("Self") or {}).get("DNSName")) or "")
+        out["CertReady"] = warm_cert(dns)
+    elif enable_url:
+        out["ServeEnableURL"] = enable_url
+    emit_json(out)
+
+
 def do_status() -> None:
     """Read-only: never runs `tailscale serve` setup."""
     data = status_json()
@@ -488,6 +533,8 @@ try:
         do_down()
     elif CMD == "up":
         do_up()
+    elif CMD == "serve":
+        do_serve()
     else:
         do_status()
 except Exception as exc:
@@ -503,7 +550,7 @@ except Exception as exc:
 PY
     ;;
   *)
-    echo "usage: stonepi-tailscale {status|up|down|install-check}" >&2
+    echo "usage: stonepi-tailscale {status|up|down|serve|install-check}" >&2
     exit 2
     ;;
 esac

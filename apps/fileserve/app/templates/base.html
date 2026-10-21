@@ -23,7 +23,6 @@
           <a class="brand" href="{{ url_for('pages_list') }}">{% include "_brand_mark.html" %}FileServe</a>
         </div>
         <div class="topbar-actions">
-          <p class="status-pill">{{ page_count }} page{% if page_count != 1 %}s{% endif %}</p>
           {{ header_tools(alerts_bell_state, logout_action=url_for('logout'), csrf_token=csrf_token, local_name=local_user_name) }}
         </div>
       </header>
@@ -70,5 +69,6 @@
     </div>
     <div class="toast" hidden data-toast role="status" aria-live="polite"></div>
     <script src="{{ url_for('static', filename='js/app.js') }}?v={{ asset_rev }}" defer></script>
+    <script src="{{ url_for('static', filename='js/hosted-viewer.js') }}?v={{ asset_rev }}" defer></script>
   </body>
 </html>

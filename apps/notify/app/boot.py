@@ -84,6 +84,9 @@ def push_due_displays() -> dict:
     """Scheduler tick: push each Display whose interval has elapsed."""
     import stonepi_display
 
+    from app.carthing_routes import check_music_expiry_daily
+
+    check_music_expiry_daily()  # Spotify sign-in expiry alerts (U21), once a day
     results = stonepi_display.push_due(lambda: cached_overview(max_age=30.0))
     _record(results)
     return {"ok": all(r.get("ok") for r in results), "results": results}
@@ -93,7 +96,9 @@ def push_one_display(display_id: str) -> dict:
     import stonepi_display
 
     display = stonepi_display.get_display(display_id) or {}
-    result = stonepi_display.push_display(display_id, cached_overview(max_age=30.0))
+    # A web Display captures its page; only widget Displays need the collected variables.
+    variables = {} if display.get("kind") == "web" else cached_overview(max_age=30.0)
+    result = stonepi_display.push_display(display_id, variables)
     _record([{"display_id": display_id, "name": display.get("name"), **result}])
     return result
 
@@ -201,6 +206,8 @@ def configure_all() -> None:
                     "studio.site_published": True,
                     "system.disk_warning": True,
                     "system.ai_unavailable": True,
+                    "carthing.spotify_expiring": True,
+                    "carthing.spotify_expired": True,
                 }
             }
         )

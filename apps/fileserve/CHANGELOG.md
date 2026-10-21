@@ -1,6 +1,14 @@
 # Changelog
 
-Current version is **0.0.7**.
+Current version is **0.0.9**.
+
+## 0.0.9 — 2026-10-21
+
+### Removed
+- The page-count pill in the header (and the query behind it on every page).
+
+### Added
+- **Hosted pages open in a viewer from the iPhone home-screen app** (backlog U27). The home-screen app has no browser bar, so opening a hosted page or file left you stuck on it. From the home-screen app, Pages → **Open** and the Browse list now open `/hosted/view`: the page in a frame under a thin bar with **Back** (to where you came from), its title and **Open in Safari**. The bar slides away after 3 s; the small tab at the top brings it back. The framed page keeps its sandbox and password prompt. In a normal browser, links open the page directly as before.
 
 ## 0.0.8 — 2026-10-11
 

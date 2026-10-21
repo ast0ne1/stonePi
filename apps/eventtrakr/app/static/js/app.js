@@ -640,6 +640,14 @@
     });
   });
 
+  // Forms that save as soon as a choice changes (category colours).
+  document.querySelectorAll("form[data-autosubmit]").forEach(function (form) {
+    form.addEventListener("change", function () {
+      if (typeof form.requestSubmit === "function") form.requestSubmit();
+      else form.submit();
+    });
+  });
+
   var settingsRoot = document.querySelector("[data-settings-tabs]");
   if (settingsRoot) {
     var settingsChips = settingsRoot.querySelectorAll("[data-settings-tab]");

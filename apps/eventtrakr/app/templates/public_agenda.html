@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
+{% from "_category_pill.html" import category_pill %}
+{% from "_cost_pill.html" import cost_pill %}
 
 {% block title %}
 {% if is_private %}Private {% if is_favourites %}Favourites{% else %}Calendar{% endif %} · EventTrakr{% else %}{{ target_user.username }}'s {% if is_favourites %}Favourites{% else %}Public Events{% endif %} · EventTrakr{% endif %}
@@ -37,8 +39,8 @@
     <div>
       <div class="event-header">
         <div class="event-badges">
-          <span class="badge category">{{ ev.category }}</span>
-          <span class="badge {{ ev.cost_badge_class }}">{{ ev.cost_label }}</span>
+          {{ category_pill(ev.category) }}
+          {{ cost_pill(ev) }}
           {% if ev.is_cancelled %}
           <span class="badge cancelled">Cancelled</span>
           {% endif %}

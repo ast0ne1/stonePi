@@ -19,7 +19,13 @@ Installer also seeds `STONEPI_EXPOSURE=lan` in `/etc/stonepi/stonepi.env` as a f
 | Home network (`lan`) | OPDS / X3 / sync file APIs open on LAN when catalog login is off (CrossPoint-friendly). |
 | Internet-facing (`public`) | Catalog token required for OPDS, `/api/x3`, and `/api/v1/files` + device tasks. Firmware that cannot send a token must use Tailscale/VPN. ICS feeds require sign-in. Stricter FileServe URL-fetch SSRF. |
 
-Nginx already denies `/news/api/display`, `/events/api/display`, `/pinboard/api/display`, `/auth/api/display`, `/studio/api/display`, and `/prices/api/display` at the edge (Dashboard scrapes loopback). Optional TLS: [`nginx/stonepi-tls.conf`](nginx/stonepi-tls.conf).
+Nginx returns 404 at the edge, whatever the exposure ([`nginx/stonepi-public-deny-display.conf`](nginx/stonepi-public-deny-display.conf)), for:
+
+- every app's `/api/display` (Dashboard scrapes them over loopback)
+- Notify's unsigned loopback endpoints, `/notify/api/events` (event ingest) and `/notify/api/push-trmnl` (Dashboard automations). Apps call `127.0.0.1:8012` directly. Notify also only accepts them as `application/json`, which a web page can't send without a CORS preflight.
+- the signed service-to-service APIs under `api/internal/`
+
+Optional TLS: [`nginx/stonepi-tls.conf`](nginx/stonepi-tls.conf).
 
 ## Tailscale remote access
 
@@ -27,7 +33,7 @@ Nginx already denies `/news/api/display`, `/events/api/display`, `/pinboard/api/
 
 Prefer Tailscale with exposure left on **Home network**. Use **Internet-facing** only for true public HTTPS / raw port exposure.
 
-After Tailscale is connected, StonePi enables **Tailscale Serve** so the MagicDNS name works as **`https://<name>.ts.net/`** (TLS terminated by Tailscale, proxied to local nginx on port 80). Plain **`http://`** to the MagicDNS name or Tailscale IP also works when your client is on the same tailnet. LAN URLs (`stonepi.local`) are unchanged.
+After Tailscale is connected, StonePi enables **Tailscale Serve** so the MagicDNS name works as **`https://<name>.ts.net/`** (TLS terminated by Tailscale, proxied to local nginx on port 80). Plain **`http://`** to the MagicDNS name or Tailscale IP also works when your client is on the same tailnet. LAN URLs (`stonepi.local`) are unchanged. Serve needs **HTTPS Certificates** turned on for the tailnet (Tailscale admin console, DNS page); if they were off when you connected, turn them on and press **Settings → Network → Turn on HTTPS**, which sets up Serve and fetches the certificate (`stonepi-tailscale serve`).
 
 ## Network
 
@@ -38,6 +44,7 @@ After Tailscale is connected, StonePi enables **Tailscale Serve** so the MagicDN
 - Access via **`stonepi.local`**, Pi LAN IP, or router LAN DNS (e.g. **`stonepi.home`**). Portal login and Home links follow the host you typed.
 - `stonepi.local` needs Avahi (`avahi-daemon` + `avahi-utils`). If `.local` fails, use the Pi LAN IP or router DNS; `sudo systemctl restart avahi-daemon` often restores IPv4 mDNS.
 - Rate limits trust **`X-Real-IP`** from nginx (not client-supplied leftmost `X-Forwarded-For`).
+- **Web pages on the displays** (Notify → Displays → Web pages) are captured by headless Chromium on the Pi. A captured page can't call this Pi's loopback services: any request to 127.0.0.1, ::1, localhost or a name that resolves to loopback is aborted unless it goes to the page's own origin, and service workers are blocked. A name that changes its answer between the check and the connection (DNS rebinding) can still get through; Notify's JSON-only endpoints are the backstop. Logged capture URLs drop their query string.
 
 ## Host firewall (nftables)
 
@@ -67,7 +74,7 @@ Re-apply: `sudo bash /opt/stonepi/deploy/nftables/install-firewall.sh`
 ## Vault
 
 - Directory: `STONEPI_VAULT_DIR` (Pi: `/var/lib/stonepi/vault`), owner `stonepi-dash`, group `stonepi-vault`, dir mode `2770` (setgid).
-- Files (`vault.key`, `secrets.enc`): mode `660` — every app service user is in `stonepi-vault` and can read **and** save secrets (apps store their own ntfy / Bright Data / OAuth keys; Notify saves `SPOTIFY_CLIENT_ID` and `SPOTIFY_REFRESH_TOKEN`, and the Car Thing service, `stonepi-carthing`, saves a rotated Spotify refresh token).
+- Files (`vault.key`, `secrets.enc`): mode `660` — every app service user is in `stonepi-vault` and can read **and** save secrets (apps store their own ntfy / Bright Data / OAuth keys; Notify saves `SPOTIFY_CLIENT_ID`, `SPOTIFY_REFRESH_TOKEN` and each TRMNL Display's webhook (`DISPLAY_WEBHOOK_URL_<ID>`), and the Car Thing service, `stonepi-carthing`, saves a rotated Spotify refresh token).
 - The Vault folder also holds `ai-config.json` (AI providers and model order, written by Dashboard → Settings → AI) and `ai-health.json` (models cooling off, written by any app using `stonepi_ai`). Neither holds a key.
 - **Trust boundary:** the Vault is shared by design, so a compromise of any one app exposes every Vault secret. Keep app API keys there, but never a secret that grants root or more than an app already has. Root-only secrets live outside it, `root:root` mode `0600` under `/etc/stonepi`: the Recover console password (`recover.passwd`, set from Dashboard through `stonepi-backup-helper recover-passwd-set`) and the first admin password (`initial-admin.txt`). The installer moves a Recover password left in the Vault by older releases into `recover.passwd` and deletes the Vault key.
 - Migrator: `scripts/migrate_secrets_to_vault.py` (run by `install.sh`); installer re-`chown`s after migrate.

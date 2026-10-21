@@ -85,6 +85,8 @@ def empty_state(**extra: Any) -> dict[str, Any]:
         "device": None,
         "shuffle": False,
         "repeat": "off",
+        # In Liked Songs: True/False, or None when unknown (a sign-in without user-library-read).
+        "liked": None,
         "error": "",
         "stale": False,
     }
@@ -113,6 +115,11 @@ class Player:
         self._devices_at = -1e9
         self._backoff_until = 0.0
         self._art_urls: dict[str, str] = {}
+        # Liked Songs, asked once per song; False once Spotify refuses (sign-in without the scope).
+        self._liked: dict[str, bool] = {}
+        self._liked_readable = True
+        # Preset artwork for "Nothing playing": uri -> (art path or "", when asked).
+        self._preset_art: dict[str, tuple[str, float]] = {}
 
     # ── Spotify calls ────────────────────────────────────────────────────
     def connected(self) -> bool:
@@ -217,6 +224,7 @@ class Player:
             return cached  # another request is already asking Spotify
         try:
             state = self._parse(self._call("GET", "/me/player", params={"additional_types": "episode"}))
+            state["liked"] = self._is_liked(state["uri"])
         except MusicError as exc:
             if cached is not None and exc.code in {"rate", "network"}:
                 state = {**cached, "stale": True}
@@ -235,6 +243,27 @@ class Player:
         st = self.now_playing(max_age)
         device = (st.get("device") or {}).get("id") or ""
         return f"{st['uri']}|{st['playing']}|{device}|{bool(st['error'])}"
+
+    def _is_liked(self, uri: str) -> bool | None:
+        """Is this song in Liked Songs? One request per song, then cached; None if unknown."""
+        if uri_kind(uri) not in ("track", "episode") or not self._liked_readable:
+            return None
+        with self._lock:
+            if uri in self._liked:
+                return self._liked[uri]
+        try:
+            body = self._call("GET", "/me/library/contains", params={"uris": uri})
+        except MusicError as exc:
+            if exc.code == "premium":  # 403: this sign-in can't read the library (needs Reconnect)
+                self._liked_readable = False
+            return None
+        liked = bool(body[0]) if isinstance(body, list) and body else None
+        if liked is not None:
+            with self._lock:
+                if len(self._liked) > 300:
+                    self._liked.clear()
+                self._liked[uri] = liked
+        return liked
 
     def _stale(self) -> None:
         with self._lock:
@@ -314,12 +343,55 @@ class Player:
         self._call("PUT", "/me/player/repeat", params={"state": _REPEAT_NEXT.get(st["repeat"], "off")})
         self._stale()
 
-    def save(self) -> str:
+    def save(self) -> tuple[str, bool]:
+        """The liked tick: save the song, or remove it when it's known to be liked already."""
         st = self.now_playing(max_age=5.0)
-        if uri_kind(st["uri"]) not in ("track", "episode"):
+        uri = st["uri"]
+        if uri_kind(uri) not in ("track", "episode"):
             raise MusicError("nothing", "Nothing to save right now.")
-        self._call("PUT", "/me/library", params={"uris": st["uri"]})
-        return st["track"]
+        remove = st.get("liked") is True
+        self._call("DELETE" if remove else "PUT", "/me/library", params={"uris": uri})
+        with self._lock:
+            self._liked[uri] = not remove
+            if self._state is not None and self._state.get("uri") == uri:
+                self._state["liked"] = not remove  # the next read confirms it
+        return st["track"], not remove
+
+    def seek(self, position_ms: int) -> None:
+        st = self.now_playing(max_age=5.0)
+        if not st["active"]:
+            raise MusicError("no_device", "Nothing is playing.")
+        duration = int(st.get("duration_ms") or 0)
+        position = max(0, min(int(position_ms), duration - 1000 if duration > 1000 else 0))
+        self._call("PUT", "/me/player/seek", params={"position_ms": position})
+        self._stale()
+
+    def preset_art(self, uri: str) -> str:
+        """Artwork for a preset's tile ("art/<key>"), looked up once (retried after 10 min if it failed)."""
+        kind = uri_kind(uri)
+        item_id = uri.rsplit(":", 1)[-1] if uri.startswith("spotify:") else ""
+        if not item_id or kind not in ("playlist", "album", "artist", "track", "show", "episode"):
+            return ""
+        with self._lock:
+            known = self._preset_art.get(uri)
+        if known and (known[0] or self._clock() - known[1] < 600):
+            return known[0]
+        path = {"playlist": "playlists", "album": "albums", "artist": "artists", "track": "tracks", "show": "shows", "episode": "episodes"}[kind]
+        try:
+            body = self._call("GET", f"/{path}/{item_id}") or {}
+        except MusicError:
+            body = {}
+        images = body.get("images") or ((body.get("album") or {}).get("images") if isinstance(body.get("album"), dict) else None)
+        image = _pick_image(images)
+        art = ""
+        if image:
+            key = _art_key(image)
+            with self._lock:
+                self._art_urls[key] = image
+            art = f"art/{key}"
+        with self._lock:
+            self._preset_art[uri] = (art, self._clock())
+        return art
 
     def transfer(self, device_id: str) -> None:
         self._call("PUT", "/me/player", body={"device_ids": [device_id], "play": True})
@@ -386,6 +458,8 @@ class Player:
             self._state, self._state_at = None, -1e9
             self._devices, self._devices_at = None, -1e9
             self._backoff_until = 0.0
+            self._liked.clear()
+            self._liked_readable = True  # a new sign-in may have the scope
 
 
 player = Player()

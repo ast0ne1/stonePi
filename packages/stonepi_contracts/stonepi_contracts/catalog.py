@@ -22,6 +22,7 @@ APP_LABELS: dict[str, str] = {
     "studio": "Studio",
     "pinboard": "Pinboard",
     "library": "Library",
+    "carthing": "Car Thing",
     "system": "System",
 }
 
@@ -81,6 +82,10 @@ EVENT_CATALOG: tuple[EventType, ...] = (
               "The drive holding offline content is not connected."),
     EventType("library.backup_capacity", "library", "Library backup won't fit", AUDIENCE_ADMIN,
               "The backup drive can't fit the offline library content."),
+    EventType("carthing.spotify_expiring", "carthing", "Spotify sign-in expiring", AUDIENCE_ADMIN,
+              "The Car Thing's Spotify sign-in runs out within 14 days; reconnect to start a fresh 6 months."),
+    EventType("carthing.spotify_expired", "carthing", "Spotify sign-in expired", AUDIENCE_ADMIN,
+              "The Car Thing can't show or control music until Spotify is reconnected."),
     EventType("system.disk_warning", "system", "Disk warning", AUDIENCE_ADMIN,
               "The Pi is running low on disk space."),
     EventType("system.ai_unavailable", "system", "AI unavailable", AUDIENCE_ADMIN,

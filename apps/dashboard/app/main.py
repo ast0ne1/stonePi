@@ -30,7 +30,8 @@ async def lifespan(_app: FastAPI):
             import httpx
 
             with httpx.Client(timeout=30.0) as client:
-                response = client.post("http://127.0.0.1:8012/api/push-trmnl")
+                # JSON body: Notify only takes this as application/json (no browser can send it).
+                response = client.post("http://127.0.0.1:8012/api/push-trmnl", json={})
                 if response.status_code < 400:
                     return response.json() if response.content else {"ok": True}
                 return {"ok": False, "message": f"Notify push failed (HTTP {response.status_code})."}

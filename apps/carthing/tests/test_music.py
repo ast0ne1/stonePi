@@ -201,8 +201,67 @@ def test_shuffle_repeat_save(api):
     clock["t"] += 10
     player.repeat()
     assert fake.sent("PUT", "/me/player/repeat")[0][2] == {"state": "context"}
-    assert player.save() == "Teardrop"
+    assert player.save() == ("Teardrop", True)  # liked unknown: the tick saves
     assert fake.sent("PUT", "/me/library")[0][2] == {"uris": "spotify:track:67Hna13dNDkZvBpTXRIaOJ"}
+
+
+def test_liked_state_and_tick_toggles(api):
+    player, fake, _, clock = api
+    fake.overrides[("GET", "/me/library/contains")] = httpx.Response(200, json=[True])
+    st = player.now_playing(0)
+    assert st["liked"] is True
+    assert fake.sent("GET", "/me/library/contains")[0][2] == {"uris": "spotify:track:67Hna13dNDkZvBpTXRIaOJ"}
+    # Asked once per song, not on every read.
+    clock["t"] += 10
+    player.now_playing(0)
+    assert len(fake.sent("GET", "/me/library/contains")) == 1
+    # Liked already: the tick removes it, and the state says so at once.
+    assert player.save() == ("Teardrop", False)
+    assert fake.sent("DELETE", "/me/library")[0][2] == {"uris": "spotify:track:67Hna13dNDkZvBpTXRIaOJ"}
+    assert player.now_playing(60)["liked"] is False
+    assert player.save() == ("Teardrop", True)
+
+
+def test_liked_unknown_without_the_scope(api):
+    player, fake, _, clock = api
+    fake.overrides[("GET", "/me/library/contains")] = httpx.Response(403)
+    assert player.now_playing(0)["liked"] is None
+    clock["t"] += 10
+    fake.player["item"]["uri"] = "spotify:track:0000000000000000000000"
+    assert player.now_playing(0)["liked"] is None
+    assert len(fake.sent("GET", "/me/library/contains")) == 1  # not asked again until Reconnect
+    player.reset()
+    clock["t"] += 10
+    player.now_playing(0)
+    assert len(fake.sent("GET", "/me/library/contains")) == 2
+
+
+def test_seek_clamps_to_the_song(api):
+    player, fake, _, _ = api
+    player.seek(120000)
+    assert fake.sent("PUT", "/me/player/seek")[-1][2] == {"position_ms": "120000"}
+    player.seek(10**9)
+    assert fake.sent("PUT", "/me/player/seek")[-1][2] == {"position_ms": str(330000 - 1000)}
+    player.seek(-5)
+    assert fake.sent("PUT", "/me/player/seek")[-1][2] == {"position_ms": "0"}
+
+
+def test_preset_art_looked_up_once(api):
+    player, fake, _, clock = api
+    images = {"images": [{"url": "https://i.scdn.co/image/morning300", "width": 300}]}
+    fake.overrides[("GET", "/playlists/37i9dQZF1DXcBWIGoYBM5M")] = httpx.Response(200, json=images)
+    art = player.preset_art("spotify:playlist:37i9dQZF1DXcBWIGoYBM5M")
+    assert art.startswith("art/") and player.art_path(art[4:]) is not None
+    assert player.preset_art("spotify:playlist:37i9dQZF1DXcBWIGoYBM5M") == art
+    assert len(fake.sent("GET", "/playlists/37i9dQZF1DXcBWIGoYBM5M")) == 1
+    # A song's artwork is its album's; a failed lookup is retried after 10 minutes.
+    fake.overrides[("GET", "/tracks/67Hna13dNDkZvBpTXRIaOJ")] = httpx.Response(404)
+    assert player.preset_art("spotify:track:67Hna13dNDkZvBpTXRIaOJ") == ""
+    fake.overrides[("GET", "/tracks/67Hna13dNDkZvBpTXRIaOJ")] = httpx.Response(200, json={"album": images})
+    assert player.preset_art("spotify:track:67Hna13dNDkZvBpTXRIaOJ") == ""
+    clock["t"] += 601
+    assert player.preset_art("spotify:track:67Hna13dNDkZvBpTXRIaOJ").startswith("art/")
+    assert player.preset_art("not a uri") == ""
 
 
 def test_preset_plays_context_on_its_speaker(api):
@@ -439,3 +498,104 @@ def test_clock_and_weather_widget_still_hides_strip_weather(env, monkeypatch):
     panel["value"] = _panel(_with_page([{"id": "clock", "size": "small"}]))
     assert 'class="wx"' not in client.get("/v/home").text
 
+
+
+def test_now_playing_look_follows_the_config(env):
+    # After Mira: background, controls and accent from Notify; the default is Glow, always, the art's accent.
+    client, panel, _, _, _ = env
+    body = client.get("/v/music").text
+    assert 'class="np2 np2-card bg-glow ctl-shown"' in body and 'data-controls="always"' in body and 'data-accent-mode="art"' in body
+    assert "data-np-blur" in body and "data-np-seek" in body and "data-np-more" in body and "data-np-sheet" in body
+    cfg = carthing.default_config()
+    cfg["music"]["np"] = {"background": "blur", "controls": "touch", "accent": "theme", "edge": True}
+    panel["value"] = _panel(cfg)
+    body = client.get("/v/music").text
+    # Touch: hidden while playing (panel.js shows them for 4 s after a touch, press or turn).
+    assert 'class="np2 np2-card bg-blur edge"' in body and 'data-controls="touch"' in body and 'data-accent-mode="theme"' in body
+    # Seeking follows play/pause's permission.
+    cfg["allowed_actions"] = [a for a in cfg["allowed_actions"] if a != "music:play_pause"]
+    panel["value"] = _panel(cfg)
+    body = client.get("/v/music").text
+    assert "data-np-seek" not in body and 'data-music="play_pause"' not in body
+
+
+def test_seek_and_liked_commands(env):
+    client, panel, fake, _, _ = env
+    assert client.post("/music/cmd", json={"cmd": "seek", "arg": 90000}).json()["ok"]
+    assert fake.sent("PUT", "/me/player/seek")[-1][2] == {"position_ms": "90000"}
+    assert client.post("/music/cmd", json={"cmd": "seek", "arg": "soon"}).json()["ok"] is False
+    assert client.post("/music/cmd", json={"cmd": "save"}).json()["message"] == "Saved Teardrop to Liked Songs."
+    assert client.post("/music/cmd", json={"cmd": "save"}).json()["message"] == "Removed Teardrop from Liked Songs."
+    assert client.get("/np").json()["liked"] is False
+    cfg = carthing.default_config()
+    cfg["allowed_actions"] = [a for a in cfg["allowed_actions"] if a != "music:play_pause"]
+    panel["value"] = _panel(cfg)
+    assert client.post("/music/cmd", json={"cmd": "seek", "arg": 1000}).status_code == 403
+
+
+def test_nothing_playing_shows_preset_tiles(env):
+    client, panel, fake, _, _ = env
+    fake.player = None
+    fake.overrides[("GET", "/albums/4aawyAB9vmqN3uQ7FjRGTy")] = httpx.Response(200, json={"images": [{"url": "https://i.scdn.co/image/evening", "width": 300}]})
+    body = client.get("/v/music").text
+    assert 'class="np2 np2-card bg-glow idle ctl-shown"' in body and "No music presets yet" in body
+    cfg = carthing.default_config()
+    cfg["music"]["presets"][2] = {"name": "Evening", "uri": "spotify:album:4aawyAB9vmqN3uQ7FjRGTy", "device": {"id": "", "name": ""}}
+    cfg["music"]["default_device"] = {"id": "dev-living", "name": "Living room"}
+    panel["value"] = _panel(cfg)
+    body = client.get("/v/music").text
+    assert 'data-preset="3"' in body and "Evening" in body and 'src="art/' in body and "start it on Living room" in body
+
+
+def test_artwork_screensaver_takes_the_look(env):
+    client, panel, _, _, _ = env
+    cfg = carthing.default_config()
+    cfg["music"]["np"]["background"] = "art"
+    panel["value"] = _panel(cfg)
+    body = client.get("/v/saver").text
+    assert "data-saver-music" in body and "np2-saver bg-art" in body and 'data-controls="never"' in body
+
+
+def test_artwork_screensaver_time_has_its_own_settings(env):
+    client, panel, _, _, _ = env
+    body = client.get("/v/saver").text
+    # Default: shown top right, small, in the screensaver clock's face.
+    assert 'class="sv-t tpos-top-right tsize-small' in body.split("data-saver-music", 1)[1]
+    cfg = carthing.default_config()
+    cfg["music"]["saver_time"] = {"show": True, "pos": "bottom-right", "size": "large", "backing": True}
+    panel["value"] = _panel(cfg)
+    assert 'class="sv-t tpos-bottom-right tsize-large sv-t-back' in client.get("/v/saver").text
+    cfg["music"]["saver_time"]["show"] = False
+    panel["value"] = _panel(cfg)
+    body = client.get("/v/saver").text
+    assert "data-saver-music" in body and 'class="sv-t' not in body
+
+
+def test_music_screen_follows_the_header(env):
+    # Same header as the pages (the config's default): Always draws it above a compact Now Playing.
+    client, panel, _, _, _ = env
+    body = client.get("/v/music").text
+    assert 'class="strip"' in body and "strip-name" not in body and "data-clock-small" in body
+    cfg = carthing.default_config()
+    cfg["pages"].append({"name": "Second", "widgets": []})
+    cfg["header"] = {"mode": "auto", "hide_after_s": 3, "time": True, "title": True, "weather": True, "dots": True}
+    panel["value"] = _panel(cfg)
+    body = client.get("/v/music").text
+    # Auto-hide: full screen, the strip over its top; titled "Music", no page lit in the dots.
+    assert 'class="screen music home-full"' in body and 'data-strip-auto="3"' in body and ">Music<" in body
+    assert 'class="np2 bg-glow' in body and 'class="dot on"' not in body and 'data-page-go="2"' in body
+    cfg["header"]["mode"] = "off"
+    panel["value"] = _panel(cfg)
+    assert "<header" not in client.get("/v/music").text
+
+
+def test_full_page_now_playing_goes_edge_to_edge(env):
+    client, panel, _, _, _ = env
+    cfg = _with_page([{"id": "music", "size": "full"}])
+    panel["value"] = _panel(cfg)
+    body = client.get("/v/home").text
+    assert "lay-full" in body and 'class="np2 np2-card' in body  # under an Always header: a card
+    cfg["header"]["mode"] = "auto"
+    panel["value"] = _panel(cfg)
+    body = client.get("/v/home").text
+    assert "lay-np" in body and 'class="np2 bg-glow' in body and "data-np-full" in body

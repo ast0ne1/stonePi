@@ -65,6 +65,12 @@ if _prefix:
         StaticFiles(directory=str(_favicon.FAVICON_DIR)),
         name="favicons_prefixed",
     )
+from app.services import badges as _badges  # noqa: E402
+
+_badges.ensure_dir()
+app.mount("/badges", StaticFiles(directory=str(_badges.BADGE_DIR)), name="badges")
+if _prefix:
+    app.mount(f"{_prefix}/badges", StaticFiles(directory=str(_badges.BADGE_DIR)), name="badges_prefixed")
 app.include_router(router)
 
 # A platform install without a session secret locks instead of running solo.

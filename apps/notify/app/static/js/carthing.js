@@ -54,6 +54,7 @@
   // After a screensaver change the preview opens straight on the screensaver (?saver=1), so it
   // shows as soon as the panel script runs instead of after every font and icon has loaded.
   let saverNext = false;
+  let musicNext = false;
   const showPage = () => {
     const saver = saverNext ? "&saver=1" : "";
     saverNext = false;
@@ -77,11 +78,18 @@
   const dirtyEl = root.querySelector("[data-ct-dirty]");
   const resetBtn = root.querySelector("[data-ct-reset]");
   const isDirty = () => JSON.stringify(config) !== JSON.stringify(saved);
+  const useBtn = root.querySelector("[data-ct-use]");
   const changed = () => {
     const dirty = isDirty();
     dirtyEl.hidden = !dirty;
     dirtyEl.textContent = "Unsaved changes";
     resetBtn.disabled = !dirty;
+    if (useBtn) {
+      // Use on panel puts the saved config there, so save first.
+      useBtn.disabled = dirty;
+      useBtn.title = dirty ? "Save first" : "Put this config on the Car Thing";
+    }
+    refreshSummaries();
     pushDraft();
   };
   root.querySelector("[data-ct-save]").addEventListener("click", async () => {
@@ -115,8 +123,21 @@
   guardLeave(isDirty, { body: "Your Car Thing changes aren't saved.", scope: root });
 
   // ── tabs ─────────────────────────────────────────────────────────────
+  // The open tab is remembered, and #pages, #buttons, #idle or #look opens one directly.
   const tabs = root.querySelectorAll("[data-ct-tab]");
-  const setTab = (name) => {
+  const TAB_HASH = { pages: "pages", controls: "buttons", idle: "idle", look: "look" };
+  const HASH_TAB = { pages: "pages", buttons: "controls", controls: "controls", idle: "idle", look: "look" };
+  const TAB_KEY = "stonepi-carthing-tab";
+  const setTab = (name, remember = true) => {
+    if (!TAB_HASH[name]) name = "pages";
+    if (remember) {
+      try {
+        localStorage.setItem(TAB_KEY, name);
+      } catch {
+        /* private mode: just not remembered */
+      }
+      history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${TAB_HASH[name]}`);
+    }
     tab = name;
     tabs.forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.ctTab === name)));
     root.querySelectorAll("[data-ct-pane]").forEach((p) => (p.hidden = p.dataset.ctPane !== name));
@@ -127,6 +148,13 @@
         : "Click the buttons, click or scroll over the dial, and tap the screen to try the panel. Hold a button for its long-press. The drawing is a schematic.";
   };
   tabs.forEach((b) => b.addEventListener("click", () => setTab(b.dataset.ctTab)));
+  root.querySelectorAll("[data-ct-goto]").forEach((a) =>
+    a.addEventListener("click", (e) => {
+      e.preventDefault();
+      setTab(a.dataset.ctGoto);
+      root.querySelector(`[data-ct-pane="${a.dataset.ctGoto}"]`).scrollIntoView({ block: "nearest" });
+    }),
+  );
 
   // ── screensaver style: each style's options; background and clock extras where they apply ──
   const renderSaver = () => {
@@ -141,19 +169,13 @@
     const note = root.querySelector("[data-ct-saver-clock-note]");
     const styleName = (cat.saver_styles.find((s) => s.id === style) || { label: style }).label;
     const timeOn = !!(config.idle.saver[style] || {}).time;
-    let text = "";
-    if (style === "matrix") {
-      text = timeOn ? "" : "Matrix's Show time is off (Idle tab), so no clock shows on it.";
-    } else if (style !== "clock") {
-      text = timeOn
-        ? `${styleName} shows a small time in the corner: it takes these colours, not the face. Choose Clock or Matrix under Idle → Screensaver style to see the face.`
-        : `${styleName} shows no clock. Turn on Show time under Idle, or choose Clock or Matrix there, to see these.`;
-    }
+    // Shown whether or not the clock is set apart: an animated style shows the face only with Show time on.
+    const text = style !== "clock" && !timeOn ? `${styleName} shows no clock. Turn on its Show time, or choose the Clock style, to see the face.` : "";
     note.textContent = text;
-    note.hidden = !separate || !text;
+    note.hidden = !text;
     root.querySelector("[data-ct-face-hint]").textContent = separate
-      ? "For the Clock and Clock & weather widgets."
-      : "For the Clock and Clock & weather widgets and the Clock screensaver.";
+      ? "For the Clock and Clock & weather widgets only: the screensaver has its own face and colours (Idle → Screensaver clock)."
+      : "For the Clock and Clock & weather widgets and the screensaver's clock (the Clock style, and Show time on the others).";
   };
 
   // ── simple bindings ──────────────────────────────────────────────────
@@ -175,7 +197,7 @@
       else if (el.type === "radio") {
         if (!el.checked) return;
         value = el.value;
-      } else if (el.type === "number" || el.type === "range") value = Number(el.value);
+      } else if (el.type === "number" || el.type === "range" || el.dataset.bindNumber !== undefined) value = Number(el.value);
       else if (el.type === "color") value = el.value.toUpperCase();
       else value = el.value;
       set(el.dataset.bind, value);
@@ -186,24 +208,53 @@
         Object.assign(config.clock.saver, { face: config.clock.face, color: config.clock.color, accent: config.clock.accent });
         renderBinds();
       }
+      if (el.dataset.bind.startsWith("header.")) renderHeaders();
       if (el.dataset.bind.startsWith("idle.saver.") || el.dataset.bind.startsWith("clock.saver.")) {
         renderSaver();
         saverNext = true; // show the screensaver once the preview reloads with the draft
+      } else if (el.dataset.bind.startsWith("clock.")) {
+        widgetClockChanged();
+      } else if (el.dataset.bind.startsWith("music.np.")) {
+        musicNext = true; // open Now Playing once the preview reloads with the draft
+      } else if (el.dataset.bind.startsWith("music.saver_time.")) {
+        saverNext = true; // the artwork screensaver (shows while music plays)
       }
       changed();
     });
   });
+  // A Look → Clock change the screensaver shows too (no clock of its own): preview it on the
+  // screensaver, unless the page being edited has a Clock widget to show it on.
+  const saverShowsClock = () => {
+    const saver = config.idle.saver;
+    if (saver.style === "clock") return true;
+    return !!(saver[saver.style] || {}).time;
+  };
+  const widgetClockChanged = () => {
+    if (config.clock.saver.separate || !saverShowsClock()) return;
+    if (config.pages[pageSel].widgets.some((w) => w.id === "clock" || w.id === "time")) return;
+    saverNext = true;
+  };
 
   // ── pages ────────────────────────────────────────────────────────────
+  // Page pills (pick, drag or Alt + arrows to reorder, + to add), then the selected page:
+  // name, header, the space bar and its widgets as rows (drag, size, settings, remove).
   const pagesEl = root.querySelector("[data-ct-pages]");
+  const pageCount = root.querySelector("[data-ct-page-count]");
   const pageName = root.querySelector("[data-ct-page-name]");
-  const pageLegend = root.querySelector("[data-ct-page-legend]");
+  const pageDel = root.querySelector("[data-ct-page-del]");
   const pageSpace = root.querySelector("[data-ct-page-space]");
+  const spaceBar = root.querySelector("[data-ct-space]");
+  const spaceN = root.querySelector("[data-ct-space-n]");
   const widgetsEl = root.querySelector("[data-ct-page-widgets]");
-  const addPageBtn = root.querySelector("[data-ct-page-add]");
-  const pagerLabel = root.querySelector("[data-ct-pager-label]");
+  const addWidget = root.querySelector("[data-ct-add-widget]");
+  const addFull = root.querySelector("[data-ct-add-full]");
+  const webAddPage = root.querySelector('[data-ct-web-add="page"]');
+  const turnText = root.querySelector("[data-ct-turn-text]");
   const used = (widgets) => widgets.reduce((n, w) => n + sizeCost[w.size], 0);
   const esc = (text) => String(text).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const TINTS = ["sand", "sky", "moss", "amethyst", "ember", "rust"];
+  const gearIcon = document.querySelector(".ct-title-row .ct-chip svg")?.outerHTML || "⚙";
+  const doneIcon = root.querySelector("[data-ct-save] svg")?.outerHTML || "✓";
   const pagesChanged = () => {
     renderPages();
     renderControls(); // "Go to page N" labels follow page names
@@ -215,98 +266,369 @@
     renderPages();
     showPage();
   };
+
+  // Clock and Music settings live under Look (they also drive the screensaver clock and the
+  // preset buttons); an open Clock or Music widget row borrows them.
+  const boxes = { clock: root.querySelector('[data-ct-box="clock"]'), music: root.querySelector('[data-ct-box="music"]') };
+  const homes = { clock: root.querySelector('[data-ct-home="clock"]'), music: root.querySelector('[data-ct-home="music"]') };
+  const boxFor = (id) => (id === "clock" || id === "time" ? "clock" : id === "music" ? "music" : "");
+  let openRow = ""; // the widget whose settings are open on its row
+  const sendHome = () => {
+    Object.keys(boxes).forEach((k) => {
+      if (boxes[k].parentNode !== homes[k]) homes[k].appendChild(boxes[k]);
+      homes[k].querySelector("[data-ct-away]").hidden = true;
+    });
+  };
+  const faceLabel = (id) => (cat.clock_faces.find((f) => f.id === id) || { label: id }).label;
+  const summary = (id) => {
+    if (id === "clock" || id === "time") return `${faceLabel(config.clock.face)} · ${config.clock.hour_format === "12" ? "12-hour" : "24-hour"}`;
+    if (id === "weather") return config.weather.lat != null ? config.weather.label || "Weather" : "No location yet: set it under Look";
+    if (id === "music") {
+      const n = config.music.presets.filter((p) => p.uri).length;
+      return `${n} preset${n === 1 ? "" : "s"} · dial volume ${config.music.dial_volume ? "on" : "off"}`;
+    }
+    if (widgetById[id]?.source === "web") return "Web page · full page only";
+    if (!widgetById[id]) return "Its web page was deleted: take it off";
+    return miniById[id] ? `Opens ${miniById[id].label}` : "";
+  };
+
+  // Reorder by dragging. A mouse uses drag and drop (from the grip, for rows); touch and pens
+  // follow the finger, because browsers fire no drag events for touch.
+  const sortable = (list, itemSel, handleSel, onMove) => {
+    let from = -1;
+    let over = -1;
+    const items = () => Array.from(list.querySelectorAll(itemSel));
+    const mark = (i) => {
+      over = i;
+      items().forEach((el, n) => el.classList.toggle("is-drop", n === i && i !== from));
+    };
+    const finish = () => {
+      const f = from;
+      const t = over;
+      from = -1;
+      over = -1;
+      items().forEach((el) => el.classList.remove("is-drag", "is-drop"));
+      if (f >= 0 && t >= 0 && t !== f) onMove(f, t);
+    };
+    list.addEventListener("dragstart", (e) => {
+      const el = e.target.closest?.(itemSel);
+      if (!el || (handleSel && !el.draggable)) return;
+      from = items().indexOf(el);
+      el.classList.add("is-drag");
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", String(from));
+    });
+    list.addEventListener("dragover", (e) => {
+      const el = from >= 0 && e.target.closest?.(itemSel);
+      if (!el) return;
+      e.preventDefault();
+      mark(items().indexOf(el));
+    });
+    list.addEventListener("drop", (e) => {
+      if (from < 0) return;
+      e.preventDefault();
+      finish();
+    });
+    list.addEventListener("dragend", () => {
+      if (from >= 0) {
+        over = -1;
+        finish();
+      }
+      if (handleSel) items().forEach((el) => (el.draggable = false));
+    });
+    list.addEventListener("pointerdown", (e) => {
+      const start = handleSel ? e.target.closest(handleSel) : e.target.closest(itemSel);
+      const el = start && start.closest(itemSel);
+      if (!el) return;
+      if (e.pointerType === "mouse") {
+        if (handleSel) el.draggable = true; // a row drags from its grip only
+        return;
+      }
+      if (handleSel) e.preventDefault();
+      from = items().indexOf(el);
+      const x0 = e.clientX;
+      const y0 = e.clientY;
+      let moving = false;
+      const move = (ev) => {
+        if (!moving && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 8) return;
+        moving = true;
+        el.classList.add("is-drag");
+        const hit = document.elementFromPoint(ev.clientX, ev.clientY)?.closest(itemSel);
+        if (hit && list.contains(hit)) mark(items().indexOf(hit));
+      };
+      const end = (ev) => {
+        document.removeEventListener("pointermove", move);
+        document.removeEventListener("pointerup", end);
+        document.removeEventListener("pointercancel", end);
+        if (moving && ev.type === "pointerup") finish();
+        else {
+          from = -1;
+          items().forEach((n) => n.classList.remove("is-drag", "is-drop"));
+        }
+      };
+      document.addEventListener("pointermove", move);
+      document.addEventListener("pointerup", end);
+      document.addEventListener("pointercancel", end);
+    });
+    list.addEventListener("pointerup", () => {
+      if (handleSel && from < 0) items().forEach((el) => (el.draggable = false));
+    });
+  };
+  const movePage = (from, to) => {
+    const pages = config.pages;
+    if (to < 0 || to >= pages.length || to === from) return;
+    const [page] = pages.splice(from, 1);
+    pages.splice(to, 0, page);
+    pageSel = to;
+    pagesChanged();
+  };
+  const moveWidget = (from, to) => {
+    const list = config.pages[pageSel].widgets;
+    if (to < 0 || to >= list.length || to === from) return;
+    const [w] = list.splice(from, 1);
+    list.splice(to, 0, w);
+    pagesChanged();
+  };
+  sortable(pagesEl, ".ct-pill[data-i]", null, movePage);
+  sortable(widgetsEl, ".ct-wrow", ".ct-grip", moveWidget);
+  // Alt + arrow keys move the focused pill or row, for keyboards.
+  const arrow = (e) => (e.altKey ? { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key] || 0 : 0);
+  pagesEl.addEventListener("keydown", (e) => {
+    const pill = e.target.closest(".ct-pill[data-i]");
+    const d = pill && arrow(e);
+    if (!d) return;
+    e.preventDefault();
+    const to = Number(pill.dataset.i) + d;
+    movePage(Number(pill.dataset.i), to);
+    pagesEl.querySelector(`.ct-pill[data-i="${to}"]`)?.focus();
+  });
+  widgetsEl.addEventListener("keydown", (e) => {
+    const grip = e.target.closest(".ct-grip");
+    const d = grip && arrow(e);
+    if (!d) return;
+    e.preventDefault();
+    const to = Number(grip.closest(".ct-wrow").dataset.idx) + d;
+    moveWidget(to - d, to);
+    widgetsEl.querySelector(`.ct-wrow[data-idx="${to}"] .ct-grip`)?.focus();
+  });
+
+  const addPage = () => {
+    if (config.pages.length >= cat.max_pages) return;
+    // A new page starts empty; the panel says so until a widget is added.
+    config.pages.push({ name: `Page ${config.pages.length + 1}`, widgets: [] });
+    pageSel = config.pages.length - 1;
+    pagesChanged();
+    pageName.focus();
+    pageName.select();
+  };
   const renderPages = () => {
     const pages = config.pages;
     pageSel = Math.min(pageSel, pages.length - 1);
-    pagesEl.innerHTML = "";
-    pages.forEach((page, i) => {
-      const li = document.createElement("li");
-      li.className = i === pageSel ? "is-on" : "";
-      const n = page.widgets.length;
-      li.innerHTML = `
-        <button type="button" class="ct-page-pick" aria-pressed="${i === pageSel}">
-          <strong>${i + 1}. ${esc(page.name)}</strong>
-          <span class="muted">${n ? `${n} widget${n === 1 ? "" : "s"}` : "empty"}</span>
-        </button>
-        <span class="ct-order-btns">
-          <button type="button" class="btn btn-ghost" data-up ${i === 0 ? "disabled" : ""} aria-label="Move ${esc(page.name)} earlier">↑</button>
-          <button type="button" class="btn btn-ghost" data-down ${i === pages.length - 1 ? "disabled" : ""} aria-label="Move ${esc(page.name)} later">↓</button>
-          <button type="button" class="btn btn-ghost" data-remove ${pages.length < 2 ? "disabled" : ""} aria-label="Remove ${esc(page.name)}">✕</button>
-        </span>`;
-      li.querySelector(".ct-page-pick").addEventListener("click", () => selectPage(i));
-      const move = (d) => {
-        [pages[i], pages[i + d]] = [pages[i + d], pages[i]];
-        pageSel = i + d;
-        pagesChanged();
-      };
-      li.querySelector("[data-up]").addEventListener("click", () => move(-1));
-      li.querySelector("[data-down]").addEventListener("click", () => move(1));
-      li.querySelector("[data-remove]").addEventListener("click", () => {
-        if (pages.length < 2 || !window.confirm(`Remove the page “${page.name}”?`)) return;
-        pages.splice(i, 1);
-        pageSel = Math.min(pageSel, pages.length - 1);
-        pagesChanged();
-      });
-      pagesEl.appendChild(li);
-    });
-    addPageBtn.disabled = pages.length >= cat.max_pages;
-
     const page = pages[pageSel];
-    pageLegend.textContent = `Page ${pageSel + 1}: ${page.name}`;
+
+    pageCount.textContent = `${pages.length} of ${cat.max_pages}${pages.length > 1 ? " · drag to reorder" : ""}`;
+    pagesEl.innerHTML = "";
+    pages.forEach((p, i) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "ct-pill";
+      b.dataset.i = i;
+      b.draggable = pages.length > 1;
+      b.setAttribute("aria-pressed", String(i === pageSel));
+      b.textContent = p.name;
+      b.title = `Page ${i + 1}: ${p.name}`;
+      b.addEventListener("click", () => selectPage(i));
+      pagesEl.appendChild(b);
+    });
+    const plus = document.createElement("button");
+    plus.type = "button";
+    plus.className = "ct-pill ct-pill-add";
+    plus.textContent = "+";
+    plus.setAttribute("aria-label", "Add a page");
+    plus.title = pages.length >= cat.max_pages ? `All ${cat.max_pages} pages are in use` : "Add a page";
+    plus.disabled = pages.length >= cat.max_pages;
+    plus.addEventListener("click", addPage);
+    pagesEl.appendChild(plus);
+    pageDel.hidden = pages.length < 2;
+
+    renderHeaders();
     if (document.activeElement !== pageName) pageName.value = page.name;
+
+    // On this page: the space bar, then a row per widget.
+    sendHome();
     const spaces = used(page.widgets);
-    pageSpace.textContent = `${spaces} of ${cat.page_capacity} spaces used. Widgets show in this order (a half page sits on the side where it comes first).`;
-    const on = page.widgets.map((w) => w.id);
-    const order = [...on, ...cat.widgets.map((w) => w.id).filter((id) => !on.includes(id))];
+    const free = cat.page_capacity - spaces;
+    spaceN.textContent = `${spaces} / ${cat.page_capacity} spaces`;
+    spaceBar.innerHTML = "";
+    page.widgets.forEach((w, i) => {
+      for (let k = 0; k < sizeCost[w.size]; k++) spaceBar.insertAdjacentHTML("beforeend", `<i class="tint-${TINTS[i % TINTS.length]}"></i>`);
+    });
+    for (let k = spaces; k < cat.page_capacity; k++) spaceBar.insertAdjacentHTML("beforeend", "<i></i>");
+    pageSpace.textContent = `A small widget takes 1 space, a half page 3, a full page all ${cat.page_capacity}. Widgets show in this order (a half page sits on the side where it comes first).`;
+    if (openRow && !page.widgets.some((w) => w.id === openRow)) openRow = "";
     widgetsEl.innerHTML = "";
-    order.forEach((id) => {
-      const idx = on.indexOf(id);
-      const current = idx >= 0 ? page.widgets[idx] : null;
-      const free = cat.page_capacity - spaces + (current ? sizeCost[current.size] : 0);
-      const label = widgetById[id].label;
+    page.widgets.forEach((w, idx) => {
+      const known = widgetById[w.id];
+      const label = known ? known.label : "Web page (deleted)";
+      const sizes = cat.widget_sizes.filter((z) => !known || !known.sizes || known.sizes.includes(z.id));
+      const room = free + sizeCost[w.size];
+      const box = boxFor(w.id);
+      const open = openRow === w.id;
       const li = document.createElement("li");
+      li.className = `ct-wrow${open ? " is-open" : ""}`;
+      li.dataset.idx = idx;
       li.innerHTML = `
-        <label class="check"><input type="checkbox" ${current ? "checked" : ""} ${!current && free < 1 ? "disabled" : ""} />
-        <span>${esc(label)}</span></label>
-        <select aria-label="Size of ${esc(label)}" ${current ? "" : "disabled"}>
-          ${cat.widget_sizes
-            .map((z) => {
-              const pick = current ? current.size === z.id : z.id === "small";
-              return `<option value="${z.id}" ${pick ? "selected" : ""} ${current && z.cost > free ? "disabled" : ""}>${z.label}</option>`;
-            })
-            .join("")}
-        </select>
-        <span class="ct-order-btns">
-          <button type="button" class="btn btn-ghost" data-up ${idx <= 0 ? "disabled" : ""} aria-label="Move ${esc(label)} up">↑</button>
-          <button type="button" class="btn btn-ghost" data-down ${idx < 0 || idx === on.length - 1 ? "disabled" : ""} aria-label="Move ${esc(label)} down">↓</button>
-        </span>`;
-      li.querySelector("input").addEventListener("change", (e) => {
-        page.widgets = e.target.checked ? [...page.widgets, { id, size: "small" }] : page.widgets.filter((w) => w.id !== id);
+        <button type="button" class="ct-grip" aria-label="Move ${esc(label)}: drag, or Alt + arrow keys" title="Drag to reorder">⠿</button>
+        <span class="ct-wdot tint-${TINTS[idx % TINTS.length]}" aria-hidden="true"></span>
+        <span class="ct-wname"><strong>${esc(label)}</strong><small>${esc(summary(w.id))}</small></span>
+        <span class="ct-sizes" role="group" aria-label="Size of ${esc(label)}">${sizes
+          .map((z) => `<button type="button" data-size="${z.id}" aria-pressed="${w.size === z.id}" ${z.id !== w.size && z.cost > room ? "disabled" : ""}>${esc(z.label.replace(/ page$/, ""))}</button>`)
+          .join("")}</span>
+        ${box ? `<button type="button" class="btn btn-ghost ct-wbtn" data-gear aria-expanded="${open}" aria-label="${open ? "Close" : "Open"} ${esc(label)} settings" title="${open ? "Done" : "Settings"}">${open ? doneIcon : gearIcon}</button>` : ""}
+        <button type="button" class="btn btn-ghost ct-wbtn" data-remove aria-label="Take ${esc(label)} off this page" title="Take off this page">✕</button>`;
+      li.querySelectorAll("[data-size]").forEach((b) =>
+        b.addEventListener("click", () => {
+          if (w.size === b.dataset.size) return;
+          w.size = b.dataset.size;
+          pagesChanged();
+        }),
+      );
+      li.querySelector("[data-remove]").addEventListener("click", () => {
+        page.widgets.splice(idx, 1);
         pagesChanged();
       });
-      li.querySelector("select").addEventListener("change", (e) => {
-        current.size = e.target.value;
-        pagesChanged();
+      li.querySelector("[data-gear]")?.addEventListener("click", () => {
+        openRow = open ? "" : w.id;
+        if (openRow && box === "music") loadMusic();
+        renderPages();
       });
-      const swap = (d) => {
-        const list = [...page.widgets];
-        [list[idx], list[idx + d]] = [list[idx + d], list[idx]];
-        page.widgets = list;
-        pagesChanged();
-      };
-      li.querySelector("[data-up]").addEventListener("click", () => swap(-1));
-      li.querySelector("[data-down]").addEventListener("click", () => swap(1));
+      if (open) {
+        const body = document.createElement("div");
+        body.className = "ct-wbody";
+        body.appendChild(boxes[box]);
+        li.appendChild(body);
+        homes[box].querySelector("[data-ct-away]").hidden = false;
+      }
       widgetsEl.appendChild(li);
     });
 
-    pagerLabel.textContent = `Page ${pageSel + 1} of ${pages.length}: ${page.name}`;
-    root.querySelectorAll("[data-ct-pager-step]").forEach((b) => (b.disabled = pages.length < 2));
+    // Add widget: the ones not on this page (greyed when they don't fit), and a new web page.
+    const onIds = page.widgets.map((w) => w.id);
+    let fits = 0;
+    const options = cat.widgets
+      .filter((w) => !onIds.includes(w.id))
+      .map((w) => {
+        const sizes = cat.widget_sizes.filter((z) => !w.sizes || w.sizes.includes(z.id));
+        const start = sizes.some((z) => z.id === "small") ? "small" : sizes[0].id;
+        const ok = sizeCost[start] <= free;
+        fits += ok ? 1 : 0;
+        return `<option value="${esc(w.id)}" ${ok ? "" : "disabled"}>${esc(w.label)}${ok ? "" : " (no room)"}</option>`;
+      });
+    addWidget.innerHTML = `<option value="">+ Add widget</option>${options.join("")}<option value="__web">Web page…</option>`;
+    addFull.hidden = fits > 0 || !options.length;
 
     const every = config.rotation.every_s;
     rotateOn.checked = every > 0;
     rotateEvery.disabled = every === 0;
     if (document.activeElement !== rotateEvery) rotateEvery.value = every || lastEvery;
+    refreshSummaries();
   };
+  // Row summaries and the turning line follow edits made elsewhere (Look, Idle, an open row).
+  const refreshSummaries = () => {
+    widgetsEl.querySelectorAll(".ct-wrow").forEach((li) => {
+      const w = config.pages[pageSel]?.widgets[li.dataset.idx];
+      if (w) li.querySelector(".ct-wname small").textContent = summary(w.id);
+    });
+    const every = config.rotation.every_s;
+    turnText.textContent = every
+      ? `Pages turn every ${every} s, resume after ${config.rotation.resume_after_s} s untouched`
+      : "Pages don't turn by themselves";
+  };
+  addWidget.addEventListener("change", () => {
+    const id = addWidget.value;
+    addWidget.value = "";
+    if (!id) return;
+    if (id === "__web") {
+      webAddPage.hidden = false;
+      webAddPage.querySelector("[data-ct-web-name]").focus();
+      return;
+    }
+    const w = widgetById[id];
+    const sizes = cat.widget_sizes.filter((z) => !w.sizes || w.sizes.includes(z.id));
+    config.pages[pageSel].widgets.push({ id, size: sizes.some((z) => z.id === "small") ? "small" : sizes[0].id });
+    pagesChanged();
+  });
+  webAddPage.querySelector("[data-ct-web-cancel]").addEventListener("click", () => (webAddPage.hidden = true));
+  homes.music.addEventListener("toggle", () => {
+    if (homes.music.open) loadMusic();
+  });
+
+  // ── page header: the config default (data-bind) and a page's own (data-ct-ph) ──
+  // One summary line under the page name; Edit opens the fields.
+  const phOwn = root.querySelector("[data-ct-ph-own]");
+  const phFields = root.querySelector("[data-ct-ph-fields]");
+  const phInputs = root.querySelectorAll("[data-ct-ph]");
+  const hdrSummary = root.querySelector("[data-ct-hdr-summary]");
+  const hdrBox = root.querySelector("[data-ct-hdr-box]");
+  const hdrEdit = root.querySelector("[data-ct-hdr-edit]");
+  const modeLabel = (id) => (cat.header_modes.find((m) => m.id === id) || { label: id }).label;
+  const renderHeaders = () => {
+    const page = config.pages[pageSel];
+    const own = page.header || null;
+    phOwn.value = own ? "own" : "";
+    phFields.hidden = !own;
+    const shown = own || config.header;
+    phInputs.forEach((el) => {
+      const value = shown[el.dataset.ctPh];
+      if (el.type === "checkbox") el.checked = !!value;
+      else el.value = String(value);
+    });
+    // Hide after only means something with Auto-hide.
+    root.querySelector("[data-ct-header-default] [data-ct-hide-after]").disabled = config.header.mode !== "auto";
+    phFields.querySelector("[data-ct-hide-after]").disabled = shown.mode !== "auto";
+    const parts = [modeLabel(shown.mode) + (shown.mode === "auto" ? ` (${shown.hide_after_s} s)` : "")];
+    if (shown.mode !== "off") {
+      const parts2 = ["time", "title", "weather", "dots"].filter((k) => shown[k]);
+      parts.push(parts2.length ? parts2.join(", ") : "empty");
+    }
+    hdrSummary.textContent = `${own ? "This page's own" : "Default"} · ${parts.join(" · ")}`;
+  };
+  hdrEdit.addEventListener("click", () => {
+    hdrBox.hidden = !hdrBox.hidden;
+    hdrEdit.textContent = hdrBox.hidden ? "Edit" : "Done";
+    hdrEdit.setAttribute("aria-expanded", String(!hdrBox.hidden));
+  });
+  phOwn.addEventListener("change", () => {
+    const page = config.pages[pageSel];
+    if (phOwn.value === "own") page.header = { ...config.header };
+    else delete page.header;
+    renderHeaders();
+    changed();
+  });
+  phInputs.forEach((el) => {
+    el.addEventListener("change", () => {
+      const page = config.pages[pageSel];
+      if (!page.header) return;
+      const key = el.dataset.ctPh;
+      page.header[key] = el.type === "checkbox" ? el.checked : key === "hide_after_s" ? Number(el.value) : el.value;
+      renderHeaders();
+      changed();
+    });
+  });
+
+  // ── "Default" next to a colour: back to StonePi's own (cat.color_defaults) ──
+  root.querySelectorAll("[data-ct-reset]").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      const path = btn.dataset.ctReset;
+      const input = root.querySelector(`input[type="color"][data-bind="${path}"]`);
+      const value = (cat.color_defaults || {})[path];
+      if (!input || !value) return;
+      input.value = value.toLowerCase();
+      input.dispatchEvent(new Event("input", { bubbles: true })); // same path as picking it by hand
+    });
+  });
+
   pageName.addEventListener("input", () => {
     config.pages[pageSel].name = pageName.value.slice(0, 30);
     pagesChanged();
@@ -318,13 +640,65 @@
       pagesChanged();
     }
   });
-  addPageBtn.addEventListener("click", () => {
-    if (config.pages.length >= cat.max_pages) return;
-    config.pages.push({ name: `Page ${config.pages.length + 1}`, widgets: [{ id: "clock", size: "full" }] });
-    pageSel = config.pages.length - 1;
+  pageDel.addEventListener("click", () => {
+    const pages = config.pages;
+    const page = pages[pageSel];
+    if (pages.length < 2 || !window.confirm(`Remove the page “${page.name}”?`)) return;
+    pages.splice(pageSel, 1);
+    pageSel = Math.min(pageSel, pages.length - 1);
     pagesChanged();
   });
-  root.querySelectorAll("[data-ct-pager-step]").forEach((b) => b.addEventListener("click", () => selectPage(pageSel + Number(b.dataset.ctPagerStep))));
+
+  // ── web pages (F14): add one where it's used, without leaving the editor ──
+  // The page is saved in Notify at once (shared with TRMNL); putting it on a page or the
+  // screensaver is part of this config, so it's saved with the config as usual.
+  const saverPagePick = root.querySelector('select[data-bind="idle.saver.web.page_id"]');
+  root.querySelectorAll("[data-ct-web-add]").forEach((box) => {
+    const msg = box.querySelector("[data-ct-web-msg]");
+    box.querySelector("[data-ct-web-create]").addEventListener("click", async () => {
+      const name = box.querySelector("[data-ct-web-name]").value.trim();
+      const url = box.querySelector("[data-ct-web-url]").value.trim();
+      msg.textContent = "Adding…";
+      try {
+        const res = await fetch(new URL("../api/web-pages", window.location.href).href, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-StonePi-CSRF": csrf },
+          body: JSON.stringify({ name, url }),
+        });
+        const body = await res.json();
+        if (!res.ok || !body.ok) throw new Error(body.message || "Couldn't add the page.");
+        const page = body.page;
+        cat.web_pages.push(page);
+        const widget = { id: body.widget, label: `Web: ${page.name}`, source: "web", sizes: ["full"] };
+        cat.widgets.push(widget);
+        widgetById[widget.id] = widget;
+        const option = new Option(page.name, page.id);
+        saverPagePick.appendChild(option);
+        if (box.dataset.ctWebAdd === "saver") {
+          config.idle.saver.style = "web";
+          config.idle.saver.web.page_id = page.id;
+          renderBinds();
+          renderSaver();
+          saverNext = true;
+          msg.textContent = `Added ${page.name}; the screensaver shows it.`;
+        } else if (!config.pages[pageSel].widgets.length) {
+          config.pages[pageSel].widgets = [{ id: widget.id, size: "full" }];
+          msg.textContent = `Added ${page.name} to this page.`;
+        } else if (config.pages.length < cat.max_pages) {
+          config.pages.push({ name: page.name.slice(0, 30), widgets: [{ id: widget.id, size: "full" }] });
+          pageSel = config.pages.length - 1;
+          msg.textContent = `Added ${page.name} on a new page.`;
+        } else {
+          msg.textContent = `Added ${page.name}. All ${cat.max_pages} pages are in use: free one, then add it.`;
+        }
+        box.querySelector("[data-ct-web-name]").value = "";
+        box.querySelector("[data-ct-web-url]").value = "";
+        pagesChanged();
+      } catch (err) {
+        msg.textContent = err.message || "Couldn't add the page.";
+      }
+    });
+  });
 
   // Turning pages: every_s 0 = off; the last interval comes back when switched on again.
   const rotateOn = root.querySelector("[data-ct-rotate-on]");
@@ -351,6 +725,10 @@
   frame.addEventListener("load", () => {
     // A reloaded preview starts with turning off; keep the button honest.
     rotateTry.setAttribute("aria-pressed", "false");
+    if (musicNext) {
+      musicNext = false;
+      setTimeout(() => send("open", { action: "open:music" }), 300); // after the panel script starts
+    }
   });
 
   // ── allowed actions + controls ───────────────────────────────────────
@@ -428,7 +806,15 @@
   );
 
   // ── the drawing: map (Controls tab) or try (other tabs) ──────────────
+  // Buttons tab: Holds (long presses) start folded.
+  const holdsBtn = root.querySelector("[data-ct-holds]");
+  const setHolds = (open) => {
+    holdsBtn.setAttribute("aria-expanded", String(open));
+    root.querySelectorAll("tr.kind-long").forEach((r) => (r.hidden = !open));
+  };
+  holdsBtn.addEventListener("click", () => setHolds(holdsBtn.getAttribute("aria-expanded") !== "true"));
   const selectInputRow = (input) => {
+    if (input.endsWith("_long")) setHolds(true);
     root.querySelectorAll("[data-ct-input-row]").forEach((r) => r.classList.toggle("is-picked", r.dataset.ctInputRow === input));
     const sel = root.querySelector(`[data-ct-control="${input}"]`);
     sel?.scrollIntoView({ block: "nearest" });
@@ -577,6 +963,7 @@
       config.clock.color = s.dataset.ctColor.toUpperCase();
       renderBinds();
       renderSwatches();
+      widgetClockChanged();
       changed();
     }),
   );
@@ -692,26 +1079,36 @@
     }
     renderMusic();
   };
-  tabs.forEach((b) => b.addEventListener("click", () => { if (b.dataset.ctTab === "music") loadMusic(); }));
   root.querySelector("[data-ct-music-open]")?.addEventListener("click", () => send("open", { action: "open:music" }));
 
-  // ── device status ────────────────────────────────────────────────────
-  const statusEl = document.querySelector("[data-ct-status-detail]");
+  // ── status pills: the panel, and Spotify turning red when the service reports the sign-in gone ──
+  const pill = document.querySelector("[data-ct-pill-status]");
+  const pillText = pill?.querySelector("[data-ct-pill-status-text]");
+  const spotPill = document.querySelector("[data-ct-pill-spotify]");
+  const pillDot = pill?.querySelector(".ct-dot");
+  const shortStatus = (s) => {
+    if (!s.enabled) return "Panel off";
+    if (!s.service) return "Panel on · service not running";
+    if (!s.adb) return "Panel on · ADB missing";
+    if (!(s.devices || []).length) return "Panel on · not plugged in";
+    if (s.connected) return "Panel on · connected";
+    return "Panel on · loading the panel";
+  };
   const pollStatus = async () => {
+    if (!pill) return;
     try {
       const res = await fetch(api("status"));
       const s = await res.json();
-      let text;
-      if (!s.service) text = s.enabled ? "the Car Thing service isn't running" : "service stopped";
-      else if (!s.adb) text = "ADB isn't installed on this machine";
-      else if (!(s.devices || []).length) text = "no Car Thing plugged in";
-      else if (s.connected) text = "Car Thing connected and showing the panel";
-      else if ((s.devices || []).some((d) => d.injected)) text = "Car Thing found, waiting for it to load the panel";
-      else text = "Car Thing found";
-      if (s.error) text += ` (${s.error})`;
-      statusEl.textContent = text;
+      pillText.textContent = shortStatus(s);
+      pillDot.className = `ct-dot ${s.enabled ? "on" : "off"}`;
+      pill.classList.toggle("is-warn", !s.enabled || !s.connected);
+      if ((s.music || {}).error_code === "invalid_grant" && spotPill) {
+        spotPill.classList.remove("is-warn");
+        spotPill.classList.add("is-bad");
+        spotPill.querySelector("[data-ct-pill-spotify-text]").textContent = "· sign-in expired · Reconnect";
+      }
     } catch {
-      statusEl.textContent = "status unavailable";
+      pillText.textContent = "status unavailable";
     }
   };
   pollStatus();
@@ -730,5 +1127,13 @@
     renderMusic();
   };
   renderAll();
-  setTab(window.location.hash === "#controls" ? "controls" : "pages");
+  let startTab = HASH_TAB[window.location.hash.slice(1)];
+  if (!startTab) {
+    try {
+      startTab = localStorage.getItem(TAB_KEY);
+    } catch {
+      startTab = "";
+    }
+  }
+  setTab(startTab || "pages", false);
 })();

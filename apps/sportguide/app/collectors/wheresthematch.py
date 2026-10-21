@@ -101,6 +101,7 @@ def parse_wtm(html: str) -> list[dict]:
         teams = [em.get_text(" ", strip=True) for em in fixture.select("a em")]
         if len(teams) < 2:
             continue
+        team_pages = [a.get("href") or "" for a in fixture.select("a")][:2]
         try:
             starts = datetime.fromisoformat(when["datetime"])
         except ValueError:
@@ -124,9 +125,22 @@ def parse_wtm(html: str) -> list[dict]:
                 "competition": competition,
                 "channels": _dedupe(channels),
                 "url": link["href"] if link else WTM_URL,
+                "home_badge": _wtm_crest(team_pages[0] if team_pages else ""),
+                "away_badge": _wtm_crest(team_pages[1] if len(team_pages) > 1 else ""),
             }
         )
     return out
+
+
+_WTM_TEAM_PAGE = re.compile(r"/Football/([A-Za-z0-9-]+)\.asp$", re.I)
+
+
+def _wtm_crest(team_page: str) -> str:
+    """The crest WheresTheMatch would use for a team, guessed from its team page
+    (/Football/Japan.asp -> /images/clubcrests/Japan-1.gif). Not every team has one;
+    a miss is remembered by services/badges.py and the card shows initials."""
+    m = _WTM_TEAM_PAGE.search(team_page or "")
+    return f"https://www.wheresthematch.com/images/clubcrests/{m.group(1)}-1.gif" if m else ""
 
 
 # ---------- timezone.football (the Pi's own country) ----------
@@ -214,7 +228,9 @@ def parse_timezone_football(html: str, *, now: datetime | None = None) -> tuple[
                 year = now.year + (1 if month < now.month - 6 else -1 if month > now.month + 6 else 0)
                 day = datetime(year, month, int(m.group(1)))
             continue
-        names = [a.get_text(" ", strip=True) for a in node.select(".tm-team .tm-name")]
+        teams = [t for t in node.select(".tm-team") if t.select_one(".tm-name")]
+        names = [t.select_one(".tm-name").get_text(" ", strip=True) for t in teams]
+        crests = [(t.select_one("img.tm-crest") or {}).get("src") or "" for t in teams]
         hh = node.select_one(".tm-hh")
         if len(names) < 2 or not hh:
             continue
@@ -234,6 +250,8 @@ def parse_timezone_football(html: str, *, now: datetime | None = None) -> tuple[
             "channels": channels,
             "status": status,
             "url": f"{TZ_BASE}{path}" if "/match/" in path else TZ_FOOTBALL_URL,
+            "home_badge": crests[0] if crests else "",
+            "away_badge": crests[1] if len(crests) > 1 else "",
         }
         pending.append((local, fixture))
 
@@ -286,6 +304,10 @@ def merge(tz_rows: list[dict], wtm_rows: list[dict], country: str) -> list[Listi
             match["uk"] = w["channels"]
             if not match.get("competition"):
                 match["competition"] = w["competition"]
+            # timezone.football's badges are real; WheresTheMatch's are a guess.
+            for side in ("home_badge", "away_badge"):
+                if not match.get(side):
+                    match[side] = w.get(side) or ""
 
     out: list[ListingRow] = []
     seen: set[str] = set()
@@ -311,10 +333,23 @@ def merge(tz_rows: list[dict], wtm_rows: list[dict], country: str) -> list[Listi
                 starts_at=starts,
                 channels=channels[:6],
                 source_url=r["url"],
+                home=r["home"][:80],
+                away=r["away"][:80],
+                home_badge=_badge_url(r.get("home_badge")),
+                away_badge=_badge_url(r.get("away_badge")),
             )
         )
     out.sort(key=lambda row: row.starts_at)
     return out
+
+
+def _badge_url(raw: str | None) -> str:
+    url = (raw or "").strip()
+    if url.startswith("//"):
+        url = "https:" + url
+    elif url.startswith("/"):
+        url = TZ_BASE + url
+    return url[:400] if url.startswith("https://") else ""
 
 
 # ---------- fetching ----------

@@ -1,21 +1,44 @@
 {% from "_icons.html" import icon %}
 {% import "_music.html" as mu %}
 {% set saver = config.idle.saver %}
+{#- The screensaver clock's face: its own once it's set apart (U13), else the widgets'. -#}
+{% set sv_face = saver_clock.face %}
+{#- Show time on an animated style: the chosen clock face at every size (panel.css scales it),
+    where it sits, and an optional dark backing so it reads over a busy animation. -#}
+{% macro saver_time(pos, size, backing) -%}
+<div class="sv-t tpos-{{ pos }} tsize-{{ size }}{% if backing %} sv-t-back{% endif %} face-{{ sv_face }}"><div class="clock" data-clock data-face="{{ sv_face }}"></div></div>
+{%- endmacro %}
+{% set corner_time = saver_time(saver.time_pos, saver.time_size, saver.time_backing) %}
 {% if music %}
-{#- Artwork while music plays (F7): the screensaver style steps aside, the time sits in a corner. -#}
-<div class="saver-inner saver-music" data-saver-music>
-  {{ mu.art(music, "np-art sm-art") }}
+{#- Artwork while music plays (F7): the screensaver style steps aside, the time sits in a corner.
+    It takes Now Playing's background and accent (music_look), coloured by panel.js. -#}
+{% set ml = music_look or {"look": {"background": "theme", "accent": "theme", "edge": false}, "accent": "#C7BBA8"} %}
+<div class="saver-inner saver-music np2-saver bg-{{ ml.look.background }}{% if ml.look.edge %} edge{% endif %}" data-saver-music data-np-look data-controls="never" data-accent-mode="{{ ml.look.accent }}" data-accent="{{ ml.accent }}" style="--np-accent:{{ ml.accent }}">
+  <canvas class="np2-blur" data-np-blur width="160" height="96"></canvas>
+  <div class="np2-artbox sm-artbox"><span class="np2-glow"></span>{{ mu.art(music, "np-art sm-art") }}</div>
   <div class="sm-main">
     {{ mu.text(music) }}
     {{ mu.bar(music) }}
     {% if music.device %}<span class="sm-device">{{ music.device.name }}</span>{% endif %}
   </div>
-  <span class="sm-time" data-clock-small></span>
+  {%- set st = (config.music or {}).get("saver_time") or {"show": true, "pos": "top-right", "size": "small", "backing": false} %}
+  {% if st.show %}{{ saver_time(st.pos, st.size, st.backing) }}{% endif %}
+</div>
+{% elif web %}
+{#- Web page (F14): Notify's snapshot of the page, refreshed every refresh_min while it shows. -#}
+<div class="saver-inner saver-web">
+  {% if web.missing %}
+  <p class="web-msg">Pick a web page for the screensaver in Displays → Car Thing.</p>
+  {% else %}
+  <img class="web-img" src="web/{{ web.page_id }}.png?s=saver" data-web-every="{{ web.every_s }}" alt="" width="800" height="480">
+  <p class="web-msg" data-web-msg hidden>Couldn’t load the web page.</p>
+  {% endif %}
+  {% if saver.web.time %}{{ corner_time }}{% endif %}
 </div>
 {% elif saver.style == "logo" %}
 {#- Bouncing logo: panel.js moves .lg-mark (a transform) and recolours its slabs. -#}
 <div class="saver-inner saver-logo" data-saver="logo">
-  {% if saver.logo.time %}<span class="lg-time" data-clock-small></span>{% endif %}
+  {% if saver.logo.time %}{{ corner_time }}{% endif %}
   <div class="lg-mark" data-lg-mark>
     <svg viewBox="8 8 84 84" width="120" height="120" aria-hidden="true">
       <polygon points="20,32 80,8 80,20 32,39.2 32,46.2 20,51" />
@@ -28,15 +51,20 @@
 {#- Matrix: panel.js draws the rain on the canvas. -#}
 <div class="saver-inner saver-matrix" data-saver="matrix">
   <canvas width="800" height="480" data-mx></canvas>
-  {#- The time uses the screensaver's own face once it's set apart (U13), else bold digital. -#}
-  {% set mx_face = saver_clock.face if saver_clock.separate else "digital_bold" %}
-  {% if saver.matrix.time %}<div class="mx-time face-{{ mx_face }}"><div class="clock" data-clock data-face="{{ mx_face }}"></div></div>{% endif %}
+  {#- Matrix keeps its own position and size (a big face in the middle), always on a backing. -#}
+  {% if saver.matrix.time %}{{ saver_time(saver.matrix.time_pos, saver.matrix.time_size, true) }}{% endif %}
 </div>
 {% elif saver.style == "pipes" %}
 {#- 3D Pipes: panel.js grows the pipes on the canvas, over the screensaver background. -#}
 <div class="saver-inner saver-pipes" data-saver="pipes">
   <canvas width="800" height="480" data-pp></canvas>
-  {% if saver.pipes.time %}<span class="lg-time" data-clock-small></span>{% endif %}
+  {% if saver.pipes.time %}{{ corner_time }}{% endif %}
+</div>
+{% elif saver.style in ("starfield", "mystify", "flowerbox", "maze") %}
+{#- Windows 98 screensavers: panel.js draws each frame on the canvas (black, full screen). -#}
+<div class="saver-inner saver-canvas" data-saver="{{ saver.style }}">
+  <canvas width="800" height="480" data-sv></canvas>
+  {% if saver[saver.style].time %}{{ corner_time }}{% endif %}
 </div>
 {% else %}
 {% set show = config.idle.show %}

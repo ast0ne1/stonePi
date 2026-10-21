@@ -290,9 +290,18 @@ def test_screensaver_style_defaults_and_old_configs():
     cfg = carthing.normalize_config({"idle": {"screensaver_after_s": 120}})
     assert cfg["idle"]["saver"] == {
         "style": "clock",
+        "time_pos": "bottom-right",
+        "time_size": "small",
+        "time_backing": False,
         "logo": {"recolor": True, "corner": True, "speed": "slow", "time": False},
-        "matrix": {"color": "#00FF41", "time": True, "speed": "normal", "density": "normal"},
+        "matrix": {"color": "#00FF41", "time": True, "speed": "normal", "density": "normal",
+                   "time_pos": "center", "time_size": "xl"},
         "pipes": {"speed": "normal", "joints": "mixed", "time": False},
+        "web": {"page_id": "", "refresh_min": 2, "time": False},
+        "starfield": {"speed": "normal", "density": "normal", "color": False, "time": False},
+        "mystify": {"speed": "normal", "shapes": 2, "trail": "normal", "time": False},
+        "flowerbox": {"speed": "normal", "colors": "checker", "time": False},
+        "maze": {"speed": "normal", "walls": "brick", "rat": True, "time": False},
     }
 
 
@@ -305,7 +314,8 @@ def test_screensaver_style_options_are_kept_or_reset():
     saver = carthing.normalize_config({"idle": {"saver": raw}})["idle"]["saver"]
     assert saver["style"] == "matrix"
     assert saver["logo"] == {"recolor": False, "corner": True, "speed": "fast", "time": True}
-    assert saver["matrix"] == {"color": "#FF0000", "time": False, "speed": "normal", "density": "dense"}
+    assert saver["matrix"] == {"color": "#FF0000", "time": False, "speed": "normal", "density": "dense",
+                               "time_pos": "center", "time_size": "xl"}
     bad = carthing.normalize_config({"idle": {"saver": {"style": "toasters", "matrix": {"color": "green"}}}})
     assert bad["idle"]["saver"]["style"] == "clock" and bad["idle"]["saver"]["matrix"]["color"] == "#00FF41"
 
@@ -316,7 +326,7 @@ def test_pipes_options_are_kept_or_reset():
     assert saver["idle"]["saver"]["pipes"] == {"speed": "fast", "joints": "ball", "time": True}
     bad = carthing.normalize_config({"idle": {"saver": {"pipes": {"joints": "teapot"}}}})
     assert bad["idle"]["saver"]["pipes"]["joints"] == "mixed"
-    assert [s["id"] for s in carthing.SAVER_STYLES][-1] == "pipes"
+    assert "pipes" in [s["id"] for s in carthing.SAVER_STYLES]
 
 
 def test_screensaver_clock_follows_widgets_until_set_apart():
@@ -376,6 +386,14 @@ def test_music_section_normalised():
     assert carthing.normalize_config({})["music"] == carthing.default_music()
 
 
+def test_music_saver_time_normalised():
+    music = carthing.normalize_config({"music": {"saver_time": {"show": 0, "pos": "nowhere", "size": "xl", "backing": 1}}})["music"]
+    assert music["saver_time"] == {"show": False, "pos": "top-right", "size": "xl", "backing": True}
+    assert carthing.default_config()["music"]["saver_time"]["show"] is True
+    defaults = carthing.editor_catalog()["color_defaults"]
+    assert defaults["look.accent"] == carthing.SAND and defaults["clock.color"] == carthing.STONE_TEXT
+
+
 def test_music_is_a_widget_and_live_line():
     assert "music" in carthing.WIDGET_IDS and "open:music" in carthing.ACTION_IDS
     cfg = carthing.normalize_config({"pages": [{"widgets": [{"id": "music", "size": "half"}]}], "idle": {"show": {"live_line": "music"}}})
@@ -387,3 +405,101 @@ def test_clock_only_widget_in_catalog():
     assert "time" in carthing.WIDGET_IDS
     cfg = carthing.normalize_config({"pages": [{"widgets": [{"id": "time", "size": "full"}]}]})
     assert cfg["pages"][0]["widgets"] == [{"id": "time", "size": "full"}]
+
+
+def test_music_expiry_six_months_states_and_override(tmp_path):
+    from datetime import date
+
+    carthing.configure_carthing(tmp_path)
+    assert carthing.music_expiry() is None
+    carthing.save_music_account("Adam", "u1")
+    account = {**carthing.music_account(), "connected_at": "2026-08-31T09:00:00+00:00"}
+    ex = carthing.music_expiry(account, today=date(2026, 10, 21))
+    assert ex["expires_on"] == "2027-02-28" and ex["state"] == "ok" and not ex["set_by_admin"]
+    assert carthing.music_expiry(account, today=date(2027, 2, 14))["state"] == "soon"
+    assert carthing.music_expiry(account, today=date(2027, 2, 28))["state"] == "expired"
+    assert carthing.music_expiry(account, error_code="invalid_grant", today=date(2026, 10, 21))["state"] == "revoked"
+
+    carthing.mark_music_alert("soon", "2027-04-21")
+    assert carthing.set_music_expiry("2027-05-01") == "2027-05-01"
+    account = carthing.music_account()
+    assert account["expires_on"] == "2027-05-01" and account["alerts"] == {}
+    assert carthing.music_expiry(account)["set_by_admin"]
+    with pytest.raises(ValueError):
+        carthing.set_music_expiry("soon")
+    assert carthing.set_music_expiry("") is None
+    assert carthing.music_account()["expires_on"] is None
+
+    carthing.set_music_expiry("2027-05-01")
+    carthing.save_music_account("Adam", "u1")  # reconnecting starts a fresh 6 months
+    assert carthing.music_account()["expires_on"] is None
+
+
+def test_windows98_screensavers_options_are_kept_or_reset():
+    raw = {
+        "style": "maze",
+        "starfield": {"speed": "fast", "density": "dense", "color": 1, "time": 1},
+        "mystify": {"shapes": "3", "trail": "long", "speed": "slow"},
+        "flowerbox": {"colors": "faces"},
+        "maze": {"walls": "wood", "rat": 0, "time": True},
+    }
+    saver = carthing.normalize_config({"idle": {"saver": raw}})["idle"]["saver"]
+    assert saver["style"] == "maze"
+    assert saver["starfield"] == {"speed": "fast", "density": "dense", "color": True, "time": True}
+    assert saver["mystify"] == {"speed": "slow", "shapes": 3, "trail": "long", "time": False}
+    assert saver["flowerbox"] == {"speed": "normal", "colors": "faces", "time": False}
+    assert saver["maze"] == {"speed": "normal", "walls": "wood", "rat": False, "time": True}
+    bad = carthing.normalize_config({"idle": {"saver": {
+        "mystify": {"shapes": 9, "trail": "endless"}, "flowerbox": {"colors": "plaid"}, "maze": {"walls": "cheese"},
+    }}})["idle"]["saver"]
+    assert bad["mystify"]["shapes"] == 3 and bad["mystify"]["trail"] == "normal"
+    assert bad["flowerbox"]["colors"] == "checker" and bad["maze"]["walls"] == "brick"
+    assert carthing.normalize_config({"idle": {"saver": {"mystify": {"shapes": "x"}}}})["idle"]["saver"]["mystify"]["shapes"] == 2
+
+
+def test_every_screensaver_style_is_in_a_dropdown_group():
+    groups = [g["id"] for g in carthing.SAVER_GROUPS]
+    assert all(s["group"] in groups for s in carthing.SAVER_STYLES)
+    win98 = [s["id"] for s in carthing.SAVER_STYLES if s["group"] == "win98"]
+    assert win98 == ["pipes", "starfield", "mystify", "flowerbox", "maze"]
+    cat = carthing.editor_catalog()
+    assert cat["saver_groups"] and cat["saver_maze_walls"] and cat["saver_flower_colors"] and cat["saver_trails"]
+
+
+def test_screensaver_time_position_and_size():
+    saver = carthing.normalize_config({"idle": {"saver": {
+        "time_pos": "top-center", "time_size": "large", "time_backing": 1,
+        "matrix": {"time_pos": "bottom-left", "time_size": "medium"},
+    }}})["idle"]["saver"]
+    assert (saver["time_pos"], saver["time_size"], saver["time_backing"]) == ("top-center", "large", True)
+    assert (saver["matrix"]["time_pos"], saver["matrix"]["time_size"]) == ("bottom-left", "medium")
+    bad = carthing.normalize_config({"idle": {"saver": {"time_pos": "moon", "time_size": "huge"}}})["idle"]["saver"]
+    assert (bad["time_pos"], bad["time_size"], bad["time_backing"]) == ("bottom-right", "small", False)
+
+
+def test_header_default_and_page_override():
+    cfg = carthing.normalize_config({"pages": [{"name": "A", "widgets": []}]})
+    assert cfg["header"] == carthing.HEADER_DEFAULTS and "header" not in cfg["pages"][0]
+    assert carthing.page_header(cfg, cfg["pages"][0]) == carthing.HEADER_DEFAULTS  # old configs look the same
+    cfg = carthing.normalize_config({
+        "header": {"mode": "auto", "hide_after_s": 10, "title": True, "dots": 0},
+        "pages": [{"name": "A", "widgets": [], "header": {"mode": "off", "weather": False}}, {"name": "B", "widgets": []}],
+    })
+    assert cfg["header"] == {"mode": "auto", "hide_after_s": 10, "time": True, "title": True, "weather": True, "dots": False}
+    assert carthing.page_header(cfg, cfg["pages"][0])["mode"] == "off"
+    assert carthing.page_header(cfg, cfg["pages"][0])["weather"] is False
+    assert carthing.page_header(cfg, cfg["pages"][1]) == cfg["header"]
+    bad = carthing.normalize_config({"header": {"mode": "sometimes", "hide_after_s": 7}})["header"]
+    assert (bad["mode"], bad["hide_after_s"]) == ("always", 5)
+
+
+def test_now_playing_look_defaults_and_cleanup():
+    cfg = carthing.normalize_config({})
+    assert cfg["music"]["np"] == {"background": "glow", "controls": "always", "accent": "art", "edge": False}
+    raw = {"music": {"np": {"background": "blur", "controls": "touch", "accent": "theme", "edge": 1}}}
+    assert carthing.normalize_config(raw)["music"]["np"] == {"background": "blur", "controls": "touch", "accent": "theme", "edge": True}
+    bad = {"music": {"np": {"background": "plaid", "controls": 7, "accent": None}}}
+    assert carthing.normalize_config(bad)["music"]["np"] == {"background": "glow", "controls": "always", "accent": "art", "edge": False}
+    cat = carthing.editor_catalog()
+    assert [b["id"] for b in cat["np_backgrounds"]] == ["glow", "art", "blur", "theme"]
+    assert [c["id"] for c in cat["np_controls"]] == ["always", "touch", "never"]

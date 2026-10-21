@@ -11,6 +11,15 @@ User=stonepi-notify
 Group=stonepi-notify
 EnvironmentFile=/etc/stonepi/stonepi.env
 EnvironmentFile=-/etc/stonepi/notify.env
+# Web pages on the displays (F14) capture with the shared Chromium (see install.sh).
+Environment=HOME=/opt/stonepi
+Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/stonepi/.cache/ms-playwright
+# Chromium runs in this unit's cgroup. Notify is a core service, so no hard MemoryMax (an
+# OOM kill would stop alerts too): a lower CPU/IO share and a soft memory ceiling that
+# throttles a heavy capture instead.
+CPUWeight=50
+IOWeight=50
+MemoryHigh=600M
 WorkingDirectory=/opt/stonepi/apps/notify
 ExecStart=/opt/stonepi/apps/notify/.venv/bin/python -m app.serve
 Restart=always

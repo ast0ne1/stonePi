@@ -28,6 +28,9 @@ SCOPES = (
     "user-read-currently-playing",
     "playlist-read-private",
     "user-library-modify",
+    # Whether the current song is already in Liked Songs (Now Playing's tick). Sign-ins from
+    # before this was added don't have it: the tick then just saves, until Reconnect.
+    "user-library-read",
 )
 AUTHORIZE_URL = "https://accounts.spotify.com/authorize"
 TOKEN_URL = "https://accounts.spotify.com/api/token"

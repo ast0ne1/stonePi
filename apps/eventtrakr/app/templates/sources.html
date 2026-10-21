@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
+{% from "_category_pill.html" import category_pill %}
 
 {% block title %}Sources · EventTrakr{% endblock %}
 
@@ -212,7 +213,7 @@
           <div class="source-row-copy">
             <h3 class="source-row-title">{{ cat.name }}</h3>
             <p class="source-row-meta">
-              <span class="badge category">{{ cat.category }}</span>
+              {{ category_pill(cat.category) }}
               {% if cat.city_or_region %}<span>{{ cat.city_or_region }}</span>{% endif %}
             </p>
             {% if cat.description %}

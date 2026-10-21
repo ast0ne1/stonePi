@@ -359,6 +359,68 @@ def background_path(asset_id: str) -> Path | None:
     return path
 
 
+# ── Web pages (F14): snapshots captured by Notify ────────────────────────────
+
+# Longer than Notify's worst case, so a slow capture still lands here: up to 60 s waiting
+# for the shared Chromium lock (a scraper's run), then about 45 s of launch, load and settle.
+WEB_FETCH_TIMEOUT = 120.0
+_web: dict[tuple[str, int, int], tuple[float, bytes]] = {}
+_web_locks: dict[tuple[str, int, int], threading.Lock] = {}
+
+
+def web_page_names(panel: dict | None) -> dict[str, str]:
+    """Web page id → name, from the state Notify sends."""
+    pages = (panel or {}).get("web_pages") or []
+    return {str(p.get("id")): str(p.get("name") or p.get("id")) for p in pages if isinstance(p, dict) and p.get("id")}
+
+
+def web_snapshot(page_id: str, width: int, height: int, max_age: float) -> bytes | None:
+    """PNG of a web page at width×height, at most ``max_age`` seconds old; the last good one
+    if Notify can't capture it now. One fetch at a time per page and size."""
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,39}", page_id or ""):
+        return None
+    key = (page_id, width, height)
+    with _lock:
+        key_lock = _web_locks.setdefault(key, threading.Lock())
+    with key_lock:
+        with _lock:
+            hit = _web.get(key)
+        if hit and time.monotonic() - hit[0] < max_age:
+            return hit[1]
+        from stonepi_auth.internal import sign_internal
+
+        secret = session_secret()
+        path = f"/api/internal/web/{page_id}.png"
+        data = None
+        if secret:
+            try:
+                response = _client.get(
+                    f"{env.notify_url.rstrip('/')}{path}",
+                    params={"w": width, "h": height, "max_age": int(max_age)},
+                    headers=sign_internal(secret, "GET", path),
+                    timeout=WEB_FETCH_TIMEOUT,
+                )
+                if response.status_code == 200 and response.content:
+                    data = response.content
+                elif "web:" + page_id not in _failing:
+                    logger.warning("web page %s: Notify answered %s", page_id, response.status_code)
+            except Exception as exc:  # noqa: BLE001 - keep the last image
+                if "web:" + page_id not in _failing:
+                    logger.warning("web page %s: %s", page_id, str(exc)[:160] or type(exc).__name__)
+        if data is None:
+            _failing.add("web:" + page_id)
+            if hit:
+                # Try again in a minute, not on every refresh.
+                with _lock:
+                    _web[key] = (time.monotonic() - max(0.0, max_age - FAIL_RETRY), hit[1])
+                return hit[1]
+            return None
+        _failing.discard("web:" + page_id)
+        with _lock:
+            _web[key] = (time.monotonic(), data)
+        return data
+
+
 # ── Restart (Dashboard owns service control) ─────────────────────────────────
 
 
@@ -382,6 +444,28 @@ def restart_unit(unit: str) -> dict:
     if not isinstance(data, dict):
         return {"ok": False, "message": "Unexpected answer from Dashboard."}
     return {"ok": bool(data.get("ok")), "message": str(data.get("message") or "")[:160]}
+
+
+def unit_details(unit: str) -> dict:
+    """A service's state, since when, memory, restarts and last log lines (Dashboard reads them).
+    Asked only while its page is open, or while a restart is under way."""
+    from stonepi_auth.internal import sign_internal
+
+    secret = session_secret()
+    if not secret:
+        return {"ok": False, "message": "StonePi sign-in isn't set up."}
+    path = "/api/internal/units/details"
+    try:
+        response = _client.post(
+            f"{env.dashboard_url.rstrip('/')}{path}",
+            json={"unit": unit},
+            headers=sign_internal(secret, "POST", path),
+            timeout=8.0,
+        )
+        data = response.json()
+    except Exception:  # noqa: BLE001 - Dashboard restarting or down: the page shows what it has
+        return {"ok": False, "message": "Dashboard didn't answer."}
+    return data if isinstance(data, dict) else {"ok": False, "message": "Unexpected answer from Dashboard."}
 
 
 class PinGuard:

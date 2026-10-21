@@ -13,7 +13,7 @@ from stonepi_auth.brand import add_brand_fonts_route, asset_rev, fonts_rev
 from stonepi_auth.http import portal_home_url
 from stonepi_auth.session import COOKIE_NAME as PLATFORM_COOKIE_NAME
 
-__version__ = "0.0.8"
+__version__ = "0.0.9"
 __asset_rev__ = asset_rev(Path(__file__).resolve().parent / "static")  # cache-bust token; changes with static/
 __github_user__ = "ast0ne1"
 __github__ = "https://github.com/ast0ne1"
@@ -152,6 +152,12 @@ def create_app() -> Flask:
             enabled=bool(secret),
             app_id="eventtrakr",
         )
+
+    @app.template_filter("category_style")
+    def category_style_filter(label: str | None) -> dict[str, str]:
+        from app.services.category_style import category_style
+
+        return category_style(label)
 
     @app.template_filter("format_datetime")
     def format_datetime_filter(dt: datetime | None) -> str:

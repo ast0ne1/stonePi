@@ -49,6 +49,10 @@ def _run_collector(source_id: str) -> dict[str, Any]:
     try:
         rows = fetch()
         count = db.replace_source_listings(source_id, [r.as_dict() for r in rows])
+        # Team badges (U28): download the new ones to the Pi; the cards use them from there.
+        from app.services import badges
+
+        badges.fetch_missing([u for r in rows for u in (r.home_badge, r.away_badge) if u])
         return {"ok": True, "count": count}
     except Exception as exc:
         logger.exception("collector %s failed", source_id)

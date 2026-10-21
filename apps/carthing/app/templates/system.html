@@ -1,0 +1,46 @@
+{% from "_icons.html" import icon %}
+{#- System (opened from the System widget): a health strip, a Check line when something needs
+    attention, then every service as a card (stopped ones first). The dial moves between the
+    cards; press opens a service. -#}
+{% macro svc_icon(path, cls="sys-ico") -%}
+{% if path %}<img class="{{ cls }}" src="static/brand/icons/{{ path }}.svg" alt="">{% else %}<span class="{{ cls }} sys-ico-none"></span>{% endif %}
+{%- endmacro %}
+<section class="screen sys" data-screen="app" data-app="system" data-url="v/app/system">
+  <header class="bar">
+    <span class="bar-title"><img class="bar-mark" src="static/brand/icons/system/dashboard.svg" width="28" height="28" alt="">System</span>
+    <span class="bar-meta">{{ stats.hostname }}</span>
+    <span class="bar-time" data-clock-small></span>
+  </header>
+  {% if not data.ok %}
+  <p class="empty">System isn't answering.</p>
+  {% else %}
+  <div class="sys-body">
+    <div class="sys-stats">
+      {% for m in meters %}
+      <div class="sys-stat">
+        <small>{{ m.label }}</small>
+        <b>{{ m.value if m.value is not none else "–" }}{% if m.value is not none %}<u>{{ m.unit }}</u>{% endif %}</b>
+        <span class="sys-meter"><i class="lv-{{ m.level }}" style="width:{{ [m.value or 0, 100]|min }}%"></i></span>
+      </div>
+      {% endfor %}
+      <div class="sys-stat sys-health">
+        <span><em>Uptime</em>{{ stats.uptime or "–" }}</span>
+        <span><em>Backup</em><i class="sys-dot{% if not stats.backup_ok %} lv-warn{% endif %}"></i>{{ stats.backup or "–" }}</span>
+        <span><em>Host</em>{{ stats.hostname or "–" }}</span>
+      </div>
+    </div>
+    {% if check %}<p class="sys-check"><b>Check</b>{{ check|join(" · ") }}</p>{% endif %}
+    <div class="sys-head"><b>Services</b><span class="{{ 'lv-bad' if down else 'lv-ok' }}">{{ items|length - down }} of {{ items|length }} running</span></div>
+    <div class="rows sys-svcs">
+      {% for it in items %}
+      <button class="sys-svc{% if it.level == 'down' %} is-down{% endif %}" data-focus data-go="v/item/system?id={{ it.id|string|urlencode }}">
+        {{ svc_icon(it.icon) }}
+        <span class="sys-svc-text"><strong>{{ it.title }}</strong><span><i class="sys-dot{% if it.level == 'down' %} lv-bad{% endif %}"></i>{{ it.line or it.sub }}</span></span>
+      </button>
+      {% else %}
+      <p class="empty">No services reported.</p>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</section>

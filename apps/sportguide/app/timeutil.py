@@ -78,6 +78,16 @@ def enrich_listing_row(row: dict, tz_name: str | None, *, now: datetime | None =
         row["channel_label"] = " · ".join(str(c) for c in channels if c)
     else:
         row["channel_label"] = "Check guide"
+    # U28: football cards show each team's badge above its name (initials until it's on the Pi).
+    if row.get("home") and row.get("away"):
+        from app.services import badges
+
+        row["teams"] = [
+            {"name": row[side], "badge": badges.local_src(row.get(f"{side}_badge")), "initials": badges.initials(row[side])}
+            for side in ("home", "away")
+        ]
+    else:
+        row["teams"] = []
     return row
 
 

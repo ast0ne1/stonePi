@@ -1,5 +1,6 @@
 """Shared StonePi browser helpers."""
 
-from .lock import chromium_lock
+from .capture import CaptureError, capture_page
+from .lock import ChromiumBusy, chromium_lock
 
-__all__ = ["chromium_lock"]
+__all__ = ["CaptureError", "ChromiumBusy", "capture_page", "chromium_lock"]

@@ -29,7 +29,9 @@
           <input type="hidden" name="next" value="{{ 'now' if active == 'now' else 'sources' }}" />
           <button class="btn btn-primary btn-refresh{% if refresh.running %} is-busy{% endif %}" type="submit"{% if refresh.running %} disabled{% endif %}
             title="Refresh all sources"
-            data-confirm="Refresh schedules from the web now? This can take a minute.">
+            data-confirm="Refresh now?"
+            data-confirm-detail="Fetches every source's schedule from the web. This can take a minute."
+            data-confirm-ok="Refresh">
             {{ icon("refresh") }}
             <span>{{ 'Refreshing…' if refresh.running else 'Refresh' }}</span>
           </button>

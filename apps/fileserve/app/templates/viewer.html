@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en" data-stonepi-prefix="{{ stonepi_prefix or '' }}">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, shrink-to-fit=no" />
+    <meta name="theme-color" content="#f4efe4" data-theme-color />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <title>{{ page.title }} · FileServe</title>
+    {% include "_theme_boot.html" %}
+    {% from "stonepi/head.html" import brand_head, brand_tail %}
+    {{ brand_head("fileserve", fonts_rev) }}
+    {{ brand_tail(fonts_rev) }}
+    {#- U27: the iOS home-screen app has no browser bar, so a hosted page opens here: the page in a
+        frame under a thin bar (Back, title, Open in Safari) that slides away after a few seconds.
+        The framed page is sandboxed, so its scrolling can't be seen from here: a small tab at the
+        top brings the bar back. -#}
+    <style>
+      html, body { margin: 0; height: 100%; background: var(--canvas, #f4efe4); overflow: hidden; }
+      .vw-frame { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; }
+      .vw-bar {
+        position: fixed; left: 0; right: 0; top: 0; z-index: 2;
+        display: flex; align-items: center; gap: 8px;
+        padding: calc(env(safe-area-inset-top, 0px) + 6px) max(10px, env(safe-area-inset-right, 0px)) 6px max(10px, env(safe-area-inset-left, 0px));
+        background: var(--surface, #fbf8f2); color: var(--text, #1f2326);
+        border-bottom: 1px solid var(--border, #e2dccf); box-shadow: 0 2px 12px rgb(0 0 0 / 0.12);
+        transition: transform 0.25s ease-out;
+        font: 600 15px/1.2 var(--font-sans, system-ui, sans-serif);
+      }
+      .vw-bar.is-hidden { transform: translateY(-110%); }
+      .vw-bar a { color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; min-height: 36px; padding: 0 8px; border-radius: 10px; }
+      .vw-bar a:active { background: var(--surface-hover, #efe9dd); }
+      .vw-bar svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+      .vw-title { flex: 1 1 auto; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+      .vw-tab {
+        position: fixed; z-index: 1; top: env(safe-area-inset-top, 0px); left: 50%; transform: translateX(-50%);
+        width: 56px; height: 22px; padding: 0; border: 1px solid var(--border, #e2dccf); border-top: 0;
+        border-radius: 0 0 12px 12px; background: var(--surface, #fbf8f2); color: var(--text-muted, #6b6f72);
+        display: grid; place-items: center; opacity: 0.85; cursor: pointer;
+      }
+      .vw-tab svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+      .vw-tab[hidden] { display: none; }
+    </style>
+  </head>
+  <body>
+    <iframe class="vw-frame" src="{{ frame_src }}" title="{{ page.title }}" data-vw-frame></iframe>
+    <nav class="vw-bar" data-vw-bar aria-label="Viewer">
+      <a href="/" data-vw-back aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span>Back</span></a>
+      <span class="vw-title">{{ page.title }}</span>
+      <a href="{{ frame_src }}" target="_blank" rel="noopener" aria-label="Open in Safari" title="Open in Safari"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
+    </nav>
+    <button class="vw-tab" type="button" data-vw-tab aria-label="Show the bar" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+    <script>
+      (function () {
+        var bar = document.querySelector("[data-vw-bar]");
+        var tab = document.querySelector("[data-vw-tab]");
+        var back = document.querySelector("[data-vw-back]");
+        var timer = null;
+        function hide() { bar.classList.add("is-hidden"); tab.hidden = false; }
+        function show(ms) {
+          bar.classList.remove("is-hidden");
+          tab.hidden = true;
+          clearTimeout(timer);
+          timer = setTimeout(hide, ms || 3000);
+        }
+        // Touching the bar keeps it up a little longer.
+        bar.addEventListener("pointerdown", function () { show(4000); });
+        tab.addEventListener("click", function () { show(4000); });
+        show(3000);
+        // Back: to the FileServe page you came from (not history.back(): links followed inside the
+        // frame add history entries); FileServe home when there's nothing to go back to.
+        var from = null;
+        try { from = document.referrer ? new URL(document.referrer) : null; } catch (err) { from = null; }
+        if (from && from.host === location.host && from.pathname.indexOf("/hosted/view") === -1) back.href = from.href;
+      })();
+    </script>
+  </body>
+</html>

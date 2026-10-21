@@ -171,7 +171,8 @@
   {% if not np.connected %}
   <p class="w-empty">Connect Spotify in Notify → Displays → Car Thing → Music.</p>
   {% else %}
-  {{ m.now_playing(np, w.opts, "np np-in-card", show_device=True) }}
+  {#- Edge to edge when the page's header is Auto-hide or Off (w.edge); a card under it otherwise. -#}
+  {{ m.now_playing(np, w.opts, "np2" if w.edge else "np2 np2-card") }}
   {% endif %}
 </div>
 {% else %}
@@ -203,8 +204,21 @@
 </div>
 {%- endmacro %}
 
+{#- A web page (F14): Notify's snapshot, swapped for a fresh one every every_s while it shows. -#}
+{% macro web_widget(w) -%}
+<div class="w-web{% if w.size_key == 'page' %} w-web-full{% endif %}">
+  {% if w.missing %}
+  <p class="web-msg">This web page was removed in Notify. Pick another in Displays → Car Thing.</p>
+  {% else %}
+  <img class="web-img" src="web/{{ w.page_id }}.png?s={{ w.size_key }}" data-web-every="{{ w.every_s }}" alt="{{ w.label }}" width="800" height="{{ 480 if w.size_key == 'page' else 412 }}">
+  <p class="web-msg" data-web-msg hidden>Couldn’t load {{ w.label }}.</p>
+  {% endif %}
+</div>
+{%- endmacro %}
+
 {% macro widget(w, config, weather) -%}
-{% if w.kind == "music" %}{{ music_widget(w) }}
+{% if w.kind == "web" %}{{ web_widget(w) }}
+{% elif w.kind == "music" %}{{ music_widget(w) }}
 {% elif w.kind == "time" %}{{ time_widget(w, config) }}
 {% elif w.kind == "clock" %}{{ clock(w, config, weather) }}
 {% elif w.kind == "weather" %}{{ weather_widget(w, config, weather) }}

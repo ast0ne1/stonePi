@@ -2275,6 +2275,8 @@ html.sheet-open body {
   transition: transform 0.16s ease;
 }
 .story-card.is-expanded .story-expand-chevron { transform: rotate(180deg); }
+/* The whole card opens and closes (app.js); links and buttons inside keep their own cursor. */
+.story-card:has([data-story-expand]) { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .story-card:not(.is-expanded) .story-summary {
   display: none;
 }
@@ -2524,6 +2526,8 @@ html.sheet-open body {
   [data-theme="dark"] {
     --tap: 40px;
 }
+  /* Phones: smaller story titles so a card shows more than its headline. */
+  .story-card h2 { font-size: 1.15rem; line-height: 1.3; }
   .hero-row {
     flex-direction: column;
     align-items: stretch;

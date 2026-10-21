@@ -646,11 +646,18 @@ function setStoryExpanded(card, open) {
   button.setAttribute("aria-label", open ? "Collapse story" : "Expand story");
 }
 
+// The whole Briefing card toggles, not just the chevron (which stays for the keyboard). Links,
+// the other buttons and forms keep their own job, and a click that ends a text selection doesn't toggle.
 document.addEventListener("click", (event) => {
   const button = event.target.closest("[data-story-expand]");
-  if (!button) return;
-  const card = button.closest(".story-card");
-  if (card) setStoryExpanded(card, !card.classList.contains("is-expanded"));
+  const card = event.target.closest(".story-card");
+  if (!card || !card.querySelector("[data-story-expand]")) return;
+  if (!button) {
+    if (event.target.closest("a, button, form, input, select, textarea, label, summary")) return;
+    const selection = window.getSelection ? String(window.getSelection()) : "";
+    if (selection && card.contains(window.getSelection().anchorNode)) return;
+  }
+  setStoryExpanded(card, !card.classList.contains("is-expanded"));
 });
 
 document.querySelectorAll("[data-keep-days]").forEach((select) => {

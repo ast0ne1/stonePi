@@ -1,0 +1,27 @@
+{#- The header strip (time & date, title, page dots, weather), shared by the pages and the Music
+    screen. hd: the header settings (a page's own, else the config's default). "auto" takes its
+    place at the top of a full-screen view until panel.js hides it after hide_after_s (the view
+    then grows into the space); "off" draws nothing. current: the page number on screen (0 on
+    the Music screen: no dot is lit). -#}
+{% from "_icons.html" import weather_inline %}
+{% macro strip(hd, title, dots, current=0, has_clock=False, has_forecast=False, weather=None) -%}
+{% set show_time = hd.time and not has_clock %}
+{% set show_title = hd.title or (hd.time and has_clock) %}
+{% if hd.mode != "off" %}
+<header class="strip{% if hd.mode == 'auto' %} strip-auto{% endif %}"{% if hd.mode == "auto" %} data-strip-auto="{{ hd.hide_after_s }}"{% endif %}>
+  {% if show_title %}<span class="strip-name">{{ title }}</span>{% endif %}
+  {% if show_time %}
+  <span class="strip-time{% if show_title %} after-name{% endif %}" data-clock-small></span>
+  <span class="strip-date" data-date></span>
+  {% endif %}
+  {% if hd.dots and dots|length > 1 %}
+  <nav class="dots" aria-label="Pages">
+    {% for d in dots %}
+    <span class="dot{% if d.number == current %} on{% endif %}"{% if d.allowed %} data-page-go="{{ d.number }}"{% endif %} title="{{ d.name }}"><i></i></span>
+    {% endfor %}
+  </nav>
+  {% endif %}
+  {% if hd.weather and not has_forecast %}{{ weather_inline(weather) }}{% endif %}
+</header>
+{% endif %}
+{%- endmacro %}

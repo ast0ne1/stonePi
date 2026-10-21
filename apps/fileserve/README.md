@@ -29,6 +29,7 @@ Household “put it on a URL” without cloud hosting — HTML, PDF, Word, or mu
 - Replace the file later without changing the path
 - Label, description, and path on Add / Edit; path defaults from the label
 - Public `/browse` listing of enabled, non-expired titles
+- From the iPhone home-screen app, Pages → **Open** and the Browse list open the page in a viewer (`/hosted/view`): the page in a frame under a thin bar with **Back**, its title and **Open in Safari**. The bar slides away after 3 s; the small tab at the top brings it back. The framed page keeps its sandbox and password prompt. In a normal browser, links open the page directly.
 - Shared StonePi design system (light, dark or system theme)
 
 ## Web UI
@@ -47,6 +48,7 @@ The header carries the shared StonePi tools: notifications bell, app switcher (r
 | `/slug` (under `/files` on StonePi) | Admin / household-root pages |
 | `/u/<username>/slug` | That user’s pages |
 | `/browse` | Public list of live titles |
+| `/hosted/view?p=<path>` | Viewer used by the iPhone home-screen app (page in a frame with Back and Open in Safari) |
 
 ## Zip sites
 

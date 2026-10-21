@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
@@ -67,23 +68,53 @@ def _open_lock_with_fallback() -> int:
         return _open_lock(_FALLBACK_LOCK)
 
 
+class ChromiumBusy(TimeoutError):
+    """Another app held the Chromium lock for longer than the caller would wait."""
+
+
 @contextmanager
-def chromium_lock() -> Iterator[None]:
-    """Hold the appliance-wide Chromium lock for the duration of the block."""
+def chromium_lock(timeout: float | None = None) -> Iterator[None]:
+    """Hold the appliance-wide Chromium lock for the duration of the block.
+
+    ``timeout`` (seconds) gives up with ChromiumBusy instead of waiting for ever: an
+    on-screen capture shouldn't queue behind a scraper's minutes-long run."""
+    deadline = None if timeout is None else time.monotonic() + max(0.0, timeout)
+
+    def left() -> float:
+        return -1 if deadline is None else max(0.0, deadline - time.monotonic())
+
     try:
         import fcntl
     except ImportError:
-        with _thread_lock:
+        if not _thread_lock.acquire(timeout=left()):
+            raise ChromiumBusy("Chromium is busy.")
+        try:
             yield
+        finally:
+            _thread_lock.release()
         return
 
-    with _thread_lock:
+    if not _thread_lock.acquire(timeout=left()):
+        raise ChromiumBusy("Chromium is busy.")
+    try:
         fd = _open_lock_with_fallback()
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX)
+            if deadline is None:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+            else:
+                while True:
+                    try:
+                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        break
+                    except BlockingIOError:
+                        if time.monotonic() >= deadline:
+                            raise ChromiumBusy("Chromium is busy.") from None
+                        time.sleep(0.5)
             try:
                 yield
             finally:
                 fcntl.flock(fd, fcntl.LOCK_UN)
         finally:
             os.close(fd)
+    finally:
+        _thread_lock.release()

@@ -126,3 +126,56 @@ def test_brightdata_limit_shows_and_saves():
     res = client.post("/settings/integrations/limit", data={"brightdata_limit": "3000"})
     assert res.status_code == 302
     assert brightdata.usage()["limit"] == 3000
+
+
+def test_agenda_view_hides_filter_rows_and_their_filters():
+    app = create_app()
+    app.config["TESTING"] = True
+    client = app.test_client()
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        admin = db.query(User).filter_by(role="admin").first()
+        db.query(Event).filter_by(user_id=admin.id, fingerprint="test-fp-agenda-view").delete()
+        db.add(Event(user_id=admin.id, fingerprint="test-fp-agenda-view", title="Paid Jazz Night",
+                     start_time=now + timedelta(days=1), location="Copenhagen", cost="DKK 150", category="Music"))
+        db.commit()
+        token = create_session_token(admin.id, admin.username, admin.role)
+    client.set_cookie("eventtrakr_session", token)
+
+    html = client.get("/agenda").get_data(as_text=True)
+    assert 'data-filter-key="category"' in html and "<span>Free</span>" in html
+    assert 'id="agenda-view"' in client.get("/settings?tab=general").get_data(as_text=True)
+
+    # Categories off, Free on: the row stays with only the Free chip, no category sheet.
+    assert client.post("/settings/agenda-view", data={"show_free": "1", "show_source": "1"}).status_code == 302
+    html = client.get("/agenda?category=Nope").get_data(as_text=True)
+    assert "<span>Free</span>" in html and 'data-sheet="filters"' not in html
+    assert "Paid Jazz Night" in html  # a hidden category filter no longer filters
+
+    # Both off: the whole row goes, and ?free=1 is ignored.
+    client.post("/settings/agenda-view", data={"show_source": "1"})
+    html = client.get("/agenda?free=1").get_data(as_text=True)
+    assert 'data-filter-key="category"' not in html and "Paid Jazz Night" in html
+
+    client.post("/settings/agenda-view", data={"show_category": "1", "show_free": "1", "show_source": "1"})
+
+
+def test_price_pill_shows_amount_only_when_paid():
+    app = create_app()
+    app.config["TESTING"] = True
+    client = app.test_client()
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        admin = db.query(User).filter_by(role="admin").first()
+        for fp, title, cost in (("test-fp-pill-paid", "Pill Paid", "DKK 150"), ("test-fp-pill-free", "Pill Free", "Free"),
+                                ("test-fp-pill-none", "Pill None", "Unspecified")):
+            db.query(Event).filter_by(user_id=admin.id, fingerprint=fp).delete()
+            db.add(Event(user_id=admin.id, fingerprint=fp, title=title, start_time=now + timedelta(days=1),
+                         location="Copenhagen", cost=cost, category="Music"))
+        db.commit()
+        token = create_session_token(admin.id, admin.username, admin.role)
+    client.set_cookie("eventtrakr_session", token)
+    html = client.get("/agenda").get_data(as_text=True)
+    assert 'cost-pill cost-paid" title="Price: DKK 150"' in html and '<span aria-hidden="true">DKK 150</span>' in html
+    assert 'cost-pill cost-free is-icon-only" title="Free"' in html
+    assert 'cost-pill cost-unspecified is-icon-only" title="Price not listed"' in html

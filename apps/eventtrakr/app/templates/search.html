@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
+{% from "_category_pill.html" import category_pill %}
+{% from "_cost_pill.html" import cost_pill %}
 
 {% block title %}Search Events · EventTrakr{% endblock %}
 
@@ -80,8 +82,8 @@
     <div>
       <div class="event-header">
         <div class="event-badges">
-          <span class="badge category">{{ ev.category }}</span>
-          <span class="badge {{ ev.cost_badge_class }}">{{ ev.cost_label }}</span>
+          {{ category_pill(ev.category) }}
+          {{ cost_pill(ev) }}
           {% if ev.calendar_synced %}
           <span class="badge text-ok" style="border-color: var(--ok);">{{ icon('check') }} Google Cal</span>
           {% endif %}

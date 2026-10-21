@@ -103,6 +103,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 
 /* Header Refresh (the app's primary action) is the same size as the other header buttons. */
 .topbar .btn-refresh { height: 40px; min-height: 40px; min-width: 40px; border-radius: var(--radius-md); }
+/* Same icon size as the shared header icons (apps size .btn svg differently). */
+.topbar .btn-refresh svg { width: 20px; height: 20px; flex: 0 0 auto; }
 @media (max-width: 719px) {
   /* Icon-only on phones; the label stays for screen readers. */
   .topbar .btn-refresh { width: 40px; padding: 0; }

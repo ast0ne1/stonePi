@@ -738,3 +738,33 @@ def test_hosted_pages_and_assets_are_sandboxed(client):
         assert "allow-same-origin" not in response.headers["Content-Security-Policy"]
         assert response.headers["Content-Security-Policy"].startswith("sandbox ")
         assert response.headers["X-Content-Type-Options"] == "nosniff"
+
+
+def test_hosted_viewer_frames_the_page_for_the_home_screen_app(client):
+    _login(client)
+    html = b"<html><body><p>Kit</p></body></html>"
+    client.post(
+        "/admin/add",
+        data={"title": "Emergency Kit", "file": (BytesIO(html), "page.html")},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    pages = client.get("/admin").get_data(as_text=True)
+    assert 'data-hosted-path="/emergency-kit"' in pages and "hosted-viewer.js" in pages
+
+    viewer = client.get("/hosted/view?p=/emergency-kit")
+    assert viewer.status_code == 200
+    body = viewer.get_data(as_text=True)
+    assert 'src="/emergency-kit"' in body and "Emergency Kit" in body and "data-vw-back" in body
+    assert "Content-Security-Policy" not in viewer.headers  # the viewer is FileServe's own page; the frame keeps the sandbox
+
+    client.post(
+        "/admin/add",
+        data={"label": "Kit Site", "slug": "kit-site", "file": (BytesIO(_site_zip_bytes()), "site.zip")},
+        content_type="multipart/form-data",
+        headers={"Accept": "application/json", "X-Requested-With": "fetch"},
+    )
+    assert 'src="/kit-site/"' in client.get("/hosted/view?p=/kit-site").get_data(as_text=True)
+
+    for bad in ("/nope", "emergency-kit", "/emergency-kit/../admin", "/a/b", "//evil.example/x", ""):
+        assert client.get("/hosted/view", query_string={"p": bad}).status_code == 404, bad

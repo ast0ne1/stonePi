@@ -283,6 +283,57 @@ def unit_logs(unit: str, lines: int = 40) -> str:
         return str(exc)
 
 
+_SHOW_PROPS = ("ActiveState", "SubState", "ActiveEnterTimestamp", "InactiveEnterTimestamp", "NRestarts", "MemoryCurrent", "Result")
+# journalctl's short format: "Oct 21 11:08:01 stonepi python3[123]: message" -> ("11:08", "message").
+_LOG_LINE = re.compile(r"^\w{3} +\d+ (\d\d:\d\d):\d\d \S+ [^:]+: ?(.*)$")
+
+
+def _unix(value: str) -> int | None:
+    value = (value or "").strip().lstrip("@")
+    return int(value) if value.isdigit() and int(value) > 0 else None
+
+
+def unit_details(unit: str, log_lines: int = 5) -> dict:
+    """One service at a glance (the Car Thing's service page): state, since when, memory,
+    restarts and its last few log lines. `systemctl show` needs no privileges; the logs go
+    through the same root helper as Dashboard → Services."""
+    if not _UNIT_RE.match(unit or ""):
+        return {"ok": False, "message": "Not a StonePi service."}
+    if os.name == "nt" or shutil.which("systemctl") is None:
+        return {"ok": True, "unit": unit, "local": True, "state": "local", "logs": []}
+    try:
+        result = subprocess.run(
+            ["systemctl", "show", "--timestamp=unix", "-p", ",".join(_SHOW_PROPS), unit],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=8,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "message": str(exc)[:160]}
+    props = dict(line.split("=", 1) for line in (result.stdout or "").splitlines() if "=" in line)
+    active = props.get("ActiveState") or "unknown"
+    memory = props.get("MemoryCurrent") or ""
+    restarts = props.get("NRestarts") or ""
+    logs = []
+    for raw in unit_logs(unit, max(1, min(int(log_lines), 20))).splitlines():
+        match = _LOG_LINE.match(raw.strip())
+        if match and match.group(2).strip():
+            logs.append({"time": match.group(1), "text": match.group(2).strip()[:200]})
+    return {
+        "ok": True,
+        "unit": unit,
+        "state": active,
+        "sub": props.get("SubState") or "",
+        # Running since (active), or stopped since (anything else); unix seconds.
+        "since": _unix(props.get("ActiveEnterTimestamp" if active == "active" else "InactiveEnterTimestamp", "")),
+        "memory_bytes": int(memory) if memory.isdigit() else None,
+        "restarts": int(restarts) if restarts.isdigit() else None,
+        "result": props.get("Result") or "",
+        "logs": logs[-log_lines:],
+    }
+
+
 class AuthAPIError(RuntimeError):
     """An Auth API call that failed: ``status_code`` is Auth's HTTP status, or 503 when
     Auth could not be reached at all (restarting, connection refused, timeout)."""

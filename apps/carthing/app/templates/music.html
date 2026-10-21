@@ -1,14 +1,13 @@
 {% import "_music.html" as m %}
-{#- Now Playing (F7). panel.js polls /np every 3 s while this is on screen. -#}
-<section class="screen music" data-screen="music" data-app="music" data-np data-url="v/music">
-  <header class="bar">
-    <span class="bar-title">Music</span>
-    <span class="bar-meta" data-np-device>{{ np.device.name if np.device else "" }}</span>
-    <span class="bar-time" data-clock-small></span>
-  </header>
+{% from "_strip.html" import strip %}
+{#- Now Playing (F7). panel.js polls /np every 3 s while this is on screen. The header follows the
+    config's default header, like the pages (a tap or dial turn here doesn't bring it back). -#}
+{% set hd = header %}
+<section class="screen music{% if hd.mode != 'always' %} home-full{% endif %}" data-screen="music" data-app="music" data-np data-url="v/music">
+  {{ strip(hd, "Music", dots, 0, False, False, weather) }}
   {% if not np.connected %}
-  <p class="empty">Connect Spotify in Notify → Displays → Car Thing → Music.</p>
+  <p class="empty">Connect Spotify in Notify → Displays → Car Thing → Setup.</p>
   {% else %}
-  {{ m.now_playing(np, opts) }}
+  {{ m.now_playing(np, opts, "np2" if hd.mode != "always" else "np2 np2-card") }}
   {% endif %}
 </section>

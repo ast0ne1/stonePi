@@ -8,6 +8,7 @@ from app.carthing_routes import router as carthing_router
 from app.config import ROOT_DIR, env
 from app.me_routes import router as me_router
 from app.phone_alerts import router as phone_alerts_router
+from app.web_routes import router as web_router
 import app.routes as _app_routes
 from app.routes import router
 from stonepi_auth.prefix import clean_prefix
@@ -27,8 +28,9 @@ mount_brand_fonts(app)  # /assets/fonts when reached directly (run-dev); nginx s
 if _prefix:
     app.mount(f"{_prefix}/static", StaticFiles(directory=_static), name="static_prefixed")
 app.include_router(me_router)
-# Before the main router: /displays/carthing must win over /displays/{display_id}.
+# Before the main router: /displays/carthing and /displays/web/* must win over /displays/{display_id}.
 app.include_router(carthing_router)
+app.include_router(web_router)
 app.include_router(phone_alerts_router)
 app.include_router(router)
 

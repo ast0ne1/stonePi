@@ -166,6 +166,17 @@ def bell_context(
     return state
 
 
+def bell_panel(app_id: str, status: dict[str, Any], home_url: str, *, is_admin: bool = False) -> dict[str, Any]:
+    """The bell panel for a status Notify built itself (``app_status_from_body``), no HTTP.
+
+    Notify's own header shows the every-app panel (``app_id="dashboard"``), like Dashboard home.
+    """
+    panel = _panel(app_id, status, home_url, is_admin=is_admin)
+    # Seen/cleared marks in the browser follow the panel's data, not the app showing it.
+    panel["bell_app"] = app_id
+    return panel
+
+
 def _panel(app_id: str, status: dict[str, Any], home_url: str, *, is_admin: bool = False) -> dict[str, Any]:
     """The bell panel: this app's alerts for you, the last one it sent, and a way to Preferences.
 

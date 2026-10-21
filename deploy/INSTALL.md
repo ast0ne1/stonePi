@@ -8,7 +8,7 @@ This is the path from a blank SD card to apps that start on every boot.
 
 ## What you need
 
-- Raspberry Pi 4/5 recommended (3B+ works, EventTrakr Playwright is heavier)
+- Raspberry Pi 4/5 recommended (3B+ works, but Chromium for EventTrakr, SportGuide and Notify's web page captures is heavier)
 - MicroSD card (16 GB+)
 - [Raspberry Pi Imager](https://www.raspberrypi.com/software/)
 - This `stonePi` folder on your PC
@@ -63,10 +63,10 @@ A guided checklist with the same notes lives in [`walkthrough.html`](walkthrough
 
 ## 3. SSH in
 
-From your PC (replace `adam` with the Imager username):
+From your PC (replace `YOURUSER` with the Imager username):
 
 ```bash
-ssh adam@stonepi.local
+ssh YOURUSER@stonepi.local
 ```
 
 If `.local` does not resolve yet, use the Pi’s IP from your router.
@@ -109,10 +109,10 @@ The installer will:
 - Enable USB-plug backup udev rule; leave weekly **USB** backup timer **disabled**
 - Install local-backup unit/timer (timer stays off until enabled in Settings → Backup)
 - Enable Cockpit
-- Run health checks (units active, every enabled app's `/healthz`, edge HTTP) and the ready check (permissions as each service user, sudo helpers, Tailscale)
+- Run health checks (units active, every enabled app's `/healthz`, edge HTTP) and the ready check (permissions as each service user, sudo helpers, Tailscale, Chromium for EventTrakr, SportGuide and Notify)
 - Print the first admin password (first install only) and mark the install complete — an interrupted install is resumed by running the bootstrap command again
 
-First run can take several minutes (pip + Chromium for EventTrakr).
+First run can take several minutes (pip + one shared Chromium for EventTrakr, SportGuide and Notify, in `/opt/stonepi/.cache/ms-playwright`).
 
 ## 5. Sign in
 
@@ -131,7 +131,7 @@ On another device on the same LAN:
 | http://stonepi.local/sports/ | SportGuide |
 | http://stonepi.local/watch/ | PriceWatch |
 | http://stonepi.local/library/ | Library (reader at `/library/read/`) |
-| http://stonepi.local/notify/ | Notify (admin: Displays, TRMNL, ntfy) |
+| http://stonepi.local/notify/ | Notify (admin: Displays, TRMNL, Car Thing, web pages, ntfy) |
 | http://stonepi.local/recover/ or http://stonepi.local:8099/ | Recovery Console (escape hatch; user `stonepi`) |
 | https://stonepi.local:9090 or https://PI_LAN_IP:9090 | Cockpit (Linux admin; HTTPS) |
 
@@ -196,7 +196,7 @@ Recovery Console: http://stonepi.local/recover/ — user `stonepi`, password in 
 
 Default is **home network only**. Install leaves `STONEPI_EXPOSURE=lan` and `/var/lib/stonepi/exposure` as `lan`. When you put StonePi behind a tunnel or public HTTPS, open **Dashboard → Settings → Network → Network exposure** and choose **Internet-facing**. Apps tighten reader APIs, SSRF guards, and calendar ICS feeds on the next request — no restart and no nginx edit for display scrapes (those are already denied at the edge).
 
-Optional HTTPS: include [`nginx/stonepi-tls.conf`](nginx/stonepi-tls.conf) (Let’s Encrypt paths). Full checklist: [`SECURITY.md`](SECURITY.md).
+Optional HTTPS: over Tailscale, turn on HTTPS Certificates in the Tailscale admin console and press **Dashboard → Settings → Network → Turn on HTTPS** for `https://<name>.ts.net/`; for public HTTPS, include [`nginx/stonepi-tls.conf`](nginx/stonepi-tls.conf) (Let’s Encrypt paths). Full checklist: [`SECURITY.md`](SECURITY.md).
 
 
 ## Troubleshooting
@@ -209,7 +209,7 @@ Optional HTTPS: include [`nginx/stonepi-tls.conf`](nginx/stonepi-tls.conf) (Let�
 | Cockpit won’t open from Overview | Use `https://…:9090` (not http); installer upgrades legacy `COCKPIT_URL` |
 | “Welcome to nginx” on IP or hostname | Re-run installer; or `sudo rm -f /etc/nginx/sites-enabled/default && sudo systemctl reload nginx` |
 | 502 Bad Gateway | `stonepi status` then `sudo journalctl -u stonepi-auth -e` — often a crash-loop |
-| EventTrakr sync: Playwright executable missing | `sudo -u stonepi-events HOME=/opt/stonepi /opt/stonepi/apps/eventtrakr/.venv/bin/python -m playwright install chromium` then restart `stonepi-eventtrakr` |
+| EventTrakr / SportGuide sync or a Notify web page: Playwright executable missing | Re-run the installer, or `sudo PLAYWRIGHT_BROWSERS_PATH=/opt/stonepi/.cache/ms-playwright /opt/stonepi/apps/eventtrakr/.venv/bin/python -m playwright install --only-shell chromium` (one copy shared by all three), then restart the app |
 | `PermissionError` on `…/apps/*/data` | Re-run installer (sets `STONEPI_DATA_DIR` + ownership). Or: `sudo chown` the service user on that `data` dir |
 | Install fails on apt | `sudo apt-get update` and re-run; check network/DNS |
 | Scripts fail with `$'\r'` | Installer strips CR; re-run with `bash`, not a broken `./` from FAT |
@@ -233,6 +233,7 @@ Platform units (enabled on boot):
 
 - `stonepi-notify` — Displays / TRMNL / ntfy
 - `stonepi-recover` — Recovery Console on `:8099`
+- `stonepi-carthing` — Car Thing panel; not enabled by the installer, Notify switches it on and off (Notify → Displays → Car Thing)
 - `stonepi-failover-monitor` — points `/` at Recover while Dashboard is down
 - `stonepi.target` — groups every StonePi unit
 

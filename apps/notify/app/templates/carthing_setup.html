@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon as svg %}
+{% from "_filter_icon.html" import filter_icon %}
+{% import "_carthing_configs.html" as cc with context %}
+{% block title %}Car Thing setup · Displays{% endblock %}
+
+{#- Set once, then left alone: the device, the Spotify sign-in, saved configs and earlier
+    versions. The PIN, client ID and expiry date share one Save (the bar at the bottom, form
+    #ct-setup); the other buttons act straight away. -#}
+{% block content %}
+<section class="hero">
+  <a class="settings-back" href="/displays/carthing{% if editing.id != editor.active %}?config={{ editing.id }}{% endif %}">&larr; Car Thing</a>
+  <h1 class="carthing-title"><img class="carthing-icon carthing-icon-lg" src="/assets/brand/icons/system/carthing.svg" width="40" height="40" alt="" />Car Thing setup</h1>
+  <p class="lede">
+    A touchscreen panel with a dial and buttons, plugged into the Pi by USB. Its own firmware stays untouched:
+    StonePi borrows the screen while it's connected (method from <a class="text-link" href="https://github.com/trwy7/pything" rel="noopener" target="_blank">pything</a>).
+  </p>
+</section>
+
+<section class="card stack" id="device" aria-labelledby="device-heading">
+  <h2 class="section-heading" id="device-heading">{{ filter_icon('display') }} Device</h2>
+  <p class="ct-status" data-ct-status>
+    <span class="ct-dot {{ 'on' if device.enabled else 'off' }}"></span>
+    Panel {{ 'on' if device.enabled else 'off' }} · <span data-ct-status-detail>checking the device…</span>
+  </p>
+  <div class="row-actions">
+    <form method="post" action="/displays/carthing/device">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      {% if device.enabled %}
+      <button class="btn btn-ghost" name="action" value="disable">Switch panel off</button>
+      {% else %}
+      <button class="btn btn-primary" name="action" value="enable">{{ svg('check') }} Switch panel on</button>
+      {% endif %}
+    </form>
+    {% if device.enabled %}
+    <form method="post" action="/displays/carthing/device"
+      data-confirm="Re-pair the Car Thing?" data-confirm-detail="It gets a fresh token and reloads the panel. The old token stops working." data-confirm-ok="Re-pair">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <button class="btn btn-ghost" name="action" value="repair">Re-pair</button>
+    </form>
+    {% endif %}
+  </div>
+  <p class="hint">Plug the Car Thing (with its ADB-enabled firmware) into the Pi. It pairs by itself, and switching the panel off, unplugging or rebooting it gives the device its own app back.</p>
+
+  <div class="stack ct-pin">
+    <h3>Admin PIN for restarts</h3>
+    <input type="hidden" name="pin_enabled_was" value="{{ '1' if device.pin.enabled else '' }}" form="ct-setup" />
+    <label class="check">
+      <input type="checkbox" name="pin_enabled" value="1" form="ct-setup" {% if device.pin.enabled %}checked{% endif %} />
+      <span>Ask for the PIN before restarting a service {% if not device.pin.hash %}<span class="muted">(set one below first)</span>{% endif %}</span>
+    </label>
+    <label>
+      {{ 'New PIN' if device.pin.hash else 'PIN' }} <span class="muted">({{ pin_length }} digits)</span>
+      <input type="password" name="pin" form="ct-setup" inputmode="numeric" pattern="[0-9]{{ '{' }}{{ pin_length }}{{ '}' }}" maxlength="{{ pin_length }}" autocomplete="new-password"
+        placeholder="{{ 'Leave blank to keep the current PIN' if device.pin.hash else '' }}" />
+      <span class="hint">With the PIN off, Restart still works on the panel, after a one-tap confirm. {{ device.pin.max_attempts }} wrong tries lock it for {{ (device.pin.lockout_s / 60)|round|int }} min.</span>
+    </label>
+  </div>
+</section>
+
+<section class="card stack" id="music" aria-labelledby="music-heading">
+  <h2 class="section-heading" id="music-heading">{{ filter_icon('music') }} Music (Spotify)</h2>
+  {% if music.connected %}
+  <p class="ct-status"><span class="ct-dot on"></span> Connected as <strong>{{ music.account.name or 'your Spotify account' }}</strong></p>
+  <p class="hint">The Car Thing controls whatever this account is playing, on any of its Spotify Connect speakers. No audio goes through the Pi. Presets and the default speaker are in the editor, on the Music widget or under Look.</p>
+  {% if music.expiry %}{% set ex = music.expiry %}
+  <div class="ct-expiry is-{{ ex.state }}" role="{{ 'alert' if ex.state == 'expired' else 'status' }}" data-ct-expiry>
+    {#- Shown by carthing-setup.js when the Car Thing service reports invalid_grant. -#}
+    <p data-ct-expiry-revoked hidden><strong>Spotify sign-in has expired or was revoked.</strong> The Car Thing can't show or control music. Press Reconnect Spotify below.</p>
+    {% if ex.state == 'expired' %}
+    <p><strong>Spotify sign-in should have run out on {{ ex.expires_on }}.</strong> If music has stopped on the Car Thing, press Reconnect Spotify below.</p>
+    {% elif ex.state == 'soon' %}
+    <p><strong>Spotify sign-in runs out in {{ ex.days_left }} day{{ '' if ex.days_left == 1 else 's' }} ({{ ex.expires_on }}).</strong> Reconnect before then to start a fresh 6 months.</p>
+    {% else %}
+    <p>Sign-in lasts until about <strong>{{ ex.expires_on }}</strong>{% if not ex.set_by_admin %} (6 months from connecting){% endif %}. Spotify ends it after 6 months, whatever you do; reconnecting starts a fresh 6 months.</p>
+    {% endif %}
+  </div>
+  <details class="ct-expiry-edit">
+    <summary>Change the expiry date</summary>
+    <div class="stack">
+      <input type="hidden" name="expires_on_was" value="{{ ex.expires_on }}" form="ct-setup" />
+      <label>
+        Sign-in expires on
+        <input type="date" name="expires_on" value="{{ ex.expires_on }}" form="ct-setup" required />
+        <span class="hint">Spotify doesn't tell StonePi the date, so it's worked out from when you connected ({{ ex.estimated_on }}). Correct it if you know better. Notify alerts admins {{ music.warn_days }} days before and on the day.</span>
+      </label>
+      {% if ex.set_by_admin %}<div class="row-actions"><button class="btn btn-ghost" form="ct-setup" name="expiry_reset" value="1" formnovalidate>Use 6 months from connecting</button></div>{% endif %}
+    </div>
+  </details>
+  {% endif %}
+  <div class="row-actions">
+    <form method="post" action="/displays/carthing/music">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <button class="btn btn-ghost" name="action" value="test">Test connection</button>
+    </form>
+    <form method="post" action="/displays/carthing/music"
+      data-confirm="Disconnect Spotify?" data-confirm-detail="The Car Thing stops showing and controlling music until you connect again." data-confirm-ok="Disconnect">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <button class="btn btn-ghost" name="action" value="disconnect">Disconnect</button>
+    </form>
+  </div>
+  {% else %}
+  <p class="hint">Show what's playing and control your Spotify Connect speakers from the Car Thing. You need Spotify Premium and your own (free) Spotify developer app.</p>
+  <ol class="hint stack">
+    <li>On <a class="text-link" href="https://developer.spotify.com/dashboard" rel="noopener" target="_blank">developer.spotify.com</a>, create an app and tick <strong>Web API</strong>.</li>
+    <li>Under Redirect URIs, add {% if music.https_redirect %}<code>{{ music.https_redirect }}</code> and {% endif %}<code>{{ music.loopback_redirect }}</code>, then press Save.</li>
+    <li>Under User Management, add the email of the Spotify account you'll connect.</li>
+    <li>Paste the app's client ID below and press Save, then press Connect Spotify.</li>
+  </ol>
+  {% endif %}
+
+  <div class="stack">
+    <input type="hidden" name="client_id_was" value="{{ music.client_id }}" form="ct-setup" />
+    <label>
+      Client ID
+      <input type="text" name="client_id" value="{{ music.client_id }}" form="ct-setup" maxlength="32" autocomplete="off" spellcheck="false" placeholder="32 letters and digits" />
+      <span class="hint">From your Spotify app's Settings page. Saved in the Vault. No client secret is needed.</span>
+    </label>
+  </div>
+
+  {% if music.client_id %}
+  <form method="post" action="/displays/carthing/music" class="row-actions">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="action" value="connect" />
+    {% if music.https_redirect %}
+    <button class="btn btn-primary" name="mode" value="https">{{ 'Reconnect Spotify' if music.connected else 'Connect Spotify' }}</button>
+    <button class="btn btn-ghost" name="mode" value="paste">Connect by pasting the address</button>
+    {% else %}
+    <button class="btn btn-primary" name="mode" value="paste">{{ 'Reconnect Spotify' if music.connected else 'Connect Spotify' }}</button>
+    {% endif %}
+  </form>
+  {% if not music.https_redirect or music.awaiting_paste %}
+  <form method="post" action="/displays/carthing/music" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="action" value="paste" />
+    <label>
+      Address from the error page
+      <input type="text" name="callback_url" autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:8888/callback?code=…" />
+      <span class="hint">After you approve, the browser goes to <code>127.0.0.1</code> and shows an error page. That's expected. Copy the whole address from the address bar, paste it here and press Finish. It works for 15 minutes.</span>
+    </label>
+    <div class="row-actions"><button class="btn btn-primary btn-with-icon">{{ svg('check') }} Finish sign-in</button></div>
+  </form>
+  {% endif %}
+  {% endif %}
+</section>
+
+<section class="card stack" id="configs" aria-labelledby="configs-heading">
+  <h2 class="section-heading" id="configs-heading">{{ filter_icon('catalog') }} Saved configs</h2>
+  <p class="muted">The panel shows one config. Keep others as backups or alternatives, and switch in one tap. The editor's <strong>Showing</strong> menu has these too.</p>
+  {{ cc.config_list(configs, "setup") }}
+  {{ cc.config_tools("setup") }}
+</section>
+
+<section class="card stack" id="versions" aria-labelledby="versions-heading">
+  <h2 class="section-heading" id="versions-heading">{{ svg('undo') }} Earlier versions of “{{ editing.name }}”</h2>
+  {% if snapshots %}
+  <p class="muted">Each save keeps the version before it. Restoring keeps the current one as an earlier version too.</p>
+  {{ cc.snapshot_list(snapshots, "setup") }}
+  {% else %}
+  <p class="muted">None yet: each save from the editor keeps the version before it here.</p>
+  {% endif %}
+</section>
+
+{#- One Save for the PIN, the client ID and the expiry date (their fields use form="ct-setup"). -#}
+<form id="ct-setup" method="post" action="/displays/carthing/setup" class="ct-savebar" data-ct-savebar>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+  <span data-ct-savebar-text>Save the PIN, client ID and expiry date</span>
+  <button type="reset" class="btn btn-ghost btn-with-icon">{{ svg('undo') }} Undo</button>
+  <button class="btn btn-primary btn-with-icon">{{ svg('check') }} Save</button>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/carthing-setup.js?v={{ app_version }}-{{ asset_rev }}" defer></script>
+{% endblock %}

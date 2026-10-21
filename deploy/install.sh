@@ -447,7 +447,7 @@ pip_sync() {
   printf '%s\n' "$want" > "$stamp"
 }
 
-# Chromium for Playwright (EventTrakr, SportGuide): one shared copy, installed by root and
+# Chromium for Playwright (EventTrakr, SportGuide, Notify's web page captures): one shared copy, installed by root and
 # readable by every service user. Their HOME is /opt/stonepi, so Playwright's default
 # browser path ($HOME/.cache/ms-playwright) is this folder.
 PW_BROWSERS=/opt/stonepi/.cache/ms-playwright
@@ -515,7 +515,7 @@ echo
 echo "Python packages"
 install_app auth stonepi-auth
 install_app dashboard stonepi-dash
-install_app notify stonepi-notify
+install_app notify stonepi-notify playwright
 # Recover is a tiny root-owned escape hatch (HTTP Basic + optional SSO cookie).
 if [[ -d "$DEST/apps/recover" ]]; then
   pip_sync recover stonepi_vault stonepi_auth
@@ -1096,7 +1096,7 @@ fi
 rc "Tailscale is installed (remote access; re-run the installer to retry)" command -v tailscale
 rc "Dashboard can install app updates" sudo -u stonepi-dash sudo -n /usr/local/sbin/stonepi-update-helper status pinboard
 rc "EventTrakr poster reading (tesseract) is installed" command -v tesseract
-for user in stonepi-events stonepi-sport; do
+for user in stonepi-events stonepi-sport stonepi-notify; do
   rc "$user can start Chromium" sudo -u "$user" sh -c 'for f in /opt/stonepi/.cache/ms-playwright/chromium*/chrome-linux*/chrome /opt/stonepi/.cache/ms-playwright/chromium_headless_shell*/chrome-linux*/headless_shell; do test -x "$f" && exit 0; done; exit 1'
 done
 if [[ "$ready_fail" -eq 0 ]]; then

@@ -1,0 +1,73 @@
+{#- Saved Car Thing configs: the editor's Showing menu and the Setup page both use these.
+    Import "with context" (csrf_token, editing). `return_to` = "setup" brings a form back there. -#}
+{% from "_icons.html" import icon as svg %}
+
+{% macro hidden(return_to) -%}
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}" />{% if return_to %}<input type="hidden" name="return_to" value="{{ return_to }}" />{% endif %}
+{%- endmacro %}
+
+{% macro config_list(configs, return_to="") -%}
+<ul class="ct-configs">
+  {% for row in configs %}
+  <li class="{{ 'is-editing' if row.id == editing.id }}">
+    <div class="ct-config-name">
+      <strong>{{ row.name }}</strong>
+      {% if row.active %}<span class="ct-badge">On the Car Thing</span>{% endif %}
+      {% if row.id == editing.id %}<span class="ct-badge ghost">Editing</span>{% endif %}
+      <span class="muted">{% if row.updated %}saved {{ row.updated[:16]|replace('T', ' ') }} UTC{% endif %}</span>
+    </div>
+    <div class="row-actions">
+      {% if row.id != editing.id %}<a class="btn btn-ghost" href="/displays/carthing?config={{ row.id }}">Edit</a>{% endif %}
+      {% if not row.active %}
+      <form method="post" action="/displays/carthing/configs">
+        {{ hidden(return_to) }}<input type="hidden" name="config_id" value="{{ row.id }}" />
+        <button class="btn btn-ghost" name="action" value="activate">Use on Car Thing</button>
+      </form>
+      {% endif %}
+      <a class="btn btn-ghost" href="/displays/carthing/configs/{{ row.id }}/export">Export</a>
+      {% if not row.active %}
+      <form method="post" action="/displays/carthing/configs" data-confirm="Delete “{{ row.name }}”?" data-confirm-detail="Its saved versions go too. Export it first if you might want it back." data-confirm-ok="Delete">
+        {{ hidden(return_to) }}<input type="hidden" name="config_id" value="{{ row.id }}" />
+        <button class="btn btn-danger btn-with-icon" name="action" value="delete">{{ svg('trash') }} Delete</button>
+      </form>
+      {% endif %}
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{%- endmacro %}
+
+{% macro config_tools(return_to="") -%}
+<div class="ct-config-tools">
+  <form method="post" action="/displays/carthing/configs" class="create-row">
+    {{ hidden(return_to) }}<input type="hidden" name="config_id" value="{{ editing.id }}" />
+    <input type="text" name="name" placeholder="Name for a copy of “{{ editing.name }}”" maxlength="60" aria-label="Name for the copy" />
+    <button class="btn btn-ghost btn-with-icon" name="action" value="copy">{{ svg('copy') }} Save a copy</button>
+  </form>
+  <form method="post" action="/displays/carthing/configs" class="create-row">
+    {{ hidden(return_to) }}<input type="hidden" name="config_id" value="{{ editing.id }}" />
+    <input type="text" name="name" value="{{ editing.name }}" maxlength="60" aria-label="Rename “{{ editing.name }}”" required />
+    <button class="btn btn-ghost" name="action" value="rename">Rename</button>
+  </form>
+  <form method="post" action="/displays/carthing/configs" enctype="multipart/form-data" class="create-row">
+    {{ hidden(return_to) }}
+    <input type="file" name="file" accept="application/json,.json" aria-label="Config file to import" required />
+    <button class="btn btn-ghost" name="action" value="import">Import</button>
+  </form>
+</div>
+{%- endmacro %}
+
+{% macro snapshot_list(snapshots, return_to="") -%}
+<ul class="ct-snapshots">
+  {% for snap in snapshots %}
+  <li>
+    <span>{{ snap.updated[:16]|replace('T', ' ') if snap.updated else snap.id }} UTC</span>
+    <form method="post" action="/displays/carthing/configs" data-confirm="Restore this version?" data-confirm-detail="The current version is kept as an earlier version too." data-confirm-ok="Restore">
+      {{ hidden(return_to) }}<input type="hidden" name="config_id" value="{{ editing.id }}" />
+      <input type="hidden" name="snapshot" value="{{ snap.id }}" />
+      <button class="btn btn-ghost" name="action" value="restore">{{ svg('undo') }} Restore</button>
+    </form>
+  </li>
+  {% endfor %}
+</ul>
+{%- endmacro %}

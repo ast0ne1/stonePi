@@ -1,5 +1,46 @@
 # Changelog — Notify
 
+## 0.4.0 — 2026-10-21
+
+### Added
+- Car Thing editor, **Look → Music → Options**: under *The screensaver shows the artwork while music plays*, **Show the time on it**, **Time position**, **Time size** and **Dark backing**, for that screensaver only.
+- Car Thing editor: a **Default** button beside the panel accent (Look), the clock colour and accent (Look → Clock) and the screensaver clock's own colour and accent, putting back StonePi's sand accent and stone clock colour.
+- **Simpler Car Thing page** (same features, laid out around the editor). The editor is the page: under the title, pills show the panel's status, **Showing: <config> ▾** (switch, Use on Car Thing, Export, Delete, Save a copy, Rename, Import, earlier versions) and Spotify (amber in the last 14 days, red with Reconnect once it has run out), with **⚙ Setup** beside the title. **Setup** is its own page (`/displays/carthing/setup`): Device, Spotify sign-in, Saved configs and Earlier versions, and **one Save** for the PIN, client ID and expiry date. Device and Spotify actions come back to Setup; config actions to the page they came from.
+- Car Thing editor: **four tabs**, Pages, Buttons, Idle and Look, with **Undo** and **Save to panel** in the tab row (**Save** plus **Use on panel** when the config isn't on the Car Thing). The open tab is remembered, and `#pages`, `#buttons`, `#idle` or `#look` opens one.
+- Car Thing editor, **Pages:** page pills (drag, or Alt + arrow keys, to reorder; **+** adds a page, which now starts **empty**), Delete page beside the name, the header as one line with **Edit**, a **6-space bar**, and only the page's widgets as rows: drag ⠿ (mouse, touch or Alt + arrows), **Small / Half / Full**, a one-line summary, ✕, and ⚙ on Clock and Music to open their settings in the row. **+ Add widget** lists the rest (greyed when they don't fit, "Page is full" when nothing does) and **Web page…**. Turning pages is a summary line linking to Idle.
+- Car Thing editor, **Buttons** (was Controls + Actions): grouped Buttons, Dial, Holds (folded) and Swipes, with *What this config may do* folded at the bottom. **Idle** gains Turning pages and the screensaver clock. **Look** gains the header default and folded **Clock** and **Music** sections (their home; an open widget row borrows them).
+- Car Thing editor: **Page header** settings (Show: Always, Auto-hide or Off; Hide after 3, 5 or 10 s; Time & date, Page title, Weather, Page dots), as a default for every page plus **This page's own** header on any page.
+- Car Thing editor: **Screensaver time** (position, size and dark backing) for the animated styles, and Time position and size in Matrix's options.
+- Car Thing editor: **Screensaver style is a dropdown** now there are nine, grouped **Clock & info** (Clock, Web page), **Classic** (Bouncing logo, Matrix) and **Windows 98** (3D Pipes, Flying Through Space, Mystify Your Mind, 3D Flower Box, 3D Maze), with each new style's options under it.
+- **Web pages on the displays** (backlog F14; spec `ideation/web-capture.md`). Displays → **Web pages**: add any page the Pi can reach (first use: a self-hosted Homepage dashboard) with its address, a clean-up preset (**Flat** removes background images, blur and shadows), parts to hide (CSS selectors), extra CSS, zoom and a wait for late widgets. **Preview** captures it with the shared headless Chromium and shows where it's used.
+- **TRMNL Web page Displays:** Add Display → kind **Web page**. The page is captured at the panel's size (OG 800×480, X 1872×1404), turned greyscale, contrast-stretched, inverted when it's dark (automatic, always or never) and reduced to black and white (default, with a cut-off slider), 4 or 16 greys, thresholded or dithered, then POSTed as a PNG to its own TRMNL **Webhook Image** plugin. It can sit on the same device as the Dashboard panel. The webhook is a new Vault key per Display (`DISPLAY_WEBHOOK_URL_<ID>`), 12 images an hour (StonePi sends at most 10), every 5–120 minutes, and an unchanged image is never re-sent. **Preview** shows the exact image a push sends; **Push now** runs off the event loop.
+- **Clearer TRMNL setup for the two kinds of Display.** Add a Display is now two cards, **Widgets** (needs a TRMNL Private Plugin + the StonePi template) and **Web page** (needs a TRMNL Webhook Image plugin), and a Web page Display asks for its address there, so the Display and its page are made in one step (or it reuses a page you already have). Each Display page opens with a **setup checklist** (plugin to add on trmnl.com, webhook, playlist, first push) that ticks itself off, and each Display card shows its plugin. A push TRMNL refuses (4xx) now says which plugin this Display needs, in case the webhook came from the other kind.
+- **The web page is set up on its Display:** address, clean-up, parts to hide, extra CSS, zoom and wait sit on the Web page Display beside the e-ink settings, and **Preview** uses them before they're saved. If the page is shown elsewhere too, the Display says where. **Use this page instead** switches to another page. Deleting a Web page Display also deletes its page when nothing else shows it.
+- Car Thing editor: **+ New web page** under the page's widgets (it goes on the page if it's empty, otherwise on a new page) and under the Web page screensaver. Displays → **Web pages (shared)** moves below Car Thing as the place to see where each page is used, preview it in colour, add one ahead of time or delete one.
+- Car Thing editor: each web page is a **full-page widget** ("Web: <name>") and the screensaver has a **Web page** style (page, refresh every 1–5 minutes, show time).
+- **Spotify sign-in expiry** (backlog U21). Spotify refresh tokens end 6 months after sign-in. Displays → Car Thing → Music now says when (6 months from connecting, or a date you set under **Change the expiry date**), turns amber in the last 14 days, and red with Reconnect once it has run out or the Car Thing service reports the sign-in is gone. A daily check sends two new admin events, **Spotify sign-in expiring** (14 days before) and **Spotify sign-in expired**, once per expiry date. Reconnecting starts a fresh 6 months and clears the set date.
+- Signed `GET /api/internal/web/<id>.png?w=&h=&max_age=` for the Car Thing service (colour snapshot); `/api/internal/carthing/state` lists the web pages.
+
+### Changed
+- **The bell in Notify opens the "Your alerts" panel**, the same one as on Dashboard home (backlog U29): what's on for you, recent notifications from every app, Clear, and **Preferences** to Notifications. It was a plain link. The panel is built from Notify's own data, without Notify calling itself over HTTP, and the dot now means a new alert since you last opened the panel, as on the Dashboard (the "Set up phone alerts" nudge moves into the panel).
+
+### Removed
+- The display-count pill in Notify's header (backlog U29).
+
+### Security
+- `/api/events` and `/api/push-trmnl` only accept `application/json` (a web page can't send it without a preflight), and nginx no longer routes either one. Captured web pages can't reach this Pi's loopback services.
+
+### Fixed
+- One TRMNL push per Display at a time. Captures give up after 60 s waiting for Chromium. Images over 1 MB aren't sent, and a 413 says "too big". The capture cache no longer evicts locks that are still in use. Page ids are race-free. The preview fails closed without a session secret. The unit has CPU, IO and memory weights for Chromium.
+
+### Changed
+- The Car Thing's system feed gives each service its `running` flag, detail `line` and `note` on their own, and Notify's health-check `alerts`, for the panel's new System screen.
+- Car Thing editor, **Look → Music** (and ⚙ on a Music widget): **Now Playing look**: Background (Glow, Artwork colour, Blurred artwork, Theme), Controls on screen (Always, When touched, Never), Accent (from the artwork or the panel's) and an edge line. Changing one opens Now Playing in the preview. The Liked Songs option now describes the tick (save or remove).
+- Spotify sign-in asks for `user-library-read` too, so Now Playing can show whether a song is liked: press **Reconnect Spotify** once under Setup to get it.
+- Car Thing editor: changing the clock face or colour under **Look → Clock** now shows the result on the screensaver in the preview when the screensaver uses that clock (and the page you're editing has no Clock widget); it used to reload on the page, so the change looked ignored. With the screensaver clock set apart, Look says the screensaver has its own face.
+- Car Thing configs keep their **last 5 versions** (was 10); older ones go at the next save.
+- Notify installs Playwright and uses the shared Chromium in `/opt/stonepi/.cache/ms-playwright` (unit sets `HOME` and `PLAYWRIGHT_BROWSERS_PATH`), behind the cross-app Chromium lock. Captures are shared: a preview, a push and the Car Thing asking for the same page and size within a minute use one Chromium run.
+
 ## 0.3.0 — 2026-10-17
 
 ### Changed

@@ -395,6 +395,27 @@ document.querySelectorAll("form[data-confirm]").forEach((form) => {
   });
 })();
 
+/* "← Back" to the StonePi app you came from (the bell opens Notifications from any app);
+   Home when there's nothing to go back to, e.g. opened from a phone alert. */
+(function historyBack() {
+  document.querySelectorAll("[data-history-back]").forEach((link) => {
+    link.addEventListener("click", (event) => {
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      let from = null;
+      try {
+        from = document.referrer ? new URL(document.referrer) : null;
+      } catch (err) {
+        from = null;
+      }
+      // Same host (other apps sit on paths behind nginx, or other ports in local dev), not this page.
+      if (!from || from.hostname !== window.location.hostname || from.pathname === window.location.pathname) return;
+      if (window.history.length < 2) return;
+      event.preventDefault();
+      window.history.back();
+    });
+  });
+})();
+
 (function flashBanner() {
   const flash = document.querySelector("[data-flash]");
   if (!flash) return;
@@ -1584,6 +1605,15 @@ function showFlash(kind, text) {
       if (noLink) noLink.hidden = false;
     }
     if (connectBtn) connectBtn.disabled = false;
+  });
+
+  // Turn on HTTPS (U23) is a plain form post; fetching the certificate can take up to a minute.
+  panel.querySelector("[data-ts-https-form]")?.addEventListener("submit", (event) => {
+    const btn = event.target.querySelector("button[type=submit]");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Turning on HTTPS… (up to a minute)";
+    }
   });
 
   panel.querySelector("[data-ts-disconnect-form]")?.addEventListener("submit", async (event) => {

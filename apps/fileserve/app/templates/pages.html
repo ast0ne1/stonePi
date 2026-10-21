@@ -129,7 +129,7 @@
     </p>
 
     <div class="hosted-actions">
-      <a class="btn btn-primary btn-with-icon" href="{{ page.public_path }}" target="_blank" rel="noopener">{{ icon("open") }}<span>Open</span></a>
+      <a class="btn btn-primary btn-with-icon" href="{{ page.public_path }}" target="_blank" rel="noopener" data-hosted-path="{{ page.public_path }}">{{ icon("open") }}<span>Open</span></a>
       <button class="btn btn-secondary btn-with-icon" type="button" data-share-page>{{ icon("qr") }}<span>Share</span></button>
       <details class="hosted-more">
         <summary class="icon-btn icon-btn-quiet" aria-label="More actions for {{ page.title }}" title="More">

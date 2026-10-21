@@ -266,13 +266,15 @@ def test_me_falls_back_to_session_when_auth_unreachable(monkeypatch):
 # -- Notify's own top-bar bell -------------------------------------------------
 
 
-def test_notify_bell_dot_until_admin_sets_up():
+def test_notify_bell_opens_every_app_panel_like_dashboard_home():
     html = admin().get("/history").text
-    bell = html.find('class="icon-btn sp-bell has-dot"')
+    bell = html.find("data-sp-bell")
     assert 0 < bell < html.find('aria-label="Account:')  # shared header: bell, then the avatar menu
+    assert 'data-sp-app="dashboard"' in html  # the Dashboard's every-app panel, built in-process
+    assert "Set up phone alerts" in html and "/me/notifications" in html
     stonepi_notify.enable_subscription(ADMIN, username="adam", is_admin=True)
     html = admin().get("/history").text
-    assert 'class="icon-btn sp-bell"' in html and "sp-bell has-dot" not in html
+    assert "Set up phone alerts" not in html and "sp-bell has-dot" not in html
 
 
 def test_notify_uses_shared_header_and_drops_home_from_nav():
@@ -305,7 +307,7 @@ def test_notify_bell_no_dot_after_turning_alerts_off():
     stonepi_notify.enable_subscription(ADMIN, username="adam", is_admin=True)
     stonepi_notify.disable_subscription(ADMIN)
     html = admin().get("/history").text
-    assert 'class="icon-btn sp-bell"' in html
+    assert "data-sp-bell" in html and "Set up phone alerts" not in html
 
 
 # -- Phone alerts page (/alerts) ----------------------------------------------------

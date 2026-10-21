@@ -24,14 +24,14 @@ import json
 import re
 import secrets
 import threading
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 480
 MAX_CONFIGS = 20
-MAX_SNAPSHOTS = 10
+MAX_SNAPSHOTS = 5
 PIN_LENGTH = 4
 
 _data_dir: Path | None = None
@@ -85,6 +85,19 @@ WIDGETS: tuple[dict[str, str], ...] = (
     {"id": "time", "label": "Clock", "source": ""},
 )
 WIDGET_IDS = tuple(w["id"] for w in WIDGETS)
+# A web page (F14) on a page: "web:<page id>" from Notify's Web pages, always full page.
+WEB_WIDGET_PREFIX = "web:"
+_WEB_PAGE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
+
+
+def web_widget_page(widget_id: Any) -> str:
+    """The web page id in a ``web:<id>`` widget id, or ""."""
+    text = str(widget_id or "")
+    if not text.startswith(WEB_WIDGET_PREFIX):
+        return ""
+    page_id = text[len(WEB_WIDGET_PREFIX):]
+    return page_id if _WEB_PAGE_ID.match(page_id) else ""
+
 # Sizes on an 800x480 page: small = today's card, half = one half of the page, full = whole page.
 # A page holds PAGE_CAPACITY "spaces": up to 6 small, a half + 3 small, two halves, or one full.
 WIDGET_SIZES: tuple[dict[str, Any], ...] = (
@@ -170,16 +183,99 @@ CLOCK_TAP_IDS = tuple(t["id"] for t in CLOCK_TAPS)
 # What the idle screen draws. Clock = today's faces (with date, weather and the live line);
 # the others are animations drawn by panel.js. A new style needs an entry here, its options
 # in SAVER_DEFAULTS (normalised in _normalize_saver), a block in saver.html and a SAVERS entry
-# in panel.js.
+# in panel.js. ``group`` places it in the editor's Style dropdown (SAVER_GROUPS order).
+SAVER_GROUPS: tuple[dict[str, str], ...] = (
+    {"id": "info", "label": "Clock & info"},
+    {"id": "classic", "label": "Classic"},
+    {"id": "win98", "label": "Windows 98"},
+)
 SAVER_STYLES: tuple[dict[str, str], ...] = (
-    {"id": "clock", "label": "Clock"},
-    {"id": "logo", "label": "Bouncing logo"},
-    {"id": "matrix", "label": "Matrix"},
-    {"id": "pipes", "label": "3D Pipes"},
+    {"id": "clock", "label": "Clock", "group": "info"},
+    {"id": "web", "label": "Web page", "group": "info"},
+    {"id": "logo", "label": "Bouncing logo", "group": "classic"},
+    {"id": "matrix", "label": "Matrix", "group": "classic"},
+    {"id": "pipes", "label": "3D Pipes", "group": "win98"},
+    {"id": "starfield", "label": "Flying Through Space", "group": "win98"},
+    {"id": "mystify", "label": "Mystify Your Mind", "group": "win98"},
+    {"id": "flowerbox", "label": "3D Flower Box", "group": "win98"},
+    {"id": "maze", "label": "3D Maze", "group": "win98"},
 )
 SAVER_STYLE_IDS = tuple(s["id"] for s in SAVER_STYLES)
 SAVER_SPEEDS = ("slow", "normal", "fast")
 SAVER_DENSITIES = ("light", "normal", "dense")
+# Mystify Your Mind: how long the trail of each shape is.
+SAVER_TRAILS = ("short", "normal", "long")
+MYSTIFY_SHAPES = (1, 3)  # shapes on screen, min and max
+# 3D Flower Box: a checkerboard on every face, or one colour per face, as in the original.
+SAVER_FLOWER_COLORS: tuple[dict[str, str], ...] = (
+    {"id": "checker", "label": "Checkerboard"},
+    {"id": "faces", "label": "A colour per side"},
+)
+SAVER_FLOWER_COLOR_IDS = tuple(c["id"] for c in SAVER_FLOWER_COLORS)
+# 3D Maze wall textures (drawn by panel.js, no image files).
+SAVER_MAZE_WALLS: tuple[dict[str, str], ...] = (
+    {"id": "brick", "label": "Brick"},
+    {"id": "stone", "label": "Stone"},
+    {"id": "wood", "label": "Wood"},
+)
+SAVER_MAZE_WALL_IDS = tuple(w["id"] for w in SAVER_MAZE_WALLS)
+# Where a screensaver's time sits and how big it is (Show time on an animated style). Every
+# size is the screensaver clock's face. Matrix keeps its own (a big face in the middle).
+TIME_POSITIONS: tuple[dict[str, str], ...] = (
+    {"id": "top-left", "label": "Top left"},
+    {"id": "top-center", "label": "Top centre"},
+    {"id": "top-right", "label": "Top right"},
+    {"id": "center", "label": "Centre"},
+    {"id": "bottom-left", "label": "Bottom left"},
+    {"id": "bottom-center", "label": "Bottom centre"},
+    {"id": "bottom-right", "label": "Bottom right"},
+)
+TIME_POSITION_IDS = tuple(p["id"] for p in TIME_POSITIONS)
+TIME_SIZES: tuple[dict[str, str], ...] = (
+    {"id": "small", "label": "Small"},
+    {"id": "medium", "label": "Medium"},
+    {"id": "large", "label": "Large"},
+    {"id": "xl", "label": "Extra large"},
+)
+TIME_SIZE_IDS = tuple(s["id"] for s in TIME_SIZES)
+SAVER_TIME_DEFAULTS: dict[str, Any] = {"time_pos": "bottom-right", "time_size": "small", "time_backing": False}
+
+# The header strip on the pages (time, date, page title, page dots, weather). The config has a
+# default; a page can override it with its own. "auto" shows it on arriving at a page or on
+# input, then hides it after hide_after_s, with the page laid out full screen underneath.
+HEADER_MODES: tuple[dict[str, str], ...] = (
+    {"id": "always", "label": "Always"},
+    {"id": "auto", "label": "Auto-hide"},
+    {"id": "off", "label": "Off"},
+)
+HEADER_MODE_IDS = tuple(m["id"] for m in HEADER_MODES)
+HEADER_HIDE_AFTER = (3, 5, 10)
+HEADER_DEFAULTS: dict[str, Any] = {
+    "mode": "always", "hide_after_s": 5, "time": True, "title": False, "weather": True, "dots": True,
+}
+
+
+def normalize_header(raw: Any, base: dict[str, Any] | None = None) -> dict[str, Any]:
+    """A header (config default or a page's own), filled from ``base`` (else the defaults)."""
+    data = raw if isinstance(raw, dict) else {}
+    out = dict(base or HEADER_DEFAULTS)
+    out["mode"] = _choice(data.get("mode"), HEADER_MODE_IDS, out["mode"])
+    try:
+        hide = int(data.get("hide_after_s", out["hide_after_s"]))
+    except (TypeError, ValueError):
+        hide = out["hide_after_s"]
+    out["hide_after_s"] = hide if hide in HEADER_HIDE_AFTER else HEADER_DEFAULTS["hide_after_s"]
+    for key in ("time", "title", "weather", "dots"):
+        if key in data:
+            out[key] = bool(data[key])
+    return out
+
+
+def page_header(config: dict[str, Any], page: dict[str, Any]) -> dict[str, Any]:
+    """The header a page shows: its own, else the config's default."""
+    return page.get("header") or config.get("header") or dict(HEADER_DEFAULTS)
+
+
 # 3D Pipes corners, as in the Windows original: rounded elbows, ball joints, or mostly elbows.
 SAVER_JOINTS: tuple[dict[str, str], ...] = (
     {"id": "elbow", "label": "Elbows"},
@@ -190,9 +286,17 @@ SAVER_JOINT_IDS = tuple(j["id"] for j in SAVER_JOINTS)
 MATRIX_GREEN = "#00FF41"
 SAVER_DEFAULTS: dict[str, dict[str, Any]] = {
     "logo": {"recolor": True, "corner": True, "speed": "slow", "time": False},
-    "matrix": {"color": MATRIX_GREEN, "time": True, "speed": "normal", "density": "normal"},
+    "matrix": {"color": MATRIX_GREEN, "time": True, "speed": "normal", "density": "normal",
+               "time_pos": "center", "time_size": "xl"},
     "pipes": {"speed": "normal", "joints": "mixed", "time": False},
+    # A snapshot of one of Notify's Web pages (F14), refreshed every refresh_min while it shows.
+    "web": {"page_id": "", "refresh_min": 2, "time": False},
+    "starfield": {"speed": "normal", "density": "normal", "color": False, "time": False},
+    "mystify": {"speed": "normal", "shapes": 2, "trail": "normal", "time": False},
+    "flowerbox": {"speed": "normal", "colors": "checker", "time": False},
+    "maze": {"speed": "normal", "walls": "brick", "rat": True, "time": False},
 }
+WEB_SAVER_REFRESH = (1, 5)  # minutes
 
 # Design-system defaults for new configs (F6); saved configs keep their own colours.
 SAND = "#C7BBA8"  # brand-sand
@@ -280,6 +384,7 @@ def default_config(config_id: str = "default", name: str = "Default") -> dict[st
         ],
         # every_s = 0: pages only change by hand. Rotation pauses while someone uses the panel.
         "rotation": {"every_s": 0, "resume_after_s": 30},
+        "header": dict(HEADER_DEFAULTS),
         "allowed_actions": list(ACTION_IDS),
         "actions_known": list(ACTION_IDS),
         "controls": dict(DEFAULT_CONTROLS),
@@ -290,7 +395,7 @@ def default_config(config_id: str = "default", name: str = "Default") -> dict[st
             "quiet_hours": {"enabled": True, "from": "22:30", "to": "06:30", "mode": "dim", "level": 5},
             "background": {"type": "solid", "value": BASALT},
             "show": {"date": True, "weather": True, "live_line": "eventtrakr"},
-            "saver": {"style": "clock", **{k: dict(v) for k, v in SAVER_DEFAULTS.items()}},
+            "saver": {"style": "clock", **SAVER_TIME_DEFAULTS, **{k: dict(v) for k, v in SAVER_DEFAULTS.items()}},
         },
         "clock": {
             "face": "digital_bold",
@@ -310,6 +415,20 @@ def default_config(config_id: str = "default", name: str = "Default") -> dict[st
     }
 
 
+MUSIC_SAVER_TIME_DEFAULTS: dict[str, Any] = {"show": True, "pos": "top-right", "size": "small", "backing": False}
+
+
+def _normalize_music_saver_time(raw: Any) -> dict[str, Any]:
+    data = raw if isinstance(raw, dict) else {}
+    out = dict(MUSIC_SAVER_TIME_DEFAULTS)
+    for key in ("show", "backing"):
+        if key in data:
+            out[key] = bool(data[key])
+    out["pos"] = _choice(data.get("pos"), TIME_POSITION_IDS, out["pos"])
+    out["size"] = _choice(data.get("size"), TIME_SIZE_IDS, out["size"])
+    return out
+
+
 def default_music() -> dict[str, Any]:
     """F7 Music: presets 1-4, the speaker to use when nothing is playing, and options."""
     return {
@@ -321,7 +440,41 @@ def default_music() -> dict[str, Any]:
         "volume_step": 4,
         # The screensaver shows the artwork while music plays, with the time in a corner.
         "saver_artwork": True,
+        # That screensaver's time: its own show / position / size / backing (the screensaver clock face).
+        "saver_time": dict(MUSIC_SAVER_TIME_DEFAULTS),
         "show_save": True,
+        # Now Playing's look: background, when the control row shows, where the accent comes
+        # from, and an optional thin line round the screen in the accent.
+        "np": dict(NP_DEFAULTS),
+    }
+
+
+# Now Playing (music screen, full-page music widget, artwork screensaver).
+NP_BACKGROUNDS: tuple[dict[str, str], ...] = (
+    {"id": "glow", "label": "Glow behind the artwork"},
+    {"id": "art", "label": "Artwork colour (gradient)"},
+    {"id": "blur", "label": "Blurred artwork"},
+    {"id": "theme", "label": "Theme (plain)"},
+)
+NP_CONTROLS: tuple[dict[str, str], ...] = (
+    {"id": "always", "label": "Always"},
+    {"id": "touch", "label": "When touched (4 s)"},
+    {"id": "never", "label": "Never (buttons and dial only)"},
+)
+NP_ACCENTS: tuple[dict[str, str], ...] = (
+    {"id": "art", "label": "From the artwork"},
+    {"id": "theme", "label": "The panel's accent"},
+)
+NP_DEFAULTS: dict[str, Any] = {"background": "glow", "controls": "always", "accent": "art", "edge": False}
+
+
+def _normalize_np(raw: Any) -> dict[str, Any]:
+    data = raw if isinstance(raw, dict) else {}
+    return {
+        "background": _choice(data.get("background"), tuple(b["id"] for b in NP_BACKGROUNDS), NP_DEFAULTS["background"]),
+        "controls": _choice(data.get("controls"), tuple(c["id"] for c in NP_CONTROLS), NP_DEFAULTS["controls"]),
+        "accent": _choice(data.get("accent"), tuple(a["id"] for a in NP_ACCENTS), NP_DEFAULTS["accent"]),
+        "edge": bool(data.get("edge", NP_DEFAULTS["edge"])),
     }
 
 
@@ -355,6 +508,8 @@ def _normalize_music(raw: Any) -> dict[str, Any]:
         if key in data:
             out[key] = bool(data.get(key))
     out["volume_step"] = _int(data.get("volume_step"), out["volume_step"], 1, 10)
+    out["np"] = _normalize_np(data.get("np"))
+    out["saver_time"] = _normalize_music_saver_time(data.get("saver_time"))
     return out
 
 
@@ -395,6 +550,10 @@ def _normalize_saver(raw: Any, saver: dict[str, Any]) -> None:
     """Fill ``saver`` (the defaults) from ``raw``; unknown or missing values keep the defaults."""
     raw = raw if isinstance(raw, dict) else {}
     saver["style"] = _choice(raw.get("style"), SAVER_STYLE_IDS, saver["style"])
+    saver["time_pos"] = _choice(raw.get("time_pos"), TIME_POSITION_IDS, saver["time_pos"])
+    saver["time_size"] = _choice(raw.get("time_size"), TIME_SIZE_IDS, saver["time_size"])
+    if "time_backing" in raw:
+        saver["time_backing"] = bool(raw["time_backing"])
     for style, defaults in SAVER_DEFAULTS.items():
         opts_raw = raw.get(style) if isinstance(raw.get(style), dict) else {}
         opts = saver[style]
@@ -412,6 +571,29 @@ def _normalize_saver(raw: Any, saver: dict[str, Any]) -> None:
                 opts[key] = _choice(value, SAVER_DENSITIES, default)
             elif key == "joints":
                 opts[key] = _choice(value, SAVER_JOINT_IDS, default)
+            elif key == "time_pos":
+                opts[key] = _choice(value, TIME_POSITION_IDS, default)
+            elif key == "time_size":
+                opts[key] = _choice(value, TIME_SIZE_IDS, default)
+            elif key == "trail":
+                opts[key] = _choice(value, SAVER_TRAILS, default)
+            elif key == "colors":
+                opts[key] = _choice(value, SAVER_FLOWER_COLOR_IDS, default)
+            elif key == "walls":
+                opts[key] = _choice(value, SAVER_MAZE_WALL_IDS, default)
+            elif key == "shapes":
+                try:
+                    opts[key] = min(MYSTIFY_SHAPES[1], max(MYSTIFY_SHAPES[0], int(value)))
+                except (TypeError, ValueError):
+                    opts[key] = default
+            elif key == "page_id":
+                page_id = str(value or "").strip()
+                opts[key] = page_id if _WEB_PAGE_ID.match(page_id) else default
+            elif key == "refresh_min":
+                try:
+                    opts[key] = min(WEB_SAVER_REFRESH[1], max(WEB_SAVER_REFRESH[0], int(value)))
+                except (TypeError, ValueError):
+                    opts[key] = default
 
 
 def clean_config_id(value: Any) -> str:
@@ -425,6 +607,8 @@ def _normalize_widget(item: Any) -> dict[str, str] | None:
         wid, size = str(item.get("id") or "").strip(), str(item.get("size") or "").strip()
     else:
         wid, size = str(item or "").strip(), "small"
+    if web_widget_page(wid):
+        return {"id": wid, "size": "full"}
     if wid not in WIDGET_IDS:
         return None
     return {"id": wid, "size": size if size in WIDGET_SIZE_IDS else "small"}
@@ -450,7 +634,10 @@ def _normalize_pages(raw: Any) -> list[dict[str, Any]]:
             used += cost
             widgets.append(widget)
         name = str(entry.get("name") or "").strip()[:30] or ("Home" if not pages else f"Page {len(pages) + 1}")
-        pages.append({"name": name, "widgets": widgets})
+        page: dict[str, Any] = {"name": name, "widgets": widgets}
+        if isinstance(entry.get("header"), dict):
+            page["header"] = normalize_header(entry["header"])  # its own; else the config's default
+        pages.append(page)
     return pages or [{"name": "Home", "widgets": []}]
 
 
@@ -515,6 +702,7 @@ def normalize_config(raw: Any) -> dict[str, Any]:
         "every_s": every if every == 0 else max(5, every),
         "resume_after_s": _int(rotation_raw.get("resume_after_s"), 30, 5, 3600),
     }
+    out["header"] = normalize_header(data.get("header"))
 
     allowed_raw = data.get("allowed_actions")
     if isinstance(allowed_raw, list):
@@ -733,18 +921,102 @@ def music_account() -> dict[str, Any]:
     """The Spotify account linked for the Music mini-app (name only; tokens live in the vault)."""
     data = _read_json(_root() / "music.json")
     data = data if isinstance(data, dict) else {}
+    alerts = data.get("alerts") if isinstance(data.get("alerts"), dict) else {}
     return {
         "name": str(data.get("name") or "")[:80],
         "id": str(data.get("id") or "")[:80],
         "connected_at": data.get("connected_at") or None,
+        "expires_on": _parse_day(data.get("expires_on")),  # set by the admin; None = 6 months on
+        "alerts": {str(k): str(v) for k, v in alerts.items()},
     }
 
 
 def save_music_account(name: str, account_id: str) -> dict[str, Any]:
+    # A fresh sign-in starts a fresh 6 months, so a set expiry and sent alerts are dropped.
     record = {"name": str(name or "")[:80], "id": str(account_id or "")[:80], "connected_at": _now()}
     with _lock:
         _write_json(_root() / "music.json", record)
     return record
+
+
+# Spotify refresh tokens expire a fixed 6 months after sign-in (U21); Spotify doesn't say
+# when, so the date is worked out from connected_at, and the admin can correct it.
+MUSIC_SIGNIN_MONTHS = 6
+MUSIC_WARN_DAYS = 14
+
+
+def _parse_day(value: Any) -> str | None:
+    try:
+        return date.fromisoformat(str(value or "")[:10]).isoformat()
+    except ValueError:
+        return None
+
+
+def _add_months(day: date, months: int) -> date:
+    month = day.month - 1 + months
+    year, month = day.year + month // 12, month % 12 + 1
+    for last in (31, 30, 29, 28):
+        try:
+            return date(year, month, min(day.day, last))
+        except ValueError:
+            continue
+    raise ValueError(day)
+
+
+def _update_music(**fields: Any) -> None:
+    with _lock:
+        data = _read_json(_root() / "music.json")
+        if not isinstance(data, dict) or not data.get("connected_at"):
+            raise ValueError("Spotify isn't connected.")
+        data.update(fields)
+        _write_json(_root() / "music.json", data)
+
+
+def set_music_expiry(value: Any) -> str | None:
+    """Set the sign-in expiry (YYYY-MM-DD), or clear it with "" to use 6 months from connecting.
+
+    Sent alerts are dropped too, so a new date warns again."""
+    day = _parse_day(value) if value else None
+    if value and day is None:
+        raise ValueError("That isn't a date.")
+    _update_music(expires_on=day, alerts={})
+    return day
+
+
+def mark_music_alert(kind: str, expires_on: str) -> None:
+    """Remember an expiry alert was sent for this date, so the daily check sends it once."""
+    alerts = dict(music_account()["alerts"])
+    alerts[kind] = expires_on
+    _update_music(alerts=alerts)
+
+
+def music_expiry(account: dict[str, Any] | None = None, *, error_code: str = "", today: date | None = None) -> dict[str, Any] | None:
+    """When the Spotify sign-in runs out, or None when not connected.
+
+    ``state``: ok, soon (last MUSIC_WARN_DAYS days), expired (date passed) or revoked
+    (the Car Thing service got invalid_grant, whatever the date says)."""
+    account = account if account is not None else music_account()
+    connected = _parse_day(account.get("connected_at"))
+    if not connected:
+        return None
+    estimated = _add_months(date.fromisoformat(connected), MUSIC_SIGNIN_MONTHS).isoformat()
+    expires_on = account.get("expires_on") or estimated
+    days_left = (date.fromisoformat(expires_on) - (today or datetime.now(timezone.utc).date())).days
+    if error_code == "invalid_grant":
+        state = "revoked"
+    elif days_left <= 0:
+        state = "expired"
+    elif days_left <= MUSIC_WARN_DAYS:
+        state = "soon"
+    else:
+        state = "ok"
+    return {
+        "expires_on": expires_on,
+        "estimated_on": estimated,
+        "set_by_admin": bool(account.get("expires_on")),
+        "days_left": days_left,
+        "state": state,
+    }
 
 
 def clear_music_account() -> None:
@@ -982,10 +1254,30 @@ def editor_catalog() -> dict[str, Any]:
         "clock_faces": [dict(f) for f in CLOCK_FACES],
         "clock_taps": [dict(t) for t in CLOCK_TAPS],
         "saver_styles": [dict(s) for s in SAVER_STYLES],
+        "saver_groups": [dict(g) for g in SAVER_GROUPS],
+        "time_positions": [dict(p) for p in TIME_POSITIONS],
+        "time_sizes": [dict(s) for s in TIME_SIZES],
+        "header_modes": [dict(m) for m in HEADER_MODES],
+        "header_hide_after": list(HEADER_HIDE_AFTER),
+        "header_defaults": dict(HEADER_DEFAULTS),
+        "np_backgrounds": [dict(b) for b in NP_BACKGROUNDS],
+        "np_controls": [dict(c) for c in NP_CONTROLS],
+        "np_accents": [dict(a) for a in NP_ACCENTS],
+        "saver_trails": list(SAVER_TRAILS),
+        "saver_flower_colors": [dict(c) for c in SAVER_FLOWER_COLORS],
+        "saver_maze_walls": [dict(w) for w in SAVER_MAZE_WALLS],
         "saver_joints": [dict(j) for j in SAVER_JOINTS],
         "saver_speeds": list(SAVER_SPEEDS),
         "saver_densities": list(SAVER_DENSITIES),
         "color_presets": [dict(c) for c in COLOR_PRESETS],
+        # StonePi's own colours, for the editor's "Default" buttons next to each colour.
+        "color_defaults": {
+            "look.accent": SAND,
+            "clock.color": STONE_TEXT,
+            "clock.accent": SAND,
+            "clock.saver.color": STONE_TEXT,
+            "clock.saver.accent": SAND,
+        },
         "gradients": [dict(g) for g in GRADIENTS],
         "live_lines": list(LIVE_LINES),
         "music_presets": MUSIC_PRESETS,

@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
+{% from "_category_pill.html" import category_pill %}
+{% from "_cost_pill.html" import cost_pill %}
 
 {% block title %}{{ view_title }} · EventTrakr{% endblock %}
 
@@ -37,8 +39,11 @@
   </button>
 </div>
 
+{#- Category chips and the Free chip share a row (Settings → General → Agenda view); the row goes when both are off. #}
+{% if show_category_chips or show_free_chip %}
 <div class="chips-with-action chips-with-action-sticky">
-  <div class="chips" data-chip-group data-filter-key="category" role="group" aria-label="Category">
+  <div class="chips" data-chip-group data-filter-key="category" role="group" aria-label="{{ 'Category' if show_category_chips else 'Price' }}">
+    {% if show_category_chips %}
     <a class="chip-btn{% if selected_category == 'all' %} is-active{% endif %}" href="{{ agenda_qs(category='all') }}">
       <span>All</span>
     </a>
@@ -47,14 +52,20 @@
       <span>{{ cat }}</span>
     </a>
     {% endfor %}
+    {% endif %}
+    {% if show_free_chip %}
     <a class="chip-btn{% if free_only %} is-active{% endif %}" href="{{ agenda_qs(free=('0' if free_only else '1')) }}">
       <span>{% if free_only %}Free only{% else %}Free{% endif %}</span>
     </a>
+    {% endif %}
   </div>
+  {% if show_category_chips %}
   <button class="chips-action" type="button" data-open-sheet="filters" aria-label="Choose category" title="Choose category">
     {{ icon('sliders') }}
   </button>
+  {% endif %}
 </div>
+{% endif %}
 
 {% if source_options %}
 <div class="chips-with-action">
@@ -89,6 +100,7 @@
   </div>
 </div>
 
+{% if show_category_chips %}
 <div class="sheet" hidden data-sheet="filters">
   <div class="sheet-card card">
     <h2>Category</h2>
@@ -97,13 +109,16 @@
       {% for cat in categories %}
       <a class="filter-picker-option{% if selected_category == cat %} is-active{% endif %}" href="{{ agenda_qs(category=cat) }}" role="option" aria-selected="{{ 'true' if selected_category == cat else 'false' }}">{{ icon('tag') }}<span>{{ cat }}</span></a>
       {% endfor %}
+      {% if show_free_chip %}
       <a class="filter-picker-option{% if free_only %} is-active{% endif %}" href="{{ agenda_qs(free=('0' if free_only else '1')) }}" role="option" aria-selected="{{ 'true' if free_only else 'false' }}">{{ icon('check') }}<span>{% if free_only %}Show paid too{% else %}Free events only{% endif %}</span></a>
+      {% endif %}
     </div>
     <div class="btn-row row-actions">
       <button class="btn btn-ghost" type="button" data-close-sheet>Cancel</button>
     </div>
   </div>
 </div>
+{% endif %}
 
 {% if source_options %}
 <div class="sheet" hidden data-sheet="source-filters">
@@ -127,10 +142,12 @@
     <h2>Agenda filters</h2>
     <div class="help-sheet-body">
       <p><strong>Day</strong> narrows to one calendar day, or All 7 Days for the full window. Use the sliders button when the day list is long.</p>
-      <p><strong>Category</strong> chips (and the sliders button) hide events from other categories. <strong>Free</strong> keeps only free events.</p>
+      {% if show_category_chips %}<p><strong>Category</strong> chips (and the sliders button) hide events from other categories.</p>{% endif %}
+      {% if show_free_chip %}<p><strong>Free</strong> keeps only free events.</p>{% endif %}
       {% if source_options %}
       <p><strong>Source</strong> limits the list to one feed you follow — same sliders button opens the full list.</p>
       {% endif %}
+      <p>Hide filter rows you don't use in <a href="/settings?tab=general#agenda-view">Settings → General → Agenda view</a>.</p>
     </div>
     <div class="btn-row row-actions">
       <button class="btn btn-ghost" type="button" data-close-sheet>Got it</button>
@@ -146,8 +163,8 @@
     <div>
       <div class="event-header">
         <div class="event-badges">
-          <span class="badge category">{{ ev.category }}</span>
-          <span class="badge {{ ev.cost_badge_class }}">{{ ev.cost_label }}</span>
+          {{ category_pill(ev.category) }}
+          {{ cost_pill(ev) }}
           {% if ev.is_cancelled %}
           <span class="badge cancelled">Cancelled</span>
           {% endif %}
