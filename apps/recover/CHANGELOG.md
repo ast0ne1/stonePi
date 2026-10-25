@@ -1,5 +1,10 @@
 # Changelog — Recover
 
+## 0.5.0 — 2026-10-25
+
+### Changed
+- The service list includes **AgentLink** (Core) and **Ripple** (Apps).
+
 ## 0.4.0 — 2026-10-21
 
 ### Changed

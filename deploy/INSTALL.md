@@ -131,6 +131,7 @@ On another device on the same LAN:
 | http://stonepi.local/sports/ | SportGuide |
 | http://stonepi.local/watch/ | PriceWatch |
 | http://stonepi.local/library/ | Library (reader at `/library/read/`) |
+| http://stonepi.local/ripple/ | Ripple (family updates for a TRMNL) |
 | http://stonepi.local/notify/ | Notify (admin: Displays, TRMNL, Car Thing, web pages, ntfy) |
 | http://stonepi.local/recover/ or http://stonepi.local:8099/ | Recovery Console (escape hatch; user `stonepi`) |
 | https://stonepi.local:9090 or https://PI_LAN_IP:9090 | Cockpit (Linux admin; HTTPS) |
@@ -228,10 +229,12 @@ Application units (enabled on boot):
 - `stonepi-sportguide`
 - `stonepi-pricewatch`
 - `stonepi-library`
+- `stonepi-ripple`
 
 Platform units (enabled on boot):
 
-- `stonepi-notify` — Displays / TRMNL / ntfy
+- `stonepi-notify` — Displays / TRMNL / ntfy / Sidekick
+- `stonepi-agentlink` — Pebble and other agent devices (loopback `:8015`; devices reach it through nginx at `/agent/pebble/v1/`). Speech is an optional extra: Notify → Sidekick → **Set up speech** (or `sudo stonepi-speech-setup`) installs faster-whisper, Piper and a voice (64-bit OS only)
 - `stonepi-recover` — Recovery Console on `:8099`
 - `stonepi-carthing` — Car Thing panel; not enabled by the installer, Notify switches it on and off (Notify → Displays → Car Thing)
 - `stonepi-failover-monitor` — points `/` at Recover while Dashboard is down

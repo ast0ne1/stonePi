@@ -1,5 +1,11 @@
 # Changelog — EventTrakr
 
+## 0.0.10 — 2026-10-25
+
+### Added
+- **Pebble can read your events** (when you switch it on in Notify → Sidekick): upcoming events like your Agenda, and search. A signed internal endpoint (`POST /api/internal/agent`) used only by AgentLink, answering for one person from their own EventTrakr; read-only.
+- **Ask Pebble for a time or a kind of event:** "what's on tonight?", "what's on tomorrow?", "what community events are on next week?". Pebble's events read takes a window (today, tonight, tomorrow, this weekend, this week, next week, in the Pi's local time) and an optional category matched loosely ("communities", "Music"), and lists the window's categories with counts so a busy evening can be narrowed down. Nothing in the window is left out unless you ask for one kind.
+
 ## 0.0.9 — 2026-10-21
 
 ### Added

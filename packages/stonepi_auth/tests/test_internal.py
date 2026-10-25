@@ -66,3 +66,29 @@ def test_get_internal_json_signs_and_parses():
         assert get_internal_json("http://127.0.0.1:1", SECRET, "/x", timeout=0.5) is None
     finally:
         server.shutdown()
+
+
+# -- v2: body-signed (plumbing P2) --------------------------------------------------------
+
+from stonepi_auth.internal import VERSION_HEADER, sign_internal_v2, verify_internal_v2  # noqa: E402
+
+BODY = b'{"code": "K7M4"}'
+
+
+def test_v2_roundtrip_covers_body():
+    headers = sign_internal_v2(SECRET, "POST", PATH, BODY, now=1000)
+    assert headers[VERSION_HEADER] == "v2"
+    assert verify_internal_v2(SECRET, "POST", PATH, headers, BODY, now=1000)
+    assert not verify_internal_v2(SECRET, "POST", PATH, headers, b'{"code": "XXXX"}', now=1000)
+    assert not verify_internal_v2(SECRET, "POST", PATH, headers, BODY, now=1061)
+
+
+def test_v2_rejects_v1_when_there_is_a_body():
+    headers = sign_internal(SECRET, "POST", PATH, now=1000)
+    assert not verify_internal_v2(SECRET, "POST", PATH, headers, BODY, now=1000)
+
+
+def test_v2_accepts_v1_for_bodyless_requests():
+    headers = sign_internal(SECRET, "GET", PATH, now=1000)
+    assert verify_internal_v2(SECRET, "GET", PATH, headers, b"", now=1000)
+    assert not verify_internal_v2("", "GET", PATH, headers, b"", now=1000)

@@ -4,6 +4,8 @@
 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5 10 17l9-10"/></svg>
 {%- elif name == 'ai' -%}
 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1-5.1-1.9 5.1-1.9z"/><path d="M18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg>
+{%- elif name == 'sidekick' -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c-3.7 0-5.7 2.8-5.7 6.3 0 1.4-.9 2.6-1.4 4.4-.6 2.4-.3 4.7 1 6.1.8.9 2 1.4 3.2 1.4h5.8c1.2 0 2.4-.5 3.2-1.4 1.3-1.4 1.6-3.7 1-6.1-.5-1.8-1.4-3-1.4-4.4C17.7 5.8 15.7 3 12 3z"/><circle cx="9.9" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="14.1" cy="10" r="1" fill="currentColor" stroke="none"/><path d="M10.3 13.2a2.4 2.4 0 0 0 3.4 0"/><path d="M5.6 13.5l-1.4 3.2M18.4 13.5l1.4 3.2"/></svg>
 {%- elif name == 'plus' -%}
 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
 {%- elif name == 'trash' -%}
@@ -72,6 +74,8 @@
 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/><path d="M16.5 5.5 18 4M7.5 5.5 6 4"/></svg>
 {%- elif name == 'library' -%}
 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7c-2-1.5-4.7-2-8-2v13c3.3 0 6 .5 8 2 2-1.5 4.7-2 8-2V5c-3.3 0-6 .5-8 2z"/><path d="M12 7v13"/></svg>
+{%- elif name == 'ripple' -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2.5"/><path d="M7.5 7.5a6.4 6.4 0 0 0 0 9M16.5 7.5a6.4 6.4 0 0 1 0 9"/><path d="M4.5 4.5a10.6 10.6 0 0 0 0 15M19.5 4.5a10.6 10.6 0 0 1 0 15"/></svg>
 {%- elif name in ('recover', 'recovery') -%}
 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 20 19H4z"/><path d="M12 10v4"/><circle cx="12" cy="16.5" r="1" fill="currentColor" stroke="none"/></svg>
 {%- elif name == 'platform' -%}
@@ -130,7 +134,7 @@
 {#- Fixed app / system icon artwork (design system; same in both themes). ``color`` is
     ignored: icons have fixed category colours since App colours were removed. -#}
 {% macro service_icon(app_id, color='') -%}
-{%- set system_ids = ('dashboard', 'auth', 'notify', 'recover', 'carthing') -%}
+{%- set system_ids = ('dashboard', 'auth', 'notify', 'recover', 'carthing', 'agentlink') -%}
 {%- set icon_id = app_id if app_id in service_icon_ids else 'dashboard' -%}
 {%- set icon_id = 'dashboard' if icon_id == 'platform' else icon_id -%}
 <img class="service-icon" src="/assets/brand/icons/{{ 'system' if icon_id in system_ids else 'apps' }}/{{ icon_id }}.svg" width="40" height="40" alt="" aria-hidden="true" />

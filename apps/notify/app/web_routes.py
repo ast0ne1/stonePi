@@ -3,6 +3,8 @@
 - ``/displays/web/*``: add, edit and delete pages; preview a capture.
 - ``/displays/{id}/web``: a TRMNL "Web page" Display's settings, and its e-ink preview.
 - ``/api/internal/web/{id}.png``: signed, for the Car Thing service (colour snapshot).
+- ``/api/internal/web/changed``: signed, an app's display page changed (Ripple); see app_pages.
+- ``/api/internal/web/app-displays/{app}``: signed, that app's Displays and last pushes.
 
 Captures run in a worker thread (Chromium takes a few seconds) and are shared through
 ``stonepi_display.webcapture``, so the preview, a push and the Car Thing reuse one run.
@@ -10,6 +12,7 @@ Captures run in a worker thread (Chromium takes a few seconds) and are shared th
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from typing import Any
@@ -342,6 +345,42 @@ async def internal_web(request: Request, name: str, w: int = 800, h: int = 480, 
         logger.warning("web page %s capture failed: %s", page["id"], str(exc)[:160])
         return Response(status_code=502)
     return _png(png)
+
+
+@router.post("/api/internal/web/changed")
+async def internal_web_changed(request: Request):
+    """An app's display page changed (Ripple, signed v2): push its Displays shortly."""
+    from stonepi_auth.catalog import app_by_id
+    from stonepi_auth.internal import verify_internal_v2
+
+    from app.app_pages import schedule_refresh
+    from app.carthing_routes import _secret
+
+    body = await request.body()
+    if not verify_internal_v2(_secret(), "POST", request.url.path, request.headers, body):
+        return JSONResponse({"ok": False}, status_code=404)
+    try:
+        app_id = str((json.loads(body or b"{}") or {}).get("app") or "")
+    except (ValueError, AttributeError):
+        app_id = ""
+    app = app_by_id(app_id)
+    if not app or not app.get("capture_key"):
+        return JSONResponse({"ok": False, "message": "Not an app with a display page."}, status_code=400)
+    schedule_refresh(app_id)
+    return {"ok": True}
+
+
+@router.get("/api/internal/web/app-displays/{app_id}")
+async def internal_app_displays(request: Request, app_id: str):
+    """An app's Displays and their last push, for the app's settings page (signed)."""
+    from app.app_pages import app_display_status, display_app
+    from app.carthing_routes import _internal_ok
+
+    if not _internal_ok(request):
+        return JSONResponse({"ok": False}, status_code=404)
+    if display_app(app_id) is None:
+        return JSONResponse({"ok": False}, status_code=404)
+    return {"ok": True, "displays": app_display_status(app_id)}
 
 
 def web_pages_for_editor() -> list[dict[str, str]]:

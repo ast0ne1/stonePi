@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon as svg %}
+{% from "_filter_icon.html" import filter_icon %}
+{% block title %}Sidekick · Notify{% endblock %}
+
+{% block content %}
+<section class="hero">
+  {% include "_back_to_settings.html" %}
+  <h1>Sidekick</h1>
+  <p class="lede">Pebble is StonePi's sidekick: a small round companion you can carry anywhere. Ask it something out loud; its face shows how the house is doing.</p>
+</section>
+
+{% if not reachable %}
+<p class="banner">AgentLink isn't answering, so Pebbles can't be added or changed right now. Check it on the Health page.</p>
+{% endif %}
+
+{#- One line that says whether Pebble can answer; the detail folds away. -#}
+<section class="card stack sk-ready" id="ready" aria-labelledby="ready-heading">
+  <h2 class="section-heading" id="ready-heading">{{ filter_icon('info') }} Ready to answer?</h2>
+  <ul class="sk-checks sk-checks-row">
+    <li><span class="ct-dot {{ 'on' if speech.stt and speech.stt.ok else 'off' }}"></span> Listening</li>
+    <li><span class="ct-dot {{ 'on' if ai.ok else 'off' }}"></span> Thinking</li>
+    <li><span class="ct-dot {{ 'on' if speech.tts and speech.tts.ok else 'off' }}"></span> Speaking</li>
+    {% if not ai.ok %}<li><a class="text-link" href="{{ stonepi_home_url }}/settings?tab=ai">Set up AI</a></li>{% endif %}
+  </ul>
+  {% if speech.mode == 'dev' %}<p class="hint">Dev mode: Pebble hears a fixed question and answers with a chime.</p>{% endif %}
+  {#- Listening or Speaking off: set speech up from here (stonepi-speech-setup in the background). -#}
+  {% if setup %}
+  {% if setup.state == 'running' %}
+  <p class="ct-status" data-sk-speech aria-live="polite"><span class="ct-dot off"></span>
+    <span>Setting up speech<span data-sk-speech-step>{{ ': ' ~ setup.step if setup.step }}</span>. This takes a few minutes; the page updates when it's done.</span></p>
+  {% elif setup.dev or (setup.ok is defined and not setup.ok) %}
+  <p class="hint">To let Pebble listen and speak, run <code>sudo stonepi-speech-setup</code> on the Pi.</p>
+  {% elif not setup.supported %}
+  <p class="hint">Pebble can't listen or speak on this Pi: speech needs 64-bit Raspberry Pi OS, and this one runs {{ setup.arch }}.</p>
+  {% else %}
+  {% if setup.state == 'failed' %}<p class="banner">Speech setup didn't finish{{ ': ' ~ setup.error if setup.error }}</p>{% endif %}
+  <form method="post" action="/sidekick/speech-setup" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}" />
+    <div class="row-actions"><button class="btn btn-primary">{{ 'Try again' if setup.state == 'failed' else 'Set up speech' }}</button></div>
+    <p class="hint">Installs speech recognition, a voice and its model on the Pi: about 200 MB to download, and a few minutes. After that, your voice never leaves the Pi.</p>
+  </form>
+  {% endif %}
+  {% endif %}
+  <details class="sk-more">
+    <summary>Details and privacy</summary>
+    <ul class="sk-checks">
+      <li><span class="ct-dot {{ 'on' if speech.stt and speech.stt.ok else 'off' }}"></span> Listening <span class="muted">· {{ (speech.stt and speech.stt.detail) or 'unknown' }}</span></li>
+      <li><span class="ct-dot {{ 'on' if ai.ok else 'off' }}"></span> Thinking <span class="muted">· {{ ai.detail or 'unknown' }}</span>
+        <a class="text-link" href="{{ stonepi_home_url }}/settings?tab=ai">{{ 'Change in AI settings' if ai.ok else 'Set up AI' }}</a></li>
+      <li><span class="ct-dot {{ 'on' if speech.tts and speech.tts.ok else 'off' }}"></span> Speaking <span class="muted">· {{ (speech.tts and speech.tts.detail) or 'unknown' }}</span></li>
+    </ul>
+    <p class="hint">Your voice is turned into text here on the Pi and never leaves it. The text of your question, plus the facts Pebble is allowed to use, go to the AI model above to write the answer.</p>
+    <p class="hint">So you can answer Pebble's follow-up questions ("which category?"), it remembers your last question and its answer for 2 minutes, in memory only; nothing is written down.</p>
+    <p class="hint">Which model answers is set in <a class="text-link" href="{{ stonepi_home_url }}/settings?tab=ai">Dashboard → Settings → AI</a>, under <strong>Pebble → Spoken replies</strong>. Every Pebble uses the same one.</p>
+  </details>
+</section>
+
+{#- Tabs need JS; without it every pane shows, one after another. -#}
+<div class="sk-tabbar" data-sk-tabs hidden>
+  <div class="seg sk-tabs" role="tablist" aria-label="Sidekick sections">
+    {% for t, label in [("pebbles", "Pebbles"), ("household", "Voice & quiet hours"), ("activity", "Activity")] %}
+    <button type="button" class="seg-btn" role="tab" data-sk-tab="{{ t }}" aria-pressed="{{ 'true' if loop.first else 'false' }}">{{ label }}</button>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="stack" data-sk-pane="pebbles">
+{% if pairing %}
+<section class="card stack" id="pairing" data-sk-pairing data-known="{{ devices|map(attribute='id')|join(',') }}" aria-live="polite">
+  <p class="ct-status"><span class="ct-dot off"></span> <span data-sk-pairing-text>Approved. Waiting for the Pebble to finish pairing; this page updates when it does.</span></p>
+  <p class="hint" data-sk-pairing-late hidden>Still waiting. Check the Pebble shows it's paired, then <a class="text-link" href="/sidekick">refresh</a>. If its code changed, add it again with the new code.</p>
+</section>
+{% endif %}
+{% for d in devices %}
+<section class="card stack" id="pebble-{{ d.id }}" aria-labelledby="pebble-{{ d.id }}-heading">
+  <h2 class="section-heading" id="pebble-{{ d.id }}-heading">{{ filter_icon('sidekick') }} {{ d.nickname }}</h2>
+  {% if d.mood and d.mood.mood %}<p class="sk-mood"><strong>Feeling {{ d.mood.mood }}</strong> <span class="muted">· {{ d.mood.reason }}</span></p>{% endif %}
+  <p class="muted">
+    {{ d.owner or 'Unknown owner' }}'s Pebble · seen {{ d.seen_text }}{% if d.last_path == 'away' %} (away from home){% endif %}
+    {% if d.battery %}· battery {{ d.battery }}%{% endif %}
+    {% if d.fw %}· firmware {{ d.fw }}{% endif %}
+    · last answer {{ d.ask_text }}
+  </p>
+  <form method="post" action="/sidekick/{{ d.id }}/save" class="stack" id="save-{{ d.id }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    {% set on_tools = d.tools|selectattr('enabled')|list %}
+    <details class="sk-fold">
+      {% set ways = [] %}
+      {% if d.talk.hold %}{% set _ = ways.append('hold') %}{% endif %}
+      {% if d.talk.toggle %}{% set _ = ways.append('press') %}{% endif %}
+      {% if d.talk.wake %}{% set _ = ways.append('wake word') %}{% endif %}
+      <summary><strong>Name and talking</strong> <span class="muted">· {{ ways|join(', ') or 'not set' }}</span></summary>
+      <div class="stack">
+        <label>
+          Name
+          <input type="text" name="nickname" value="{{ d.nickname }}" maxlength="24" />
+        </label>
+        <fieldset class="stack">
+          <legend>How to talk</legend>
+          <label class="check"><input type="checkbox" name="hold" value="1" {% if d.talk.hold %}checked{% endif %} /><span>Hold to talk</span></label>
+          <label class="check"><input type="checkbox" name="toggle" value="1" {% if d.talk.toggle %}checked{% endif %} /><span>Press to start, press to stop</span></label>
+          <label class="check"><input type="checkbox" name="wake" value="1" {% if d.talk.wake %}checked{% endif %} /><span>Wake word <span class="muted">(if the device supports it; uses more battery)</span></span></label>
+          <label>
+            Wake word
+            <input type="text" name="wake_phrase" value="{{ d.talk.wake_phrase or 'hey stonepi' }}" maxlength="32" />
+          </label>
+        </fieldset>
+      </div>
+    </details>
+    <details class="sk-fold">
+      <summary><strong>What Pebble can use</strong> <span class="muted">· {{ on_tools|length }} of {{ d.tools|length }} on</span></summary>
+      <fieldset class="stack">
+        <legend class="sr-only">What Pebble can use</legend>
+        <input type="hidden" name="tools_listed" value="{{ d.tools|map(attribute='name')|join(',') }}" />
+        {% for t in d.tools %}
+        <label class="check"><input type="checkbox" name="tool_{{ t.name }}" value="1" {% if t.enabled %}checked{% endif %} /><span><strong>{{ t.name|replace('_', ' ')|capitalize }}</strong> <span class="muted">· {{ t.description }}</span></span></label>
+        {% endfor %}
+        <p class="hint">Personal ones start off. Pebble only reads apps its owner has.</p>
+      </fieldset>
+    </details>
+    <details class="sk-fold">
+      <summary><strong>Away from home</strong> <span class="muted">· {{ 'on' if d.away_allowed else 'off' }}</span></summary>
+      <fieldset class="stack">
+        <legend class="sr-only">Away from home</legend>
+        <label class="check"><input type="checkbox" name="away" value="1" {% if d.away_allowed %}checked{% endif %} /><span>Let this Pebble reach StonePi on any Wi-Fi</span></label>
+        {% if not hosts.away %}
+        <p class="hint">StonePi's away address isn't set up yet, so this has no effect until it is (it needs HTTPS through Tailscale).</p>
+        {% else %}
+        <p class="hint">Uses <code>{{ hosts.away }}</code> (Tailscale Funnel). Only Pebble's own requests are reachable there, and only for Pebbles with this switched on. A Pebble's key travels unencrypted on your home Wi-Fi, so only switch this on where you trust everyone on that network; if a key may have leaked, remove the Pebble and add it again.</p>
+        {% endif %}
+      </fieldset>
+    </details>
+  </form>
+  <form method="post" action="/sidekick/{{ d.id }}/remove" id="remove-{{ d.id }}"
+    data-confirm="Remove {{ d.nickname }}?" data-confirm-detail="It stops working straight away and goes back to its pairing screen. You can add it again with a new code." data-confirm-ok="Remove">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+  </form>
+  <div class="row-actions">
+    <button class="btn btn-primary btn-with-icon" form="save-{{ d.id }}">{{ svg('check') }} Save</button>
+    <button class="btn btn-ghost" form="remove-{{ d.id }}">Remove this Pebble</button>
+  </div>
+</section>
+{% endfor %}
+
+<details class="card stack sk-add" id="add" {% if not devices %}open{% endif %}>
+  <summary><h2 class="section-heading" id="add-heading">{{ svg('plus') }} Add a Pebble</h2></summary>
+  <ol class="hint stack">
+    <li>On the Pebble, join Wi-Fi, then open <strong>Settings → Pairing</strong>.</li>
+    <li>If it asks for StonePi's address, use <code>{{ hosts.lan or 'http://stonepi.local' }}</code>.</li>
+    <li>Type the 4-character code it shows below. It must be on the same network as the Pi.</li>
+  </ol>
+  <form method="post" action="/sidekick/add" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <label>
+      Code
+      <input type="text" name="code" required maxlength="4" minlength="4" autocomplete="off" spellcheck="false"
+        autocapitalize="characters" pattern="[A-Za-z0-9]{4}" class="sk-code" placeholder="K7M4" />
+    </label>
+    <label>
+      Belongs to
+      <select name="owner" {% if people %}required{% endif %}>
+        {% for p in people %}<option value="{{ p.id }}" {% if p.id == me %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
+        {% if not people %}<option value="">(no people found)</option>{% endif %}
+      </select>
+      <span class="hint">Pebble answers with this person's StonePi. Anyone holding it hears their answers.</span>
+    </label>
+    <label>
+      Name <span class="muted">(optional)</span>
+      <input type="text" name="nickname" maxlength="24" placeholder="e.g. Adam's Pebble, Pocket" />
+    </label>
+    <div class="row-actions"><button class="btn btn-primary btn-with-icon" {% if not reachable %}disabled{% endif %}>{{ svg('plus') }} Add Pebble</button></div>
+  </form>
+</details>
+</div>
+
+<div class="stack" data-sk-pane="household">
+<section class="card stack" id="voice" aria-labelledby="voice-heading">
+  <h2 class="section-heading" id="voice-heading">{{ filter_icon('music') }} Voice</h2>
+  <p class="hint">One voice for every Pebble. A voice that isn't on the Pi yet downloads first (about 60 MB), then Pebble switches to it.</p>
+  {% if voice.pending %}<p class="ct-status"><span class="ct-dot off"></span> Downloading {{ voice.pending }}… <a class="text-link" href="/sidekick#voice">Refresh</a></p>{% endif %}
+  <form method="post" action="/sidekick/voice" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <label>
+      Voice
+      <select name="voice" data-voice-pick>
+        {% for v in voice.voices or [] %}
+        <option value="{{ v.id }}" data-installed="{{ '1' if v.installed else '' }}" {% if v.current %}selected{% endif %}>{{ v.id.split('-')[1]|replace('_', ' ')|title }} — {{ v.label }}{% if v.current %} (in use){% elif not v.installed %} · download{% endif %}{% if v.state and v.state != 'downloading' %} · {{ v.state }}{% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="row-actions">
+      <button class="btn btn-primary" {% if not reachable %}disabled{% endif %}>Use this voice</button>
+      <button type="button" class="btn btn-ghost" data-voice-preview>Preview</button>
+    </div>
+    <p class="hint" data-voice-note hidden>Preview works once a voice is on the Pi: choose it first.</p>
+    <audio data-voice-audio hidden></audio>
+  </form>
+</section>
+
+<section class="card stack" id="quiet" aria-labelledby="quiet-heading">
+  <h2 class="section-heading" id="quiet-heading">{{ filter_icon('history') }} Quiet hours</h2>
+  <p class="hint">Every Pebble looks sleepy in these hours, unless something on StonePi needs a look. It still answers when you talk to it.</p>
+  <form method="post" action="/sidekick/quiet" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <label class="check"><input type="checkbox" name="enabled" value="1" {% if quiet.enabled %}checked{% endif %} /><span>Use quiet hours</span></label>
+    <div class="row-actions">
+      <label>From <input type="time" name="start" value="{{ quiet.start }}" required /></label>
+      <label>To <input type="time" name="end" value="{{ quiet.end }}" required /></label>
+    </div>
+    <div class="row-actions">
+      <button class="btn btn-primary" {% if not reachable %}disabled{% endif %}>Save quiet hours</button>
+    </div>
+  </form>
+</section>
+</div>
+
+<div class="stack" data-sk-pane="activity">
+<section class="card stack" id="activity" aria-labelledby="recent-heading">
+  <h2 class="section-heading" id="recent-heading">{{ filter_icon('history') }} Recent activity</h2>
+  {% if recent %}
+  <ul class="sk-recent">
+    {% for r in recent %}
+    {% if r.in_ask %}
+    <li class="sk-recent-tool"><span class="muted">↳</span> {{ r.action }}{% if not r.ok %} <span class="muted">({{ r.decision }})</span>{% endif %}</li>
+    {% else %}
+    <li><span class="ct-dot {{ 'on' if r.ok else 'off' }}"></span> {{ r.when }} · <strong>{{ r.device }}</strong> · {{ r.action }}{% if not r.ok %} <span class="muted">({{ r.decision }})</span>{% endif %}{% if r.kind == 'ask' and r.ok %} <span class="muted">· {{ '%.1f'|format(r.seconds) }} s</span>{% endif %}</li>
+    {% endif %}
+    {% endfor %}
+  </ul>
+  <p class="hint">Under each question, what Pebble looked at to answer it (searches show the words looked for). The question and answer themselves aren't kept.</p>
+  {% else %}
+  <p class="muted">Nothing yet. Questions and what Pebble looked at to answer them show up here.</p>
+  {% endif %}
+</section>
+</div>
+{% endblock %}
+
+
+{% block scripts %}<script src="/static/js/sidekick.js?v={{ app_version }}-{{ asset_rev }}" defer></script>{% endblock %}

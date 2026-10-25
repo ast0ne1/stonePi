@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, shrink-to-fit=no" />
+  <meta name="theme-color" content="#f3eee4" data-theme-color />
+  <title>{% block title %}Ripple · StonePi{% endblock %}</title>
+  {% include "_theme_boot.html" %}
+    {% from "stonepi/head.html" import brand_head, brand_tail %}
+    {{ brand_head("ripple", fonts_rev) }}
+  <link rel="stylesheet" href="/static/css/app.css?v={{ asset_rev }}" />
+  {{ brand_tail(fonts_rev) }}
+</head>
+<body>
+  {% from "_icons.html" import icon %}
+  {% from "stonepi/header.html" import header_tools, header_fab %}
+  <div class="app">
+    <header class="topbar">
+      <div class="brand-row">
+        <a class="brand" href="/">{% include "_brand_mark.html" %}Ripple</a>
+      </div>
+      <div class="topbar-actions">
+        {% if user %}
+        {{ header_tools(alerts_bell_state, logout_action="/logout", csrf_token=csrf_token) }}
+        {% endif %}
+      </div>
+    </header>
+
+    <main class="main">
+      {% if error %}<p class="banner">{{ error }}</p>{% endif %}
+      {% if message %}<p class="banner banner-ok">{{ message }}</p>{% endif %}
+      {% block content %}{% endblock %}
+    </main>
+
+    {% if active %}
+    <nav class="nav" aria-label="Main">
+      <a href="/" class="{% if active == 'feed' %}is-active{% endif %}">
+        {{ icon("feed") }}
+        <span>Feed</span>
+      </a>
+      <a href="/new" class="{% if active == 'new' %}is-active{% endif %}">
+        {{ icon("plus") }}
+        <span>New post</span>
+      </a>
+      <a href="/settings" class="{% if active == 'settings' %}is-active{% endif %}">
+        {{ icon("settings") }}
+        <span>Settings</span>
+      </a>
+    </nav>
+    {% block fab %}{% endblock %}
+    {% endif %}
+  </div>
+
+  <div class="sheet" hidden data-confirm-sheet>
+    <div class="sheet-card card">
+      <h2 data-confirm-title>Delete this?</h2>
+      <p class="hint" data-confirm-body hidden></p>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-with-icon" type="button" data-confirm-ok>Delete</button>
+        <button class="btn btn-ghost" type="button" data-confirm-cancel>Cancel</button>
+      </div>
+    </div>
+  </div>
+  <script src="/static/js/app.js?v={{ asset_rev }}" defer></script>
+</body>
+</html>

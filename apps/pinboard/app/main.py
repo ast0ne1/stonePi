@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import ROOT_DIR, env
 import app.routes as _app_routes
+from app.agent_routes import router as agent_router
 from app.routes import router
 from stonepi_auth.prefix import clean_prefix
 
@@ -20,6 +21,7 @@ app.mount("/static", StaticFiles(directory=_static), name="static")
 mount_brand_fonts(app)  # /assets/fonts when reached directly (run-dev); nginx serves it on the Pi
 if _prefix:
     app.mount(f"{_prefix}/static", StaticFiles(directory=_static), name="static_prefixed")
+app.include_router(agent_router)
 app.include_router(router)
 
 

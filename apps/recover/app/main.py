@@ -61,6 +61,7 @@ SERVICE_GROUPS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("stonepi-auth", "Auth"),
             ("stonepi-dashboard", "Dashboard"),
             ("stonepi-notify", "Notify"),
+            ("stonepi-agentlink", "AgentLink"),
         ),
     ),
     (
@@ -75,6 +76,7 @@ SERVICE_GROUPS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("stonepi-sportguide", "SportGuide"),
             ("stonepi-pricewatch", "PriceWatch"),
             ("stonepi-library", "Library"),
+            ("stonepi-ripple", "Ripple"),
         ),
     ),
     (

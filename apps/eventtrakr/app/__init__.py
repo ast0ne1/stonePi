@@ -13,7 +13,7 @@ from stonepi_auth.brand import add_brand_fonts_route, asset_rev, fonts_rev
 from stonepi_auth.http import portal_home_url
 from stonepi_auth.session import COOKIE_NAME as PLATFORM_COOKIE_NAME
 
-__version__ = "0.0.9"
+__version__ = "0.0.10"
 __asset_rev__ = asset_rev(Path(__file__).resolve().parent / "static")  # cache-bust token; changes with static/
 __github_user__ = "ast0ne1"
 __github__ = "https://github.com/ast0ne1"
@@ -36,6 +36,7 @@ def create_app() -> Flask:
     favicon.backfill_all_async()
 
     # Register blueprints
+    from app.routes.agent import bp as agent_bp
     from app.routes.api import bp as api_bp
     from app.routes.auth import bp as auth_bp
     from app.routes.calendar import bp as calendar_bp
@@ -51,6 +52,7 @@ def create_app() -> Flask:
     app.register_blueprint(calendar_bp)
     app.register_blueprint(settings_bp)
     app.register_blueprint(api_bp)
+    app.register_blueprint(agent_bp)
 
     @app.route("/healthz")
     def healthz():

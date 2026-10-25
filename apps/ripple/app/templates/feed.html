@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block fab %}{% from "stonepi/header.html" import header_fab %}{{ header_fab("/new", "New post") }}{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <h1>{{ board_name }}</h1>
+  <p class="lede">Family updates and photos, newest first. Posts marked for the family display appear on its screen.</p>
+</section>
+
+{% if posts %}
+<section class="post-list" aria-label="Posts">
+  {% for post in posts %}
+  <article class="card post" id="post-{{ post.id }}">
+    <header class="post-head">
+      <p class="post-meta">
+        <strong>{{ post.author_name }}</strong>
+        <span class="muted">· <time datetime="{{ post.created_at }}">{{ post.created_at | when }}</time>{% if post.updated_at != post.created_at %} · edited{% endif %}</span>
+      </p>
+      {% if post.can_change %}
+      <div class="post-actions">
+        <a class="icon-btn icon-btn-quiet" href="/posts/{{ post.id }}/edit" aria-label="Edit post" title="Edit">{{ icon("edit") }}</a>
+        <form
+          method="post"
+          action="/posts/{{ post.id }}/delete"
+          data-confirm="Delete this post?"
+          data-confirm-detail="It leaves the feed and the family display."
+          data-confirm-ok="Delete"
+        >
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <button class="icon-btn" type="submit" aria-label="Delete post" title="Delete">{{ icon("trash") }}</button>
+        </form>
+      </div>
+      {% endif %}
+    </header>
+    {% if post.body %}<p class="post-body">{{ post.body }}</p>{% endif %}
+    {% if post.media %}
+    <div class="post-photos{% if post.media | length > 1 %} is-grid{% endif %}">
+      {% for m in post.media %}
+      <figure class="post-photo">
+        {% if m.available %}
+        <img src="/media/{{ m.storage_key }}/thumb" alt="{{ m.caption }}" width="{{ m.thumb_w }}" height="{{ m.thumb_h }}" loading="lazy" />
+        {% else %}
+        <span class="photo-missing">Photo unavailable</span>
+        {% endif %}
+        {% if m.caption %}<figcaption>{{ m.caption }}</figcaption>{% endif %}
+      </figure>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if not post.show_on_display %}
+    <p class="post-flag">{{ icon("display-off") }} Not on the family display</p>
+    {% endif %}
+  </article>
+  {% endfor %}
+</section>
+
+{% if page > 1 or has_more %}
+<nav class="pager" aria-label="More posts">
+  {% if page > 1 %}<a class="btn btn-ghost btn-with-icon" href="/?page={{ page - 1 }}">{{ icon("chevron-left") }} Newer</a>{% endif %}
+  {% if has_more %}<a class="btn btn-ghost btn-with-icon" href="/?page={{ page + 1 }}">Older {{ icon("chevron-right") }}</a>{% endif %}
+</nav>
+{% endif %}
+
+{% else %}
+<section class="card empty-state">
+  <h3>{% if page > 1 %}No older posts{% else %}No posts yet{% endif %}</h3>
+  <p class="hint">Share a family update. Unless you switch it off, it also appears on the family display.</p>
+  <a class="btn btn-primary btn-with-icon" href="/new">{{ icon("plus") }} Write a post</a>
+</section>
+{% endif %}
+{% endblock %}

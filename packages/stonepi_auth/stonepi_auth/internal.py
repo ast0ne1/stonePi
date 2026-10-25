@@ -16,13 +16,56 @@ from collections.abc import Mapping
 
 TS_HEADER = "X-StonePi-Internal-Ts"
 SIG_HEADER = "X-StonePi-Internal-Sig"
+# v2 (plumbing P2) also signs a SHA-256 of the body. Sent as "v2" in this header; absent = v1.
+VERSION_HEADER = "X-StonePi-Internal-V"
 MAX_SKEW_SECONDS = 60
 _DOMAIN = b"stonepi-internal-v1"
+_DOMAIN_V2 = b"stonepi-internal-v2"
 
 
 def _digest(secret: str, method: str, path: str, ts: str) -> str:
     message = b"\n".join([_DOMAIN, method.upper().encode(), path.encode(), ts.encode()])
     return hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
+
+
+def _digest_v2(secret: str, method: str, path: str, ts: str, body: bytes) -> str:
+    body_hash = hashlib.sha256(body or b"").hexdigest().encode()
+    message = b"\n".join([_DOMAIN_V2, method.upper().encode(), path.encode(), ts.encode(), body_hash])
+    return hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
+
+
+def sign_internal_v2(secret: str, method: str, path: str, body: bytes = b"", *, now: float | None = None) -> dict[str, str]:
+    """Headers for one internal request whose body is covered by the signature."""
+    if not secret:
+        raise ValueError("session secret required for internal calls")
+    ts = str(int(now if now is not None else time.time()))
+    return {TS_HEADER: ts, SIG_HEADER: _digest_v2(secret, method, path, ts, body), VERSION_HEADER: "v2"}
+
+
+def verify_internal_v2(
+    secret: str,
+    method: str,
+    path: str,
+    headers: Mapping[str, str],
+    body: bytes = b"",
+    *,
+    now: float | None = None,
+    max_skew: int = MAX_SKEW_SECONDS,
+) -> bool:
+    """v2 for anything with a body; a bodyless request may still arrive signed v1."""
+    if not secret:
+        return False
+    lowered = {str(k).lower(): str(v) for k, v in headers.items()}
+    if lowered.get(VERSION_HEADER.lower(), "").strip() != "v2":
+        return not body and verify_internal(secret, method, path, headers, now=now, max_skew=max_skew)
+    ts = lowered.get(TS_HEADER.lower(), "").strip()
+    sig = lowered.get(SIG_HEADER.lower(), "").strip()
+    if not ts.isdigit() or not sig:
+        return False
+    current = now if now is not None else time.time()
+    if abs(current - int(ts)) > max_skew:
+        return False
+    return hmac.compare_digest(sig, _digest_v2(secret, method, path, ts, body))
 
 
 def sign_internal(secret: str, method: str, path: str, *, now: float | None = None) -> dict[str, str]:

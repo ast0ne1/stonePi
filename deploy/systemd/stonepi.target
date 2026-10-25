@@ -15,6 +15,7 @@ Wants=stonepi-pricescout.service
 Wants=stonepi-sportguide.service
 Wants=stonepi-pricewatch.service
 Wants=stonepi-library.service
+Wants=stonepi-ripple.service
 
 [Install]
 WantedBy=multi-user.target

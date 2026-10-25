@@ -130,7 +130,7 @@ def web_display(tmp_path: Path, monkeypatch):
                     "trmnl": {"enabled": True, "interval_minutes": 15}})
     captures: list[tuple] = []
 
-    def fake_capture(page, width, height, *, device_scale=1.0, max_age=0.0):
+    def fake_capture(page, width, height, *, device_scale=1.0, max_age=0.0, bits=0):
         captures.append((page["id"], width, height, device_scale))
         return _png(width, height, dark=True)
 
@@ -214,7 +214,7 @@ def test_refused_push_names_the_plugin(web_display, monkeypatch):
 
 
 def test_failed_capture_stamps_without_using_the_budget(web_display, monkeypatch):
-    def broken(page, width, height, *, device_scale=1.0, max_age=0.0):
+    def broken(page, width, height, *, device_scale=1.0, max_age=0.0, bits=0):
         raise RuntimeError("page down")
 
     monkeypatch.setattr(webcapture, "capture", broken)
@@ -250,7 +250,7 @@ def test_second_push_while_one_runs_is_skipped(web_display, monkeypatch):
 
     started, release = threading.Event(), threading.Event()
 
-    def slow(page, width, height, *, device_scale=1.0, max_age=0.0):
+    def slow(page, width, height, *, device_scale=1.0, max_age=0.0, bits=0):
         started.set()
         release.wait(5)
         return _png(width, height)
@@ -263,7 +263,7 @@ def test_second_push_while_one_runs_is_skipped(web_display, monkeypatch):
     second = stonepi_display.push_display("w1", {})
     release.set()
     worker.join(5)
-    assert second["skipped"] and "already running" in second["message"]
+    assert second["skipped"] and second["held"] and "already running" in second["message"]
     assert first["ok"] and len(_FakeClient.posts) == 1
     assert len(get_display("w1")["trmnl"]["push_log"]) == 1
 

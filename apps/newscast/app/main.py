@@ -8,7 +8,7 @@ from stonepi_auth.brand import mount_brand_fonts
 from fastapi.staticfiles import StaticFiles
 
 from app.db import SessionLocal, init_db
-from app.routers import feeds, opds, stories, ui, x3, xteink
+from app.routers import agent, feeds, opds, stories, ui, x3, xteink
 from app.config import BACKUPS_DIR, BRIEFING_DIR, DATA_DIR, FAVICON_DIR, LIBRARY_DIR, PACKAGES_DIR, ROOT_DIR, UPDATES_DIR, env
 from app.services.catalog import seed_recommended_feeds
 from app.services.categories import seed_builtin_categories
@@ -114,6 +114,7 @@ if env.stonepi_prefix:
 app.mount("/static", StaticFiles(directory=str(ROOT_DIR / "app" / "static")), name="static")
 mount_brand_fonts(app)  # /assets/fonts when reached directly (run-dev); nginx serves it on the Pi
 app.mount("/favicons", FaviconFiles(directory=str(FAVICON_DIR)), name="favicons")
+app.include_router(agent.router)
 app.include_router(ui.public)
 app.include_router(ui.router)
 app.include_router(feeds.router)

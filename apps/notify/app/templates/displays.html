@@ -12,13 +12,14 @@
 <h2 class="section-heading">TRMNL</h2>
 <p class="hint">Read-only screens that refresh on a timer. Each Display pushes to its own plugin on trmnl.com, and several can share one device through its playlist.</p>
 
-<form method="post" action="/displays/create" class="card stack display-create" data-display-create>
+{%- set picked_app = (app_displays | selectattr('id', 'equalto', add_app) | first) if add_app else None %}
+<form method="post" action="/displays/create" class="card stack display-create" id="add-display" data-display-create>
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
   <fieldset class="stack">
     <legend>Add a Display</legend>
     <div class="kind-cards">
       <label class="kind-card">
-        <input type="radio" name="kind" value="widgets" checked data-kind />
+        <input type="radio" name="kind" value="widgets" {% if not picked_app %}checked{% endif %} data-kind />
         <span class="kind-card-body">
           <strong>Widgets</strong>
           <span>News, sport, events, prices and system status from your apps, laid out on a grid.</span>
@@ -33,12 +34,36 @@
           <span class="kind-plugin">Needs a TRMNL <strong>Webhook Image</strong> plugin: just its webhook.</span>
         </span>
       </label>
+      {#- App displays (Ripple's family board) after the two general kinds. #}
+      {%- for a in app_displays %}
+      <label class="kind-card">
+        <input type="radio" name="kind" value="app:{{ a.id }}" data-kind data-app-label="{{ a.display_label }}" {% if picked_app and picked_app.id == a.id %}checked{% endif %} />
+        <span class="kind-card-body">
+          <strong>{{ a.display_label }}</strong>
+          <span>{{ a.display_blurb }}</span>
+          <span class="kind-plugin">Needs a TRMNL <strong>Webhook Image</strong> plugin: just its webhook. Everything else is set up for you.</span>
+        </span>
+      </label>
+      {%- endfor %}
     </div>
   </fieldset>
   <label>
     Name
-    <input type="text" name="name" placeholder="e.g. Kitchen, Homepage" required maxlength="80" />
+    <input type="text" name="name" placeholder="e.g. Kitchen, Homepage" required maxlength="80" value="{{ picked_app.display_label if picked_app else '' }}" data-display-name />
   </label>
+  <div class="stack" data-app-fields {% if not picked_app %}hidden{% endif %}>
+    <label>
+      TRMNL model
+      <select name="device">
+        {% for d in devices %}<option value="{{ d.id }}">{{ d.label }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>
+      Webhook URL
+      <input type="url" name="webhook" autocomplete="off" spellcheck="false" placeholder="The Webhook Image plugin's webhook URL" {% if picked_app %}required autofocus{% endif %} data-app-webhook />
+      <span class="hint">On trmnl.com, signed in to the account that owns the TRMNL: add a <strong>Webhook Image</strong> plugin, put it on the device's playlist, and copy its webhook here. Treat it like a password.</span>
+    </label>
+  </div>
   <div class="stack" data-web-fields>
     {% if web_pages %}
     <label>

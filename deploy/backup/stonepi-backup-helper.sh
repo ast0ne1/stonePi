@@ -159,7 +159,7 @@ PY
       LOCAL_ROOT="${LOCAL_ROOT:-/var/backups/stonepi}"
       LABEL="${LABEL:-STONEPI-BACKUP}"
       UUID="${UUID:-}"
-      APPS="${APPS:-stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library}"
+      APPS="${APPS:-stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library stonepi-ripple}"
       if [[ " $APPS " != *" stonepi-library "* ]] && systemctl cat stonepi-library.service >/dev/null 2>&1; then
         APPS="$APPS stonepi-library"
       fi

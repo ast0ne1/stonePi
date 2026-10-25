@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from stonepi_display.weather import wmo as _wmo
 
 from app.config import DATA_DIR, env
 
@@ -181,33 +182,14 @@ def feeds_rev(mini_apps: list[str]) -> str:
 
 # ── Weather ──────────────────────────────────────────────────────────────────
 
-# WMO weather codes → (icon, label). Icons are the inline SVGs in templates/_icons.html.
-_WMO: dict[int, tuple[str, str]] = {
-    0: ("sun", "Clear"), 1: ("sun", "Mostly clear"), 2: ("partly", "Partly cloudy"), 3: ("cloud", "Overcast"),
-    45: ("fog", "Fog"), 48: ("fog", "Fog"),
-    51: ("rain", "Drizzle"), 53: ("rain", "Drizzle"), 55: ("rain", "Drizzle"), 56: ("rain", "Freezing drizzle"),
-    57: ("rain", "Freezing drizzle"), 61: ("rain", "Light rain"), 63: ("rain", "Rain"), 65: ("rain", "Heavy rain"),
-    66: ("rain", "Freezing rain"), 67: ("rain", "Freezing rain"), 71: ("snow", "Light snow"), 73: ("snow", "Snow"),
-    75: ("snow", "Heavy snow"), 77: ("snow", "Snow grains"), 80: ("rain", "Showers"), 81: ("rain", "Showers"),
-    82: ("rain", "Heavy showers"), 85: ("snow", "Snow showers"), 86: ("snow", "Snow showers"),
-    95: ("storm", "Thunderstorm"), 96: ("storm", "Thunderstorm"), 99: ("storm", "Thunderstorm"),
-}
+# WMO weather codes → (icon, label) come from stonepi_display.weather (shared with Ripple).
+# Icons are the inline SVGs in templates/_icons.html.
 _weather_key: dict[str, Any] = {"key": None}
 FORECAST_HOURS = 5  # every 3 h from now, for the large Clock & weather widget
 FORECAST_DAYS = 3  # after today
 HOURLY_HOURS = 12  # every hour from now, for the Weather widget and the weather screen (U14)
 WEEK_DAYS = 7  # today + 6, for the weather screen
 _DAY_NAMES = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-
-
-def _wmo(code: Any, is_day: bool = True) -> tuple[str, str]:
-    try:
-        icon, label = _WMO.get(int(code), ("cloud", "—"))
-    except (TypeError, ValueError):
-        icon, label = "cloud", "—"
-    if icon == "sun" and not is_day:
-        icon = "moon"
-    return icon, label
 
 
 def _pct(values: list, i: int) -> int | None:

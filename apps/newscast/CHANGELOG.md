@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.11 — 2026-10-25
+
+### Added
+- **Pebble can read your Briefing** (when switched on in Notify → Sidekick): whether today's paper is ready and its top headlines with their stored summaries, and search. A signed internal endpoint (`POST /api/internal/agent`) used only by AgentLink, answering from one person's own NewsCast; no AI runs for it.
+- **Ask Pebble for one category:** "what's in the news in sport?" reads only Sport. The briefing tells Pebble today's categories and how many stories each has, so for "what's in the news?" it can ask which one you'd like. Categories match loosely ("sports", "tech", "world"); search takes one too.
+
 ## 0.0.10 — 2026-10-21
 
 ### Changed

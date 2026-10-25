@@ -25,6 +25,7 @@ PLATFORM_PKGS = [
     ROOT / "packages" / "stonepi_ai",
     ROOT / "packages" / "stonepi_automations",
     ROOT / "packages" / "stonepi_browser",
+    ROOT / "packages" / "stonepi_audit",
 ]
 
 APPS = [
@@ -41,10 +42,25 @@ APPS = [
     ("pricewatch", ROOT / "apps" / "pricewatch", 8008, "", "python -m app.serve"),
     # No Kiwix on Windows: Library shows "Kiwix not installed" / mock mode in dev.
     ("library", ROOT / "apps" / "library", 8009, "", "python -m app.serve"),
+    ("ripple", ROOT / "apps" / "ripple", 8017, "", "python -m app.serve"),
     # Car Thing panel. Preview it in Notify → Displays → Car Thing; with adb on PATH and a
     # Car Thing plugged into this PC, the connector takes over its screen too.
     ("carthing", ROOT / "apps" / "carthing", 8013, "", "python -m app.serve"),
+    # AgentLink: Pebble's device API (/agent/pebble/v1) and the tool registry. Paired in
+    # Notify → Sidekick. Speech is faked (AGENTLINK_SPEECH=dev) and it binds all interfaces so
+    # a Pebble on the LAN can reach this PC (see APP_ENV).
+    ("agentlink", ROOT / "apps" / "agentlink", 8015, "", "python -m app.serve"),
 ]
+
+# Extra environment per app on top of the shared block in main().
+APP_ENV: dict[str, dict[str, str]] = {
+    "agentlink": {
+        "HOST": "0.0.0.0",
+        "AGENTLINK_DEFAULT_PATH": "lan",  # no nginx in dev to say lan/away
+        "AGENTLINK_LAN_PORT": "8015",
+        "AGENTLINK_SPEECH": os.environ.get("AGENTLINK_SPEECH", "dev"),
+    },
+}
 
 
 def free_dev_ports() -> None:
@@ -190,7 +206,9 @@ def ensure_venv(name: str, app_dir: Path) -> Path:
         "sportguide",
         "pricewatch",
         "library",
+        "ripple",
         "carthing",
+        "agentlink",
     }:
         _pip(py, "-e", str(vault))
     contracts = ROOT / "packages" / "stonepi_contracts"
@@ -204,14 +222,16 @@ def ensure_venv(name: str, app_dir: Path) -> Path:
         "sportguide",
         "pricewatch",
         "library",
+        "ripple",  # through stonepi_display (its e-ink greys)
         "carthing",
+        "agentlink",
     }:
         _pip(py, "-e", str(contracts))
     browser_pkg = ROOT / "packages" / "stonepi_browser"
     if browser_pkg.exists() and name in {"eventtrakr", "sportguide", "notify"}:
         _pip(py, "-e", str(browser_pkg))
     ai_pkg = ROOT / "packages" / "stonepi_ai"
-    if ai_pkg.exists() and name in {"newscast", "studio"}:
+    if ai_pkg.exists() and name in {"newscast", "studio", "agentlink"}:
         _pip(py, "-e", str(ai_pkg))
     if name == "dashboard":
         for pkg in PLATFORM_PKGS:
@@ -223,8 +243,11 @@ def ensure_venv(name: str, app_dir: Path) -> Path:
                 "stonepi_browser",
             }:
                 _pip(py, "-e", str(pkg))
-    if name == "carthing":
+    if name in {"carthing", "ripple"}:
         _pip(py, "-e", str(ROOT / "packages" / "stonepi_display"))
+    if name == "agentlink":
+        for pkg_name in ("stonepi_watch", "stonepi_audit"):
+            _pip(py, "-e", str(ROOT / "packages" / pkg_name))
     if name == "notify":
         for pkg_name in ("stonepi_display", "stonepi_notify", "stonepi_watch"):
             pkg = ROOT / "packages" / pkg_name
@@ -262,9 +285,11 @@ def main() -> None:
                     "STONEPI_NOTIFY_URL": "http://127.0.0.1:8012",
                 }
             )
+            env.update(APP_ENV.get(name, {}))
             args = command.split()
             args[0] = str(py)
             procs.append(subprocess.Popen(args, cwd=str(path), env=env))
+        names = [a[0] for a in APPS]
         print()
         print("StonePi")
         print("  Dashboard   http://127.0.0.1:8010/")
@@ -279,12 +304,14 @@ def main() -> None:
         print("  SportGuide  http://127.0.0.1:8007/")
         print("  PriceWatch  http://127.0.0.1:8008/")
         print("  Library     http://127.0.0.1:8009/")
+        print("  Ripple      http://127.0.0.1:8017/")
         print("  Car Thing   http://127.0.0.1:8012/notify/displays/carthing (preview)")
+        print("  Sidekick    http://127.0.0.1:8012/sidekick (AgentLink on :8015; Pebbles use this PC's LAN IP)")
         print("  Login       admin / admin")
         print("Ctrl+C to stop.")
         while True:
             time.sleep(1)
-            for name, proc in zip((a[0] for a in APPS), procs, strict=True):
+            for name, proc in zip(names, procs, strict=True):
                 if proc.poll() is not None:
                     raise SystemExit(f"{name} exited with code {proc.returncode}")
     except KeyboardInterrupt:

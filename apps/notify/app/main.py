@@ -3,11 +3,13 @@ from stonepi_auth.platform_lock import add_platform_lock
 from stonepi_auth.brand import mount_brand_fonts
 from fastapi.staticfiles import StaticFiles
 
+from app.agent_routes import router as agent_router
 from app.boot import configure_all
 from app.carthing_routes import router as carthing_router
 from app.config import ROOT_DIR, env
 from app.me_routes import router as me_router
 from app.phone_alerts import router as phone_alerts_router
+from app.sidekick_routes import router as sidekick_router
 from app.web_routes import router as web_router
 import app.routes as _app_routes
 from app.routes import router
@@ -32,6 +34,8 @@ app.include_router(me_router)
 app.include_router(carthing_router)
 app.include_router(web_router)
 app.include_router(phone_alerts_router)
+app.include_router(sidekick_router)
+app.include_router(agent_router)
 app.include_router(router)
 
 # A platform install without a session secret locks instead of running solo.

@@ -20,6 +20,8 @@ from stonepi_auth import APP_CATALOG, APP_IDS, LAUNCHER_APP_IDS, SYSTEM_APP_IDS,
 from stonepi_auth.config import PlatformSettings
 from stonepi_auth.csrf import csrf_from_request, csrf_ok, csrf_ok_request, set_csrf_cookie
 from stonepi_auth.alerts import NOTIFICATIONS_PATH, add_shared_templates
+from stonepi_auth.header import LAUNCHER_ORDER_COOKIE, launcher_order_from_cookie, set_launcher_order_cookie
+from stonepi_auth.http import request_is_https
 from stonepi_auth.session import COOKIE_NAME, CSRF_COOKIE
 
 templates = Jinja2Templates(directory=str(ROOT_DIR / "app" / "templates"))
@@ -81,6 +83,11 @@ def _login_next(request: Request) -> str:
     if origin and "127.0.0.1" in origin:
         return f"{origin}{path}"
     return path
+
+
+def _home_order(request: Request) -> list[str]:
+    """This person's Home order (the cookie Home sets), so Health and Services list user apps the same way."""
+    return launcher_order_from_cookie(request.cookies.get(LAUNCHER_ORDER_COOKIE))
 
 
 def _user_or_login(request: Request, *, admin: bool = False, require_dashboard: bool = True):
@@ -429,7 +436,7 @@ def home(request: Request):
         tiles = services.launcher_tiles(user, dict(request.cookies), status=launcher_status)
     except services.AuthAPIError as exc:
         return _auth_failure(request, user, exc) or _login_redirect(request)
-    return _html(
+    response = _html(
         request,
         "home.html",
         user,
@@ -449,6 +456,10 @@ def home(request: Request):
             "error": request.query_params.get("err"),
         },
     )
+    if launcher_status.get("order_live"):
+        # The app switcher in every app follows this order (shared cookie, read by the header).
+        set_launcher_order_cookie(response, launcher_status.get("order") or [], secure=request_is_https(request))
+    return response
 
 
 @router.post("/launcher-order")
@@ -497,8 +508,11 @@ def launcher_order(request: Request, form: FormData = Depends(_form_body)):
         status = int(getattr(exc, "status_code", 502) or 502)
         return fail(_auth_error_text(exc), status if 400 <= status < 600 else 502)
     if wants_json:
-        return JSONResponse({"ok": True, "order": saved, "message": "App order saved"})
-    return RedirectResponse("/?msg=" + quote("App order saved"), status_code=303)
+        response = JSONResponse({"ok": True, "order": saved, "message": "App order saved"})
+    else:
+        response = RedirectResponse("/?msg=" + quote("App order saved"), status_code=303)
+    set_launcher_order_cookie(response, [str(item) for item in saved or order], secure=request_is_https(request))
+    return response
 
 
 # Household-wide "hidden apps" list from Auth, remembered briefly so the Health
@@ -675,7 +689,7 @@ def overview(request: Request):
         {
             "active": "overview",
             "cards": cards,
-            "card_groups": services.application_card_groups(cards=cards),
+            "card_groups": services.application_card_groups(cards=cards, order=_home_order(request)),
             "backup": backup,
             "backup_summary": _backup_summary(backup),
             "watch": watch,
@@ -748,7 +762,7 @@ def applications(request: Request):
         {
             "active": "applications",
             "cards": cards,
-            "card_groups": services.application_card_groups(cards=cards),
+            "card_groups": services.application_card_groups(cards=cards, order=_home_order(request)),
             "locked_apps": LOCKED_APP_IDS,
             "message": request.query_params.get("msg") or None,
         },
@@ -1139,7 +1153,7 @@ def applications_availability(request: Request, form: FormData = Depends(_form_b
             {
                 "active": "applications",
                 "cards": cards,
-                "card_groups": services.application_card_groups(cards=cards),
+                "card_groups": services.application_card_groups(cards=cards, order=_home_order(request)),
                 "locked_apps": LOCKED_APP_IDS,
                 "error": message,
             },

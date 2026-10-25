@@ -631,8 +631,12 @@ def application_cards(cookies: dict[str, str] | None = None) -> list[dict]:
 def application_card_groups(
     cookies: dict[str, str] | None = None,
     cards: list[dict] | None = None,
+    order: list[str] | None = None,
 ) -> list[tuple[str, list[dict]]]:
-    """Services / Health groups: SYSTEM (Dashboard/Auth/…) then USER apps."""
+    """Services / Health groups: SYSTEM (Dashboard/Auth/…) then USER apps.
+
+    ``order`` is the person's Home order; user apps follow it (others keep their place after).
+    """
     items = cards if cards is not None else application_cards(cookies)
     buckets: dict[str, list[dict]] = {key: [] for key, _ in SERVICE_GROUP_LABELS}
     for card in items:
@@ -642,6 +646,9 @@ def application_card_groups(
         if key not in buckets:
             buckets[key] = []
         buckets[key].append(card)
+    if order and buckets.get("user"):
+        rank = {app_id: i for i, app_id in enumerate(order)}
+        buckets["user"].sort(key=lambda card: rank.get(card.get("id"), len(rank)))
     groups: list[tuple[str, list[dict]]] = []
     for key, label in SERVICE_GROUP_LABELS:
         group_items = buckets.get(key) or []
@@ -779,6 +786,7 @@ def launcher_tiles(user, cookies: dict[str, str] | None = None, status: dict | N
             pass
     if status is not None:
         status["order_live"] = order_live
+        status["order"] = list(order)
     tiles = []
     for app_id in order:
         item = catalog.get(app_id) or next((a for a in APP_CATALOG if a["id"] == app_id), None)

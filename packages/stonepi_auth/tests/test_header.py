@@ -54,9 +54,9 @@ def test_switcher_lists_user_apps_in_dashboard_order_with_current_highlighted():
     assert [a["id"] for a in apps if a["current"]] == ["eventtrakr"]
 
 
-def test_switcher_shows_admins_all_nine_and_never_auth():
+def test_switcher_shows_admins_every_user_app_and_never_auth():
     ids = [a["id"] for a in header.switcher_apps(_user(is_admin=True, apps=()), PI, "studio")]
-    assert len(ids) == 9 and "auth" not in ids and "dashboard" not in ids
+    assert len(ids) == 10 and "auth" not in ids and "dashboard" not in ids
     assert ids[0] == "newscast"
 
 
@@ -257,3 +257,26 @@ def test_panel_has_clear_button_and_hidden_empty_text(fake_status):
     assert f'data-sp-clear-url="{PI}/notify/api/me/apps/pricewatch/clear"' in html
     assert 'data-sp-item data-at="2026-10-10T08:00:00+00:00" data-app="pricewatch"' in html
     assert '<p class="sp-empty" data-sp-empty hidden>No alerts from PriceWatch yet.' in html
+
+
+def test_launcher_order_cookie_keeps_known_apps_in_order():
+    assert header.launcher_order_cookie_value(["ripple", "nope", "newscast", "auth"]) == "ripple.newscast"
+
+
+def test_switcher_items_carry_their_app_id_for_reordering():
+    from jinja2 import Environment, FileSystemLoader
+
+    from stonepi_auth.alerts import SHARED_TEMPLATES_DIR
+
+    env = Environment(loader=FileSystemLoader(str(SHARED_TEMPLATES_DIR)))
+    state = {"show": False, "header": header.header_context("ripple", _user(is_admin=True, apps=()), home_url=PI)}
+    html = env.from_string('{% from "stonepi/header.html" import header_tools %}{{ header_tools(state) }}').render(state=state)
+    assert 'data-sp-app-id="ripple"' in html and 'data-sp-app-id="newscast"' in html
+    assert "stonepi-launcher-order" in html  # the script that orders them
+
+
+def test_launcher_order_reads_back_from_the_cookie():
+    order = header.launcher_order_from_cookie("ripple.nope.newscast.ripple")
+    assert order[:2] == ["ripple", "newscast"] and "nope" not in order
+    assert sorted(order) == sorted(header.LAUNCHER_APP_IDS)
+    assert header.launcher_order_from_cookie(None) == list(header.LAUNCHER_APP_IDS)

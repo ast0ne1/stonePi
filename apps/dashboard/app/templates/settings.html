@@ -53,6 +53,14 @@
         </span>
         <span class="settings-hub-chevron" aria-hidden="true">&rsaquo;</span>
       </a>
+      <a class="settings-hub-row" href="{{ notify_url('sidekick') }}">
+        <span class="settings-hub-icon" aria-hidden="true">{{ svg("sidekick") }}</span>
+        <span class="settings-hub-copy">
+          <span class="settings-hub-title">Sidekick</span>
+          <span class="settings-hub-sub">Pebble: pairing, how to talk to it and what it can use</span>
+        </span>
+        <span class="settings-hub-chevron" aria-hidden="true">&rsaquo;</span>
+      </a>
       {% endif %}
       {% endfor %}
     </div>
@@ -82,6 +90,7 @@
   {% if key == 'vault' and user and user.is_admin %}
   <a class="settings-tab settings-tab-external" href="{{ notify_url('displays') }}" title="{{ notify_status.displays if notify_status else 'Open Displays' }}">{{ svg("display") }}<span>Displays</span></a>
   <a class="settings-tab settings-tab-external" href="{{ notify_url('alerts') }}" title="{{ notify_status.alerts if notify_status else 'Open Phone alerts' }}">{{ svg("notify") }}<span>Phone alerts</span></a>
+  <a class="settings-tab settings-tab-external" href="{{ notify_url('sidekick') }}" title="Open Sidekick (Pebble)">{{ svg("sidekick") }}<span>Sidekick</span></a>
   {% endif %}
   {% endfor %}
 </div>

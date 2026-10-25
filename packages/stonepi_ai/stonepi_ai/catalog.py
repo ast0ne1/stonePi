@@ -119,10 +119,11 @@ FUNCTIONS: tuple[Function, ...] = (
     Function("studio.spa", "studio", "Handy apps", "standard", "Builds small web apps."),
     Function("studio.guide", "studio", "Stories and guides", "cheap", "Builds stories, quizzes and how-tos."),
     Function("studio.game", "studio", "Games", "best", "Builds whole games: long output, quality matters."),
+    Function("pebble.reply", "pebble", "Spoken replies", "cheap", "1–3 sentence answers Pebble speaks aloud; speed matters."),
 )
 _FUNCTIONS = {f.id: f for f in FUNCTIONS}
 
-APP_LABELS = {"newscast": "NewsCast", "studio": "Studio"}
+APP_LABELS = {"newscast": "NewsCast", "studio": "Studio", "pebble": "Pebble"}
 
 
 def function(function_id: str) -> Function | None:

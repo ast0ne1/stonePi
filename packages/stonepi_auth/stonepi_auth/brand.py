@@ -99,7 +99,7 @@ def add_brand_fonts_route(app: Any) -> None:
         app.add_url_rule(f"{BRAND_URL}/<path:filename>", "stonepi_brand_static", stonepi_brand_static)
 
 
-SYSTEM_ICON_IDS = frozenset({"dashboard", "auth", "notify", "recover", "carthing", "trmnl"})
+SYSTEM_ICON_IDS = frozenset({"dashboard", "auth", "notify", "recover", "carthing", "trmnl", "agentlink"})
 
 
 def brand_color(name: str, theme: str = "dark") -> str:

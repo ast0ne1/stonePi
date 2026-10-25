@@ -112,3 +112,46 @@ def test_home_revoked_session_goes_to_login(env):
     resp = env["client"].get("/")
     assert resp.status_code == 303
     assert "/login?next=" in resp.headers["location"]
+
+
+# -- the app switcher follows the Home order (shared cookie) -----------------------------
+
+ORDER_COOKIE = "stonepi-launcher-order"
+
+
+def test_home_hands_the_saved_order_to_the_switcher(env):
+    env["state"]["me"] = {"launcher_order": ["ripple", "pinboard", "not-an-app"]}
+    resp = env["client"].get("/")
+    value = resp.cookies.get(ORDER_COOKIE)
+    assert value and value.split(".")[:2] == ["ripple", "pinboard"]
+    assert "not-an-app" not in value and "newscast" in value  # unsaved apps follow, unknown ones dropped
+    header = next(h for h in resp.headers.get_list("set-cookie") if h.startswith(ORDER_COOKIE))
+    assert "httponly" not in header.lower() and "path=/" in header.lower()
+
+
+def test_saving_the_order_updates_the_switcher(env):
+    resp = env["client"].post("/launcher-order", data={"csrf_token": CSRF, "order": "fileserve,newscast"}, headers=FETCH)
+    assert resp.cookies.get(ORDER_COOKIE) == "fileserve.newscast"
+    plain = env["client"].post("/launcher-order", data={"csrf_token": CSRF, "order": "newscast,fileserve"})
+    assert plain.cookies.get(ORDER_COOKIE) == "newscast.fileserve"
+
+
+def test_no_order_cookie_while_auth_restarts_or_a_save_fails(env):
+    env["state"]["fail"] = services.AuthAPIError(services.AUTH_RESTARTING_MESSAGE, 503, unreachable=True)
+    assert ORDER_COOKIE not in env["client"].get("/").cookies
+    env["state"]["fail"] = services.AuthAPIError("database is locked", 500)
+    resp = env["client"].post("/launcher-order", data={"csrf_token": CSRF, "order": "newscast"}, headers=FETCH)
+    assert ORDER_COOKIE not in resp.cookies
+
+
+def test_health_and_services_list_user_apps_in_home_order():
+    cards = [{"id": i, "group": g} for i, g in
+             [("dashboard", "system"), ("newscast", "user"), ("ripple", "user"), ("auth", "system"), ("pinboard", "user")]]
+    order = routes.launcher_order_from_cookie("ripple.pinboard")
+    groups = dict(services.application_card_groups(cards=cards, order=order))
+    user = next(items for label, items in groups.items() if any(c["group"] == "user" for c in items))
+    system = next(items for label, items in groups.items() if any(c["group"] == "system" for c in items))
+    assert [c["id"] for c in user] == ["ripple", "pinboard", "newscast"]
+    assert [c["id"] for c in system] == ["dashboard", "auth"]  # system apps keep their order
+    plain = dict(services.application_card_groups(cards=cards))
+    assert [c["id"] for c in next(v for v in plain.values() if v[0]["group"] == "user")] == ["newscast", "ripple", "pinboard"]

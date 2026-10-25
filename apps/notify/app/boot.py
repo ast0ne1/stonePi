@@ -87,6 +87,9 @@ def push_due_displays() -> dict:
     from app.carthing_routes import check_music_expiry_daily
 
     check_music_expiry_daily()  # Spotify sign-in expiry alerts (U21), once a day
+    from app.sidekick_routes import sync_funnel_periodic
+
+    sync_funnel_periodic()  # Pebble Away from home: Funnel only while a device needs it
     results = stonepi_display.push_due(lambda: cached_overview(max_age=30.0))
     _record(results)
     return {"ok": all(r.get("ok") for r in results), "results": results}
@@ -170,9 +173,13 @@ def configure_all() -> None:
     from app.people import load_people
 
     stonepi_display.configure_displays(data_dir)
-    from stonepi_display import carthing
+    from stonepi_display import carthing, webcapture
+
+    from app.app_pages import capture_key
 
     carthing.configure_carthing(data_dir)
+    # App pages behind a one-off key (Ripple's family display) get a fresh one per capture.
+    webcapture.set_key_provider(capture_key)
     # Ensure displays.json exists (triggers legacy migration)
     stonepi_display.load_displays()
 

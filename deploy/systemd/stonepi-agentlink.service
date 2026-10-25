@@ -1,0 +1,51 @@
+[Unit]
+Description=StonePi AgentLink (Pebble and other agent devices)
+After=network-online.target stonepi-auth.service
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=stonepi-agentlink
+Group=stonepi-agentlink
+EnvironmentFile=/etc/stonepi/stonepi.env
+EnvironmentFile=-/etc/stonepi/agentlink.env
+# Speech models (faster-whisper, piper voices) cache under the data dir.
+Environment=HOME=/var/lib/stonepi/agentlink
+WorkingDirectory=/opt/stonepi/apps/agentlink
+ExecStart=/opt/stonepi/apps/agentlink/.venv/bin/python -m app.serve
+Restart=always
+RestartSec=5
+# Transcribing and speaking run in this unit: a lower CPU share and a soft memory ceiling
+# keep a long ask from starving the rest of StonePi on a Pi 4.
+CPUWeight=50
+MemoryHigh=700M
+
+# Sandbox. AgentLink is the only StonePi service reachable over Tailscale Funnel, so it gets
+# the tightest box: the whole filesystem read-only except its own data and the Vault folder
+# (platform AI keeps its shared health and quota files there), no devices, no privileges.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ReadWritePaths=/var/lib/stonepi/agentlink -/var/lib/stonepi/vault
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+# AF_UNIX: systemctl (Watch's service status) talks to systemd over D-Bus.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

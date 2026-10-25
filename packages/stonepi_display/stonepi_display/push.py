@@ -159,14 +159,15 @@ def web_image(
     if not page or not page.get("url"):
         raise ValueError("Pick a web page for this Display first.")
     screen = WEB_SCREENS.get(display.get("device") or "og", WEB_SCREENS["og"])
+    bits = web_bits(display)
     capture = webcapture.capture(
-        page, screen["width"], screen["height"], device_scale=screen["scale"], max_age=max_age
+        page, screen["width"], screen["height"], device_scale=screen["scale"], max_age=max_age, bits=bits
     )
     png, info = webimage.to_eink(
         capture,
         screen["width"],
         screen["height"],
-        bits=web_bits(display),
+        bits=bits,
         dither=bool(web.get("dither")),
         invert=str(web.get("invert") or "auto"),
         threshold=int(web.get("threshold") or webimage.DEFAULT_THRESHOLD),
@@ -216,8 +217,10 @@ def push_display(
     with _push_locks_guard:
         lock = _push_locks.setdefault(display_id, threading.Lock())
     if not lock.acquire(blocking=False):
-        return {"ok": True, "skipped": True, "quiet": True, "message": "A push for this Display is already running.",
-                "status": None}
+        # "held": nothing was sent, but something may still need sending (a caller can retry);
+        # an unchanged screen is skipped without it.
+        return {"ok": True, "skipped": True, "quiet": True, "held": True,
+                "message": "A push for this Display is already running.", "status": None}
     try:
         return _push_display(display_id, variables, skip_unchanged=skip_unchanged, now=now)
     finally:
@@ -241,16 +244,18 @@ def _push_display(
     is_web = display.get("kind") == "web"
     recent = _recent_pushes(trmnl, now)
 
-    def skipped(message: str, *, quiet: bool = False) -> dict[str, Any]:
+    def skipped(message: str, *, quiet: bool = False, held: bool = False) -> dict[str, Any]:
         update_trmnl_status(display_id, last_check_at=stamp, last_skip_message=message, push_log=recent)
-        return {"ok": True, "skipped": True, "quiet": quiet, "message": message, "status": None}
+        return {"ok": True, "skipped": True, "quiet": quiet, "held": held, "message": message, "status": None}
 
     backoff = _parse_ts(trmnl.get("backoff_until"))
     if backoff and backoff > now:
-        return skipped(f"TRMNL asked us to slow down; next push after {_hhmm(backoff)}.")
+        return skipped(f"TRMNL asked us to slow down; next push after {_hhmm(backoff)}.", held=True)
     if len(recent) >= tier["budget"]:
         free_at = (_parse_ts(min(recent)) or now) + timedelta(hours=1)
-        return skipped(f"Hourly limit for {tier['label']} reached ({tier['budget']} pushes); next slot {_hhmm(free_at)}.")
+        return skipped(
+            f"Hourly limit for {tier['label']} reached ({tier['budget']} pushes); next slot {_hhmm(free_at)}.", held=True
+        )
 
     def failed(message: str) -> dict[str, Any]:
         update_trmnl_status(display_id, last_push_at=stamp, last_check_at=stamp, last_push_ok=False,

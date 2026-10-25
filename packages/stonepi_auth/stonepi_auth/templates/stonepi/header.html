@@ -46,6 +46,7 @@
 {%- elif name == 'fileserve' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h6l2 2h6v10H5z"/><path d="M9 13h6M9 16h4"/></svg>
 {%- elif name == 'eventtrakr' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/><path d="M8 14h3M13 14h3M8 17h3"/></svg>
 {%- elif name == 'pinboard' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+{%- elif name == 'ripple' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2.5"/><path d="M7.5 7.5a6.4 6.4 0 0 0 0 9M16.5 7.5a6.4 6.4 0 0 1 0 9"/><path d="M4.5 4.5a10.6 10.6 0 0 0 0 15M19.5 4.5a10.6 10.6 0 0 1 0 15"/></svg>
 {%- elif name == 'studio' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19h14M8 17V7l4-3 4 3v10"/><path d="M10 11h4M10 14h4"/></svg>
 {%- elif name == 'pricescout' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v3H4zM6 10h12v9H6z"/><path d="M9 13h6M9 16h4"/></svg>
 {%- elif name == 'sportguide' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 2"/></svg>
@@ -174,7 +175,7 @@
     <a class="sp-app-dashboard{% if header.app == 'dashboard' %} is-current{% endif %}" href="{{ header.dashboard_url }}"{% if header.app == 'dashboard' %} aria-current="page"{% endif %}><img class="sp-app-img" src="/assets/brand/icons/system/dashboard.svg" width="32" height="32" alt="" /><span>Home</span></a>
     <ul class="sp-app-grid">
       {%- for app in header.apps %}
-      <li><a class="sp-app{% if app.current %} is-current{% endif %}" href="{{ app.url }}"{% if app.current %} aria-current="page"{% endif %}>
+      <li data-sp-app-id="{{ app.id }}"><a class="sp-app{% if app.current %} is-current{% endif %}" href="{{ app.url }}"{% if app.current %} aria-current="page"{% endif %}>
         <img class="sp-app-img" src="/assets/brand/icons/apps/{{ app.id }}.svg" width="40" height="40" alt="" /><span class="sp-app-name">{{ app.name }}</span>
       </a></li>
       {%- endfor %}
@@ -363,6 +364,22 @@
     var m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
     return m ? decodeURIComponent(m[1]) : "";
   }
+
+  // The app switcher follows the person's Home tile order (the Dashboard keeps it in the
+  // stonepi-launcher-order cookie); apps it doesn't list keep their place after those.
+  function orderSwitcher() {
+    var order = readCookie("stonepi-launcher-order").split(".").filter(Boolean);
+    if (!order.length) return;
+    document.querySelectorAll(".sp-app-grid").forEach(function (grid) {
+      var items = Array.prototype.slice.call(grid.querySelectorAll("li[data-sp-app-id]"));
+      var rank = function (li) {
+        var i = order.indexOf(li.getAttribute("data-sp-app-id"));
+        return i < 0 ? order.length + items.indexOf(li) : i;
+      };
+      items.slice().sort(function (a, b) { return rank(a) - rank(b); }).forEach(function (li) { grid.appendChild(li); });
+    });
+  }
+  orderSwitcher();
 
   function ensureBackdrop() {
     if (backdrop) return backdrop;

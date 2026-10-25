@@ -80,6 +80,22 @@ def _png_grey(levels_img, bits: int) -> tuple[bytes, bytes]:
     return png, rows
 
 
+def quantize_grey(img, bits: int, *, dither: bool):
+    """``img`` reduced to the panel's even greys (2^bits levels, black to white) as a "P" image
+    whose palette index is the level. Shared with apps that dither their own photos (Ripple),
+    so their levels are exactly the ones a conversion here keeps."""
+    from PIL import Image
+
+    top = (1 << bits) - 1
+    palette: list[int] = []
+    for i in range(top + 1):
+        grey = round(i * 255 / top)
+        palette += [grey, grey, grey]
+    pal = Image.new("P", (1, 1))
+    pal.putpalette(palette + [0] * (768 - len(palette)))
+    return img.convert("RGB").quantize(palette=pal, dither=Image.Dither.FLOYDSTEINBERG if dither else Image.Dither.NONE)
+
+
 def to_eink(
     png: bytes,
     width: int,
@@ -104,15 +120,7 @@ def to_eink(
         levels = img.point(lambda v: 1 if v >= cut else 0)
     else:
         # Even greys from black to white; Pillow dithers (Floyd-Steinberg) or rounds to them.
-        palette: list[int] = []
-        for i in range(top + 1):
-            grey = round(i * 255 / top)
-            palette += [grey, grey, grey]
-        pal = Image.new("P", (1, 1))
-        pal.putpalette(palette + [0] * (768 - len(palette)))
-        quant = img.convert("RGB").quantize(
-            palette=pal, dither=Image.Dither.FLOYDSTEINBERG if dither else Image.Dither.NONE
-        )
+        quant = quantize_grey(img, bits, dither=dither)
         levels = Image.frombytes("L", quant.size, quant.tobytes())  # palette index = level
     out, rows = _png_grey(levels, bits)
     digest = hashlib.sha256(rows).hexdigest()[:20]

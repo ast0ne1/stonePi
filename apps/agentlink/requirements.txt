@@ -1,0 +1,6 @@
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+pydantic-settings==2.10.1
+httpx==0.28.1
+# Speech (optional, Pi only for now): faster-whisper and piper are installed by the speech
+# setup step, not here, so run-dev and a Pi without them still start.

@@ -1,5 +1,10 @@
 # Changelog — Auth
 
+## 0.5.0 — 2026-10-25
+
+### Changed
+- No changes of its own: the version follows the platform. The shared `stonepi_auth` 0.4.0 (signed internal calls v2, the app switcher following your Home order, Ripple and AgentLink in the catalog) comes with platform 0.5.0.
+
 ## 0.4.0 — 2026-10-21
 
 ### Changed

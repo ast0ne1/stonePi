@@ -2,6 +2,186 @@
 
 Platform version lives in [`VERSION`](VERSION). App zips use each app’s `__version__` (see `scripts/build_release_zips.py`).
 
+## 0.5.0 — 2026-10-25
+
+**Pebble, a cute little voice sidekick for StonePi, and Ripple, family news on a screen far away.** Ripple is a new app; NewsCast, EventTrakr and Pinboard get new versions so Pebble can read them; the app switcher, Health and Services follow your Home order in every app; and both new features are built as shared plumbing the next device or display app can reuse.
+
+### What's new
+
+**Ripple 0.0.10 (new app)**
+- **Family updates for a TRMNL e-ink display:** post short updates and choose which ones appear
+  on the family's screen. Anyone you grant Ripple to can post; authors edit or delete their own
+  posts, and admins any post.
+- **Photos with captions:** previews and an upload bar while you post, and small previews in the
+  feed. Location and camera details are removed from every photo, and photos are only visible
+  inside Ripple.
+- **The family display:**
+  - Set it up from Ripple → Settings → Family display: pick the TRMNL model and paste the
+    webhook, and StonePi does the rest.
+  - Up to 4 photos from the last few days show together, prepared for e-ink on the Pi, so only
+    the finished image leaves it.
+  - Each post shows its day, date and time ("Sun 25/10 8:31 AM"), never "Today", which could be
+    wrong in the family's time zone.
+  - Optionally, a friendly line at the top: your city, the part of the day, the time difference
+    and your weather ("Copenhagen · Sunday evening · 10 h behind you · 8° overcast").
+  - The screen updates shortly after each change.
+- **In Notify:** Add a Display offers **Ripple family board**, which needs just a name, the TRMNL
+  model and the webhook, sets up the rest and sends the first image.
+
+**Pebble (new) and Notify → Sidekick**
+- **Pebble** is a small round companion: a Waveshare ESP32-S3-Touch-AMOLED-1.75C running the
+  [Pebble firmware](https://github.com/ast0ne1/pebble-esp32). Push to talk (or use a wake word),
+  ask out loud at home or out and about, and it answers out loud; its face shows how the house
+  is doing.
+- **Sidekick** (new in Notify's menu, and in Dashboard → Settings): add a Pebble by typing the
+  code it shows, choose who it belongs to, name it, pick how to talk to it, let it work **away
+  from home**, choose what it may use, or remove it. Recent activity lists what each Pebble did,
+  never what was said.
+- **Set up speech:** when Pebble can't listen or speak yet, one button installs speech on the Pi
+  in the background (about 200 MB, a few minutes) and the page follows it until it's ready. On a
+  32-bit OS it says speech needs 64-bit Raspberry Pi OS.
+- **What Pebble can use:** the weather at home (for every Pebble; set the place in Notify → Car
+  Thing → Look → Weather location), and, switched on per Pebble: today at a glance, your events
+  (EventTrakr), reminders and notices (Pinboard), and today's briefing and news search
+  (NewsCast). Each use re-checks that the owner still has the app.
+- **Conversation:** it remembers your last question and its answer for 2 minutes, in memory only,
+  so you can answer its follow-ups ("which category?" "Sport"). The model that answers is set in
+  Dashboard → Settings → AI → **Spoken replies**.
+- **Moods:** happy, content, curious, sleepy, worried, upset or proud, from StonePi's health,
+  your day and recent chats. Overdue reminders become its caption.
+- **Voice and quiet hours:** eleven English voices with Preview, and household quiet hours
+  (default 22:00–07:00) when every Pebble looks sleepy.
+- **Away from home:** a Pebble allowed away reaches StonePi over HTTPS through Tailscale Funnel,
+  switched on only while a Pebble needs it. Pairing works at home only.
+
+**NewsCast 0.0.11**
+- **Pebble can read your Briefing:** whether today's paper is ready, its top headlines with their
+  summaries, one category at a time ("what's in the news in sport?"), and search.
+
+**EventTrakr 0.0.10**
+- **Pebble can read your events:** what's on today, tonight, tomorrow, this weekend or next week,
+  optionally of one kind ("community events next week"), and search.
+
+**Pinboard 0.0.9**
+- **Pebble can read the board:** your reminders and the household's, and the notices (never
+  someone else's reminders).
+
+**Every app**
+- The app switcher follows your Home order, and so do the apps on Health and Services.
+- Ripple is on Home and in the app switcher, with its icon; Recover lists AgentLink and Ripple.
+- Wi-Fi power saving is off on the Pi, so `stonepi.local` and device requests no longer stall
+  while the radio dozes.
+
+**Security**
+- Pebble's voice is turned into text on the Pi and never leaves it; only the text of a question,
+  plus what that Pebble may read, goes to the AI model you chose.
+- Each Pebble is bound to one person, its token stored hashed, and every use is checked and
+  logged (never what was said).
+- Ripple's family display opens only with a one-off key from the Pi itself, and its photos are
+  never public.
+
+### Built to reuse
+
+What Pebble and Ripple needed was built as shared StonePi plumbing, so the next agent, device
+or display app starts from here rather than from scratch.
+
+- **AgentLink, one way in for every agent and device.** Pebble is its first adapter. A new
+  device or agent needs only an adapter that turns its protocol into a tool call; pairing,
+  binding to one person, per-device switches, re-checking each use against the owner's apps,
+  and the audit log are already there and are managed in Notify → Sidekick.
+- **Apps answer once, for any agent.** NewsCast, EventTrakr, Pinboard and Notify (the weather)
+  each serve their reads at a signed `/api/internal/agent` endpoint, described by typed tool
+  specs (`stonepi_contracts.agent`) that also map onto MCP tools. A new agent gets them with no
+  app changes.
+- **Speech on the Pi** (faster-whisper, piper, eleven voices, StonePi's vocabulary, the speed
+  check, Set up speech) belongs to AgentLink, not to Pebble, and so do the moods.
+- **Away from home:** the Funnel route carries only device requests and is on only while a
+  device needs it.
+- **Shared packages:** signed internal calls v2 (the body is signed, so the user a call answers
+  for can't be swapped) and `stonepi_audit` are for any app.
+- **App pages on displays:** an app marks a page as its display page in the catalog
+  (`display_page`, `capture_key`) and gets a one-click Display in Notify, a one-off key per
+  capture, the panel's size and bit depth, and a push after each change. Ripple is the first.
+
+### Added
+- **AgentLink** (`apps/agentlink`, `stonepi-agentlink`, port 8015, loopback): bindings (one
+  device ↔ one person, tokens stored as SHA-256), the tool registry, per-binding switches and
+  `invoke()` checking binding → tool → params → policy → owner, with every call in an audit log
+  (`stonepi_audit`, 90 days). Device API `/agent/pebble/v1`
+  ([Pebble protocol v1](https://github.com/ast0ne1/pebble-esp32/blob/main/PROTOCOL.md)); ask
+  pipeline faster-whisper → read tools as facts → `stonepi_ai` `pebble.reply` → piper.
+- **Ripple** (`apps/ripple`, `stonepi-ripple`, port 8017, user `stonepi-ripple`,
+  `MemoryMax=384M`): nginx `/ripple/` in both configs, installer, backup (`ripple.sqlite` plus
+  photos), restore and the `stonepi` CLI.
+- **Agent reads** at a signed `POST /api/internal/agent` in NewsCast, EventTrakr and Pinboard
+  (per user), and in Notify for `get_weather` (the Car Thing's weather place and units,
+  Open-Meteo, cached 10 minutes).
+- **Notify → Sidekick** (`/sidekick`) over AgentLink's signed internal API; **app display pages**
+  (`app/app_pages.py`): one-off capture keys, `/api/internal/web/changed` (batched 20 s) and
+  `/api/internal/web/app-displays/{app}`; Add a Display → Ripple family board.
+- nginx: `/agent/pebble/v1/` on port 80 (plain HTTP on the LAN, never redirected) and a
+  loopback-only listener on `127.0.0.1:8091` for Funnel that refuses pairing.
+- `deploy/stonepi-pebble-funnel.sh` (Funnel on/off), `deploy/stonepi-speech-setup.sh` (speech
+  engines, a voice and a speed check; `--start` / `--status` for Sidekick's Set up speech, run as
+  the transient unit `stonepi-speech-setup`) and `deploy/stonepi-wifi-powersave.sh`
+  (NetworkManager `wifi.powersave = 2`).
+- New shared pieces: `stonepi_auth.internal` v2 (signs the request body), `packages/stonepi_audit`,
+  `stonepi_contracts.agent` (tool registry types), `stonepi_display.weather` (WMO labels, shared
+  by the Car Thing and Ripple), `stonepi_display.webimage.quantize_grey`; `stonepi_brand` adds the
+  Ripple and AgentLink icons.
+
+### Changed
+- **The app switcher follows your Home order.** The Dashboard keeps your saved order in a
+  `stonepi-launcher-order` cookie (on Home and when you save), and the shared header orders the
+  switcher by it; Health and Services sort user apps by it too
+  (`stonepi_auth.header.launcher_order_from_cookie`). Before, they used the default order.
+- **Display pushes held back** (one already running, the hourly limit, a TRMNL back-off) are
+  marked `held`, so a caller can try again; a page change drops only that page's cached captures
+  (`webcapture.forget`).
+- Backups include AgentLink's pairings (not its speech models).
+
+### Security
+- Notify may run only `stonepi-pebble-funnel` and `stonepi-speech-setup --start` / `--status`
+  as root (exact sudoers rules, no other arguments).
+- Signed internal calls v2 cover the request body, so the user an agent read answers for can't
+  be swapped; every `/api/internal/` path stays refused at nginx.
+- Ripple's capture keys work once, for two minutes, only from the Pi itself (loopback, not
+  through nginx); EXIF (GPS, camera) is stripped from every photo.
+
+### App versions in this cut
+
+Platform: **0.5.0**
+
+| System (ships with platform) | Version |
+|-----|---------|
+| dashboard | 0.5.0 |
+| auth | 0.5.0 |
+| notify | 0.5.0 |
+| agentlink | 0.5.0 |
+| recover | 0.5.0 |
+| carthing | 0.5.0 |
+
+| Apps | Version |
+|-----|---------|
+| newscast | 0.0.11 |
+| fileserve | 0.0.9 |
+| eventtrakr | 0.0.10 |
+| pinboard | 0.0.9 |
+| studio | 0.0.9 |
+| pricescout | 0.0.8 |
+| sportguide | 0.0.9 |
+| pricewatch | 0.0.8 |
+| library | 0.0.8 |
+| ripple | 0.0.10 |
+
+| Packages | Version | Why |
+|----------|---------|-----|
+| stonepi_auth | 0.4.0 | signed internal calls v2 (body signed); the app switcher follows the Home order (`stonepi-launcher-order`, read back with `launcher_order_from_cookie`); Ripple and AgentLink in the catalog, with `capture_key` / `display_page` |
+| stonepi_display | 0.8.0 | one-off capture keys for app pages (`set_key_provider`, `capture_url`), the panel's bit depth passed to captures, `quantize_grey`, shared weather labels (`weather`), `forget` for one page's captures, `held` pushes |
+| stonepi_contracts | 0.2.0 | agent tool registry types (`agent`); Ripple's app label |
+| stonepi_ai | 0.1.1 | `pebble.reply` (Spoken replies) |
+| stonepi_audit | 0.1.0 | new: AgentLink's audit log |
+
 ## 0.4.0 — 2026-10-21
 
 **Web pages on your displays, a redesigned Car Thing, and a round of improvements across the apps from using StonePi on a phone.** NewsCast, EventTrakr, FileServe and SportGuide all get new versions; the shared header, app switcher and Health page are tidied up in every app; and two of Notify's endpoints are no longer reachable from the network.

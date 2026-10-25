@@ -22,6 +22,7 @@ APP_LABELS: dict[str, str] = {
     "studio": "Studio",
     "pinboard": "Pinboard",
     "library": "Library",
+    "ripple": "Ripple",
     "carthing": "Car Thing",
     "system": "System",
 }

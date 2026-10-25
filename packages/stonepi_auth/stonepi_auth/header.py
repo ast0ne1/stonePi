@@ -41,6 +41,37 @@ def app_page_url(home_url: str, app_id: str, page: str = "") -> str:
     return f"{home}{path}/{page}"
 
 
+# The person's Home tile order, for the app switcher in every app. Auth keeps the real order;
+# the Dashboard copies it into this cookie (shared by every app on the host, like
+# ``stonepi-theme``) on Home and on save, and the header's script orders the switcher by it.
+LAUNCHER_ORDER_COOKIE = "stonepi-launcher-order"
+
+
+def launcher_order_cookie_value(order: list[str]) -> str:
+    """Known app ids joined with dots (a cookie value needs no quoting that way)."""
+    return ".".join(app_id for app_id in order if app_id in LAUNCHER_APP_IDS)
+
+
+def launcher_order_from_cookie(value: str | None) -> list[str]:
+    """The Home order read back from the cookie: its known apps first, then the rest in catalog order."""
+    saved = [app_id for app_id in (value or "").split(".") if app_id in LAUNCHER_APP_IDS]
+    saved = list(dict.fromkeys(saved))
+    return saved + [app_id for app_id in LAUNCHER_APP_IDS if app_id not in saved]
+
+
+def set_launcher_order_cookie(response: Any, order: list[str], *, secure: bool = False) -> None:
+    """Remember the Home order for the switcher (readable by the page's script: not a secret)."""
+    response.set_cookie(
+        LAUNCHER_ORDER_COOKIE,
+        launcher_order_cookie_value(order),
+        max_age=365 * 24 * 3600,
+        path="/",
+        samesite="lax",
+        secure=secure,
+        httponly=False,
+    )
+
+
 def switcher_apps(user: Any, home_url: str, current: str) -> list[dict[str, Any]]:
     """The nine user apps in Dashboard order, filtered to what this person may open."""
     by_id = {a["id"]: a for a in APP_CATALOG}

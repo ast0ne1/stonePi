@@ -307,7 +307,7 @@ def test_unchanged_screen_is_skipped_then_refreshed(pushing):
     manual = stonepi_display.push_display("kitchen", SAMPLE_VARIABLES, now=_at(31))  # a person's Push now
     stale = stonepi_display.push_display("kitchen", SAMPLE_VARIABLES, skip_unchanged=True, now=_at(31 + 121))
     assert first["ok"] and not first.get("skipped")
-    assert again["skipped"] and again["quiet"]
+    assert again["skipped"] and again["quiet"] and not again["held"]  # nothing to send
     assert not manual.get("skipped")
     assert not stale.get("skipped")  # unchanged for over 2 hours: refreshed anyway
     assert len(_FakeClient.sent) == 3
@@ -318,7 +318,7 @@ def test_hourly_budget_counts_every_push(pushing):
     sent = [stonepi_display.push_display("kitchen", SAMPLE_VARIABLES, now=_at(i)) for i in range(budget)]
     held = stonepi_display.push_display("kitchen", SAMPLE_VARIABLES, now=_at(budget))
     assert not any(r.get("skipped") for r in sent) and len(_FakeClient.sent) == budget
-    assert held["skipped"] and "Hourly limit" in held["message"]
+    assert held["skipped"] and held["held"] and "Hourly limit" in held["message"]
     assert len(_FakeClient.sent) == budget  # nothing sent over budget
     # Once the oldest push is an hour old there is room again.
     later = stonepi_display.push_display("kitchen", SAMPLE_VARIABLES, now=_at(60.5))
@@ -332,7 +332,7 @@ def test_rate_limit_pauses_pushes_until_the_window_passes(pushing):
     paused = stonepi_display.push_display("kitchen", SAMPLE_VARIABLES, now=_at(30))
     resumed = stonepi_display.push_display("kitchen", SAMPLE_VARIABLES, now=_at(61))
     assert hit["ok"] is False and "rate limit" in hit["message"]
-    assert paused["skipped"] and "slow down" in paused["message"]
+    assert paused["skipped"] and paused["held"] and "slow down" in paused["message"]
     assert resumed["ok"] and not resumed.get("skipped")
     assert len(_FakeClient.sent) == 2
 

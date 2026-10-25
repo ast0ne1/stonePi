@@ -89,8 +89,11 @@ ensure_user stonepi-prices
 ensure_user stonepi-sport
 ensure_user stonepi-watch
 ensure_user stonepi-library
+ensure_user stonepi-ripple
 # Car Thing panel (optional; Notify → Displays switches it on). Talks to the device over adb.
 ensure_user stonepi-carthing
+# AgentLink (Pebble and other agent devices): bindings, tool policy, audit, speech.
+ensure_user stonepi-agentlink
 # Kiwix reader (stonepi-kiwix): system user, read-only on Library content via the
 # stonepi-library group (data dir is setgid 2750).
 ensure_user stonepi-kiwix
@@ -101,7 +104,7 @@ for g in video systemd-journal; do
   getent group "$g" >/dev/null 2>&1 && usermod -aG "$g" stonepi-dash || true
 done
 
-mkdir -p "$DEST" "$DATA/auth" "$DATA/newscast" "$DATA/fileserve/hosted" "$DATA/eventtrakr" "$DATA/pinboard" "$DATA/studio" "$DATA/pricescout" "$DATA/sportguide" "$DATA/pricewatch" "$DATA/library" "$DATA/carthing" "$DATA/dashboard" "$DATA/notify" "$DATA/vault" "$CONF"
+mkdir -p "$DEST" "$DATA/auth" "$DATA/newscast" "$DATA/fileserve/hosted" "$DATA/eventtrakr" "$DATA/pinboard" "$DATA/studio" "$DATA/pricescout" "$DATA/sportguide" "$DATA/pricewatch" "$DATA/library" "$DATA/ripple" "$DATA/carthing" "$DATA/agentlink" "$DATA/dashboard" "$DATA/notify" "$DATA/vault" "$CONF"
 if [[ ! -f "$DATA/exposure" ]]; then
   printf 'lan\n' > "$DATA/exposure"
   chmod 644 "$DATA/exposure"
@@ -324,11 +327,29 @@ STONEPI_APP_ID=library
 STONEPI_DATA_DIR=/var/lib/stonepi/library
 EOF
 
+write_env "$CONF/ripple.env" <<EOF
+PORT=8017
+PUBLIC_BASE_URL=http://${HOSTNAME_VALUE}.local/ripple
+STONEPI_PREFIX=/ripple
+STONEPI_APP_ID=ripple
+STONEPI_DATA_DIR=/var/lib/stonepi/ripple
+EOF
+
 # Car Thing panel: loopback only (the device reaches it through `adb reverse`).
 write_env "$CONF/carthing.env" <<EOF
 PORT=8013
 STONEPI_APP_ID=carthing
 STONEPI_DATA_DIR=/var/lib/stonepi/carthing
+EOF
+
+# AgentLink: loopback only; nginx (LAN, port 80) and Tailscale Funnel (away, :8443) sit in
+# front. Speech engines are added by deploy/stonepi-speech-setup.sh, which also records the
+# piper binary and voice here.
+write_env "$CONF/agentlink.env" <<EOF
+PORT=8015
+STONEPI_APP_ID=agentlink
+STONEPI_DATA_DIR=/var/lib/stonepi/agentlink
+AGENTLINK_SPEECH=auto
 EOF
 
 # Upgrade path: existing env files keep secrets but pick up new keys.
@@ -345,7 +366,9 @@ ensure_env_key "$CONF/pricescout.env" STONEPI_DATA_DIR /var/lib/stonepi/pricesco
 ensure_env_key "$CONF/sportguide.env" STONEPI_DATA_DIR /var/lib/stonepi/sportguide
 ensure_env_key "$CONF/pricewatch.env" STONEPI_DATA_DIR /var/lib/stonepi/pricewatch
 ensure_env_key "$CONF/library.env" STONEPI_DATA_DIR /var/lib/stonepi/library
+ensure_env_key "$CONF/ripple.env" STONEPI_DATA_DIR /var/lib/stonepi/ripple
 ensure_env_key "$CONF/carthing.env" STONEPI_DATA_DIR /var/lib/stonepi/carthing
+ensure_env_key "$CONF/agentlink.env" STONEPI_DATA_DIR /var/lib/stonepi/agentlink
 ensure_env_key "$CONF/newscast.env" PUBLIC_BASE_URL "http://${HOSTNAME_VALUE}.local/news"
 ensure_env_key "$CONF/fileserve.env" PUBLIC_BASE_URL "http://${HOSTNAME_VALUE}.local/files"
 ensure_env_key "$CONF/eventtrakr.env" PUBLIC_BASE_URL "http://${HOSTNAME_VALUE}.local/events"
@@ -359,6 +382,7 @@ ensure_env_key "$CONF/pricescout.env" PINBOARD_URL http://127.0.0.1:8004
 ensure_env_key "$CONF/sportguide.env" STONEPI_PREFIX /sports
 ensure_env_key "$CONF/pricewatch.env" STONEPI_PREFIX /watch
 ensure_env_key "$CONF/library.env" STONEPI_PREFIX /library
+ensure_env_key "$CONF/ripple.env" STONEPI_PREFIX /ripple
 
 # First admin password. Auth creates the first admin from ADMIN_PASSWORD when it starts with
 # no accounts, so only then: a random password in auth.env (Auth alone reads it, unlike
@@ -486,7 +510,8 @@ install_app() {
   case "$name" in
     dashboard) pkgs+=(stonepi_display stonepi_watch stonepi_automations stonepi_ai) ;;
     notify) pkgs+=(stonepi_display stonepi_notify stonepi_watch) ;;
-    carthing) pkgs+=(stonepi_display) ;;
+    carthing | ripple) pkgs+=(stonepi_display) ;;
+    agentlink) pkgs+=(stonepi_ai stonepi_watch stonepi_audit) ;;
     newscast | studio) pkgs+=(stonepi_ai) ;;
   esac
   if [[ "$extra" == "playwright" ]]; then
@@ -530,11 +555,19 @@ install_app pricescout stonepi-prices
 install_app sportguide stonepi-sport playwright
 install_app pricewatch stonepi-watch
 install_app library stonepi-library
+install_app ripple stonepi-ripple
 # Car Thing panel is optional: a tree without it still installs.
 if [[ -f "$DEST/apps/carthing/requirements.txt" ]]; then
   install_app carthing stonepi-carthing
 else
   echo "WARN: apps/carthing missing — Car Thing panel not installed." >&2
+fi
+install_app agentlink stonepi-agentlink
+# Speech engines live in AgentLink's venv but aren't in its requirements (they're big and
+# optional). Once deploy/stonepi-speech-setup.sh has run, keep them through venv rebuilds.
+if grep -q '^AGENTLINK_PIPER_VOICE=' "$CONF/agentlink.env" 2>/dev/null && [[ -f "$DEST/deploy/stonepi-speech-setup.sh" ]]; then
+  bash "$DEST/deploy/stonepi-speech-setup.sh" --packages-only || echo "WARN: speech packages for AgentLink failed to install; asks answer 'speech unavailable'." >&2
+  lock_venv "$DEST/apps/agentlink/.venv"
 fi
 
 # Runtime data lives under /var/lib/stonepi (STONEPI_DATA_DIR). Also create
@@ -552,7 +585,7 @@ ensure_writable_data() {
 APP_DATA_OWNERS=(auth:stonepi-auth dashboard:stonepi-dash notify:stonepi-notify newscast:stonepi-news
   fileserve:stonepi-files eventtrakr:stonepi-events pinboard:stonepi-pin studio:stonepi-studio
   pricescout:stonepi-prices sportguide:stonepi-sport pricewatch:stonepi-watch library:stonepi-library
-  carthing:stonepi-carthing)
+  ripple:stonepi-ripple carthing:stonepi-carthing agentlink:stonepi-agentlink)
 fix_data_ownership() {
   local pair dir user
   for pair in "${APP_DATA_OWNERS[@]}"; do
@@ -597,7 +630,9 @@ ensure_writable_data stonepi-prices "$DATA/pricescout" "$DEST/apps/pricescout/da
 ensure_writable_data stonepi-sport "$DATA/sportguide" "$DEST/apps/sportguide/data"
 ensure_writable_data stonepi-watch "$DATA/pricewatch" "$DEST/apps/pricewatch/data"
 ensure_writable_data stonepi-library "$DATA/library" "$DEST/apps/library/data"
+ensure_writable_data stonepi-ripple "$DATA/ripple" "$DEST/apps/ripple/data"
 ensure_writable_data stonepi-carthing "$DATA/carthing" "$DEST/apps/carthing/data"
+ensure_writable_data stonepi-agentlink "$DATA/agentlink" "$DEST/apps/agentlink/data"
 mkdir -p "$DATA/fileserve/hosted"
 chown -R stonepi-files:stonepi-files "$DATA/fileserve"
 
@@ -629,7 +664,7 @@ done
 
 # Vault readable by app service users (group stonepi-vault); dashboard can write.
 groupadd --system stonepi-vault 2>/dev/null || true
-for u in stonepi-dash stonepi-auth stonepi-notify stonepi-news stonepi-files stonepi-events stonepi-pin stonepi-studio stonepi-prices stonepi-sport stonepi-watch stonepi-library stonepi-carthing; do
+for u in stonepi-dash stonepi-auth stonepi-notify stonepi-news stonepi-files stonepi-events stonepi-pin stonepi-studio stonepi-prices stonepi-sport stonepi-watch stonepi-library stonepi-ripple stonepi-carthing stonepi-agentlink; do
   id -u "$u" >/dev/null 2>&1 && usermod -aG stonepi-vault "$u" || true
 done
 # Apps save their own keys (ntfy token, Bright Data, Google OAuth), so the group writes too;
@@ -649,6 +684,10 @@ if [[ -f /etc/avahi/avahi-daemon.conf ]]; then
 fi
 systemctl enable --now avahi-daemon >/dev/null 2>&1 || true
 systemctl restart avahi-daemon >/dev/null 2>&1 || true
+# Wi-Fi power saving delays or drops mDNS (stonepi.local) and device requests; keep it off.
+if [[ -f "$DEST/deploy/stonepi-wifi-powersave.sh" ]]; then
+  bash "$DEST/deploy/stonepi-wifi-powersave.sh" || echo "WARN: couldn't turn off Wi-Fi power saving." >&2
+fi
 
 install -m 755 "$DEST/deploy/backup/stonepi-backup.sh" /usr/local/sbin/stonepi-backup
 install -m 755 "$DEST/deploy/backup/stonepi-restore.sh" /usr/local/sbin/stonepi-restore
@@ -698,7 +737,7 @@ if [[ ! -f "$CONF/backup.conf" ]]; then
   cat > "$CONF/backup.conf" <<'EOF'
 LABEL=STONEPI-BACKUP
 UUID=
-APPS="stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library"
+APPS="stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library stonepi-ripple stonepi-agentlink"
 LOCAL_ENABLED=0
 LOCAL_CADENCE=weekly
 LOCAL_WEEKDAY=Sun
@@ -713,6 +752,9 @@ if [[ -f "$CONF/backup.conf" ]] && ! grep -q 'stonepi-notify' "$CONF/backup.conf
 fi
 if [[ -f "$CONF/backup.conf" ]] && ! grep -q 'stonepi-library' "$CONF/backup.conf" 2>/dev/null; then
   sed -i 's/^APPS="\(.*\)"/APPS="\1 stonepi-library"/' "$CONF/backup.conf" 2>/dev/null || true
+fi
+if [[ -f "$CONF/backup.conf" ]] && ! grep -q 'stonepi-ripple' "$CONF/backup.conf" 2>/dev/null; then
+  sed -i 's/^APPS="\(.*\)"/APPS="\1 stonepi-ripple"/' "$CONF/backup.conf" 2>/dev/null || true
 fi
 # Ensure local-backup keys exist on upgrades.
 if [[ -f "$CONF/backup.conf" ]] && ! grep -q '^LOCAL_ENABLED=' "$CONF/backup.conf" 2>/dev/null; then
@@ -768,7 +810,7 @@ nginx -t
 systemctl enable nginx >/dev/null 2>&1 || true
 systemctl reload nginx 2>/dev/null || systemctl restart nginx
 
-for unit in stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library stonepi-kiwix stonepi-carthing stonepi-backup stonepi-local-backup stonepi-recover stonepi-failover-monitor; do
+for unit in stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library stonepi-ripple stonepi-agentlink stonepi-kiwix stonepi-carthing stonepi-backup stonepi-local-backup stonepi-recover stonepi-failover-monitor; do
   if [[ -f "$DEST/deploy/systemd/${unit}.service" ]]; then
     cp "$DEST/deploy/systemd/${unit}.service" "/etc/systemd/system/${unit}.service"
   fi
@@ -895,6 +937,30 @@ else
   echo "WARN: deploy/carthing/51-stonepi-carthing.rules missing — Car Thing adb access not set up." >&2
 fi
 
+# Pebble "Away from home": Notify → Sidekick switches Tailscale Funnel (:8443 → nginx's
+# loopback Pebble listener) on and off through this root helper, only while a Pebble needs it.
+# Sidekick's Set up speech starts stonepi-speech-setup in the background and reads its progress:
+# sudo allows exactly --start and --status (no voice or model arguments).
+if [[ -f "$DEST/deploy/stonepi-pebble-funnel.sh" ]]; then
+  install -m 755 "$DEST/deploy/stonepi-pebble-funnel.sh" /usr/local/sbin/stonepi-pebble-funnel
+  sed -i 's/\r$//' /usr/local/sbin/stonepi-pebble-funnel  # a CRLF shebang (Windows copy) would not run
+  cat > /etc/sudoers.d/.stonepi-sidekick.new <<'EOF'
+stonepi-notify ALL=(root) NOPASSWD: /usr/local/sbin/stonepi-pebble-funnel
+stonepi-notify ALL=(root) NOPASSWD: /usr/local/sbin/stonepi-speech-setup --start, /usr/local/sbin/stonepi-speech-setup --status
+EOF
+  chmod 440 /etc/sudoers.d/.stonepi-sidekick.new
+  if command -v visudo >/dev/null 2>&1 && ! visudo -cf /etc/sudoers.d/.stonepi-sidekick.new >/dev/null 2>&1; then
+    rm -f /etc/sudoers.d/.stonepi-sidekick.new
+    echo "WARN: /etc/sudoers.d/stonepi-sidekick failed visudo check — Pebble away use and speech setup can't be run from Sidekick." >&2
+  else
+    mv -f /etc/sudoers.d/.stonepi-sidekick.new /etc/sudoers.d/stonepi-sidekick
+  fi
+fi
+if [[ -f "$DEST/deploy/stonepi-speech-setup.sh" ]]; then
+  install -m 755 "$DEST/deploy/stonepi-speech-setup.sh" /usr/local/sbin/stonepi-speech-setup
+  sed -i 's/\r$//' /usr/local/sbin/stonepi-speech-setup
+fi
+
 # Library: root helper for apt (kiwix-tools), storage mounts, and stonepi-kiwix control.
 # stonepi-kiwix.service is installed above but never enabled here: the helper enables
 # and starts it once content exists.
@@ -910,7 +976,7 @@ if command -v visudo >/dev/null 2>&1 && ! visudo -cf /etc/sudoers.d/stonepi-libr
 fi
 
 systemctl daemon-reload
-systemctl enable --now stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library
+systemctl enable --now stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library stonepi-ripple stonepi-agentlink
 systemctl enable --now stonepi-recover >/dev/null 2>&1 || true
 systemctl enable --now stonepi-failover-monitor >/dev/null 2>&1 || true
 # enable --now leaves an already-running unit on its old code: restart so an upgrade applies.
@@ -978,7 +1044,7 @@ chmod 600 "$RECOVER_PASSWD"
 fix_data_ownership
 
 # Pick up stonepi-vault supplementary group + any new env keys.
-systemctl restart stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library >/dev/null 2>&1 || true
+systemctl restart stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library stonepi-ripple stonepi-agentlink >/dev/null 2>&1 || true
 # Optional services: only restart what the household switched on.
 if systemctl is-enabled --quiet stonepi-carthing 2>/dev/null; then
   systemctl restart stonepi-carthing >/dev/null 2>&1 || true
@@ -991,7 +1057,7 @@ systemctl try-restart stonepi-kiwix >/dev/null 2>&1 || true
 sleep 3
 echo
 echo "Health checks"
-UNITS=(stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library)
+UNITS=(stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library stonepi-ripple stonepi-agentlink)
 failed_units=0
 for u in "${UNITS[@]}"; do
   if systemctl is-active --quiet "$u"; then
@@ -1095,6 +1161,13 @@ if systemctl is-enabled --quiet stonepi-carthing 2>/dev/null; then
   rc "Car Thing panel is running" systemctl is-active --quiet stonepi-carthing
 fi
 rc "Tailscale is installed (remote access; re-run the installer to retry)" command -v tailscale
+if [[ -x /usr/local/sbin/stonepi-pebble-funnel ]]; then
+  rc "Notify can switch Pebble's Away from home" sudo -u stonepi-notify sudo -n /usr/local/sbin/stonepi-pebble-funnel status
+fi
+if [[ -x /usr/local/sbin/stonepi-speech-setup ]]; then
+  rc "Notify can set up Pebble's speech" sudo -u stonepi-notify sudo -n /usr/local/sbin/stonepi-speech-setup --status
+fi
+rc "Pebble's LAN path reaches AgentLink" sh -c "curl -s -o /dev/null -w '%{http_code}' -m 5 http://127.0.0.1/agent/pebble/v1/config | grep -qx 401"
 rc "Dashboard can install app updates" sudo -u stonepi-dash sudo -n /usr/local/sbin/stonepi-update-helper status pinboard
 rc "EventTrakr poster reading (tesseract) is installed" command -v tesseract
 for user in stonepi-events stonepi-sport stonepi-notify; do
@@ -1125,6 +1198,7 @@ echo "  Pinboard   http://${HOSTNAME_VALUE}.local/pinboard/"
 echo "  Studio     http://${HOSTNAME_VALUE}.local/studio/"
 echo "  PriceScout http://${HOSTNAME_VALUE}.local/prices/"
 echo "  Library    http://${HOSTNAME_VALUE}.local/library/"
+echo "  Ripple     http://${HOSTNAME_VALUE}.local/ripple/"
 echo "  Cockpit    https://${HOSTNAME_VALUE}.local:9090  (or https://<pi-lan-ip>:9090)"
 if [[ -n "$NEW_ADMIN_PASSWORD" ]]; then
   echo "  Sign in:   ${ADMIN_USER_VALUE:-admin} / $NEW_ADMIN_PASSWORD  — change it under Settings → General → Your password."

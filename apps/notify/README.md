@@ -11,7 +11,7 @@ Shared StonePi sign-in. **Not a launcher tile** (`launcher: False`) — like Aut
 
 ## What it does
 
-- **Displays** — one per TRMNL screen (built-in Dashboard Display + as many as you add), each with its own TRMNL webhook, interval and device (TRMNL OG or TRMNL X). **Add a Display** offers two kinds: **Widgets** (a drag-and-drop **screen builder** over a real render of the device; needs a TRMNL Private Plugin) and **Web page** (a captured page turned into e-ink; needs a TRMNL Webhook Image plugin). Each Display card shows its plugin, and each Display page opens with a **setup checklist** that ticks itself off.
+- **Displays** — one per TRMNL screen (built-in Dashboard Display + as many as you add), each with its own TRMNL webhook, interval and device (TRMNL OG or TRMNL X). **Add a Display** offers **Widgets** (a drag-and-drop **screen builder** over a real render of the device; needs a TRMNL Private Plugin), **Web page** (a captured page turned into e-ink; needs a TRMNL Webhook Image plugin), and one kind per app with a display page, such as **Ripple family board** (name, model and webhook; see below). Each Display card shows its plugin, and each Display page opens with a **setup checklist** that ticks itself off.
 - **Web pages (shared)** — pages the displays can show as a captured image (e.g. a self-hosted Homepage dashboard): address, clean-up preset (**Flat** removes background images, blur and shadows), parts to hide (CSS selectors), extra CSS, zoom and a wait for late widgets. **Preview** shows the page in colour and where it's used. Captured by headless Chromium (Playwright, the shared copy in `/opt/stonepi/.cache/ms-playwright`, behind the cross-app Chromium lock; a capture gives up after 60 s waiting for it); one capture serves a preview, a push and the Car Thing within a minute. A captured page can't reach this Pi's loopback services. Stored in `web_pages.json`.
 - **Car Thing** — the touch-and-dial panel's saved configs, edited beside a live preview (Displays → Car Thing; see [Car Thing editor](#car-thing-editor)). The device, Spotify sign-in, saved configs and earlier versions are on **Setup** (`/displays/carthing/setup`). **Music:** connect Spotify under Setup (admins; your own developer app, PKCE, one account for the house), then presets 1–4, a default speaker, the Now Playing look, and dial-volume, artwork-screensaver and Liked Songs options under Look → Music or on a Music widget. Spotify ends a sign-in 6 months after connecting, so Setup's Music card shows the expiry date (worked out from `connected_at`; an admin can change it under **Change the expiry date**), turns amber in the last 14 days and red with Reconnect once it has run out or the Car Thing service gets `invalid_grant`. A once-a-day check sends the admin events `carthing.spotify_expiring` (14 days before) and `carthing.spotify_expired`, once per expiry date. Reconnecting starts a fresh 6 months.
 - **Phone alerts** — **ntfy**: the household token and topic, and which events may notify. People with the Phone alerts permission set up their own alerts from the bell.
@@ -54,6 +54,27 @@ The page's address, clean-up, parts to hide, extra CSS, zoom and wait sit on the
 Each push captures the page at the panel's size (OG 800×480; X 1872×1404, laid out at 1040×780 × 1.8), converts it with Pillow (greyscale, contrast stretch, invert dark pages automatically, always or never, then black and white with a cut-off slider, 4 or 16 greys, thresholded or dithered; the default is black and white on the OG and 16 greys on the X) into a true greyscale PNG, and POSTs it raw (`Content-Type: image/png`). Webhook Image takes 12 images an hour on any plan; StonePi sends at most 10, every 5–120 minutes, and never re-sends an unchanged image. Images over TRMNL's 1 MB aren't sent (the Display suggests fewer greys or no dithering). One push runs per Display at a time. **Preview** on the Display shows the exact image a push sends; **Push now** pushes it straight away. A push TRMNL refuses (4xx) says which plugin the Display needs, in case the webhook came from the other kind.
 
 Upgrading: the old single TRMNL destination moves onto the Display it pushed, in **legacy** mode (its plugin still holds the older pasted markup, so every flat variable is still sent). Paste the universal template and switch the Display to it to use the builder layout.
+
+### App display pages (Ripple)
+
+An app can offer its own e-ink page: the catalog marks it with `capture_key` (a signed endpoint) and
+`display_page` (with a label and blurb). `app/app_pages.py`:
+
+- **Add a Display → Ripple family board** asks only for a name, the TRMNL model and the Webhook Image
+  webhook. It creates the shared page (`http://127.0.0.1:<port>/display`, no clean-up, no wait), a web
+  Display with the model's greys, never inverted and no dithering (the app prepares its photos), push on
+  every 60 min, the webhook in the Vault, and pushes once. Ripple → Settings → Family display links
+  here with the card picked (`/displays?add=ripple`).
+- **Capture keys:** for a page at that app's port on this Pi, every capture first fetches a one-off key
+  (signed v2) and adds `k`, `w`, `h`, `scale` and `bits` to the address (`stonepi_display.webcapture`
+  key provider). The app accepts it once, within two minutes, only from loopback without forwarding
+  headers.
+- **Change nudge:** the app posts `POST /api/internal/web/changed` (signed v2, `{"app": "ripple"}`).
+  Notify waits 20 s to batch quick edits, forgets that page's cached captures, and pushes its Displays
+  (skip-unchanged, hourly budget). Pushes held back (one already running, the hourly limit, a TRMNL
+  back-off) are retried every 2 minutes for up to an hour.
+- **Status for the app:** `GET /api/internal/web/app-displays/{app}` (signed) lists the app's Displays
+  and their last push, for its own settings page.
 
 ## Car Thing editor
 

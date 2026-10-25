@@ -1,5 +1,10 @@
 # Changelog — Car Thing panel
 
+## 0.5.0 — 2026-10-25
+
+### Changed
+- The weather labels (Clear, Overcast, Light rain…) come from `stonepi_display.weather`, shared with Ripple's family display. No change on the panel.
+
 ## 0.4.0 — 2026-10-21
 
 ### Changed

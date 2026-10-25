@@ -36,6 +36,7 @@ Home tiles. Each app has its own README with setup details.
 | **[FileServe](apps/fileserve/README.md)** | `/files/` | Put HTML, PDF, Word or zip sites on a household URL, with keep-until and passwords. Hosted pages load sandboxed. |
 | **[Studio](apps/studio/README.md)** | `/studio/` | Chat-build a simple site, guide or game and publish it to FileServe. |
 | **[Pinboard](apps/pinboard/README.md)** | `/pinboard/` | Household notices and reminders, on phones and displays. |
+| **[Ripple](apps/ripple/README.md)** | `/ripple/` | Keep family far away up to date: post news and photos (location details removed), and the newest appear on a TRMNL e-ink screen at their home, with an optional line for your city, part of the day, time difference and weather. |
 
 ## Platform
 
@@ -45,15 +46,17 @@ Always on; not Home tiles.
 |------|------|------|
 | **[Dashboard](apps/dashboard/README.md)** | `/` | Home launcher, **Health** (host and apps, updates live), **Services** (enable, start, stop, restart, logs), **Users**, and admin **Settings**: General, Network, Vault, AI, Automations, Updates, Backup, About. |
 | **[Auth](apps/auth/README.md)** | `/auth/` | One household sign-in across every app. |
-| **[Notify](apps/notify/README.md)** | `/notify/` | Where apps' updates go: TRMNL wall displays, the Car Thing panel, and ntfy phone alerts. Also shows web pages the Pi can reach (a Homepage dashboard, say) on either display. |
+| **[Notify](apps/notify/README.md)** | `/notify/` | Where apps' updates go: TRMNL wall displays, the Car Thing panel, and ntfy phone alerts. Also shows web pages the Pi can reach (a Homepage dashboard, say) on either display, and **Sidekick**, where Pebbles are paired and managed. |
+| **[AgentLink](apps/agentlink/README.md)** | (Pebble API `/agent/pebble/v1/`) | The one way in for agents and agent devices such as **Pebble**: each device is bound to one person, uses only the tools switched on for it, and every use is logged (never what was said). Speech is turned into text and back on the Pi. Managed in Notify → Sidekick. Ships with the platform. |
 | **[Car Thing](apps/carthing/README.md)** | (USB) | A Spotify Car Thing plugged into the Pi becomes a touch-and-dial panel: pages of widgets (System, Clock, Clock & weather, Weather, Music, sport, events, news, Pinboard, a web page) under a header that can stay, auto-hide or go, a Spotify remote (Now Playing with artwork-coloured backgrounds, seek and a liked tick; Speakers, presets, dial volume) and a weather screen, a screensaver when idle (clock, album artwork, a web page, Bouncing logo, Matrix, or the Windows 98 3D Pipes, Flying Through Space, Mystify Your Mind, 3D Flower Box and 3D Maze), and a System screen with each service's state, memory and last log lines, and restarts behind an admin PIN. Set up under Notify → Displays → Car Thing. Ships with the platform. |
 | **[Recover](apps/recover/README.md)** | `/recover/`, `:8099` | Recovery Console for when the portal itself is down: restart services, restore a backup. |
 | **[Cockpit](https://cockpit-project.org/)** | `:9090` | Web console for the Raspberry Pi's operating system, separate from StonePi: system updates, storage, networking, logs and a terminal in the browser. Installed by the installer; sign in with your Pi's Linux user, not your StonePi account. |
 
 **Displays and alerts.** Apps own their data and only emit when something useful happens; Notify decides where it goes.
 
-- **TRMNL** (e-ink, for a wall or fridge): one Display per screen, laid out in a drag-and-drop builder over a real render of the device, pushed on a timer. A **Web page** Display instead shows a captured web page, converted for e-ink.
+- **TRMNL** (e-ink, for a wall or fridge): one Display per screen, laid out in a drag-and-drop builder over a real render of the device, pushed on a timer. A **Web page** Display instead shows a captured web page, converted for e-ink. A **Ripple family board** Display shows Ripple's posts on a TRMNL at family elsewhere: name, model and webhook, and the rest is set up for you (from Ripple → Settings → Family display).
 - **Car Thing** (touch and dial, for a desk or dash): saved configs with pages, widget sizes, page header, button and dial actions, clock faces, screensaver styles, the Now Playing look and Spotify music presets, edited beside a live preview. Device, Spotify sign-in and saved configs are on its Setup page. The device keeps its own firmware and gets its screen back when the panel is switched off.
+- **Pebble** (a small round voice sidekick): hold to talk and ask about StonePi, the weather, today's events, reminders and notices, or the news; its face shows the house's mood. Each Pebble belongs to one person and only uses the apps switched on for it in Notify → Sidekick; it can work away from home over Tailscale Funnel, switched on per Pebble.
 - **ntfy** (phone): paper ready, a PriceWatch strike, an event or kick-off you follow, a backup that needs attention, a Spotify sign-in about to run out.
 - **Web pages** (Notify → Displays → Web pages): any page the Pi can reach, captured with the shared headless Chromium, with a clean-up preset, parts to hide, extra CSS and zoom. Shown on a TRMNL Web page Display, or on the Car Thing as a full-page widget or a screensaver.
 
@@ -73,6 +76,7 @@ Admins add people under **Users**, choose which apps each person can open, and w
 | FileServe | Publish pages · Publish without a password | on · **off** |
 | Studio | Use LLM · Publish to FileServe | off · off |
 | Pinboard | Post notices · Assign reminders to others | on · on |
+| Ripple | (none: anyone with Ripple posts; authors change their own posts, admins any post and the family display) | — |
 
 Defaults that are off cover shared or costly actions: refresh scrapes, multi-gigabyte downloads, paid lookups, AI spend and publishing open pages. Household-wide settings (NewsCast's paper layout and filters, Library storage and backups, PriceWatch retention and lookups, the PriceScout postcode, the Bright Data limit) are admin-only.
 
@@ -84,6 +88,8 @@ StonePi needs only the Pi and a phone or laptop. Add what fits your household; k
 |-------|------|-------|
 | The paper on an e-reader | **[Xteink X3 / X4](https://www.xteink.com/products/xteink-x3)** with **[CrossPoint](https://crosspointreader.com/)**, or a Kobo with **[KOReader](https://koreader.rocks/)** | NewsCast → Reader ([setup](apps/newscast/README.md#e-reader)) |
 | A wall or fridge display | **[TRMNL](https://trmnl.com/)** | Notify → Displays: one Private Plugin per screen, webhook in Vault; a Web page Display uses a Webhook Image plugin instead |
+| A voice sidekick | **Pebble**: a Waveshare ESP32-S3-Touch-AMOLED-1.75C running the [Pebble firmware](https://github.com/ast0ne1/pebble-esp32); a 64-bit Raspberry Pi OS for speech | Notify → Sidekick (add with the code it shows); speech engines: Sidekick → **Set up speech** (or `sudo stonepi-speech-setup`); the model that answers: Dashboard → Settings → AI → Spoken replies |
+| A screen for family far away | A **[TRMNL](https://trmnl.com/)** at their home with a **Webhook Image** plugin | Ripple → Settings → Family display → Set up the family display |
 | A desk or dash control panel | **Spotify Car Thing** with ADB-enabled firmware, on USB | Notify → Displays → Car Thing |
 | Spotify control on the Car Thing | **Spotify Premium** and your own (free) **[Spotify developer app](https://developer.spotify.com/dashboard)** | Notify → Displays → Car Thing → Setup → Music: paste the client ID and connect (`SPOTIFY_CLIENT_ID`, `SPOTIFY_REFRESH_TOKEN` are saved in the Vault for you). The sign-in lasts 6 months; Notify warns 14 days before it runs out |
 | Phone alerts | **[ntfy](https://ntfy.sh/)** topic (hosted or self-hosted) | Notify → Phone alerts (`STONEPI_NTFY_TOKEN`) |
@@ -132,6 +138,7 @@ On Windows, `scripts\run-dev.bat` creates per-app virtualenvs and starts everyth
 | | 8011 | Auth | |
 | | 8012 | Notify | Car Thing editor at `/notify/displays/carthing` |
 | | 8013 | Car Thing panel | Preview; with `adb` on PATH it also drives a plugged-in Car Thing |
+| | 8015 | AgentLink | Listens on all interfaces with faked speech, so a Pebble on the LAN can pair with the PC |
 | **Home apps** | 8001 | NewsCast | |
 | | 8002 | FileServe | |
 | | 8003 | EventTrakr | |
@@ -141,22 +148,25 @@ On Windows, `scripts\run-dev.bat` creates per-app virtualenvs and starts everyth
 | | 8007 | SportGuide | |
 | | 8008 | PriceWatch | |
 | | 8009 | Library | No Kiwix on Windows |
+| | 8017 | Ripple | The family display page is `/display` |
 
 Recover (`:8099` on the Pi) isn't started in dev.
 
-Each app and package has a `tests/` folder (`python -m pytest -q` with the `packages/*` folders on `PYTHONPATH`). Releases: build with `python scripts/build_release_zips.py --all` and follow [deploy/RELEASE.md](deploy/RELEASE.md); versions and notes are in [CHANGELOG.md](CHANGELOG.md). System apps and the Car Thing share the platform version; Home apps have their own.
+Each app and package has a `tests/` folder (`python -m pytest -q` with the `packages/*` folders on `PYTHONPATH`). Releases: build with `python scripts/build_release_zips.py --all` and follow [deploy/RELEASE.md](deploy/RELEASE.md); versions and notes are in [CHANGELOG.md](CHANGELOG.md). System apps, the Car Thing and AgentLink share the platform version; Home apps have their own.
 
 ```text
-apps/            dashboard, auth, notify, recover, carthing (platform)
+apps/            dashboard, auth, notify, recover, carthing, agentlink (platform)
                  newscast, eventtrakr, sportguide, pricescout, pricewatch,
-                 library, fileserve, studio, pinboard (Home apps)
+                 library, fileserve, studio, pinboard, ripple (Home apps)
 packages/        stonepi_auth      sign-in, app catalog and permissions, Auth roster, platform lock
                  stonepi_vault     encrypted secrets, shared Bright Data and AI request limits
-                 stonepi_display   display widgets, Car Thing config, Spotify sign-in, web page captures
+                 stonepi_display   display widgets, Car Thing config, Spotify sign-in, web page captures,
+                                   e-ink greys, weather labels
                  stonepi_browser   shared headless Chromium (lock, page capture)
                  stonepi_ai        platform AI: providers, model tiers, fallback, shared health
                  stonepi_notify    Notify routing and delivery
-                 stonepi_contracts event and widget contracts
+                 stonepi_contracts event, widget and agent-tool contracts
+                 stonepi_audit     audit log (AgentLink: who used what, never what was said)
                  stonepi_update    app updates
                  stonepi_brand     design system: tokens, fonts, logos, app icons
                  stonepi_automations, stonepi_watch

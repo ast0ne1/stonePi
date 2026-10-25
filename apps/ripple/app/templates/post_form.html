@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{% if post %}Edit post{% else %}New post{% endif %} · Ripple{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <h1>{% if post %}Edit post{% else %}New post{% endif %}</h1>
+  <p class="lede">{% if post %}Changes show on the family display after its next update.{% else %}Share an update with the family.{% endif %}</p>
+</section>
+
+<section class="card stack">
+  <form
+    method="post"
+    action="{% if post %}/posts/{{ post.id }}{% else %}/posts{% endif %}"
+    enctype="multipart/form-data"
+    class="stack"
+    data-post-form
+    data-max-photos="{{ max_photos }}"
+    data-max-bytes="{{ max_photo_mb * 1024 * 1024 }}"
+    data-existing="{{ post.media | length if post else 0 }}"
+  >
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <p class="banner" data-form-error hidden></p>
+    <label>
+      Update
+      <textarea name="body" rows="5" maxlength="2000" placeholder="What's new?" {% if not post %}autofocus{% endif %}>{{ post.body if post else "" }}</textarea>
+    </label>
+
+    <div class="photo-picker">
+      <p class="photo-picker-label">Photos</p>
+      {% if post and post.media %}
+      <ul class="photo-rows">
+        {% for m in post.media %}
+        <li class="photo-row" data-existing-photo>
+          {% if m.available %}
+          <img src="/media/{{ m.storage_key }}/thumb" alt="" width="{{ m.thumb_w }}" height="{{ m.thumb_h }}" loading="lazy" />
+          {% else %}
+          <span class="photo-missing">Photo unavailable</span>
+          {% endif %}
+          <div class="photo-row-fields">
+            <input name="caption_{{ m.id }}" value="{{ m.caption }}" maxlength="{{ caption_max }}" placeholder="Caption (optional)" aria-label="Caption" autocomplete="off" />
+            <label class="check-row">
+              <input type="checkbox" name="remove" value="{{ m.id }}" data-remove-photo />
+              <span>Remove this photo</span>
+            </label>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      <ul class="photo-rows" data-new-photos></ul>
+      <label class="btn btn-ghost btn-with-icon photo-add">
+        {{ icon("photo") }} Add photos
+        <input class="visually-hidden" type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple data-photo-input />
+      </label>
+      <p class="hint">Up to {{ max_photos }} photo{{ "s" if max_photos != 1 }} a post: JPEG, PNG or WebP, up to {{ max_photo_mb }} MB each. Location and camera details are removed.</p>
+    </div>
+
+    <label class="check-row">
+      <input type="checkbox" name="show_on_display" value="1" {% if not post or post.show_on_display %}checked{% endif %} />
+      <span>Show on the family display</span>
+    </label>
+    <div class="upload-progress" data-upload-progress hidden>
+      <progress max="100" value="0"></progress>
+      <span class="hint" data-upload-label>Uploading…</span>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary btn-with-icon" type="submit" data-submit>{{ icon("check") }} {% if post %}Save{% else %}Post{% endif %}</button>
+      <a class="btn btn-ghost" href="/">Cancel</a>
+    </div>
+  </form>
+</section>
+
+<template data-photo-template>
+  <li class="photo-row">
+    <img alt="" />
+    <div class="photo-row-fields">
+      <input name="captions" maxlength="{{ caption_max }}" placeholder="Caption (optional)" aria-label="Caption" autocomplete="off" />
+      <button class="btn btn-ghost btn-with-icon photo-drop" type="button">{{ icon("close") }} Don't add</button>
+    </div>
+  </li>
+</template>
+{% endblock %}

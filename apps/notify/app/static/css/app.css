@@ -146,7 +146,7 @@ input, select { font-size: 16px; }
   flex: 0 0 auto;
   z-index: 12;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 2px;
   padding: 8px var(--gutter) calc(10px + var(--safe-bottom));
   background: color-mix(in srgb, var(--card) 94%, transparent);
@@ -1324,6 +1324,36 @@ details.alerts-section[open] > summary .section-heading::after { transform: rota
 .ct-status { display: flex; align-items: center; gap: 8px; margin: 0; }
 .ct-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
 .ct-dot.on { background: var(--ok); }
+
+/* Sidekick (Pebble) */
+.sk-checks, .sk-recent { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.sk-checks li, .sk-recent li { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; }
+.sk-checks .ct-dot, .sk-recent .ct-dot { align-self: center; }
+.sk-checks-row { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.sk-more > summary, .sk-fold > summary { cursor: pointer; min-height: var(--tap); display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.sk-more[open] > summary { margin-bottom: 8px; }
+.sk-fold { border-top: 1px solid var(--line); }
+.sk-fold[open] > summary { margin-bottom: 8px; }
+.sk-fold:last-of-type { border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.sk-add > summary { cursor: pointer; list-style: none; }
+.sk-add > summary::-webkit-details-marker { display: none; }
+.sk-add > summary .section-heading { margin: 0; }
+.sk-add > summary .section-heading::after { content: "\203A"; margin-left: auto; color: var(--muted); font-size: 1.2rem; transition: transform .12s; }
+.sk-add[open] > summary .section-heading::after { transform: rotate(90deg); }
+.sk-mood { margin: 0; }
+.sk-tabbar { padding-bottom: 8px; }
+.sk-tabs { width: fit-content; max-width: 100%; }
+.sk-tabs .seg-btn { padding: 0 16px; }
+@media (max-width: 640px) {
+  .sk-tabbar { padding-bottom: 12px; }
+  .sk-tabs { display: flex; flex-wrap: nowrap; width: 100%; }
+  .sk-tabs .seg-btn { flex: 1 1 auto; padding: 0 10px; white-space: nowrap; }
+}
+.sk-more > summary, .sk-fold > summary { list-style: none; }
+.sk-more > summary::-webkit-details-marker, .sk-fold > summary::-webkit-details-marker { display: none; }
+.sk-more > summary::after, .sk-fold > summary::after { content: "\203A"; margin-left: auto; color: var(--muted); font-size: 1.2rem; transition: transform .12s; }
+.sk-more[open] > summary::after, .sk-fold[open] > summary::after { transform: rotate(90deg); }
+.sk-code { text-transform: uppercase; letter-spacing: 0.3em; font-size: 1.4rem; max-width: 9ch; }
 /* Spotify sign-in expiry (U21): plain, then amber in the last 14 days, red once it's gone. */
 .ct-expiry > p { margin: 0; }
 .ct-expiry.is-soon, .ct-expiry.is-expired, .ct-expiry.is-revoked { padding: 10px 12px; border-radius: 8px; border: 1px solid; }

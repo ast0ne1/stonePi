@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import uuid
 from urllib.parse import quote
 
@@ -276,6 +277,7 @@ def home(request: Request):
 def displays_page(request: Request):
     import stonepi_display
 
+    from app.app_pages import display_apps
     from app.carthing_routes import carthing_summary
     from app.web_routes import web_pages_summary
 
@@ -298,6 +300,10 @@ def displays_page(request: Request):
                 "webhook_ids": webhook_ids,
                 "carthing": carthing_summary(),
                 "web_pages": web_pages_summary(),
+                # Apps with a display page (Ripple): their own kind, opened by ?add=<app>.
+                "app_displays": display_apps(),
+                "add_app": request.query_params.get("add") or "",
+                "devices": DEVICE_CHOICES,
             },
         ),
     )
@@ -473,6 +479,28 @@ async def api_display_preview(request: Request, display_id: str):
     }
 
 
+async def _create_app_display(app_id: str, name: str, form) -> RedirectResponse:
+    """Add a Display (Ripple's family board): name, model and webhook; the rest is set up here.
+    The first push runs in the background, so the page opens straight away."""
+    from app.app_pages import create_app_display, display_app
+    from app.boot import push_one_display
+
+    app = display_app(app_id)
+    if app is None:
+        return RedirectResponse("/displays?err=That+kind+of+Display+isn%27t+available", status_code=303)
+    back = f"/displays?add={quote(app_id)}"
+    webhook = str(form.get("webhook") or "").strip()
+    try:
+        display_id = create_app_display(app, name=name, device=str(form.get("device") or "og"), webhook=webhook)
+    except ValueError as exc:
+        return RedirectResponse(f"{back}&err={quote('Webhook: ' + str(exc)[:160])}#add-display", status_code=303)
+    except Exception:
+        return RedirectResponse(f"{back}&err=Could+not+save+the+webhook+to+the+vault#add-display", status_code=303)
+    threading.Thread(target=push_one_display, args=(display_id,), name="first-push", daemon=True).start()
+    message = f"{name} is set up. Its first image is on its way to TRMNL."
+    return RedirectResponse(f"/displays/{display_id}?msg={quote(message)}", status_code=303)
+
+
 @router.post("/displays/create")
 async def displays_create(request: Request):
     import stonepi_display
@@ -484,8 +512,11 @@ async def displays_create(request: Request):
     if not csrf_ok_request(request.cookies, str(form.get("csrf_token") or "")):
         return RedirectResponse("/displays?err=Form+expired", status_code=303)
     name = str(form.get("name") or "").strip() or "New display"
+    raw_kind = str(form.get("kind") or "")
+    if raw_kind.startswith("app:"):
+        return await _create_app_display(raw_kind[4:], name, form)
     display_id = str(uuid.uuid4())[:8]
-    kind = "web" if str(form.get("kind") or "") == "web" else "widgets"
+    kind = "web" if raw_kind == "web" else "widgets"
     page_id = ""
     if kind == "web":
         # The page comes with the Display: an existing one, or a new one from the address.

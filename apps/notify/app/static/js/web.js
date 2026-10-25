@@ -10,12 +10,26 @@
     const pick = create.querySelector("[data-page-pick]");
     const newPage = create.querySelector("[data-new-page]");
     const url = newPage.querySelector('input[name="url"]');
+    // App displays (Ripple's family board): only a model and the webhook.
+    const appFields = create.querySelector("[data-app-fields]");
+    const webhook = create.querySelector("[data-app-webhook]");
+    const name = create.querySelector("[data-display-name]");
+    const appLabels = new Set(
+      Array.from(create.querySelectorAll("[data-app-label]")).map((r) => r.dataset.appLabel)
+    );
     const sync = () => {
-      const web = create.querySelector("[data-kind]:checked")?.value === "web";
+      const checked = create.querySelector("[data-kind]:checked");
+      const kind = checked?.value || "";
+      const web = kind === "web";
+      const app = kind.startsWith("app:");
       fields.hidden = !web;
       const needsUrl = web && !(pick && pick.value);
       newPage.hidden = !needsUrl;
       url.required = needsUrl;
+      if (appFields) appFields.hidden = !app;
+      if (webhook) webhook.required = app;
+      // Suggest the app's name, but never overwrite one the admin typed.
+      if (name && (!name.value || appLabels.has(name.value))) name.value = app ? checked.dataset.appLabel : "";
     };
     create.querySelectorAll("[data-kind]").forEach((r) => r.addEventListener("change", sync));
     pick?.addEventListener("change", sync);

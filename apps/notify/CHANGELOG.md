@@ -1,5 +1,30 @@
 # Changelog — Notify
 
+## 0.5.0 — 2026-10-25
+
+### Added
+- **Sidekick** (`/sidekick`, a fourth item in the menu): pair and manage Pebbles. **Add a Pebble** takes the 4-character code the device shows, who it belongs to and an optional name. Each Pebble's card has its name, how to talk (hold, press to start and stop, wake word), **Away from home**, and what it may use, plus **Remove**. **Ready to answer?** shows listening, thinking and speaking, with a link to Settings → AI when no model is set up; **Recent activity** lists what each Pebble did. Talks to AgentLink's signed internal API (`stonepi_auth.internal` v2); Notify never sees a device token.
+- Sidekick's menu icon is Pebble itself (bean body, face window, chest slabs). The page has **← Settings** like Displays and Phone alerts, and always links to Dashboard → Settings → AI, where the model that answers (Pebble → Spoken replies) is chosen.
+- Saving or removing a Pebble switches Tailscale Funnel on or off through `stonepi-pebble-funnel` (sudoers), so it's on only while a Pebble may go away from home. If Tailscale won't allow Funnel, the error links to the admin console page that turns it on.
+- **Sidekick, tidied:** a one-line **Ready to answer?** (details and privacy fold away), then three tabs: **Pebbles** (each Pebble with its mood and why, its settings folded into Name and talking · What Pebble can use · Away from home, one Save and Remove; **Add a Pebble** folds open, open by default when there are none), **Voice & quiet hours**, and **Activity**. Nothing removed; saves land back on the tab they came from, and without JavaScript every section shows.
+- **Weather for Pebble:** a signed `POST /api/internal/agent` (AgentLink only; nginx never routes it) answers `get_weather` from the Car Thing's weather place and units, through Open-Meteo, cached 10 minutes (an older forecast if the service is down). Sidekick's activity shows "Checked the weather".
+- **Set up speech** (Sidekick → Ready to answer?, when Pebble can't listen or speak): one button installs speech recognition, a voice and its model on the Pi (about 200 MB, a few minutes) in the background as the `stonepi-speech-setup` unit, with the step it's on; the page reloads when it's done, and a failed run shows why with **Try again**. On a 32-bit OS it explains that speech needs 64-bit Raspberry Pi OS. sudo allows `stonepi-speech-setup` with exactly `--start` and `--status`.
+- **Quiet hours** (Sidekick → Voice & quiet hours): when every Pebble looks sleepy, default 22:00–07:00, or off.
+- Sidekick's privacy notes say Pebble remembers the last question and answer for 2 minutes, in memory only, so you can answer its follow-up questions.
+- **Adding a Pebble updates the page by itself:** after you approve the code, Sidekick waits for the Pebble to finish pairing (it does on its next check, within a few seconds), then opens its card with "… is paired." No manual refresh; after 90 s it says what to check instead.
+- **Add a Display → Ripple family board** (third kind, after Widgets and Web page).
+  - It asks only for a name, the TRMNL model and the Webhook Image webhook, then sets up the page, the model's greys, no inverting or dithering, push every hour and the webhook in the Vault, and sends the first image.
+  - Ripple's settings open it with the card picked (`/displays?add=ripple`).
+  - A bad webhook or a Vault failure leaves nothing half-made.
+- **App display pages** (`app/app_pages.py`):
+  - A web page served by a StonePi app that protects it (catalog `capture_key`) gets a one-off key for each capture, plus the panel's size and bit depth.
+  - The app tells Notify when its page changed (`/api/internal/web/changed`, signed v2). Notify waits 20 s to batch edits, then pushes that app's Displays.
+  - Pushes held back (already running, hourly limit, TRMNL back-off) are tried again every 2 minutes for up to an hour.
+  - `/api/internal/web/app-displays/{app}` (signed) gives the app its Displays' last push.
+
+### Changed
+- A change to one app's page now drops only that page's cached captures (`webcapture.forget`), not every page's.
+
 ## 0.4.0 — 2026-10-21
 
 ### Added

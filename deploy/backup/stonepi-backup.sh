@@ -10,7 +10,7 @@ CONF="/etc/stonepi/backup.conf"
 STAMP_LEGACY="/var/lib/stonepi/last-backup.txt"
 STAMP_LOCAL="/var/lib/stonepi/last-local-backup.txt"
 STAMP_USB="/var/lib/stonepi/last-usb-backup.txt"
-APPS="stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library"
+APPS="stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library stonepi-ripple"
 INCLUDE_LIBRARY_CONTENT=0
 LIBRARY_MANIFEST="/var/lib/stonepi/library/backup-manifest.json"
 LIBRARY_COPY="/usr/local/sbin/stonepi-backup-library"
@@ -38,6 +38,9 @@ fi
 # backup.conf from older installs pins APPS without newer apps.
 if [[ " $APPS " != *" stonepi-library "* ]] && systemctl cat stonepi-library.service >/dev/null 2>&1; then
   APPS="$APPS stonepi-library"
+fi
+if [[ " $APPS " != *" stonepi-agentlink "* ]] && systemctl cat stonepi-agentlink.service >/dev/null 2>&1; then
+  APPS="$APPS stonepi-agentlink"
 fi
 
 STAMP="$STAMP_USB"
@@ -189,11 +192,14 @@ backup_sqlite /var/lib/stonepi/newscast/newscast.sqlite "$STAMP_DIR/databases/ne
 backup_sqlite /var/lib/stonepi/fileserve/fileserve.sqlite "$STAMP_DIR/databases/fileserve.sqlite"
 backup_sqlite /var/lib/stonepi/eventtrakr/eventtrakr.sqlite "$STAMP_DIR/databases/eventtrakr.sqlite"
 backup_sqlite /var/lib/stonepi/library/library.sqlite "$STAMP_DIR/databases/library.sqlite"
+backup_sqlite /var/lib/stonepi/ripple/ripple.sqlite "$STAMP_DIR/databases/ripple.sqlite"
 
 log "Application data copying"
 # Library ZIM files are re-downloadable and can be 100+ GB: never in the per-run copy.
 # (The opt-in content backup copies them once into a shared store — see below.)
+# AgentLink's speech models and voices are re-downloadable too (stonepi-speech-setup).
 rsync -a --delete --exclude '/library/zim/' --exclude '.partial/' \
+  --exclude '/agentlink/models/' --exclude '/agentlink/voices/' \
   /var/lib/stonepi/ "$STAMP_DIR/applications/" || fail "Application data copy failed"
 rsync -a /opt/stonepi/ "$STAMP_DIR/system/opt-stonepi/" --exclude '.venv' --exclude '__pycache__' || fail "Application code copy failed"
 

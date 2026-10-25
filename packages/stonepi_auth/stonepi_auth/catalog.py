@@ -53,6 +53,25 @@ APP_CATALOG: list[dict[str, Any]] = [
         "description": "Displays, TRMNL, and ntfy destinations for the household.",
     },
     {
+        # Agents and agent devices (Pebble first) reach StonePi only through here: bindings,
+        # tool policy and audit (ideation/muse.md, ideation/pebble.md). No UI of its own;
+        # admins manage devices in Notify → Sidekick, so that's where its link goes.
+        "id": "agentlink",
+        "name": "AgentLink",
+        "path": "/notify/sidekick",
+        "port": 8015,
+        "unit": "stonepi-agentlink",
+        "health": "/healthz",
+        "color": "#4a5568",
+        "capabilities": [],
+        "launcher": False,
+        "group": "system",
+        "ships_with": "platform",
+        "icon": "agentlink",
+        "grants": False,
+        "description": "Pebble and other agent devices: pairing, what they may use, and the activity log.",
+    },
+    {
         "id": "recover",
         "name": "Recover",
         "path": "/recover/",
@@ -225,6 +244,29 @@ APP_CATALOG: list[dict[str, Any]] = [
         "live_status": True,
         "description": "Wikipedia and other references, offline on your Pi.",
     },
+    {
+        # Family updates for a TRMNL at the family's home (ideation/ripple.md). Anyone granted
+        # Ripple reads and posts; authors change their own posts, admins any post.
+        "id": "ripple",
+        "name": "Ripple",
+        "path": "/ripple/",
+        "port": 8017,
+        "unit": "stonepi-ripple",
+        "health": "/healthz",
+        "color": "#1b3550",
+        "capabilities": [],
+        "launcher": True,
+        "group": "user",
+        "icon": "ripple",
+        # Its family display page (/display) opens for Notify's capture only with a one-off key
+        # from this signed endpoint (Notify adds it when a web page points at this app's port).
+        "capture_key": "/api/internal/capture-key",
+        # Offered as its own kind in Notify → Displays → Add a Display (name, model, webhook).
+        "display_page": "/display",
+        "display_label": "Ripple family board",
+        "display_blurb": "Family posts and photos from Ripple, prepared for e-ink on the Pi.",
+        "description": "Keep family far away up to date with news and photos.",
+    },
 ]
 
 APP_IDS = tuple(item["id"] for item in APP_CATALOG)
@@ -237,6 +279,7 @@ DEFAULT_LAUNCHER_ORDER = (
     "pricescout",
     "pricewatch",
     "pinboard",
+    "ripple",
     "library",
     "fileserve",
     "studio",

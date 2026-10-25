@@ -20,7 +20,7 @@ fi
 LIBRARY_CONTENT=1
 [[ "${2:-}" == "--no-library-content" ]] && LIBRARY_CONTENT=0
 
-APPS="stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library"
+APPS="stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library stonepi-ripple"
 systemctl stop $APPS stonepi-kiwix 2>/dev/null || true
 
 if [[ -d "$SRC/applications" ]]; then
@@ -53,13 +53,14 @@ chown -R stonepi-studio:stonepi-studio /var/lib/stonepi/studio
 [[ -d /var/lib/stonepi/pricescout ]] && chown -R stonepi-prices:stonepi-prices /var/lib/stonepi/pricescout
 [[ -d /var/lib/stonepi/sportguide ]] && chown -R stonepi-sport:stonepi-sport /var/lib/stonepi/sportguide
 [[ -d /var/lib/stonepi/pricewatch ]] && chown -R stonepi-watch:stonepi-watch /var/lib/stonepi/pricewatch
+[[ -d /var/lib/stonepi/ripple ]] && id -u stonepi-ripple >/dev/null 2>&1 && chown -R stonepi-ripple:stonepi-ripple /var/lib/stonepi/ripple
 if [[ -d /var/lib/stonepi/library ]] && id -u stonepi-library >/dev/null 2>&1; then
   chown -R stonepi-library:stonepi-library /var/lib/stonepi/library
   chmod 2750 /var/lib/stonepi/library
 fi
 if [[ -d /var/lib/stonepi/vault ]]; then
   groupadd --system stonepi-vault 2>/dev/null || true
-  for u in stonepi-dash stonepi-auth stonepi-notify stonepi-news stonepi-files stonepi-events stonepi-pin stonepi-studio stonepi-prices stonepi-sport stonepi-watch stonepi-library; do
+  for u in stonepi-dash stonepi-auth stonepi-notify stonepi-news stonepi-files stonepi-events stonepi-pin stonepi-studio stonepi-prices stonepi-sport stonepi-watch stonepi-library stonepi-ripple; do
     id -u "$u" >/dev/null 2>&1 && usermod -aG stonepi-vault "$u" || true
   done
   # Same as install.sh: every service user reads and saves secrets (setgid group folder).

@@ -548,6 +548,7 @@ sudo bash deploy/install.sh --hostname stonepi</pre>
               <tr><td>…/files/</td><td>FileServe</td></tr>
               <tr><td>…/events/</td><td>EventTrakr</td></tr>
               <tr><td>…/pinboard/</td><td>Pinboard</td></tr>
+              <tr><td>…/ripple/</td><td>Ripple</td></tr>
               <tr><td>…/studio/</td><td>Studio</td></tr>
               <tr><td>…/prices/</td><td>PriceScout</td></tr>
               <tr><td><a href="https://stonepi.local:9090" target="_blank" rel="noopener">https://…:9090</a></td><td>Cockpit (HTTPS; .local or LAN IP)</td></tr>
@@ -571,7 +572,7 @@ sudo bash deploy/install.sh --hostname stonepi</pre>
         <div class="card">
           <h2>Do these now</h2>
           <label class="check"><input type="checkbox" data-check="first-pass" /><span>Change the admin password under <strong>Settings → General → Your password</strong> (banner stays until you do)</span></label>
-          <label class="check"><input type="checkbox" data-check="first-tiles" /><span>Confirm Home shows your apps: NewsCast, EventTrakr, SportGuide, PriceScout, PriceWatch, Pinboard, Library, FileServe, Studio</span></label>
+          <label class="check"><input type="checkbox" data-check="first-tiles" /><span>Confirm Home shows your apps: NewsCast, EventTrakr, SportGuide, PriceScout, PriceWatch, Pinboard, Ripple, Library, FileServe, Studio</span></label>
           <label class="check"><input type="checkbox" data-check="first-order" /><span>Optional: Home → <strong>Reorder</strong> — drag tiles to place, then Done</span></label>
           <label class="check"><input type="checkbox" data-check="first-watch" /><span>Optional: <strong>Health</strong> — apps show Healthy, and the alert banner only appears when something needs attention</span></label>
           <label class="check"><input type="checkbox" data-check="first-display" /><span>Optional: <strong>Notify → Displays</strong> — add a TRMNL Display, paste its webhook and the universal template into the plugin, Push now. Phone alerts are under <strong>Notify → Phone alerts</strong></span></label>
@@ -643,7 +644,7 @@ sudo bash deploy/install.sh --hostname stonepi</pre>
             </tbody>
           </table>
           <h3>Units enabled on boot</h3>
-          <p class="muted">stonepi-auth · dashboard · newscast · fileserve · eventtrakr · pinboard · studio · pricescout</p>
+          <p class="muted">stonepi-auth · dashboard · newscast · fileserve · eventtrakr · pinboard · studio · pricescout · ripple</p>
           <div class="cmd">
             <pre>sudo journalctl -u stonepi-auth -u stonepi-dashboard -f</pre>
             <button type="button" data-copy>Copy</button>

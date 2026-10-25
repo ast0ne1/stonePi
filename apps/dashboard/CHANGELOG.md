@@ -1,5 +1,15 @@
 # Changelog — Dashboard
 
+## 0.5.0 — 2026-10-25
+
+### Added
+- **Ripple** on Home and in the app switcher, with its icon.
+- **Settings** lists **Sidekick** (Notify) next to Displays and Phone alerts.
+
+### Changed
+- **The app switcher in every app follows your Home order.** Home and Reorder save the order in a `stonepi-launcher-order` cookie (not a secret, shared by every app on the address), and the shared header orders the switcher by it. Before, the switcher always showed the default order.
+- **Health and Services list your apps in your Home order too** (the USER group; system services keep theirs).
+
 ## 0.4.0 — 2026-10-21
 
 ### Fixed

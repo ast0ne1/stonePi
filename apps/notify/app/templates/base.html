@@ -43,6 +43,10 @@
         {{ filter_icon("displays") }}
         <span>Displays</span>
       </a>
+      <a href="/sidekick" class="{% if active == 'sidekick' %}is-active{% endif %}">
+        {{ filter_icon("sidekick") }}
+        <span>Sidekick</span>
+      </a>
       <a href="/alerts" class="{% if active == 'alerts' %}is-active{% endif %}">
         {{ filter_icon("bell") }}
         <span>Phone alerts</span>

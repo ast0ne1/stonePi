@@ -1,5 +1,10 @@
 # Changelog — Pinboard
 
+## 0.0.9 — 2026-10-25
+
+### Added
+- **Pebble can read the board** (when switched on in Notify → Sidekick): your reminders plus unassigned household ones (never someone else's), and the notices. A signed internal endpoint (`POST /api/internal/agent`) used only by AgentLink; read-only.
+
 ## 0.0.8 — 2026-10-11
 
 ### Changed
