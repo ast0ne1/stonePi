@@ -2,7 +2,7 @@
 
 **The bedrock of your digital home.**
 
-StonePi is a private hub for your home on one Raspberry Pi. It brings you the news you want on your e-reader, shows what's on locally and in sport, finds supermarket deals, watches prices, keeps Wikipedia offline, hosts your household's files and small sites, and pushes useful updates to your phone, a wall display or a desk panel. Everything sits behind one shared sign-in, on your own network, set up once and left running.
+StonePi is a private hub for your home on one Raspberry Pi. It brings you the news you want on your e-reader, shows what's on locally and in sport, finds supermarket deals, watches prices, keeps Wikipedia offline, hosts your household's files and small sites, keeps family far away up to date on a screen in their home, and pushes useful updates to your phone, a wall display, a desk panel or a little voice sidekick you can talk to. Everything sits behind one shared sign-in, on your own network, set up once and left running.
 
 > **Set up a Pi: [stonepi-install.vercel.app](https://stonepi-install.vercel.app)** — one command on stock Raspberry Pi OS (64-bit) for a Raspberry Pi 4 or 5.
 
@@ -36,7 +36,7 @@ Home tiles. Each app has its own README with setup details.
 | **[FileServe](apps/fileserve/README.md)** | `/files/` | Put HTML, PDF, Word or zip sites on a household URL, with keep-until and passwords. Hosted pages load sandboxed. |
 | **[Studio](apps/studio/README.md)** | `/studio/` | Chat-build a simple site, guide or game and publish it to FileServe. |
 | **[Pinboard](apps/pinboard/README.md)** | `/pinboard/` | Household notices and reminders, on phones and displays. |
-| **[Ripple](apps/ripple/README.md)** | `/ripple/` | Keep family far away up to date: post news and photos (location details removed), and the newest appear on a TRMNL e-ink screen at their home, with an optional line for your city, part of the day, time difference and weather. |
+| **[Ripple](apps/ripple/README.md)** | `/ripple/` | Keep family far away up to date: post news and photos (location details removed), and the newest appear on a TRMNL e-ink screen at their home, up to four recent photos together, with an optional line for your city, part of the day, time difference and weather. |
 
 ## Platform
 
@@ -44,7 +44,7 @@ Always on; not Home tiles.
 
 | Part | Path | Role |
 |------|------|------|
-| **[Dashboard](apps/dashboard/README.md)** | `/` | Home launcher, **Health** (host and apps, updates live), **Services** (enable, start, stop, restart, logs), **Users**, and admin **Settings**: General, Network, Vault, AI, Automations, Updates, Backup, About. |
+| **[Dashboard](apps/dashboard/README.md)** | `/` | Home launcher (your app order carries to the app switcher, Health and Services), **Health** (host and apps, updates live), **Services** (enable, start, stop, restart, logs), **Users**, and admin **Settings**: General, Network, Vault, AI, Automations, Updates, Backup, About. |
 | **[Auth](apps/auth/README.md)** | `/auth/` | One household sign-in across every app. |
 | **[Notify](apps/notify/README.md)** | `/notify/` | Where apps' updates go: TRMNL wall displays, the Car Thing panel, and ntfy phone alerts. Also shows web pages the Pi can reach (a Homepage dashboard, say) on either display, and **Sidekick**, where Pebbles are paired and managed. |
 | **[AgentLink](apps/agentlink/README.md)** | (Pebble API `/agent/pebble/v1/`) | The one way in for agents and agent devices such as **Pebble**: each device is bound to one person, uses only the tools switched on for it, and every use is logged (never what was said). Speech is turned into text and back on the Pi. Managed in Notify → Sidekick. Ships with the platform. |
@@ -56,7 +56,7 @@ Always on; not Home tiles.
 
 - **TRMNL** (e-ink, for a wall or fridge): one Display per screen, laid out in a drag-and-drop builder over a real render of the device, pushed on a timer. A **Web page** Display instead shows a captured web page, converted for e-ink. A **Ripple family board** Display shows Ripple's posts on a TRMNL at family elsewhere: name, model and webhook, and the rest is set up for you (from Ripple → Settings → Family display).
 - **Car Thing** (touch and dial, for a desk or dash): saved configs with pages, widget sizes, page header, button and dial actions, clock faces, screensaver styles, the Now Playing look and Spotify music presets, edited beside a live preview. Device, Spotify sign-in and saved configs are on its Setup page. The device keeps its own firmware and gets its screen back when the panel is switched off.
-- **Pebble** (a small round voice sidekick): hold to talk and ask about StonePi, the weather, today's events, reminders and notices, or the news; its face shows the house's mood. Each Pebble belongs to one person and only uses the apps switched on for it in Notify → Sidekick; it can work away from home over Tailscale Funnel, switched on per Pebble.
+- **Pebble** (a cute little voice sidekick for StonePi): push to talk (or use a wake word) and ask about StonePi, the weather, today's events, reminders and notices, or the news, and it answers out loud; its face shows the house's mood. Each Pebble belongs to one person and only uses the apps switched on for it in Notify → Sidekick; it can work away from home over Tailscale Funnel, switched on per Pebble.
 - **ntfy** (phone): paper ready, a PriceWatch strike, an event or kick-off you follow, a backup that needs attention, a Spotify sign-in about to run out.
 - **Web pages** (Notify → Displays → Web pages): any page the Pi can reach, captured with the shared headless Chromium, with a clean-up preset, parts to hide, extra CSS and zoom. Shown on a TRMNL Web page Display, or on the Car Thing as a full-page widget or a screensaver.
 
@@ -93,7 +93,7 @@ StonePi needs only the Pi and a phone or laptop. Add what fits your household; k
 | A desk or dash control panel | **Spotify Car Thing** with ADB-enabled firmware, on USB | Notify → Displays → Car Thing |
 | Spotify control on the Car Thing | **Spotify Premium** and your own (free) **[Spotify developer app](https://developer.spotify.com/dashboard)** | Notify → Displays → Car Thing → Setup → Music: paste the client ID and connect (`SPOTIFY_CLIENT_ID`, `SPOTIFY_REFRESH_TOKEN` are saved in the Vault for you). The sign-in lasts 6 months; Notify warns 14 days before it runs out |
 | Phone alerts | **[ntfy](https://ntfy.sh/)** topic (hosted or self-hosted) | Notify → Phone alerts (`STONEPI_NTFY_TOKEN`) |
-| AI for Studio, and optionally NewsCast | A **[Gemini](https://aistudio.google.com/apikey)** (free tier OK), **[Anthropic](https://console.anthropic.com/)** or **[OpenAI](https://platform.openai.com/api-keys)** key, or a local **[Ollama](https://ollama.com/)** server | Keys in Dashboard → Settings → Vault (`GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`); models and their order in Dashboard → Settings → AI. NewsCast works without AI and only uses it once switched on in its Settings → AI |
+| AI for Studio and Pebble, and optionally NewsCast | A **[Gemini](https://aistudio.google.com/apikey)** (free tier OK), **[Anthropic](https://console.anthropic.com/)** or **[OpenAI](https://platform.openai.com/api-keys)** key, or a local **[Ollama](https://ollama.com/)** server | Keys in Dashboard → Settings → Vault (`GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`); models and their order in Dashboard → Settings → AI (Pebble's is **Spoken replies**). NewsCast works without AI and only uses it once switched on in its Settings → AI |
 | Facebook events and Instagram in EventTrakr | **[Bright Data](https://brightdata.com/)** | `BRIGHTDATA_API_KEY` |
 | Retailer trust scores in PriceWatch | Bright Data (Trustpilot) | `PRICEWATCH_BRIGHTDATA_API_KEY` |
 | Favourites in Google Calendar | A Google Cloud OAuth client | EventTrakr → Settings → Calendar Integrations (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) |
