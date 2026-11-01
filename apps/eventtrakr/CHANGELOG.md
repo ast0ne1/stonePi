@@ -10,6 +10,7 @@
 - `cryptography` pin raised to **50.0.1** (aligned with Dashboard).
 
 ### Fixed
+- **Phone bottom nav:** the bar no longer stacks the home-indicator inset twice; sheets clear the shorter bar.
 - **Same source, two titles for one event:** a source that lists the same start twice under
   different titles (e.g. Jungle's "Søndagsbrød" and "Søndagsbrød: Floor" at NABO 08:00) is
   folded into one card. Two real sessions the same day (starts a minute or more apart) stay

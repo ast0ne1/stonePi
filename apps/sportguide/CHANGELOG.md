@@ -2,6 +2,9 @@
 
 ## 0.0.10 — 2026-11-01
 
+### Fixed
+- **Phone bottom nav:** the bar no longer stacks the home-indicator inset twice.
+
 ### Added
 - **Pebble can ask SportGuide** (AgentLink): a signed internal endpoint, `POST /api/internal/agent`, with `get_sport` (what's on now, today, tonight, tomorrow or this weekend, optionally one sport or league, the person's teams first, with channels, in their own timezone) and `get_my_teams` (each of their Teams to Watch with its next match). Never routed by nginx.
 

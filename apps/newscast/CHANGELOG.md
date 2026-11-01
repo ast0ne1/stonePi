@@ -3,6 +3,7 @@
 ## 0.0.12 — 2026-11-01
 
 ### Fixed
+- **Phone bottom nav:** the bar no longer stacks the home-indicator inset twice; sheets, toasts and the + clear the shorter bar.
 - **The paper sent to the reader uses the name from Settings.** The preview (`NewsCast - 01-11-2026`) was already that name, but the file on the reader was still the internal `news-2026-11-01`. Send now uploads the display name. A copy already on the reader under the old `news-…` name is removed on the next send.
 
 ### Security

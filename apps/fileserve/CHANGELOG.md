@@ -4,6 +4,9 @@ Current version is **0.0.9**.
 
 ## Unreleased
 
+### Fixed
+- **Phone bottom nav:** the bar no longer stacks the home-indicator inset twice; sheets clear the shorter bar.
+
 ### Security
 - **Backup restore rejects zip-slip paths** (`../` and symlinks) under `hosted/` and `tls/`, matching the update helper.
 - A CSRF rejection no longer redirects to an off-site `Referer` (same-host only).

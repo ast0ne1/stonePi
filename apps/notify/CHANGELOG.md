@@ -24,6 +24,7 @@
 - **Web pages → Capture again every (minutes):** each page's refresh time, 15 at least (15 to start). A TRMNL web Display reuses the capture until it's that old instead of taking one every push; the Car Thing shows its snapshot that long and has a ↻ button for a new one. The Car Thing screensaver's own "Refresh every" setting is replaced by it.
 
 ### Fixed
+- **Phone bottom nav:** the bar no longer stacks the home-indicator inset twice.
 - **Car Thing editor on a short laptop screen** (e.g. 14" at 125%, ~1536×864): the forms column scrolls inside the editor and the device drawing is capped, so the page itself scrolls less; those panes use the thin StonePi scrollbar.
 - **Car Thing → Pages → Delete page** uses the app's confirm sheet instead of the browser's system popup.
 - **Car Thing preview:** the Radio widget's buttons work in the preview (the preview passed only the panel's restart and music commands on, so Radio's were refused).

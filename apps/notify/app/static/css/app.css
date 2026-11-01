@@ -148,7 +148,7 @@ input, select { font-size: 16px; }
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 2px;
-  padding: 8px var(--gutter) calc(10px + var(--safe-bottom));
+  padding: 4px var(--gutter) 4px;
   background: color-mix(in srgb, var(--card) 94%, transparent);
   border-top: 1px solid var(--line);
 }

@@ -2174,7 +2174,7 @@ th {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 4px;
-  padding: 8px max(var(--gutter), env(safe-area-inset-right, 0px)) calc(10px + var(--safe-bottom)) max(var(--gutter), env(safe-area-inset-left, 0px));
+  padding: 4px max(var(--gutter), env(safe-area-inset-right, 0px)) 4px max(var(--gutter), env(safe-area-inset-left, 0px));
   background: color-mix(in srgb, var(--card) 94%, transparent);
   border-top: 1px solid var(--line);
 }
@@ -2255,7 +2255,7 @@ th {
   display: none;
   z-index: 50;
   padding: 12px;
-  padding-bottom: max(12px, calc(80px + var(--safe-bottom)));
+  padding-bottom: 70px;
   overflow: hidden;
   box-sizing: border-box;
   overscroll-behavior: none;
@@ -2272,7 +2272,7 @@ th {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  max-height: calc(100svh - 24px - max(12px, calc(80px + var(--safe-bottom))));
+  max-height: calc(100svh - 24px - 70px);
   min-height: 0;
   overflow: hidden;
 }
@@ -2315,7 +2315,7 @@ html.sheet-open body {
 .toast {
   position: fixed;
   left: 50%;
-  bottom: calc(88px + var(--safe-bottom));
+  bottom: 78px;
   transform: translateX(-50%) translateY(8px);
   width: max-content;
   max-width: min(22rem, calc(100vw - 32px));

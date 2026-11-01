@@ -2,6 +2,9 @@
 
 ## 0.0.9 — 2026-11-01
 
+### Fixed
+- **Phone bottom nav:** the bar no longer stacks the home-indicator inset twice; sheets clear the shorter bar.
+
 ### Added
 - **Pebble can ask PriceWatch** (AgentLink): a signed internal endpoint, `POST /api/internal/agent`, with `get_price_alerts`: the person's own watches, deals first (price, shop, when found), then the rest closest to target. It reads the last checks only and never starts a scan. Never routed by nginx.
 

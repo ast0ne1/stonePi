@@ -14,6 +14,10 @@
   signs you out.
 - Picks up `stonepi_auth` CSRF Origin checks and fail-closed session revocation.
 
+### Fixed
+- **Shared phone + button:** clears the shorter bottom nav (home-indicator inset no longer
+  stacked twice in the shared header styles).
+
 ### Changed
 - The shared `stonepi_auth` 0.5.0 (Radio in the catalog and the app switcher) comes with
   platform 0.6.0.

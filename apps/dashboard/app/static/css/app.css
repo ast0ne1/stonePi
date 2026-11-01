@@ -160,7 +160,7 @@ a { color: var(--link); }
   display: flex;
   gap: 2px;
   order: 2;
-  padding: 8px max(var(--gutter), env(safe-area-inset-right, 0px)) calc(10px + var(--safe-bottom)) max(var(--gutter), env(safe-area-inset-left, 0px));
+  padding: 4px max(var(--gutter), env(safe-area-inset-right, 0px)) 4px max(var(--gutter), env(safe-area-inset-left, 0px));
   background: var(--surface);
   border-top: 1px solid var(--border);
 }
@@ -1156,7 +1156,7 @@ pre {
     display: grid;
     align-items: end;
     padding: 16px;
-    padding-bottom: max(16px, calc(76px + env(safe-area-inset-bottom, 0px)));
+    padding-bottom: 66px;
     box-sizing: border-box;
     background: rgb(11 13 14 / 0.5);
   }
@@ -1654,7 +1654,7 @@ a.settings-tab svg [fill]:not([fill="none"]),
   align-items: end;
   z-index: 40;
   padding: 16px;
-  padding-bottom: max(16px, calc(76px + env(safe-area-inset-bottom, 0px)));
+  padding-bottom: 66px;
   box-sizing: border-box;
   overflow: hidden;
 }

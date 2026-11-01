@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- **Phone bottom nav:** the bar no longer stacks the home-indicator inset twice; sheets clear the shorter bar.
+
 ## 0.0.8 — 2026-10-11
 
 ### Changed

@@ -2,6 +2,9 @@
 
 ## 0.0.10 — 2026-11-01
 
+### Fixed
+- **Phone bottom nav:** the bar no longer stacks the home-indicator inset twice.
+
 ### Added
 - **Add links from anywhere** (Settings → Board): a **bookmarklet** for computers (drag "Add to Pinboard" to the bookmarks bar, click it on any page), step-by-step set-up for an **iPhone/iPad Shortcut** that puts "Add to Pinboard" in the share sheet, and on **Android** Pinboard appears in the share sheet once added to the home screen from its https:// address. Each opens the Board with Add link already filled in (`/add?url=…&title=…`); signing in first brings you back to it. A shared page's title stays on the card if the preview can't find one.
 - Pinboard can be added to the home screen as its own app (web app manifest).

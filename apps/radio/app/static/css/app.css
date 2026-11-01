@@ -47,7 +47,7 @@ input, select, textarea { font-size: 16px; }
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 2px;
-  padding: 8px var(--gutter) calc(10px + var(--safe-bottom));
+  padding: 4px var(--gutter) 4px;
   background: color-mix(in srgb, var(--card) 94%, transparent);
   border-top: 1px solid var(--line);
 }
@@ -344,7 +344,7 @@ textarea { min-height: 5rem; resize: vertical; }
   background: color-mix(in srgb, var(--ink) 35%, transparent);
 }
 .sheet.is-open { display: grid; }
-.sheet-card { width: min(420px, 100%); margin-bottom: calc(72px + var(--safe-bottom)); }
+.sheet-card { width: min(420px, 100%); margin-bottom: 62px; }
 @media (min-width: 720px) {
   .sheet { place-items: center; }
   .sheet-card { margin-bottom: 12px; }
@@ -954,7 +954,7 @@ a.settings-hub-row:focus-visible {
 .toast {
   position: fixed;
   left: 50%;
-  bottom: calc(92px + var(--safe-bottom, 0px));
+  bottom: 82px;
   z-index: 60;
   transform: translateX(-50%) translateY(6px);
   width: max-content;
@@ -980,7 +980,7 @@ a.settings-hub-row:focus-visible {
   color: var(--error, #b42318);
 }
 /* Above the player bar while it shows, not over it (phones and tablets; desktop has it at the top). */
-body:has(.player-bar:not([hidden])) .toast { bottom: calc(152px + var(--safe-bottom, 0px)); }
+body:has(.player-bar:not([hidden])) .toast { bottom: 142px; }
 @media (min-width: 1024px) {
   .toast,
   body:has(.player-bar:not([hidden])) .toast { bottom: auto; top: 76px; }
@@ -1074,7 +1074,7 @@ body:has(.player-bar:not([hidden])) .toast { bottom: calc(152px + var(--safe-bot
   position: fixed;
   left: 12px;
   right: 12px;
-  bottom: calc(76px + var(--safe-bottom, 0px));
+  bottom: 66px;
   z-index: 50;
   /* A row, not a grid: the artwork is often hidden (no logo, a speaker), and a fixed grid then
      slid play/pause into the title's column, away from stop. */
@@ -1099,7 +1099,7 @@ body:has(.player-bar:not([hidden])) .toast { bottom: calc(152px + var(--safe-bot
 .player-bar .icon-btn svg [fill]:not([fill="none"]) { fill: currentColor; }
 .main:has(~ .player-bar:not([hidden])) { padding-bottom: 96px; }
 /* My Radio's + sits above the bar while it shows, not on top of it. */
-body:has(.player-bar:not([hidden])) .sp-fab { bottom: calc(148px + var(--safe-bottom, 0px)); }
+body:has(.player-bar:not([hidden])) .sp-fab { bottom: 138px; }
 /* Room for the bar alone; the bar and the + stacked only on pages that have the + (Discover and
    Settings used to keep the bigger gap too, a blank band under their last card). */
 body:has(.player-bar:not([hidden])) .main { padding-bottom: 96px; }
@@ -1415,8 +1415,8 @@ html.sheet-open .player-bar { display: none; }
    Top right. From 1024px: a compact player in that corner. */
 body[data-player-pos="top-right"] .player-bar { top: calc(var(--topbar-height, 64px) + 8px + var(--safe-top, 0px)); bottom: auto; }
 body[data-player-pos="top-right"]:has(.player-bar:not([hidden])) .main { padding-top: 72px; padding-bottom: 32px; }
-body[data-player-pos="top-right"]:has(.player-bar:not([hidden])) .sp-fab { bottom: calc(88px + var(--safe-bottom, 0px)); }
-body[data-player-pos="top-right"]:has(.player-bar:not([hidden])) .toast { bottom: calc(92px + var(--safe-bottom, 0px)); }
+body[data-player-pos="top-right"]:has(.player-bar:not([hidden])) .sp-fab { bottom: 78px; }
+body[data-player-pos="top-right"]:has(.player-bar:not([hidden])) .toast { bottom: 82px; }
 @media (min-width: 1024px) {
   body[data-player-pos] .player-bar { width: 28rem; max-width: calc(100vw - var(--app-rail-width, 200px) - 48px); }
   body[data-player-pos="bottom-left"] .player-bar { left: calc(var(--app-rail-width, 200px) + 24px); right: auto; }

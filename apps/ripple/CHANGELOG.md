@@ -2,6 +2,9 @@
 
 ## 0.0.11 — 2026-11-01
 
+### Fixed
+- **Phone bottom nav:** the bar no longer stacks the home-indicator inset twice.
+
 ### Added
 - **Holidays on the family display** (backlog U34; Settings → Holidays): upcoming public holidays for our city's country and the family's, as a short note above the posts ("Christmas Day · Fri 25 Dec · both", "Boxing Day · Mon 28 Dec · London"), up to three, for the next 1–60 days (14 to start). From **Nager.Date** (free, no key), fetched by a background thread **at most once a day per country** (this year, and next year in December) and kept in Ripple's database; the board and settings only read the stored copy, and a failed fetch keeps the last good one. Holidays for part of a country (UK nations, German states…) show when that place's **region** is chosen; nationwide ones always do. Dates only, never "today", because the TRMNL keeps a picture until the next push.
 - **Good time to call** (backlog U36; Settings → Good time to call): our quiet hours (asleep, and at work Monday to Friday) in our city's time; the board says "Good time to call · until 23:00 your time", "We're asleep · back from 07:00 your time" or "We're at work · free from 17:00 your time", in the family's time when their city is set. It gives the range's end rather than "now"; Notify's hourly push picks up the change once a range is over.

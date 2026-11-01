@@ -43,6 +43,7 @@ unreleased: first what's changed since then, then the app as it will ship.
 - Play on's refresh is **Rescan** (was Look again), the icon alone. The player bar keeps play/pause beside stop, and the done message sits above the bar instead of over it.
 
 #### Fixed
+- **Phone bottom nav:** the bar no longer stacks the home-indicator inset twice; the player bar, sheets, toasts and + clear the shorter bar.
 - **Car Thing skins got empty kbps/kHz on the first look:** `info=1` now waits briefly for the background stream read (up to 2 s) instead of always answering 0,0 before the headers arrive.
 - **kbps/kHz stayed 0 for Icecast stations (e.g. 90s90s):** httpx refuses `Transfer-Encoding: identity`, so the stream probe never saw `icy-br` / `ice-audio-info`. The read now uses urllib, which accepts those streams (192 / 44 on 90s90s HipHop).
 - **HLS stations (BBC Radio 6 Music, RTL) left kbps/kHz blank:** the probe skipped HLS entirely. It now reads the master playlist's `BANDWIDTH` (or a USP/BBC `audio=96000` path) and the sample rate from a recent segment's AAC frames, so the Winamp skin fills both boxes.

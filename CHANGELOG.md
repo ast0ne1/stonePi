@@ -75,6 +75,8 @@ Platform version lives in [`VERSION`](VERSION). App zips use each app’s `__ver
 **Every app**
 - Radio is on Home, in the app switcher, Health, Services, Recover, backups and the `stonepi` CLI.
 - Health → Listening expects Odio's ports once it's installed.
+- **Phone bottom nav sits lower:** the bar no longer stacks the home-indicator inset twice, so it
+  takes less height; sheets, the + button and toasts clear the shorter bar.
 
 **Security**
 - **CSRF on every save:** NewsCast and EventTrakr now check the CSRF token on every signed-in
@@ -137,6 +139,9 @@ Platform version lives in [`VERSION`](VERSION). App zips use each app’s `__ver
 - Pebble's facts may be up to 12,000 characters (was 9,000).
 
 ### Fixed
+- **Phone bottom nav and overlays:** across every app the bar's padding no longer adds the
+  home-indicator inset again on top of what the page already clears, and sheets / + / toasts
+  use matching offsets so they clear the shorter bar.
 - **NewsCast papers on the reader use the name from Settings** (for example
   `NewsCast - 01-11-2026`), not the internal `news-2026-11-01`. Send already showed that
   name in the preview; the file on the reader stayed `news-…` until this cut. A copy
@@ -205,7 +210,7 @@ Platform: **0.6.0**
 | Packages | Version | Why |
 |----------|---------|-----|
 | stonepi_display | 0.9.0 | each web page's refresh time (`refresh_min`, `refresh_seconds`), `webcapture.capture_timed`, the Car Thing's look settings (`look_from`) and Radio looks (RealPlayer, TouchAmp; Omitron gone), the TRMNL footer's "Updated" stamp (12/24-hour clock); System uptime as one short token; TRMNL merge strings HTML-escaped before Liquid |
-| stonepi_auth | 0.5.0 | Radio in the catalog and the app switcher; CSRF Origin/Referer must match Host; shared session revocation ledger (fail closed) |
+| stonepi_auth | 0.5.0 | Radio in the catalog and the app switcher; CSRF Origin/Referer must match Host; shared session revocation ledger (fail closed); shared + FAB clears the shorter phone bottom nav |
 | stonepi_contracts | 0.2.1 | Radio's app label |
 
 Unchanged: stonepi_ai 0.1.1, stonepi_audit 0.1.0, stonepi_automations 0.1.1, stonepi_browser 0.2.0, stonepi_notify 0.1.1, stonepi_update 0.1.1, stonepi_vault 0.2.0 (`cryptography>=50` floor), stonepi_watch 0.1.0. `stonepi_brand` (static files) adds the Radio icon.

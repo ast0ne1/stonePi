@@ -47,7 +47,7 @@ input, select, textarea { font-size: 16px; }
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 2px;
-  padding: 8px var(--gutter) calc(10px + var(--safe-bottom));
+  padding: 4px var(--gutter) 4px;
   background: color-mix(in srgb, var(--card) 94%, transparent);
   border-top: 1px solid var(--line);
 }
@@ -647,7 +647,7 @@ textarea { min-height: 5rem; resize: vertical; }
   background: color-mix(in srgb, var(--ink) 35%, transparent);
 }
 .sheet.is-open { display: grid; }
-.sheet-card { width: min(420px, 100%); margin-bottom: calc(72px + var(--safe-bottom)); }
+.sheet-card { width: min(420px, 100%); margin-bottom: 62px; }
 /* Confirm popups: a short question, with the explanation below it in body text. */
 .sheet-card [data-confirm-title] { margin: 0; font-size: 1.15rem; line-height: 1.3; }
 .sheet-card [data-confirm-body] { font-size: 0.92rem; }

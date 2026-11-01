@@ -8,6 +8,9 @@
 - **TRMNL automation push** to Notify is signed the same way.
 - CSRF checks also require Origin/Referer to match Host (cross-port double-submit).
 
+### Fixed
+- **Phone bottom nav:** the bar no longer stacks the home-indicator inset twice; sheets clear the shorter bar.
+
 ### Changed
 - **Health → Listening knows Radio's player:** once Odio is installed (the installer sets it up for Radio), its ports (MPD, the Odio API and myMPD on loopback; AirPlay and Spotify Connect on the home network) are expected, not listed as unexpected.
 - The Radio icon in the app switcher and Health.

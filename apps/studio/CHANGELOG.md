@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Fixed
+- **Phone bottom nav:** the bar no longer stacks the home-indicator inset twice.
+
 ### Security
 - **Preview is sandboxed** (iframe + CSP, no `allow-same-origin`): a built site can run its scripts for demos, but not read Studio cookies or act as the signed-in user.
 
