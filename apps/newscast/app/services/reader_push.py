@@ -143,7 +143,7 @@ def _http_ensure_dir(client: httpx.Client, host: str, folder: str) -> None:
             )
 
 
-def _http_upload(host: str, path: Path, dest_dir: str) -> None:
+def _http_upload(host: str, path: Path, dest_dir: str, save_name: str | None = None) -> None:
     folder = dest_dir if dest_dir.startswith("/") else f"/{dest_dir}"
     with path.open("rb") as handle:
         with httpx.Client(timeout=UPLOAD_TIMEOUT, follow_redirects=True) as client:
@@ -162,12 +162,14 @@ def _http_upload(host: str, path: Path, dest_dir: str) -> None:
 
             _http_ensure_dir(client, host, folder)
 
+            remote_name = _upload_filename(path, save_name)
+
             def _post(target: str):
                 handle.seek(0)
                 return client.post(
                     f"http://{host}/upload",
                     params={"path": target},
-                    files={"file": (path.name, handle, "application/octet-stream")},
+                    files={"file": (remote_name, handle, "application/octet-stream")},
                 )
 
             response = _post(folder)
@@ -192,7 +194,7 @@ def _http_upload(host: str, path: Path, dest_dir: str) -> None:
                 # CrossPoint / CrossInk refuse to overwrite. NewsCast replaces its own
                 # uploads before this point, so this file came from somewhere else.
                 raise ReaderConflict(
-                    f"{path.name} is already on the reader in {folder} but was not sent by NewsCast. "
+                    f"{remote_name} is already on the reader in {folder} but was not sent by NewsCast. "
                     "Delete or rename it on the reader, then send again."
                 )
             if response.status_code >= 400:
@@ -258,9 +260,44 @@ def _file_digest(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _upload_filename(path: Path, save_name: str | None) -> str:
+    """Name to store on the reader. Falls back to the file on disk."""
+    name = Path(save_name or "").name.strip()
+    if name and name not in {".", ".."}:
+        return name
+    return path.name
+
+
+def _reader_file_name(task: SyncTask) -> str:
+    """Filename the reader should keep: the paper title, not news-YYYY-MM-DD."""
+    return _upload_filename(Path(task.file_path or "paper.epub"), Path(task.save_path or "").name)
+
+
+def _legacy_disk_name(task: SyncTask) -> str | None:
+    """Earlier sends stored the briefing's on-disk name (news-2026-11-01.epub)."""
+    disk = Path(task.file_path or "").name
+    wanted = _reader_file_name(task)
+    if not disk or disk == wanted:
+        return None
+    lower = disk.lower()
+    if lower.startswith("news-") and lower.endswith((".epub", ".txt")):
+        return disk
+    return None
+
+
 def _device_path(task: SyncTask, default_dir: str) -> str:
-    """Where the upload lands on the reader: task folder + the uploaded file's name."""
-    return join(_task_folder(task, default_dir), Path(task.file_path).name)
+    """Where the upload lands on the reader: task folder + the display filename."""
+    return join(_task_folder(task, default_dir), _reader_file_name(task))
+
+
+def _reader_paths(task: SyncTask, default_dir: str) -> list[str]:
+    """Display name, then the old news-YYYY-MM-DD name when a previous send used it."""
+    folder = _task_folder(task, default_dir)
+    paths = [join(folder, _reader_file_name(task))]
+    legacy = _legacy_disk_name(task)
+    if legacy:
+        paths.append(join(folder, legacy))
+    return paths
 
 
 def _previous_uploads(db: Session, task: SyncTask, default_dir: str) -> list[SyncTask]:
@@ -286,11 +323,18 @@ def _prepare_http_resend(db: Session, host: str, task: SyncTask, digest: str, de
     Otherwise deletes NewsCast's older copy so the same file name can be uploaded
     again — the firmware refuses to overwrite, and delete also resets its cache.
     """
+    legacy = _legacy_disk_name(task)
     previous = _previous_uploads(db, task, default_dir)
-    if not previous:
+    if not previous and not legacy:
         return False
     device_path = _device_path(task, default_dir)
     names = _http_file_names(host, dirname(device_path) or "/")
+    if legacy and names is not None and legacy in names:
+        legacy_path = join(dirname(device_path) or "/", legacy)
+        if not _http_delete(host, legacy_path):
+            logger.warning("could not remove old paper name %s on %s", legacy_path, host)
+    if not previous:
+        return False
     now = utcnow()
     if names is not None and Path(device_path).name not in names:
         # Removed on the device since the last push — upload fresh.
@@ -352,10 +396,20 @@ def prune_reader_papers(
     # Oldest first, a few per push: history from before this setting existed can hold
     # many papers, and each delete is a round-trip to the reader.
     ordered = sorted(stale.items(), key=lambda item: min(briefing_day_for_task(row) for row in item[1]))
-    for device_path, group in ordered[:MAX_PRUNE_PER_PUSH]:
-        if not _http_delete(host, device_path):
-            # Reader likely went to sleep mid-prune; try again on the next push.
-            logger.warning("prune stopped at %s on %s", device_path, host)
+    for _device_path_key, group in ordered[:MAX_PRUNE_PER_PUSH]:
+        targets: list[str] = []
+        for row in group:
+            for target in _reader_paths(row, default_dir):
+                if target not in targets:
+                    targets.append(target)
+        stopped = False
+        for target in targets:
+            if not _http_delete(host, target):
+                # Reader likely went to sleep mid-prune; try again on the next push.
+                logger.warning("prune stopped at %s on %s", target, host)
+                stopped = True
+                break
+        if stopped:
             break
         for row in group:
             row.removed_at = now
@@ -379,7 +433,9 @@ def _ensure_sftp_dir(sftp, folder: str) -> None:
             sftp.mkdir(current)
 
 
-def _sftp_upload(db: Session, host: str, path: Path, dest_dir: str, user_id: int | None = None) -> None:
+def _sftp_upload(
+    db: Session, host: str, path: Path, dest_dir: str, user_id: int | None = None, save_name: str | None = None
+) -> None:
     import paramiko
 
     from app.services import reader_config
@@ -414,26 +470,36 @@ def _sftp_upload(db: Session, host: str, path: Path, dest_dir: str, user_id: int
         sftp = client.open_sftp()
         try:
             _ensure_sftp_dir(sftp, folder)
-            sftp.put(str(path), f"{folder.rstrip('/')}/{path.name}")
+            remote_name = _upload_filename(path, save_name)
+            sftp.put(str(path), f"{folder.rstrip('/')}/{remote_name}")
         finally:
             sftp.close()
     finally:
         client.close()
 
 
-def upload_file(host: str, path: Path, dest_dir: str, db: Session | None = None, user_id: int | None = None) -> None:
+def upload_file(
+    host: str,
+    path: Path,
+    dest_dir: str,
+    db: Session | None = None,
+    user_id: int | None = None,
+    save_name: str | None = None,
+) -> None:
+    """Upload ``path``. ``save_name`` is the filename on the reader (the paper title)."""
+    remote_name = _upload_filename(path, save_name)
     if db is not None and user_id is not None:
         from app.services import reader_config
 
         if reader_config.reader_is_kobo(db, user_id):
-            _sftp_upload(db, host, path, dest_dir, user_id=user_id)
+            _sftp_upload(db, host, path, dest_dir, user_id=user_id, save_name=remote_name)
             return
-        _http_upload(host, path, dest_dir)
+        _http_upload(host, path, dest_dir, save_name=remote_name)
         return
     if db is not None and settings.reader_is_kobo(db):
-        _sftp_upload(db, host, path, dest_dir)
+        _sftp_upload(db, host, path, dest_dir, save_name=remote_name)
         return
-    _http_upload(host, path, dest_dir)
+    _http_upload(host, path, dest_dir, save_name=remote_name)
 
 
 def pending_crosspoint(db: Session, user_id: int | None = None) -> list[SyncTask]:
@@ -781,7 +847,14 @@ def _flush_locked(
             # delete NewsCast's own older copy before sending a changed one.
             unchanged = bool(uid is not None and http_reader and _prepare_http_resend(db, host, task, digest, dest))
             if not unchanged:
-                upload_file(host, path, _task_folder(task, dest), db=db, user_id=task_uid)
+                upload_file(
+                    host,
+                    path,
+                    _task_folder(task, dest),
+                    db=db,
+                    user_id=task_uid,
+                    save_name=_reader_file_name(task),
+                )
             task.status = "complete"
             task.error_message = None
             task.completed_at = utcnow()

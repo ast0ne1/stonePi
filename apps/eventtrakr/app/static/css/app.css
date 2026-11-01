@@ -2724,3 +2724,95 @@ html.sheet-open body {
 .check-row.is-disabled {
   opacity: 0.55;
 }
+
+/* -- Merged events: "Also on" (U33) and runs (F18 §3a) -- */
+.event-run-until {
+  color: var(--ink);
+}
+
+.event-also-on {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 2px 0 6px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.event-also-on-label {
+  font-weight: 600;
+}
+
+.event-also-on-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.event-also-on-item a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.event-also-on-item a:hover {
+  text-decoration: underline;
+}
+
+.event-also-on-split {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.event-also-on-split:hover {
+  color: var(--error);
+  background: var(--wash);
+}
+
+/* Map icon in the header (F18), sized like the shared header's own icon buttons. */
+.topbar-map {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.topbar-map:hover,
+.topbar-map.is-active {
+  color: var(--text);
+  border-color: var(--border-control);
+  background: var(--surface-hover);
+}
+
+.topbar-map svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@media (max-width: 420px) {
+  .topbar-map {
+    width: 36px;
+    height: 36px;
+  }
+}

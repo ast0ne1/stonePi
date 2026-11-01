@@ -51,6 +51,14 @@ Spec and decisions: [`ideation/ripple.md`](../../ideation/ripple.md) (F16).
     and the time difference, not a clock, because the screen only updates now and then. Weather
     comes from Open-Meteo, and both cities are picked with its place search (`app/local.py`).
     Ripple needs outbound HTTPS to `api.open-meteo.com` and `geocoding-api.open-meteo.com`.
+  - **Holidays** (optional, Settings → Holidays; U34): upcoming public holidays for both
+    cities' countries as a note above the posts ("Christmas Day · Fri 25 Dec · both"), from
+    Nager.Date, fetched at most once a day per country by a background thread and kept in the
+    database (`app/holidays.py`); a region per place for holidays that only apply to part of a
+    country. Needs outbound HTTPS to `date.nager.at`.
+  - **Good time to call** (optional, Settings → Good time to call; U36): our sleep and work
+    hours in our city's time; the board says "Good time to call · until 23:00 your time" or
+    "We're asleep · back from 07:00 your time", in the family's time (`app/calls.py`).
   - **Setup.** Settings → Family display → **Set up the family display** opens Notify's
     Add a Display with "Ripple family board" chosen. It asks only for a name, the model and
     the webhook; Notify sets up the rest and sends the first image. The same page shows how

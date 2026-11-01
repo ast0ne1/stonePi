@@ -57,6 +57,7 @@ def reset_runtime() -> None:
         _used.clear()
         _last_claim_poll.clear()
         _last_mood_poll.clear()
+    ask.reset_limits()
 
 
 # -- hosts and config ----------------------------------------------------------------

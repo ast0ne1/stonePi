@@ -7,6 +7,32 @@ import json
 from stonepi_display import MERGE_VARIABLE_KEYS, SAMPLE_VARIABLES, build_merge_variables
 
 
+def test_uptime_is_one_short_token():
+    """TRMNL's System Up column is narrow: days alone, not \"20d 4h\" which wraps."""
+    from stonepi_display.variables import format_uptime
+
+    assert format_uptime(20 * 86400 + 4 * 3600) == "20d"
+    assert format_uptime(4 * 3600 + 12 * 60) == "4h"
+    assert format_uptime(45 * 60) == "45m"
+    assert format_uptime(0) == "0m"
+
+
+def test_backup_when_days_stay_short(monkeypatch):
+    """TRMNL Storage's Backup column clips \"6 days ago\"; use \"6d ago\"."""
+    from datetime import datetime, timedelta, timezone
+
+    from stonepi_display.variables import relative_when
+
+    now = datetime(2026, 10, 31, 12, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        "stonepi_display.variables.datetime",
+        type("D", (), {"now": staticmethod(lambda tz=None: now), "fromisoformat": datetime.fromisoformat})(),
+    )
+    stamp = (now - timedelta(days=6)).isoformat()
+    assert relative_when(stamp) == "6d ago"
+    assert relative_when((now - timedelta(days=1)).isoformat()) == "Yesterday"
+
+
 def test_builder_emits_the_same_keys_for_empty_inputs():
     empty = build_merge_variables(hostname="", watch={}, backup={}, fetched={})
     assert set(empty) == MERGE_VARIABLE_KEYS

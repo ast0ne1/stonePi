@@ -9,6 +9,7 @@
       {% if item.status_label %}<p class="meta queue-status is-{{ item.state }}" data-queue-status="{{ item.task_id }}">{{ item.status_label }}</p>{% endif %}
     </div>
     <form method="post" action="/reader/queue/{{ item.task_id }}/cancel" class="queue-cancel">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       <input type="hidden" name="next" value="{{ queue_next|default('/status') }}" />
       <button class="icon-btn" type="submit" title="Remove from transfer" aria-label="Remove {{ item.label }} from transfer">
         {{ icon("trash") }}

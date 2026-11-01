@@ -197,7 +197,7 @@ async def _form(request: Request, path: str, active: str):
     if denied is not None:
         return None, None, denied
     form = await request.form()
-    if not csrf_ok_request(request.cookies, str(form.get("csrf_token") or "")):
+    if not csrf_ok_request(request, str(form.get("csrf_token") or "")):
         return None, None, _back(err="Form expired. Try again.")
     return user, form, None
 

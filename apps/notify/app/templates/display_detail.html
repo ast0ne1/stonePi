@@ -66,6 +66,11 @@
           <input type="number" name="settle_s" min="0" max="15" step="1" value="{{ web_page.settle_s if web_page else 3 }}" />
           <span class="hint">For widgets that fill in after the page appears.</span>
         </label>
+        <label>
+          Capture again every (minutes)
+          <input type="number" name="refresh_min" min="15" max="1440" step="5" value="{{ web_page.refresh_min if web_page else 15 }}" />
+          <span class="hint">TRMNL and the Car Thing reuse a capture until it's this old (15 at least). The Car Thing's ↻ button takes a new one any time.</span>
+        </label>
       </div>
       <label>
         Hide these parts <span class="muted">(CSS selectors, one per line)</span>
@@ -166,6 +171,14 @@
           {% endfor %}
         </select>
       </label>
+      <label class="builder-device" data-builder-hour-wrap {% if display.title_bar == 'off' %}hidden{% endif %}>
+        <span class="sr-only">Clock</span>
+        <select data-builder-hour-format aria-label="Title bar clock">
+          {% for key, label in hour_formats %}
+          <option value="{{ key }}" {% if display.hour_format == key %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
       <div class="seg" role="group" aria-label="Preview data">
         <button type="button" class="seg-btn" data-builder-data="sample" aria-pressed="true">Sample data</button>
         <button type="button" class="seg-btn" data-builder-data="live" aria-pressed="false">Live data</button>
@@ -224,6 +237,7 @@
     <input type="hidden" name="device" value="{{ display.device }}" data-builder-device-field />
     <input type="hidden" name="title_bar" value="{{ display.title_bar }}" data-builder-title-bar-field />
     <input type="hidden" name="date_format" value="{{ display.date_format }}" data-builder-date-format-field />
+    <input type="hidden" name="hour_format" value="{{ display.hour_format }}" data-builder-hour-format-field />
     <input type="hidden" name="widgets_json" value="" data-builder-widgets-field />
     <button type="submit" class="btn btn-primary btn-with-icon" data-builder-save>{{ svg('check') }} Save layout</button>
     <button type="button" class="btn btn-ghost btn-with-icon" data-builder-reset disabled>{{ svg('undo') }} Undo changes</button>

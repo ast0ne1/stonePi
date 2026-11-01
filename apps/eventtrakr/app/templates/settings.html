@@ -64,7 +64,7 @@
 
 <div class="card">
   <h2 class="section-heading">{{ icon('sliders') }} Account &amp; Default Location</h2>
-  <form method="post" action="/settings/general">
+  <form method="post" action="/settings/general"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div class="form-group">
       <label for="default_location">Default City / Location</label>
       <input type="text" id="default_location" name="default_location" class="form-control" value="{{ default_location }}" required placeholder="e.g. Copenhagen, Denmark" />
@@ -85,7 +85,7 @@
 <div class="card" id="agenda-view">
   <h2 class="section-heading">{{ icon('filter') }} Agenda view</h2>
   <p class="form-hint" style="margin-bottom: 12px;">Which filter chips show above your Agenda. Day chips always show. Just for you.</p>
-  <form method="post" action="/settings/agenda-view">
+  <form method="post" action="/settings/agenda-view"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label class="check-row">
       <input type="checkbox" name="show_category" value="1" {% if agenda_bars.category %}checked{% endif %} />
       <span>Category chips</span>
@@ -112,7 +112,7 @@
   {% if not current_user.can('can_share_agenda') %}
   <p class="form-hint" data-cap-hint="can_share_agenda">Your agenda and favourites stay private. Ask an admin to allow “Share agenda publicly” in StonePi → Users.</p>
   {% else %}
-  <form method="post" action="/settings/privacy">
+  <form method="post" action="/settings/privacy"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div style="margin-bottom: 20px;">
       <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 600;">
         <input type="checkbox" name="is_public" value="1" {% if is_public %}checked{% endif %} style="width: 18px; height: 18px;" />
@@ -156,13 +156,13 @@
   {% endif %}
 </div>
 
-{% if current_user.can('can_sync_calendar') %}
+{% if current_user.can('can_sync_calendar') and calendar_feed_token %}
 <div class="card">
   <h2 class="section-heading">{{ icon('calendar') }} Webcal Calendar Subscription Feed</h2>
-  <p class="form-hint" style="margin-bottom: 14px;">Subscribe to all your favourited events in Apple Calendar, Microsoft Outlook, or Google Calendar using this live iCal URL.</p>
+  <p class="form-hint" style="margin-bottom: 14px;">Subscribe to all your favourited events in Apple Calendar, Microsoft Outlook, or Google Calendar using this live iCal URL. The secret in the path is personal — treat it like a password.</p>
 
   <div class="info-box" style="font-family: monospace; font-size: 0.85rem; word-break: break-all;">
-    webcal://{{ public_url|replace('http://','')|replace('https://','') }}/calendar/feed/{{ user.username }}.ics
+    webcal://{{ public_url|replace('http://','')|replace('https://','') }}/calendar/feed/{{ user.username }}/{{ calendar_feed_token }}.ics
   </div>
 </div>
 {% endif %}
@@ -192,7 +192,7 @@
   </div>
 
   {% if user.role == 'admin' %}
-  <form method="post" action="/settings/schedule" style="margin-bottom: 20px;" data-schedule-global-form>
+  <form method="post" action="/settings/schedule" style="margin-bottom: 20px;" data-schedule-global-form><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div class="form-group">
       <label for="schedule_type">How often</label>
       <select id="schedule_type" name="schedule_type" class="form-control" data-schedule-type>
@@ -257,7 +257,7 @@
     Instagram discovery / update alerts are toggled under <a href="/settings?tab=discovery">Discovery</a>.
   </p>
   {% if user.role == 'admin' %}
-  <form method="post" action="/settings/notifications">
+  <form method="post" action="/settings/notifications"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div class="form-group">
       <label for="notify_approaching_minutes">Lead time (minutes)</label>
       <input type="number" id="notify_approaching_minutes" name="notify_approaching_minutes" class="form-control" min="5" max="1440" step="5" value="{{ notify_approaching_minutes }}" />
@@ -280,7 +280,7 @@
     Manage accounts under <a href="/sources/social">Settings → Instagram tracking</a>. Decide on what they find in <a href="/discoveries">Review</a>.
   </p>
   {% if user.role == 'admin' %}
-  <form method="post" action="/settings/discovery">
+  <form method="post" action="/settings/discovery"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label class="check-row">
       <input type="checkbox" name="social_instagram_enabled" value="1" {% if social_instagram_enabled %}checked{% endif %} />
       <span>Instagram tracking</span>
@@ -357,7 +357,7 @@
   </p>
 
   {% if user.role == 'admin' %}
-  <form method="post" action="/settings/filters">
+  <form method="post" action="/settings/filters"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div class="form-group">
       <label for="global_keyword_include">Must contain (any of)</label>
       <input type="text" id="global_keyword_include" name="global_keyword_include" class="form-control" value="{{ global_keyword_include }}" placeholder="comma-separated, e.g. music, market" />
@@ -396,7 +396,7 @@
   <ul class="category-edit-list">
     {% for cat in category_list %}
     <li class="category-edit">
-      <form method="post" action="/settings/categories/{{ cat.key }}/rename" class="category-edit-form">
+      <form method="post" action="/settings/categories/{{ cat.key }}/rename" class="category-edit-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="text" name="label" value="{{ cat.label }}" required {% if cat.is_builtin or user.role != 'admin' %}readonly{% endif %} class="form-control" />
         {% if user.role == 'admin' %}
           {% if not cat.is_builtin %}
@@ -407,7 +407,7 @@
         {% endif %}
       </form>
       {% if user.role == 'admin' and not cat.is_builtin %}
-      <form method="post" action="/settings/categories/{{ cat.key }}/delete" data-confirm="Remove {{ cat.label }}?" data-confirm-detail="Sources using it move to General." data-confirm-ok="Remove">
+      <form method="post" action="/settings/categories/{{ cat.key }}/delete" data-confirm="Remove {{ cat.label }}?" data-confirm-detail="Sources using it move to General." data-confirm-ok="Remove"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button class="icon-btn" type="submit" aria-label="Remove {{ cat.label }}" title="Remove category">{{ icon('trash') }}</button>
       </form>
       {% endif %}
@@ -415,7 +415,7 @@
         {{ category_pill(cat.label) }}
         {% if user.role == 'admin' %}
         {%- set default_tint = category_default_tints.get(cat.key) %}
-        <form method="post" action="/settings/categories/{{ cat.key }}/color" class="category-colors" data-autosubmit role="radiogroup" aria-label="{{ cat.label }} colour">
+        <form method="post" action="/settings/categories/{{ cat.key }}/color" class="category-colors" data-autosubmit role="radiogroup" aria-label="{{ cat.label }} colour"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <label class="color-swatch is-default tint-{{ default_tint }}" title="Default ({{ dict(category_tints).get(default_tint, default_tint) }})">
             <input type="radio" name="color" value=""{% if not cat.color %} checked{% endif %} aria-label="Default colour" /><span>Auto</span>
           </label>
@@ -433,7 +433,7 @@
   </ul>
 
   {% if user.role == 'admin' %}
-  <form method="post" action="/settings/categories" class="category-add">
+  <form method="post" action="/settings/categories" class="category-add"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="text" name="label" required placeholder="e.g. Wellness" class="form-control" />
     <button class="btn btn-primary btn-sm btn-with-icon" type="submit">{{ icon('plus') }} Add category</button>
   </form>
@@ -462,7 +462,7 @@
   {% endif %}
 
   {% if user.role == 'admin' %}
-  <form method="post" action="/settings/calendar/google-credentials">
+  <form method="post" action="/settings/calendar/google-credentials"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div class="form-group">
       <label for="google_client_id">Client ID</label>
       <input type="text" id="google_client_id" name="google_client_id" class="form-control" placeholder="{% if google_configured %}Leave blank to keep existing{% else %}xxxxx.apps.googleusercontent.com{% endif %}" autocomplete="off" />
@@ -485,7 +485,7 @@
   {% if not current_user.can('can_sync_calendar') %}
   <p class="form-hint" data-cap-hint="can_sync_calendar">Ask an admin to allow “Google Calendar sync” in StonePi → Users. The “Add to Google Calendar” button on each event still works.</p>
   {% if gcal_conn %}
-  <form method="post" action="/calendar/google/disconnect" style="margin-top: 12px;">
+  <form method="post" action="/calendar/google/disconnect" style="margin-top: 12px;"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit" class="btn btn-outline" style="color: var(--error);">Disconnect Google Calendar</button>
   </form>
   {% endif %}
@@ -495,7 +495,7 @@
     <div style="font-size: 0.88rem;">Connected Account: <strong>{{ gcal_conn.account_email }}</strong></div>
     <p style="font-size: 0.8rem; color: var(--muted); margin-top: 6px;">Favourited events will automatically be pushed to your Google Calendar.</p>
   </div>
-  <form method="post" action="/calendar/google/disconnect">
+  <form method="post" action="/calendar/google/disconnect"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit" class="btn btn-outline" style="color: var(--error);">Disconnect Google Calendar</button>
   </form>
   {% elif google_configured %}
@@ -532,7 +532,7 @@
   {% endif %}
 
   {% if user.role == 'admin' %}
-  <form method="post" action="/settings/integrations" style="margin-bottom: 12px;">
+  <form method="post" action="/settings/integrations" style="margin-bottom: 12px;"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div class="form-group">
       <label for="brightdata_api_key">Bright Data API Key</label>
       <input type="password" id="brightdata_api_key" name="brightdata_api_key" class="form-control" placeholder="{% if brightdata_configured %}Leave blank to keep existing key{% else %}Paste your Bright Data API key{% endif %}" autocomplete="off" />
@@ -542,7 +542,7 @@
   </form>
 
   {% if brightdata_configured %}
-  <form method="post" action="/settings/integrations/clear" data-confirm="Remove the Bright Data API key?" data-confirm-detail="Facebook sources will stop syncing until a new key is added." data-confirm-ok="Remove">
+  <form method="post" action="/settings/integrations/clear" data-confirm="Remove the Bright Data API key?" data-confirm-detail="Facebook sources will stop syncing until a new key is added." data-confirm-ok="Remove"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit" class="btn btn-outline btn-sm" style="color: var(--error);">Remove API Key</button>
   </form>
   {% endif %}
@@ -566,7 +566,7 @@
     reused for {{ brightdata_search_cache_hours }} hours.
   </p>
   {% if user.role == 'admin' %}
-  <form method="post" action="/settings/integrations/limit">
+  <form method="post" action="/settings/integrations/limit"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div class="form-group">
       <label for="brightdata_limit">Monthly limit (records, all apps)</label>
       <input type="number" id="brightdata_limit" name="brightdata_limit" class="form-control" min="0" max="10000000" value="{{ brightdata_usage.limit }}" />
@@ -592,7 +592,7 @@
   <h2 class="section-heading">{{ icon('wifi') }} Network &amp; Local SSL Certificates</h2>
   <p class="form-hint" style="margin-bottom: 16px;">Appliance hostname is set in Dashboard → Settings → Network. EventTrakr can still serve HTTPS on the LAN with a local certificate — download the root CA and trust it on each device.</p>
 
-  <form method="post" action="/settings/network" style="margin-bottom: 20px;">
+  <form method="post" action="/settings/network" style="margin-bottom: 20px;"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 600; margin-bottom: 14px;">
       <input type="checkbox" name="https_enabled" value="1" {% if is_https %}checked{% endif %} style="width: 18px; height: 18px;" />
       Serve over HTTPS with auto-generated local certificates
@@ -648,7 +648,7 @@
   </div>
 
   <h3>Add New User</h3>
-  <form method="post" action="/settings/users/create" style="margin-top: 14px;">
+  <form method="post" action="/settings/users/create" style="margin-top: 14px;"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px;">
       <div class="form-group">
         <label for="new_username">Username</label>
@@ -676,7 +676,7 @@
 <div class="stack settings-panel" id="settings-panel-update" role="tabpanel" data-settings-panel="update" aria-labelledby="settings-tab-update"{% if active_tab != 'update' %} hidden{% endif %}>
 <div class="card stack">
   <h2 class="section-heading">{{ icon('refresh') }} Updates</h2>
-  <form method="post" action="/settings/update" class="stack">
+  <form method="post" action="/settings/update" class="stack"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label>
       GitHub repository
       <input type="text" name="github_repo" value="{{ github_repo }}" class="form-control" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="owner/stonePi" />
@@ -696,15 +696,15 @@
     {% endif %}
     <button type="submit" class="btn btn-primary btn-with-icon">{{ icon('check') }} Save repository</button>
   </form>
-  <form method="post" action="/settings/updates/check" style="margin-top:12px">
+  <form method="post" action="/settings/updates/check" style="margin-top:12px"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit" class="btn btn-outline btn-with-icon">{{ icon('search') }} Check for updates</button>
   </form>
   {% if update_check.newer and update_check.valid %}
-  <form method="post" action="/settings/updates/install" style="margin-top:12px" data-confirm="Install {{ update_check.version or update_check.tag }}?" data-confirm-detail="EventTrakr will replace the app and restart." data-confirm-ok="Install">
+  <form method="post" action="/settings/updates/install" style="margin-top:12px" data-confirm="Install {{ update_check.version or update_check.tag }}?" data-confirm-detail="EventTrakr will replace the app and restart." data-confirm-ok="Install"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit" class="btn btn-primary btn-with-icon">{{ icon('download') }} Install {{ update_check.version or update_check.tag }}</button>
   </form>
   {% endif %}
-  <form method="post" action="/settings/updates/rollback" style="margin-top:12px" data-confirm="Roll back to the previous app?" data-confirm-detail="EventTrakr will restore the last snapshot and restart." data-confirm-ok="Roll back">
+  <form method="post" action="/settings/updates/rollback" style="margin-top:12px" data-confirm="Roll back to the previous app?" data-confirm-detail="EventTrakr will restore the last snapshot and restart." data-confirm-ok="Roll back"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit" class="btn btn-outline">Roll back last app</button>
   </form>
 </div>
@@ -714,7 +714,7 @@
 <div class="stack settings-panel" id="settings-panel-about" role="tabpanel" data-settings-panel="about" aria-labelledby="settings-tab-about"{% if active_tab != 'about' %} hidden{% endif %}>
 <div class="card stack about-card">
   <h2 class="section-heading">{{ icon('about') }} {{ app_name }}</h2>
-  <p class="lede">Tracks events from the sources you choose, keeps a personal agenda, and can push favourites to Google Calendar. Runs on a home Pi or a Windows machine on your LAN.</p>
+  <p class="lede">Tracks events from the sources you choose, shows them on a map of the week and a personal agenda, and can push favourites to Google Calendar. Runs on a home Pi or a Windows machine on your LAN.</p>
   <p class="hint">GitHub: <a class="text-link" href="{{ app_github }}" rel="noopener noreferrer" target="_blank">{{ app_github_user }}</a></p>
   <p class="hint">Version: {{ app_version }}</p>
 </div>

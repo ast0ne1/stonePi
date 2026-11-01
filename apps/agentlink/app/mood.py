@@ -7,14 +7,14 @@ First match wins:
     3 sleepy   battery under LOW_BATTERY, or household quiet hours (Sidekick, default 22:00–07:00)
     4 proud    answered a question in the last PROUD_S
     5 curious  a Pinboard notice under 6 h old, or today's paper out in the last hour
-    6 happy    an event later today, or a chat in the last 3 h
+    6 happy    an event later today, one of the owner's teams playing later today, or a chat in the last 3 h
     7 content  nothing notable
 
 Overdue reminders don't change the face; they become the caption. A new mood must hold for
 SETTLE_S before the face changes (upset and proud show at once), so a blip doesn't flicker.
 The reason is what Pebble says when asked how it is, so face and words agree.
 
-Owner signals (events, reminders, notices, briefing) are read only through tools switched on
+Owner signals (events, reminders, notices, briefing, teams) are read only through tools switched on
 for this Pebble and apps its owner has. They're device state, not agent actions, so they
 aren't audited, and they're cached per device for SIGNAL_CACHE_S so 30 s mood polls stay cheap.
 """
@@ -127,10 +127,14 @@ def _signals(binding: dict[str, Any], now: float) -> dict[str, Any]:
         "reminders": (tools.get_reminders, {}),
         "events": (tools.get_events, {"days": 1}),
         "news": (tools.get_news_briefing, {}),
+        "teams": (tools.get_my_teams, {}),
     }
-    tool_for = {"notices": "get_notices", "reminders": "get_reminders", "events": "get_events", "news": "get_news_briefing"}
+    tool_for = {
+        "notices": "get_notices", "reminders": "get_reminders", "events": "get_events", "news": "get_news_briefing",
+        "teams": "get_my_teams",
+    }
     jobs = {name: tools._pool.submit(fn, binding, params) for name, (fn, params) in fetches.items() if allowed(tool_for[name])}
-    out: dict[str, Any] = {"newest_notice": None, "overdue": 0, "next_event": None, "paper_out": None}
+    out: dict[str, Any] = {"newest_notice": None, "overdue": 0, "next_event": None, "paper_out": None, "next_match": None}
     for name, job in jobs.items():
         try:
             data = job.result(timeout=6)
@@ -148,6 +152,10 @@ def _signals(binding: dict[str, Any], now: float) -> dict[str, Any]:
             ]
             later.sort(key=lambda e: (not e.get("favourite"), str(e.get("start"))))
             out["next_event"] = later[0] if later else None
+        elif name == "teams":
+            later = [t for t in tools.teams_playing_today(data) if (_ts(t["next"].get("start")) or 0) > now]
+            later.sort(key=lambda t: str(t["next"].get("start")))
+            out["next_match"] = later[0] if later else None
         elif name == "news" and data.get("paper_ready"):
             try:
                 hh, mm = (int(x) for x in str(data.get("publishes_at") or "").split(":"))
@@ -186,6 +194,10 @@ def decide(binding: dict[str, Any], *, now: float, local_now: datetime | None = 
         title = str(sig["next_event"].get("title") or "Something")
         at = str(sig["next_event"].get("start") or "")[11:16]
         return "happy", f"Looking forward to {title} at {at} today", f"{title} at {at}"
+    if sig.get("next_match"):
+        team, match = str(sig["next_match"].get("team") or "Your team"), sig["next_match"]["next"]
+        at = str(match.get("time") or "")
+        return "happy", f"{team} play at {at} today", f"{team} at {at}"
     if since_ok is not None and since_ok < CHAT_HAPPY_S:
         return "happy", "We've been chatting and everything's fine at home", CAPTIONS["happy"]
     return "content", "All's quiet and StonePi is healthy", CAPTIONS["content"]

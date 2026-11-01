@@ -131,6 +131,27 @@ def test_payload_carries_only_what_the_widgets_read():
     assert payload["G"] == [4, 3]
 
 
+def test_payload_escapes_html_in_merge_strings():
+    """Pinboard / alert text must not inject markup into TRMNL Liquid."""
+    d = _display(
+        [
+            {"widget_id": "pinboard.recent", "size": "small"},
+            {"widget_id": "stonepi.watch", "size": "small"},
+        ],
+        name="Kitchen<script>x</script>",
+    )
+    variables = {
+        **SAMPLE_VARIABLES,
+        "pinboard_lines": ["Buy <img src=x onerror=alert(1)> milk"],
+        "watch_summary": "All clear <b>now</b>",
+    }
+    payload = stonepi_display.display_payload(d, variables)
+    assert payload["TN"] == "Kitchen&lt;script&gt;x&lt;/script&gt;"
+    assert payload["pinboard_lines"] == ["Buy &lt;img src=x onerror=alert(1)&gt; milk"]
+    assert payload["watch_summary"] == "All clear &lt;b&gt;now&lt;/b&gt;"
+    assert isinstance(payload["L"], list) and isinstance(payload["G"][0], int)
+
+
 def test_legacy_template_sends_every_variable():
     d = _display([], trmnl={"template": "legacy"})
     payload = stonepi_display.display_payload(d, SAMPLE_VARIABLES)
@@ -183,6 +204,7 @@ def pushing(tmp_path: Path, monkeypatch):
     hooks = {"kitchen": "https://trmnl.example/api/custom_plugins/abc"}
     monkeypatch.setattr(push_mod, "get_webhook", lambda display_id: hooks.get(display_id, ""))
     monkeypatch.setattr(push_mod, "validate_webhook_url", lambda url: url)
+    monkeypatch.setattr(push_mod, "resolve_webhook", lambda url: (url, "93.184.216.34"))
     monkeypatch.setattr(push_mod.httpx, "Client", _FakeClient)
     _FakeClient.sent = []
     _FakeClient.status = 200
@@ -254,8 +276,8 @@ def test_title_bar_position(position):
 
 
 def test_unknown_title_bar_and_date_format_fall_back():
-    d = _display([], title_bar="sideways", date_format="nope")
-    assert d["title_bar"] == "bottom" and d["date_format"] == "day_time"
+    d = _display([], title_bar="sideways", date_format="nope", hour_format="nope")
+    assert d["title_bar"] == "bottom" and d["date_format"] == "day_time" and d["hour_format"] == "24"
 
 
 def test_date_formats_render_in_local_time():
@@ -265,10 +287,15 @@ def test_date_formats_render_in_local_time():
     local = stamp.astimezone()
     assert stonepi_display.format_updated(stamp.isoformat(), "iso") == local.strftime("%Y-%m-%d %H:%M")
     assert stonepi_display.format_updated(stamp.isoformat(), "time") == local.strftime("%H:%M")
-    assert stonepi_display.format_updated(stamp.isoformat(), "mdy").endswith(("AM", "PM"))
-    d = _display([], date_format="dmy")
+    assert stonepi_display.format_updated(stamp.isoformat(), "mdy", "12").endswith(("AM", "PM"))
+    day12 = stonepi_display.format_updated(stamp.isoformat(), "day_time", "12")
+    assert day12.startswith(("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")) and day12.endswith(("AM", "PM"))
+    d = _display([], date_format="dmy", hour_format="24")
     payload = stonepi_display.display_payload(d, {**SAMPLE_VARIABLES, "updated_ts": stamp.isoformat()})
-    assert payload["updated_at"] == local.strftime("%d/%m/%Y %H:%M")
+    assert payload["updated_at"] == "Updated " + local.strftime("%d/%m/%Y %H:%M")
+    d12 = _display([], date_format="day_time", hour_format="12")
+    stamp12 = stonepi_display.display_payload(d12, {**SAMPLE_VARIABLES, "updated_ts": stamp.isoformat()})["updated_at"]
+    assert stamp12.startswith("Updated ") and stamp12.endswith(("AM", "PM"))
 
 
 # --- TRMNL plans, budget, unchanged skips, back-off -------------------------

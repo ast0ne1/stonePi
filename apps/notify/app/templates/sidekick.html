@@ -110,11 +110,27 @@
     </details>
     <details class="sk-fold">
       <summary><strong>What Pebble can use</strong> <span class="muted">· {{ on_tools|length }} of {{ d.tools|length }} on</span></summary>
-      <fieldset class="stack">
+      <fieldset class="sk-tools">
         <legend class="sr-only">What Pebble can use</legend>
         <input type="hidden" name="tools_listed" value="{{ d.tools|map(attribute='name')|join(',') }}" />
-        {% for t in d.tools %}
-        <label class="check"><input type="checkbox" name="tool_{{ t.name }}" value="1" {% if t.enabled %}checked{% endif %} /><span><strong>{{ t.name|replace('_', ' ')|capitalize }}</strong> <span class="muted">· {{ t.description }}</span></span></label>
+        {% for group in d.tool_groups %}
+        <div class="sk-tool-app">
+          <h3 class="sk-tool-app-title">{{ group.label }}</h3>
+          <div class="sk-tool-list">
+            {% for t in group.tools %}
+            <div class="sk-tool">
+              <span class="sk-tool-copy">
+                <strong>{{ t.title }}</strong>
+                {% if t.hint %}<span class="hint">{{ t.hint }}</span>{% endif %}
+              </span>
+              <label class="switch" title="{{ t.title }}">
+                <input type="checkbox" name="tool_{{ t.name }}" value="1" {% if t.enabled %}checked{% endif %} aria-label="{{ t.title }}" />
+                <span aria-hidden="true"></span>
+              </label>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
         {% endfor %}
         <p class="hint">Personal ones start off. Pebble only reads apps its owner has.</p>
       </fieldset>

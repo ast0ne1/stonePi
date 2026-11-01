@@ -1,14 +1,18 @@
 """Render PNG favicon / touch-icon / PWA sizes from the app and system icon SVGs.
 
-    python packages/stonepi_brand/render_icons.py [--force]
+    apps/notify/.venv/Scripts/python.exe packages/stonepi_brand/render_icons.py [--force]
 
-Windows dev machine only (uses headless Edge or Chrome); the PNGs are committed.
+Windows dev machine only; the PNGs are committed. Uses Playwright's Chromium when the
+Python running it has Playwright (Notify's venv does), otherwise headless Edge or Chrome
+(which some managed laptops block from writing screenshots). Only missing PNGs are
+rendered unless ``--force``.
 Writes ``static/icons/png/<id>-<size>.png`` for 32 (favicon), 180 (apple-touch,
 full-bleed on the tile ground since iOS rounds it itself), 192 and 512 (manifest).
 """
 
 from __future__ import annotations
 
+import base64
 import re
 import shutil
 import subprocess
@@ -55,28 +59,62 @@ def _shot(browser: str, html: Path, target: Path, size: int, profile: Path) -> N
     raise SystemExit(f"Could not render {target.name}")
 
 
+def _jobs(force: bool) -> list[tuple[Path, Path, int, str]]:
+    """(svg, target png, size, background) for every PNG that needs rendering."""
+    jobs = []
+    for svg in sorted((ICONS / "apps").glob("*.svg")) + sorted((ICONS / "system").glob("*.svg")):
+        ground = re.search(r'rx="22" fill="(#[0-9A-Fa-f]{6})"', svg.read_text(encoding="utf-8")).group(1)
+        for size, full_bleed in SIZES:
+            target = OUT / f"{svg.stem}-{size}.png"
+            if target.exists() and not force:
+                continue
+            jobs.append((svg, target, size, ground if full_bleed else "transparent"))
+    return jobs
+
+
+def _render_playwright(jobs: list[tuple[Path, Path, int, str]]) -> bool:
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        return False
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        for svg, target, size, bg in jobs:
+            page = browser.new_page(viewport={"width": size, "height": size})
+            src = "data:image/svg+xml;base64," + base64.b64encode(svg.read_bytes()).decode("ascii")
+            page.set_content(
+                f'<body style="margin:0;background:{bg}">'
+                f'<img src="{src}" style="display:block;width:{size}px;height:{size}px"></body>'
+            )
+            page.wait_for_function("document.images[0].complete && document.images[0].naturalWidth > 0")
+            target.write_bytes(page.screenshot(omit_background=bg == "transparent"))
+            page.close()
+            print("rendered", target.name)
+        browser.close()
+    return True
+
+
 def main(argv: list[str]) -> int:
-    force = "--force" in argv
-    browser = _browser()
+    jobs = _jobs("--force" in argv)
     OUT.mkdir(parents=True, exist_ok=True)
+    if not jobs:
+        print("all PNG icons present")
+        return 0
+    if _render_playwright(jobs):
+        return 0
+    browser = _browser()
     tmp = Path(tempfile.mkdtemp())
     try:
-        for svg in sorted((ICONS / "apps").glob("*.svg")) + sorted((ICONS / "system").glob("*.svg")):
-            ground = re.search(r'rx="22" fill="(#[0-9A-Fa-f]{6})"', svg.read_text(encoding="utf-8")).group(1)
-            for size, full_bleed in SIZES:
-                target = OUT / f"{svg.stem}-{size}.png"
-                if target.exists() and not force:
-                    continue
-                target.unlink(missing_ok=True)
-                html = tmp / f"{svg.stem}-{size}.html"
-                bg = ground if full_bleed else "transparent"
-                html.write_text(
-                    f'<!doctype html><body style="margin:0;background:{bg}">'
-                    f'<img src="{svg.as_uri()}" style="display:block;width:{size}px;height:{size}px"></body>',
-                    encoding="utf-8",
-                )
-                _shot(browser, html, target, size, tmp / "profile")
-            print("rendered", svg.stem)
+        for svg, target, size, bg in jobs:
+            target.unlink(missing_ok=True)
+            html = tmp / f"{target.stem}.html"
+            html.write_text(
+                f'<!doctype html><body style="margin:0;background:{bg}">'
+                f'<img src="{svg.as_uri()}" style="display:block;width:{size}px;height:{size}px"></body>',
+                encoding="utf-8",
+            )
+            _shot(browser, html, target, size, tmp / "profile")
+            print("rendered", target.name)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return 0

@@ -1,5 +1,33 @@
 # Changelog — Notify
 
+## 0.6.0 — 2026-11-01
+
+### Changed
+- **Car Thing Buttons:** **Open Audio** is in the Mini-apps dropdown (the Spotify + Radio launcher).
+- **Sidekick → What Pebble can use:** tools are grouped by app (StonePi, Weather, EventTrakr,
+  Pinboard, NewsCast, SportGuide, PriceWatch) with short titles and switch toggles, instead of
+  one flat checklist of raw tool names.
+
+### Security
+- **Car Thing preview commands must be JSON:** the preview proxy (`/carthing/panel/…`) passes restart, music and radio commands for an admin; a POST that isn't `application/json` (what a cross-site form can send) is refused with 415, so another site can't restart a service or play music as a signed-in admin.
+- **TRMNL merge strings are HTML-escaped** before Liquid (Pinboard lines, alerts, display name) via `stonepi_display`.
+- **Loopback `/api/events` and `/api/push-trmnl`** require a signed internal v2 request when
+  the session secret is set (nginx still 404s them at the edge).
+- CSRF checks also require Origin/Referer to match Host.
+
+### Added
+- **Displays → title-bar clock:** 12-hour (AM/PM) or 24-hour for the "Updated …" stamp, next to the date style picker.
+- **Car Thing → Pages → Audio widget:** full-page launcher with Spotify and StonePi Radio cards; opens each full-screen player and Back returns to the launcher (see the Car Thing app's changelog).
+- **Car Thing → Look → Radio → Look: RealPlayer and TouchAmp**, next to Classic Winamp, Nintendo AMP BOY and Plain. The four bitmap looks are the real skins from skins.webamp.org, scaled to fill the panel; Plain shows favourite cards when idle (see the Car Thing app's changelog). Omitron is removed.
+- **Car Thing → Look → Radio → Play on:** StonePi or a speaker Radio found on the home network (Radio F22). The Car Thing's Radio widget and screen play there.
+- **Car Thing → Look → Music → Spotify plays in** (its own Now Playing, or Radio's theme) and **Look → Radio → Radio plays in** (its theme, or Now Playing's look), for the screen, a full-page widget and the artwork screensaver.
+- **Web pages → Capture again every (minutes):** each page's refresh time, 15 at least (15 to start). A TRMNL web Display reuses the capture until it's that old instead of taking one every push; the Car Thing shows its snapshot that long and has a ↻ button for a new one. The Car Thing screensaver's own "Refresh every" setting is replaced by it.
+
+### Fixed
+- **Car Thing editor on a short laptop screen** (e.g. 14" at 125%, ~1536×864): the forms column scrolls inside the editor and the device drawing is capped, so the page itself scrolls less; those panes use the thin StonePi scrollbar.
+- **Car Thing → Pages → Delete page** uses the app's confirm sheet instead of the browser's system popup.
+- **Car Thing preview:** the Radio widget's buttons work in the preview (the preview passed only the panel's restart and music commands on, so Radio's were refused).
+
 ## 0.5.0 — 2026-10-25
 
 ### Added

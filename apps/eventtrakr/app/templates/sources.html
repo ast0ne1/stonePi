@@ -129,19 +129,19 @@
           <div class="source-row-panel">
             {% if can_manage %}
             <div class="source-row-actions">
-              <form method="post" action="/sources/toggle/{{ src.id }}">
+              <form method="post" action="/sources/toggle/{{ src.id }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit" class="btn btn-outline btn-sm">
                   {% if src.enabled %}Pause{% else %}Resume{% endif %}
                 </button>
               </form>
-              <form method="post" action="/sources/delete/{{ src.id }}" data-confirm="Delete this source?" data-confirm-detail="Synced events from this source stay until you remove them." data-confirm-ok="Delete">
+              <form method="post" action="/sources/delete/{{ src.id }}" data-confirm="Delete this source?" data-confirm-detail="Synced events from this source stay until you remove them." data-confirm-ok="Delete"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit" class="icon-btn" style="color: var(--error);" aria-label="Delete {{ src.name }}" title="Delete">
                   {{ icon('trash') }}
                 </button>
               </form>
             </div>
 
-            <form method="post" action="/sources/{{ src.id }}/category" class="source-settings-form">
+            <form method="post" action="/sources/{{ src.id }}/category" class="source-settings-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <label>
                 Category
                 <select name="category" class="form-control" onchange="this.form.submit()">
@@ -155,7 +155,7 @@
               {% endif %}
             </form>
 
-            <form method="post" action="/sources/{{ src.id }}/schedule" class="source-settings-form schedule-edit-form" data-schedule-form>
+            <form method="post" action="/sources/{{ src.id }}/schedule" class="source-settings-form schedule-edit-form" data-schedule-form><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <label>
                 Schedule
                 <select name="schedule_mode" class="form-control" data-schedule-mode>
@@ -228,7 +228,7 @@
           {% elif 'facebook.com' in cat.url|lower and not can_social %}
           <span class="form-hint">Needs “Instagram &amp; Facebook”</span>
           {% else %}
-          <form method="post" action="/sources/catalog/subscribe/{{ cat.id }}">
+          <form method="post" action="/sources/catalog/subscribe/{{ cat.id }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="btn btn-primary btn-sm btn-with-icon">{{ icon('plus') }} Add</button>
           </form>
           {% endif %}
@@ -245,7 +245,7 @@
     <h2>Add custom source</h2>
     <p class="hint">Website URL, Eventbrite/Meetup page, {% if can_social %}Facebook events, {% endif %}or an .ics calendar feed.</p>
 
-    <form method="post" action="/sources/add" class="stack sources-add-form" data-schedule-form>
+    <form method="post" action="/sources/add" class="stack sources-add-form" data-schedule-form><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div class="sources-add-fields">
         <div class="form-group">
           <label for="name">Name *</label>

@@ -6,9 +6,11 @@ DATA="/var/lib/stonepi"
 CONF="/etc/stonepi"
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
 HOSTNAME_VALUE="stonepi"
+INSTALL_ODIO=1
 
 usage() {
-  echo "Usage: sudo bash deploy/install.sh [--hostname NAME]"
+  echo "Usage: sudo bash deploy/install.sh [--hostname NAME] [--no-odio]"
+  echo "  --no-odio   skip Odio (Radio's player); install it later with: sudo stonepi-odio-setup"
   echo "Fresh Pi OS walkthrough: deploy/INSTALL.md"
 }
 
@@ -21,6 +23,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --hostname) HOSTNAME_VALUE="${2:-stonepi}"; shift 2 ;;
     --hostname=*) HOSTNAME_VALUE="${1#*=}"; shift ;;
+    --no-odio) INSTALL_ODIO=0; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option $1"; usage; exit 1 ;;
   esac
@@ -90,6 +93,7 @@ ensure_user stonepi-sport
 ensure_user stonepi-watch
 ensure_user stonepi-library
 ensure_user stonepi-ripple
+ensure_user stonepi-radio
 # Car Thing panel (optional; Notify → Displays switches it on). Talks to the device over adb.
 ensure_user stonepi-carthing
 # AgentLink (Pebble and other agent devices): bindings, tool policy, audit, speech.
@@ -104,7 +108,7 @@ for g in video systemd-journal; do
   getent group "$g" >/dev/null 2>&1 && usermod -aG "$g" stonepi-dash || true
 done
 
-mkdir -p "$DEST" "$DATA/auth" "$DATA/newscast" "$DATA/fileserve/hosted" "$DATA/eventtrakr" "$DATA/pinboard" "$DATA/studio" "$DATA/pricescout" "$DATA/sportguide" "$DATA/pricewatch" "$DATA/library" "$DATA/ripple" "$DATA/carthing" "$DATA/agentlink" "$DATA/dashboard" "$DATA/notify" "$DATA/vault" "$CONF"
+mkdir -p "$DEST" "$DATA/auth" "$DATA/newscast" "$DATA/fileserve/hosted" "$DATA/eventtrakr" "$DATA/pinboard" "$DATA/studio" "$DATA/pricescout" "$DATA/sportguide" "$DATA/pricewatch" "$DATA/library" "$DATA/ripple" "$DATA/radio" "$DATA/carthing" "$DATA/agentlink" "$DATA/dashboard" "$DATA/notify" "$DATA/vault" "$CONF"
 if [[ ! -f "$DATA/exposure" ]]; then
   printf 'lan\n' > "$DATA/exposure"
   chmod 644 "$DATA/exposure"
@@ -148,6 +152,14 @@ fi
 # Renamed services (notifications -> notify, recovery -> recover): retire old
 # units and carry code/venv, data, env, passwd and Vault key forward. Idempotent.
 bash "$DEST/deploy/stonepi-migrate-renames.sh" "$DEST"
+
+# Backup unwrap key stays on the Pi only (never copied into USB/local stamps).
+# Keep an offline copy for SD-card disaster recovery — see deploy/backup/RESTORE.md.
+if [[ ! -f "$CONF/backup.key" ]]; then
+  openssl rand -out "$CONF/backup.key" 32
+  chmod 600 "$CONF/backup.key"
+  chown root:root "$CONF/backup.key"
+fi
 
 if [[ ! -f "$CONF/stonepi.env" ]]; then
   SECRET="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
@@ -335,6 +347,17 @@ STONEPI_APP_ID=ripple
 STONEPI_DATA_DIR=/var/lib/stonepi/ripple
 EOF
 
+# Radio plays through Odio (stonepi-odio-setup); its API and myMPD stay on loopback.
+write_env "$CONF/radio.env" <<EOF
+PORT=8016
+PUBLIC_BASE_URL=http://${HOSTNAME_VALUE}.local/radio
+STONEPI_PREFIX=/radio
+STONEPI_APP_ID=radio
+STONEPI_DATA_DIR=/var/lib/stonepi/radio
+ODIO_API_URL=http://127.0.0.1:8018
+MYMPD_URL=http://127.0.0.1:8080
+EOF
+
 # Car Thing panel: loopback only (the device reaches it through `adb reverse`).
 write_env "$CONF/carthing.env" <<EOF
 PORT=8013
@@ -367,6 +390,7 @@ ensure_env_key "$CONF/sportguide.env" STONEPI_DATA_DIR /var/lib/stonepi/sportgui
 ensure_env_key "$CONF/pricewatch.env" STONEPI_DATA_DIR /var/lib/stonepi/pricewatch
 ensure_env_key "$CONF/library.env" STONEPI_DATA_DIR /var/lib/stonepi/library
 ensure_env_key "$CONF/ripple.env" STONEPI_DATA_DIR /var/lib/stonepi/ripple
+ensure_env_key "$CONF/radio.env" STONEPI_DATA_DIR /var/lib/stonepi/radio
 ensure_env_key "$CONF/carthing.env" STONEPI_DATA_DIR /var/lib/stonepi/carthing
 ensure_env_key "$CONF/agentlink.env" STONEPI_DATA_DIR /var/lib/stonepi/agentlink
 ensure_env_key "$CONF/newscast.env" PUBLIC_BASE_URL "http://${HOSTNAME_VALUE}.local/news"
@@ -383,6 +407,9 @@ ensure_env_key "$CONF/sportguide.env" STONEPI_PREFIX /sports
 ensure_env_key "$CONF/pricewatch.env" STONEPI_PREFIX /watch
 ensure_env_key "$CONF/library.env" STONEPI_PREFIX /library
 ensure_env_key "$CONF/ripple.env" STONEPI_PREFIX /ripple
+ensure_env_key "$CONF/radio.env" STONEPI_PREFIX /radio
+ensure_env_key "$CONF/radio.env" ODIO_API_URL http://127.0.0.1:8018
+ensure_env_key "$CONF/radio.env" MYMPD_URL http://127.0.0.1:8080
 
 # First admin password. Auth creates the first admin from ADMIN_PASSWORD when it starts with
 # no accounts, so only then: a random password in auth.env (Auth alone reads it, unlike
@@ -556,6 +583,7 @@ install_app sportguide stonepi-sport playwright
 install_app pricewatch stonepi-watch
 install_app library stonepi-library
 install_app ripple stonepi-ripple
+install_app radio stonepi-radio
 # Car Thing panel is optional: a tree without it still installs.
 if [[ -f "$DEST/apps/carthing/requirements.txt" ]]; then
   install_app carthing stonepi-carthing
@@ -585,7 +613,7 @@ ensure_writable_data() {
 APP_DATA_OWNERS=(auth:stonepi-auth dashboard:stonepi-dash notify:stonepi-notify newscast:stonepi-news
   fileserve:stonepi-files eventtrakr:stonepi-events pinboard:stonepi-pin studio:stonepi-studio
   pricescout:stonepi-prices sportguide:stonepi-sport pricewatch:stonepi-watch library:stonepi-library
-  ripple:stonepi-ripple carthing:stonepi-carthing agentlink:stonepi-agentlink)
+  ripple:stonepi-ripple radio:stonepi-radio carthing:stonepi-carthing agentlink:stonepi-agentlink)
 fix_data_ownership() {
   local pair dir user
   for pair in "${APP_DATA_OWNERS[@]}"; do
@@ -631,6 +659,7 @@ ensure_writable_data stonepi-sport "$DATA/sportguide" "$DEST/apps/sportguide/dat
 ensure_writable_data stonepi-watch "$DATA/pricewatch" "$DEST/apps/pricewatch/data"
 ensure_writable_data stonepi-library "$DATA/library" "$DEST/apps/library/data"
 ensure_writable_data stonepi-ripple "$DATA/ripple" "$DEST/apps/ripple/data"
+ensure_writable_data stonepi-radio "$DATA/radio" "$DEST/apps/radio/data"
 ensure_writable_data stonepi-carthing "$DATA/carthing" "$DEST/apps/carthing/data"
 ensure_writable_data stonepi-agentlink "$DATA/agentlink" "$DEST/apps/agentlink/data"
 mkdir -p "$DATA/fileserve/hosted"
@@ -664,7 +693,7 @@ done
 
 # Vault readable by app service users (group stonepi-vault); dashboard can write.
 groupadd --system stonepi-vault 2>/dev/null || true
-for u in stonepi-dash stonepi-auth stonepi-notify stonepi-news stonepi-files stonepi-events stonepi-pin stonepi-studio stonepi-prices stonepi-sport stonepi-watch stonepi-library stonepi-ripple stonepi-carthing stonepi-agentlink; do
+for u in stonepi-dash stonepi-auth stonepi-notify stonepi-news stonepi-files stonepi-events stonepi-pin stonepi-studio stonepi-prices stonepi-sport stonepi-watch stonepi-library stonepi-ripple stonepi-radio stonepi-carthing stonepi-agentlink; do
   id -u "$u" >/dev/null 2>&1 && usermod -aG stonepi-vault "$u" || true
 done
 # Apps save their own keys (ntfy token, Bright Data, Google OAuth), so the group writes too;
@@ -737,7 +766,7 @@ if [[ ! -f "$CONF/backup.conf" ]]; then
   cat > "$CONF/backup.conf" <<'EOF'
 LABEL=STONEPI-BACKUP
 UUID=
-APPS="stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library stonepi-ripple stonepi-agentlink"
+APPS="stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library stonepi-ripple stonepi-radio stonepi-agentlink"
 LOCAL_ENABLED=0
 LOCAL_CADENCE=weekly
 LOCAL_WEEKDAY=Sun
@@ -755,6 +784,9 @@ if [[ -f "$CONF/backup.conf" ]] && ! grep -q 'stonepi-library' "$CONF/backup.con
 fi
 if [[ -f "$CONF/backup.conf" ]] && ! grep -q 'stonepi-ripple' "$CONF/backup.conf" 2>/dev/null; then
   sed -i 's/^APPS="\(.*\)"/APPS="\1 stonepi-ripple"/' "$CONF/backup.conf" 2>/dev/null || true
+fi
+if [[ -f "$CONF/backup.conf" ]] && ! grep -q 'stonepi-radio' "$CONF/backup.conf" 2>/dev/null; then
+  sed -i 's/^APPS="\(.*\)"/APPS="\1 stonepi-radio"/' "$CONF/backup.conf" 2>/dev/null || true
 fi
 # Ensure local-backup keys exist on upgrades.
 if [[ -f "$CONF/backup.conf" ]] && ! grep -q '^LOCAL_ENABLED=' "$CONF/backup.conf" 2>/dev/null; then
@@ -810,7 +842,7 @@ nginx -t
 systemctl enable nginx >/dev/null 2>&1 || true
 systemctl reload nginx 2>/dev/null || systemctl restart nginx
 
-for unit in stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library stonepi-ripple stonepi-agentlink stonepi-kiwix stonepi-carthing stonepi-backup stonepi-local-backup stonepi-recover stonepi-failover-monitor; do
+for unit in stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library stonepi-ripple stonepi-radio stonepi-agentlink stonepi-kiwix stonepi-carthing stonepi-backup stonepi-local-backup stonepi-recover stonepi-failover-monitor; do
   if [[ -f "$DEST/deploy/systemd/${unit}.service" ]]; then
     cp "$DEST/deploy/systemd/${unit}.service" "/etc/systemd/system/${unit}.service"
   fi
@@ -960,6 +992,10 @@ if [[ -f "$DEST/deploy/stonepi-speech-setup.sh" ]]; then
   install -m 755 "$DEST/deploy/stonepi-speech-setup.sh" /usr/local/sbin/stonepi-speech-setup
   sed -i 's/\r$//' /usr/local/sbin/stonepi-speech-setup
 fi
+if [[ -f "$DEST/deploy/stonepi-odio-setup.sh" ]]; then
+  install -m 755 "$DEST/deploy/stonepi-odio-setup.sh" /usr/local/sbin/stonepi-odio-setup
+  sed -i 's/\r$//' /usr/local/sbin/stonepi-odio-setup
+fi
 
 # Library: root helper for apt (kiwix-tools), storage mounts, and stonepi-kiwix control.
 # stonepi-kiwix.service is installed above but never enabled here: the helper enables
@@ -976,7 +1012,7 @@ if command -v visudo >/dev/null 2>&1 && ! visudo -cf /etc/sudoers.d/stonepi-libr
 fi
 
 systemctl daemon-reload
-systemctl enable --now stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library stonepi-ripple stonepi-agentlink
+systemctl enable --now stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library stonepi-ripple stonepi-radio stonepi-agentlink
 systemctl enable --now stonepi-recover >/dev/null 2>&1 || true
 systemctl enable --now stonepi-failover-monitor >/dev/null 2>&1 || true
 # enable --now leaves an already-running unit on its old code: restart so an upgrade applies.
@@ -1044,7 +1080,7 @@ chmod 600 "$RECOVER_PASSWD"
 fix_data_ownership
 
 # Pick up stonepi-vault supplementary group + any new env keys.
-systemctl restart stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library stonepi-ripple stonepi-agentlink >/dev/null 2>&1 || true
+systemctl restart stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library stonepi-ripple stonepi-radio stonepi-agentlink >/dev/null 2>&1 || true
 # Optional services: only restart what the household switched on.
 if systemctl is-enabled --quiet stonepi-carthing 2>/dev/null; then
   systemctl restart stonepi-carthing >/dev/null 2>&1 || true
@@ -1053,11 +1089,20 @@ fi
 # changed unit applies now rather than at the next reboot.
 systemctl try-restart stonepi-kiwix >/dev/null 2>&1 || true
 
+# Odio for Radio (MPD, myMPD, Odio API) after the firewall, which keeps their ports off the LAN.
+# Skipped once its pinned version is installed and answering; a failure leaves Radio showing
+# "Odio unreachable", never the install.
+if [[ "$INSTALL_ODIO" == 1 && -x /usr/local/sbin/stonepi-odio-setup ]]; then
+  echo
+  echo "Odio (Radio's player)"
+  /usr/local/sbin/stonepi-odio-setup || echo "WARN: Odio didn't install; Radio can't play until it does. Retry: sudo stonepi-odio-setup" >&2
+fi
+
 # Wait briefly for apps, then verify edge + backends (catches welcome-page / 502 installs).
 sleep 3
 echo
 echo "Health checks"
-UNITS=(stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library stonepi-ripple stonepi-agentlink)
+UNITS=(stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library stonepi-ripple stonepi-radio stonepi-agentlink)
 failed_units=0
 for u in "${UNITS[@]}"; do
   if systemctl is-active --quiet "$u"; then
@@ -1167,6 +1212,9 @@ fi
 if [[ -x /usr/local/sbin/stonepi-speech-setup ]]; then
   rc "Notify can set up Pebble's speech" sudo -u stonepi-notify sudo -n /usr/local/sbin/stonepi-speech-setup --status
 fi
+if [[ "$INSTALL_ODIO" == 1 && -x /usr/local/sbin/stonepi-odio-setup ]]; then
+  rc "Odio answers for Radio (retry: sudo stonepi-odio-setup)" /usr/local/sbin/stonepi-odio-setup --status
+fi
 rc "Pebble's LAN path reaches AgentLink" sh -c "curl -s -o /dev/null -w '%{http_code}' -m 5 http://127.0.0.1/agent/pebble/v1/config | grep -qx 401"
 rc "Dashboard can install app updates" sudo -u stonepi-dash sudo -n /usr/local/sbin/stonepi-update-helper status pinboard
 rc "EventTrakr poster reading (tesseract) is installed" command -v tesseract
@@ -1199,6 +1247,7 @@ echo "  Studio     http://${HOSTNAME_VALUE}.local/studio/"
 echo "  PriceScout http://${HOSTNAME_VALUE}.local/prices/"
 echo "  Library    http://${HOSTNAME_VALUE}.local/library/"
 echo "  Ripple     http://${HOSTNAME_VALUE}.local/ripple/"
+echo "  Radio      http://${HOSTNAME_VALUE}.local/radio/"
 echo "  Cockpit    https://${HOSTNAME_VALUE}.local:9090  (or https://<pi-lan-ip>:9090)"
 if [[ -n "$NEW_ADMIN_PASSWORD" ]]; then
   echo "  Sign in:   ${ADMIN_USER_VALUE:-admin} / $NEW_ADMIN_PASSWORD  — change it under Settings → General → Your password."
@@ -1218,6 +1267,7 @@ else
 fi
 echo "  Helper:    stonepi status | stonepi urls | stonepi restart | stonepi logs"
 echo "  Backup:    plug in USB labelled STONEPI-BACKUP, or enable local schedule in Settings → Backup"
+echo "             Keep an offline copy of $CONF/backup.key — USB stamps encrypt secrets with it and never store the key."
 echo "  Docs:      $DEST/deploy/INSTALL.md"
 echo
 # Last step: the bootstrap only treats StonePi as installed once this says "complete".

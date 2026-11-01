@@ -279,7 +279,9 @@ def test_owner_disabled(monkeypatch):
 # -- ask ---------------------------------------------------------------------------------
 
 
-def test_ask_dev_pipeline(isolated):
+def test_ask_dev_pipeline(isolated, monkeypatch):
+    # Quiet hours (default 22:00–07:00) would force sleepy over proud overnight.
+    monkeypatch.setattr(settings, "in_quiet_hours", lambda _now=None: False)
     token, _ = paired()
     r = client.post(f"{B}/ask", content=wav(2.0), headers={**auth(token), "Content-Type": "audio/wav"})
     assert r.status_code == 200 and r.headers["content-type"] == "audio/wav"
@@ -334,9 +336,19 @@ def test_ask_speech_unavailable(monkeypatch):
     assert r.status_code == 503 and r.json()["error"] == "speech_unavailable"
 
 
+def test_ask_is_rate_limited_per_device(monkeypatch):
+    monkeypatch.setattr(ask, "ASK_MIN_INTERVAL_S", 60)
+    token, _ = paired()
+    assert client.post(f"{B}/ask", content=wav(1.0), headers={**auth(token), "Content-Type": "audio/wav"}).status_code == 200
+    r = client.post(f"{B}/ask", content=wav(1.0), headers={**auth(token), "Content-Type": "audio/wav"})
+    assert r.status_code == 429 and r.json()["error"] == "rate_limited" and r.json()["retry_after_s"] >= 1
+
+
 def test_concurrent_ask_is_busy(monkeypatch):
     import stonepi_ai
 
+    monkeypatch.setattr(ask, "ASK_MIN_INTERVAL_S", 0)
+    monkeypatch.setattr(ask, "ASK_MAX_PER_HOUR", 1000)
     gate = threading.Event()
 
     def slow(*_a, **_k):

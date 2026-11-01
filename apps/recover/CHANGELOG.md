@@ -1,5 +1,19 @@
 # Changelog — Recover
 
+## 0.6.0 — 2026-11-01
+
+### Security
+- **Recover password at rest is Argon2:** `/etc/stonepi/recover.passwd` stores an Argon2 hash
+  (not plaintext). A legacy plaintext file is rehashed on startup and after a successful login;
+  Dashboard → Vault still sets the password the same way.
+- **Log view redacts secrets:** password, token, API key and Bearer values in journal snippets
+  (including `ADMIN_PASSWORD`-style keys) are masked before they reach the browser.
+- OpenAPI schema URL is off (`openapi_url=None`), matching docs/redoc already being disabled.
+
+### Changed
+- Radio is among the services Recover can restart and check. Otherwise the version follows the platform.
+- Depends on `argon2-cffi` for the passwd hash (same family Auth uses).
+
 ## 0.5.0 — 2026-10-25
 
 ### Changed

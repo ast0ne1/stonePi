@@ -475,16 +475,50 @@ def test_public_agenda_hidden_once_owner_loses_share_capability(make_client):
     assert anon.get(f"/u/{username}/favourites").status_code == 403
 
 
-def test_calendar_feed_404_without_sync_capability(make_client, monkeypatch):
+def test_calendar_feed_requires_token_or_owner(make_client):
     from app import create_app
+    from app.routes.calendar import ensure_feed_token
+    from stonepi_auth.session import COOKIE_NAME, encode_session
 
-    monkeypatch.setattr("app.routes.calendar.is_public_exposure", lambda: False)
-    _, uid = make_client(perms={"can_sync_calendar": False})
+    client, uid = make_client(perms={"can_sync_calendar": False})
     with SessionLocal() as db:
-        username = db.get(User, uid).username
+        user = db.get(User, uid)
+        username = user.username
+        auth_id = user.auth_user_id
     anon = create_app().test_client()
     assert anon.get(f"/calendar/feed/{username}.ics").status_code == 404
     with SessionLocal() as db:
         db.get(User, uid).capabilities = json.dumps(ALL_ON)
         db.commit()
-    assert anon.get(f"/calendar/feed/{username}.ics").status_code == 200
+        token = ensure_feed_token(db, uid)
+        event = Event(
+            user_id=uid,
+            fingerprint=uuid4().hex,
+            title="Secret gig",
+            start_time=datetime.now(timezone.utc) + timedelta(days=1),
+            is_favourited=True,
+        )
+        db.add(event)
+        db.commit()
+        event_id = event.id
+    # Unsigned URL without the secret stays closed.
+    assert anon.get(f"/calendar/feed/{username}.ics").status_code == 404
+    assert anon.get(f"/calendar/feed/{username}/wrong-token.ics").status_code == 404
+    assert anon.get(f"/calendar/feed/{username}/{token}.ics").status_code == 200
+    assert anon.get(f"/calendar/ics/{event_id}").status_code == 404
+    # Cookie-only path: signed-in owner (cookie must grant sync so SSO mirror stays on).
+    client.set_cookie(
+        COOKIE_NAME,
+        encode_session(
+            secret=SECRET,
+            user_id=auth_id,
+            username=username,
+            display_name="Cap",
+            is_admin=False,
+            apps=["eventtrakr"],
+            session_id="s",
+            permissions={"eventtrakr": ALL_ON},
+        ),
+    )
+    assert client.get(f"/calendar/feed/{username}.ics").status_code == 200
+    assert client.get(f"/calendar/ics/{event_id}").status_code == 200

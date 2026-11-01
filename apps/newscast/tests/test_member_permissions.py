@@ -31,6 +31,7 @@ from app.services import user_settings as user_settings_service
 from app.services import users as users_service
 from stonepi_auth.roster import reset_rosters
 from stonepi_auth.session import COOKIE_NAME, encode_session
+from tests.csrf_helpers import with_csrf
 
 SECRET = "nc-test-secret"
 ALICE = "a11ce000-0000-4000-8000-000000000001"  # admin
@@ -73,7 +74,7 @@ def world(monkeypatch):
     app.dependency_overrides[get_db] = override
 
     def client_for(auth_id: str, username: str, is_admin: bool, perms: dict | None = None) -> TestClient:
-        client = TestClient(app, follow_redirects=False, headers={"Accept": "application/json"})
+        client = with_csrf(TestClient(app, follow_redirects=False, headers={"Accept": "application/json"}))
         client.cookies.set(
             COOKIE_NAME,
             encode_session(

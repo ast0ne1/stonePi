@@ -16,9 +16,9 @@ from app import __asset_rev__, __version__, users as users_svc
 from stonepi_auth.alerts import add_shared_templates
 from stonepi_auth.brand import brand_color, fonts_rev, manifest_icons
 from stonepi_auth import COOKIE_NAME, clear_cookie, encode_session, set_cookie
-from stonepi_auth.csrf import csrf_from_request, csrf_ok, csrf_ok_request, set_csrf_cookie
+from stonepi_auth.csrf import csrf_from_request, csrf_ok_request, set_csrf_cookie
 from stonepi_auth.http import client_ip, portal_home_url, request_is_https
-from stonepi_auth.session import COOKIE_MAX_AGE, CSRF_COOKIE, safe_next
+from stonepi_auth.session import COOKIE_MAX_AGE, safe_next
 
 logger = logging.getLogger("stonepi.auth")
 templates = Jinja2Templates(directory=str(ROOT_DIR / "app" / "templates"))
@@ -319,7 +319,7 @@ def login_submit(
     # loop every other Auth request (/api/me from each app) waits on.
     nxt = _resolve_next(next, request)
     name = username.strip()
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return _login_template(
             request,
             {
@@ -364,14 +364,47 @@ def login_submit(
     return response
 
 
+def _logout_get_allowed(request: Request) -> bool:
+    """GET logout is for Recover redirects and typed URLs — not cross-site ``<img>`` traps.
+
+    Modern browsers send Sec-Fetch-Site; only same-origin or ``none`` (address bar) may
+    clear the session. Cross-port (``same-site``) and cross-site GETs are ignored.
+    """
+    site = (request.headers.get("sec-fetch-site") or "").strip().lower()
+    if site in {"cross-site", "same-site"}:
+        return False
+    if site in {"same-origin", "none"}:
+        return True
+    from stonepi_auth.csrf import origin_ok
+
+    return origin_ok(
+        request.headers.get("origin"),
+        _request_host(request),
+        referer=request.headers.get("referer"),
+    )
+
+
 @router.api_route("/logout", methods=["GET", "POST"])
-def logout(request: Request, db: Annotated[Session, Depends(get_db)], next: str = ""):
+async def logout(request: Request, db: Annotated[Session, Depends(get_db)], next: str = ""):
     from stonepi_auth.session import decode_session
+
+    target = _resolve_next(next, request) if next else "/login"
+    if request.method == "POST":
+        header = request.headers.get("x-stonepi-csrf") or request.headers.get("X-StonePi-CSRF")
+        form_token = None
+        content_type = (request.headers.get("content-type") or "").lower()
+        if content_type.startswith(("application/x-www-form-urlencoded", "multipart/form-data")):
+            form = await request.form()
+            form_token = str(form.get("csrf_token") or "")
+        if not csrf_ok_request(request, form_token=form_token, header_token=header):
+            raise HTTPException(status_code=403, detail="CSRF check failed")
+    elif not _logout_get_allowed(request):
+        # Forged GET (e.g. hotlink): leave the session alone.
+        return RedirectResponse(target, status_code=303)
 
     platform = decode_session(request.cookies.get(COOKIE_NAME), users_svc.session_secret())
     if platform is not None:
         users_svc.revoke_session(db, platform.session_id)
-    target = _resolve_next(next, request) if next else "/login"
     response = RedirectResponse(target, status_code=303)
     clear_cookie(response)
     return response
@@ -379,7 +412,7 @@ def logout(request: Request, db: Annotated[Session, Depends(get_db)], next: str 
 
 def _require_api_csrf(request: Request) -> None:
     header = request.headers.get("x-stonepi-csrf") or request.headers.get("X-StonePi-CSRF")
-    if not csrf_ok_request(request.cookies, header_token=header):
+    if not csrf_ok_request(request, header_token=header):
         raise HTTPException(status_code=403, detail="CSRF check failed")
 
 

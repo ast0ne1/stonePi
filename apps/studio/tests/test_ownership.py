@@ -41,7 +41,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(store, "STORE", tmp_path / "studio.json")
     monkeypatch.setattr(store, "WORKSPACE_DIR", tmp_path / "ws")
     monkeypatch.setattr(routes, "_session_secret", lambda: SECRET)
-    monkeypatch.setattr(routes, "csrf_ok", lambda *_a: True)
+    monkeypatch.setattr(routes, "csrf_ok_request", lambda *_a, **_k: True)
     monkeypatch.setattr(routes, "bell_context", lambda *_a, **_k: {"show": False})
 
     def fake_stream(*_a, **_k):

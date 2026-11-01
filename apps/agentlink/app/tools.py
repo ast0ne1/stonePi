@@ -51,6 +51,33 @@ def search_news(binding: dict[str, Any], params: dict[str, Any]) -> dict[str, An
     return apps.call("newscast", "search_news", str(binding["user_id"]), {"query": params["query"], **extra})
 
 
+def get_sport(binding: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
+    out = {k: str(params[k]).strip() for k in ("when", "sport") if str(params.get(k) or "").strip()}
+    return apps.call("sportguide", "get_sport", str(binding["user_id"]), out or None)
+
+
+def get_my_teams(binding: dict[str, Any], _params: dict[str, Any]) -> dict[str, Any]:
+    return apps.call("sportguide", "get_my_teams", str(binding["user_id"]))
+
+
+def get_price_alerts(binding: dict[str, Any], _params: dict[str, Any]) -> dict[str, Any]:
+    return apps.call("pricewatch", "get_price_alerts", str(binding["user_id"]))
+
+
+def is_today(start: Any) -> bool:
+    """True when a local ISO time with an offset ("2026-10-28T20:00+01:00") falls today there."""
+    try:
+        when = datetime.fromisoformat(str(start))
+    except ValueError:
+        return False
+    return when.tzinfo is not None and when.date() == datetime.now(when.tzinfo).date()
+
+
+def teams_playing_today(teams: dict[str, Any]) -> list[dict[str, Any]]:
+    """get_my_teams' teams whose next match is today, with that match."""
+    return [t for t in teams.get("teams") or [] if t.get("next") and is_today(t["next"].get("start"))]
+
+
 def _today_weather(binding: dict[str, Any]) -> dict[str, Any]:
     weather = get_weather(binding, {})
     if not weather.get("configured") or weather.get("unavailable"):
@@ -81,12 +108,18 @@ def _today_news(binding: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _today_sport(binding: dict[str, Any]) -> dict[str, Any]:
+    playing = teams_playing_today(get_my_teams(binding, {}))
+    return {"count": len(playing), "your_teams_today": playing[:4]}
+
+
 # get_today section → (the tool that must be on, the app the user must have or None, fetch)
 TODAY_SECTIONS = {
     "weather": ("get_weather", None, _today_weather),
     "events": ("get_events", "eventtrakr", _today_events),
     "reminders": ("get_reminders", "pinboard", _today_reminders),
     "news": ("get_news_briefing", "newscast", _today_news),
+    "sport": ("get_my_teams", "sportguide", _today_sport),
 }
 
 

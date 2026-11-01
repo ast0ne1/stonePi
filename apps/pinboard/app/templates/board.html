@@ -1,82 +1,163 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
+{% from "_card.html" import board_card, card_sheet, pin_picker, area_select, note_colors_field with context %}
 
 {% block content %}
 <section class="hero page-hero">
   <div class="page-hero-copy">
     <h1>Board</h1>
-    <p class="lede">All household notices and reminders. Tap a card for details.</p>
+    <p class="lede">Notes, links, reminders and lists for the household. Pinned cards go on the displays.</p>
+  </div>
+  <div class="view-switch" role="group" aria-label="View" data-view-switch hidden>
+    <button type="button" data-view="list">{{ icon("board") }}<span>List</span></button>
+    <button type="button" data-view="canvas">{{ icon("canvas") }}<span>Canvas</span></button>
   </div>
 </section>
 
-{% if cards %}
-<div class="pin-grid" id="board">
-  {% for item in cards %}
-  <article class="card pin-card" data-expand-card data-kind="{{ item.kind }}">
-    <button type="button" class="pin-card-summary" data-card-expand aria-expanded="false">
-      <span class="pin-kind-icon" aria-hidden="true">
-        {% if item.kind == "reminder" %}{{ icon("reminder") }}{% else %}{{ icon("pin") }}{% endif %}
-      </span>
-      <span class="pin-card-main">
-        <span class="kind-pill kind-{{ item.kind }}">
-          {% if item.kind == "reminder" %}Reminder{% else %}Notice{% endif %}
-        </span>
-        <span class="pin-card-title">{{ item.text }}</span>
-        {% if item.due_label or item.due %}
-        <span class="pin-meta-chip">{% if item.due_label %}Due {{ item.due_label }}{% else %}Due {{ item.due }}{% endif %}</span>
-        {% endif %}
-      </span>
-      <span class="pin-expand-affordance" aria-hidden="true">{{ icon("chevron-down") }}</span>
-    </button>
-    <div class="pin-card-body" hidden>
-      {% if item.assignee %}
-      <p class="pin-detail"><span class="meta-label">Assignee</span> {{ item.assignee }}</p>
-      {% endif %}
-      {% if item.due and not item.due_label %}
-      <p class="pin-detail"><span class="meta-label">Due</span> {{ item.due }}</p>
-      {% elif item.due %}
-      <p class="pin-detail"><span class="meta-label">Due</span> {{ item.due }}{% if item.due_label %} · {{ item.due_label }}{% endif %}</p>
-      {% endif %}
-      {% if item.created_at %}
-      <p class="pin-detail muted"><span class="meta-label">Added</span> {{ item.created_at[:10] }}</p>
-      {% endif %}
-      {% if user and user.is_admin %}
-      <form
-        method="post"
-        action="/delete/{{ item.kind }}/{{ item.id }}"
-        data-confirm="Remove this {{ item.kind }}?"
-        data-confirm-detail="It will no longer appear on Display."
-        data-confirm-ok="Remove"
-      >
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-        <input type="hidden" name="next" value="/" />
-        <button class="btn btn-ghost btn-with-icon" type="submit">{{ icon("trash") }} Remove</button>
-      </form>
-      {% endif %}
+{% set has_cards = groups | selectattr("cards") | list | length > 0 %}
+<div class="board-surface bg-{{ background }}" id="board">
+  {% if has_cards %}
+  {% for group in groups %}
+  {% if group.cards or group.area %}
+  <section class="barea" id="area-{{ group.area.id if group.area else 'none' }}">
+    <h2 class="barea-title">
+      <span>{{ group.area.name if group.area else "Board" }}</span>
+    </h2>
+    {% if group.cards %}
+    <div class="bgrid">
+      {% for c in group.cards %}{{ board_card(c) }}{% endfor %}
     </div>
-  </article>
+    {% else %}
+    <p class="hint barea-empty">Nothing here yet.</p>
+    {% endif %}
+  </section>
+  {% endif %}
   {% endfor %}
+  {% else %}
+  <section class="card empty-state">
+    <h3>Nothing on the board yet</h3>
+    <p class="hint">Add a note, a useful link, a reminder or a list with the + button. You can also paste a web address anywhere on this page.</p>
+  </section>
+  {% endif %}
 </div>
-{% else %}
-<section class="card empty-state" id="board">
-  <h3>Nothing on the board yet</h3>
-  <p class="hint">Pin a notice or add a reminder for the household.</p>
-</section>
-{% endif %}
+
+{#- Canvas (pinboard-canvas.md §4): app.js moves the same card elements in here. -#}
+<div class="canvas" data-canvas hidden>
+  <div class="canvas-viewport bg-{{ background }}" data-viewport tabindex="-1">
+    <div class="canvas-layer" data-layer></div>
+  </div>
+  <div class="canvas-tools" role="toolbar" aria-label="Canvas">
+    <button type="button" data-zoom="out" aria-label="Zoom out">{{ icon("minus") }}</button>
+    <span class="canvas-zoom" data-zoom-label>100%</span>
+    <button type="button" data-zoom="in" aria-label="Zoom in">{{ icon("plus") }}</button>
+    <button type="button" data-fit aria-label="Fit the board">{{ icon("fit") }}</button>
+  </div>
+  <p class="canvas-help hint">Drag the background to move around, drag a card to move it, its corner to resize it. Double-click to add a card there.</p>
+</div>
+<a hidden data-board-api href="/api/cards"></a>
+<script type="application/json" id="board-canvas">{{ (canvas or {}) | tojson }}</script>
+
+{% for group in groups %}{% for c in group.cards %}{{ card_sheet(c) }}{% endfor %}{% endfor %}
 
 <div class="sheet" hidden data-sheet="add-pick">
   <div class="sheet-card card stack">
     <h2>Add to board</h2>
-    <p class="hint">Choose what you want to pin.</p>
-    <a class="btn btn-primary btn-with-icon sheet-choice" href="/reminders?new=1">
-      {{ icon("reminder") }} Add reminder
-    </a>
-    {% if can_post_notices %}
-    <a class="btn btn-secondary btn-with-icon sheet-choice" href="/notices?new=1">
-      {{ icon("pin") }} Add notice
-    </a>
-    {% endif %}
+    <div class="add-choices">
+      <button type="button" class="add-choice" data-open-sheet="add-note" data-close-sheet>{{ icon("note") }}<span>Note</span></button>
+      <button type="button" class="add-choice" data-open-sheet="add-link" data-close-sheet>{{ icon("link") }}<span>Link</span></button>
+      <button type="button" class="add-choice" data-open-sheet="add-reminder" data-close-sheet>{{ icon("reminder") }}<span>Reminder</span></button>
+      <button type="button" class="add-choice" data-open-sheet="add-checklist" data-close-sheet>{{ icon("checklist") }}<span>Checklist</span></button>
+    </div>
     <button type="button" class="btn btn-ghost" data-close-sheet>Cancel</button>
   </div>
+</div>
+
+<div class="sheet" hidden data-sheet="add-note">
+  <form method="post" action="/cards" class="sheet-card card stack sheet-scroll">
+    <h2>Add a note</h2>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="type" value="note" />
+    <label>Note <textarea name="text" rows="4" maxlength="1000" placeholder="Bins out tonight" required data-autofocus></textarea></label>
+    {{ note_colors_field("yellow") }}
+    <input type="hidden" name="x" value="" data-place-x />
+    <input type="hidden" name="y" value="" data-place-y />
+    <div data-area-field>{{ area_select() }}</div>
+    {% if can_pin %}{{ pin_picker("blue") }}{% endif %}
+    <div class="btn-row">
+      <button class="btn btn-primary" type="submit">Add note</button>
+      <button type="button" class="btn btn-ghost" data-close-sheet>Cancel</button>
+    </div>
+  </form>
+</div>
+
+<div class="sheet" hidden data-sheet="add-link"{% if share %} data-open-on-load{% endif %}>
+  <form method="post" action="/cards" class="sheet-card card stack sheet-scroll">
+    <h2>Add a link</h2>
+    <p class="hint">Pinboard fetches the page's title and picture for the card.</p>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="type" value="link" />
+    <label>Web address <input name="url" type="url" inputmode="url" placeholder="https://" required autocomplete="off" data-autofocus data-link-url value="{{ share.url if share else '' }}" /></label>
+    {% if share and share.title %}<p class="hint">{{ share.title }}</p>{% endif %}
+    <input type="hidden" name="title" value="{{ share.title if share else '' }}" />
+    <label>Your note <textarea name="note" rows="2" maxlength="1000" placeholder="Optional: why it's useful">{{ share.note if share else '' }}</textarea></label>
+    <input type="hidden" name="x" value="" data-place-x />
+    <input type="hidden" name="y" value="" data-place-y />
+    <div data-area-field>{{ area_select() }}</div>
+    {% if can_pin %}{{ pin_picker("") }}{% endif %}
+    <div class="btn-row">
+      <button class="btn btn-primary" type="submit">Add link</button>
+      <button type="button" class="btn btn-ghost" data-close-sheet>Cancel</button>
+    </div>
+  </form>
+</div>
+
+<div class="sheet" hidden data-sheet="add-reminder">
+  <form method="post" action="/cards" class="sheet-card card stack sheet-scroll">
+    <h2>Add a reminder</h2>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="type" value="reminder" />
+    <label>Reminder <input name="text" placeholder="Call plumber" required autocomplete="off" data-autofocus /></label>
+    <label>Due date <input type="date" name="due" /></label>
+    <label>
+      For
+      {% if not can_assign_others and user %}
+      <select name="assignee_user"><option value="{{ user.user_id }}">Me</option></select>
+      <span class="hint">{{ no_assign_others_hint }}</span>
+      {% elif people %}
+      <select name="assignee_user">
+        <option value="">Anyone (household)</option>
+        {% for person in people %}<option value="{{ person.id }}">{{ person.name }}</option>{% endfor %}
+      </select>
+      {% else %}
+      <input name="assignee" placeholder="Optional" autocomplete="off" />
+      {% endif %}
+    </label>
+    <input type="hidden" name="x" value="" data-place-x />
+    <input type="hidden" name="y" value="" data-place-y />
+    <div data-area-field>{{ area_select() }}</div>
+    {% if can_pin %}{{ pin_picker("blue") }}{% endif %}
+    <div class="btn-row">
+      <button class="btn btn-primary" type="submit">Add reminder</button>
+      <button type="button" class="btn btn-ghost" data-close-sheet>Cancel</button>
+    </div>
+  </form>
+</div>
+
+<div class="sheet" hidden data-sheet="add-checklist">
+  <form method="post" action="/cards" class="sheet-card card stack sheet-scroll">
+    <h2>Add a checklist</h2>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="type" value="checklist" />
+    <label>Title <input name="title" placeholder="Weekend shopping" autocomplete="off" data-autofocus /></label>
+    <label>Items <span class="hint">One per line.</span><textarea name="items" rows="6" placeholder="Milk&#10;Bread&#10;Batteries"></textarea></label>
+    <input type="hidden" name="x" value="" data-place-x />
+    <input type="hidden" name="y" value="" data-place-y />
+    <div data-area-field>{{ area_select() }}</div>
+    {% if can_pin %}{{ pin_picker("") }}{% endif %}
+    <div class="btn-row">
+      <button class="btn btn-primary" type="submit">Add checklist</button>
+      <button type="button" class="btn btn-ghost" data-close-sheet>Cancel</button>
+    </div>
+  </form>
 </div>
 {% endblock %}

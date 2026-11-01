@@ -93,6 +93,7 @@ def _is_other_platform_path(path: str, prefix: str) -> bool:
         "/watch",
         "/library",
         "/ripple",
+        "/radio",
         "/notify",
         "/recover",
     ):

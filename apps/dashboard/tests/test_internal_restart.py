@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
+
 from fastapi.testclient import TestClient
-from stonepi_auth.internal import sign_internal
+from stonepi_auth.internal import sign_internal_v2
 
 from app import routes, services
 from app.main import app
@@ -19,23 +21,32 @@ def _setup(monkeypatch):
     return TestClient(app), calls
 
 
+def _post(client, payload: dict, *, secret: str = SECRET):
+    raw = json.dumps(payload).encode()
+    return client.post(
+        PATH,
+        content=raw,
+        headers={"Content-Type": "application/json", **sign_internal_v2(secret, "POST", PATH, raw)},
+    )
+
+
 def test_restart_needs_signature(monkeypatch):
     client, calls = _setup(monkeypatch)
     assert client.post(PATH, json={"unit": "stonepi-newscast"}).status_code == 403
-    bad = sign_internal("other-secret", "POST", PATH)
-    assert client.post(PATH, json={"unit": "stonepi-newscast"}, headers=bad).status_code == 403
+    bad = sign_internal_v2("other-secret", "POST", PATH, b'{"unit":"stonepi-newscast"}')
+    assert client.post(PATH, content=b'{"unit":"stonepi-newscast"}', headers={"Content-Type": "application/json", **bad}).status_code == 403
     assert calls == []
 
 
 def test_restart_catalog_unit(monkeypatch):
     client, calls = _setup(monkeypatch)
-    body = client.post(PATH, json={"unit": "stonepi-newscast", "source": "carthing"}, headers=sign_internal(SECRET, "POST", PATH)).json()
+    body = _post(client, {"unit": "stonepi-newscast", "source": "carthing"}).json()
     assert body["ok"] and calls == [("stonepi-newscast", "restart")]
 
 
 def test_restart_rejects_other_units(monkeypatch):
     client, calls = _setup(monkeypatch)
     for unit in ("ssh", "nginx", "stonepi-carthing; reboot", ""):
-        response = client.post(PATH, json={"unit": unit}, headers=sign_internal(SECRET, "POST", PATH))
+        response = _post(client, {"unit": unit})
         assert response.status_code == 400
     assert calls == []

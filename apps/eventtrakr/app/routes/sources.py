@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.config import env
 from app.db import SessionLocal
-from app.models import CatalogSource, Category, Event, EventSource, SocialAccount, utcnow
+from app.models import CatalogSource, Category, Event, EventSighting, EventSource, SocialAccount, utcnow
 from app.services import auth, capabilities, categories, favicon, ingest, settings
 from app.services.social import config as social_config
 from app.services.social import poll as social_poll
@@ -183,6 +183,8 @@ def delete_source(source_id: int):
     with SessionLocal() as db:
         src = db.get(EventSource, source_id)
         if src and src.user_id == user.user_id:
+            # Its events stay; it just stops being listed as one of their sources.
+            db.execute(delete(EventSighting).where(EventSighting.source_id == src.id))
             db.delete(src)
             db.commit()
             flash("Source deleted.", "success")

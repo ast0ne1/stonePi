@@ -44,6 +44,17 @@ ALLOWED_LISTENER_PROCS = frozenset(
     }
 )
 
+# Odio (Radio's player, deploy/stonepi-odio-setup.sh) runs as the user "odio" (its API on loopback, the rest on all interfaces),
+# so stonepi-dash rarely sees its process names. Once it's installed (this marker), its ports
+# are expected: MPD, the Odio API and myMPD (dropped by the firewall except on loopback), AirPlay
+# 1/2 and NQPTP, and the ephemeral ports AirPlay 2 and Spotify Connect pick (LAN-only).
+ODIO_MARKER = Path("/var/lib/stonepi/odio-version")
+ODIO_LISTENERS = frozenset(
+    {("tcp", 6600), ("tcp", 8018), ("tcp", 8080), ("tcp", 5000), ("tcp", 7000), ("udp", 319), ("udp", 320)}
+    | {("udp", port) for port in range(6001, 6012)}
+)
+ODIO_PROCS = frozenset({"mpd", "mympd", "odio-api", "shairport-sync", "nqptp", "spotifyd", "pulseaudio"})
+
 
 def destinations_status() -> dict[str, Any]:
     """ntfy/TRMNL configured flags — never returns secrets."""
@@ -141,8 +152,13 @@ def listening_ports() -> dict[str, Any]:
     return classify_listeners(lines)
 
 
-def classify_listeners(lines: list[str]) -> dict[str, Any]:
-    """Split ss lines into listeners vs unexpected (pure; used by listening_ports + tests)."""
+def classify_listeners(lines: list[str], *, odio: bool | None = None) -> dict[str, Any]:
+    """Split ss lines into listeners vs unexpected (pure but for the Odio marker; tests pass ``odio``)."""
+    if odio is None:
+        try:
+            odio = ODIO_MARKER.is_file()
+        except OSError:
+            odio = False
     listeners: list[dict[str, Any]] = []
     seen_ports: set[tuple[str, int]] = set()
     for line in lines:
@@ -183,6 +199,8 @@ def classify_listeners(lines: list[str]) -> dict[str, Any]:
         if proc in ALLOWED_LISTENER_PROCS:
             return False
         if tailscale_up and row["proto"] == "udp" and row["port"] >= 32768:
+            return False
+        if odio and ((row["proto"], row["port"]) in ODIO_LISTENERS or proc in ODIO_PROCS or row["port"] >= 32768):
             return False
         return True
 

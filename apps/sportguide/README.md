@@ -43,6 +43,7 @@ Household personal use on your LAN. Do not redistribute scraped schedules.
 - nginx path `/sports/` → `127.0.0.1:8007`; unit `stonepi-sportguide`; user `stonepi-sport`
 - Install installs Playwright browsers (`install_app … playwright`)
 - Display scrape: `GET /api/display` (`N on now` in the look-ahead window)
+- **Pebble** (AgentLink): a signed `POST /api/internal/agent` answers `get_sport` (now, today, tonight, tomorrow or this weekend, optionally one sport or league, the person's teams first, with channels) and `get_my_teams` (each Team to Watch with its next match). Off for each Pebble until switched on in Notify → Sidekick; never routed by nginx
 
 ## Updating on the Pi
 

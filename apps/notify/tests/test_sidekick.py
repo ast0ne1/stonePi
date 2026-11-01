@@ -14,7 +14,12 @@ OVERVIEW = {
         "talk": {"hold": True, "toggle": False, "wake": False, "wake_phrase": "hey stonepi"}, "away_allowed": False,
         "rev": 3, "created": 1.0, "last_seen": None, "last_path": "lan", "fw": "0.1.0", "battery": "87", "model": "",
         "last_ask": None, "last_ask_ok": None,
-        "tools": [{"name": "get_status", "tier": "read", "description": "StonePi's health.", "enabled": True}],
+        "tools": [
+            {"name": "get_status", "app": "agentlink", "tier": "read", "description": "StonePi's health.", "enabled": True},
+            {"name": "get_weather", "app": "notify", "tier": "read", "description": "Weather at home.", "enabled": True},
+            {"name": "get_events", "app": "eventtrakr", "tier": "read", "description": "Upcoming events.", "enabled": False},
+            {"name": "get_sport", "app": "sportguide", "tier": "read", "description": "What's on.", "enabled": False},
+        ],
     }],
     "speech": {"mode": "dev", "stt": {"ok": True, "detail": "Dev stand-in"}, "tts": {"ok": True, "detail": "Dev chime"}},
     "ai": {"ok": False, "detail": "No AI model set up"},
@@ -46,6 +51,20 @@ def test_page_lists_devices_and_readiness(fresh, agentlink):
     assert "Set up AI" in html  # AI not ready → link to Dashboard → Settings → AI
     assert 'href="/sidekick" class="is-active"' in html
     assert "Asked a question" in html
+
+
+def test_tools_grouped_by_app_with_toggles(fresh, agentlink):
+    """What Pebble can use: one block per app, switch toggles, short titles (not raw tool ids)."""
+    html = admin_client().get("/sidekick").text
+    assert 'class="sk-tool-app-title">StonePi<' in html
+    assert 'class="sk-tool-app-title">Weather<' in html
+    assert 'class="sk-tool-app-title">EventTrakr<' in html
+    assert 'class="sk-tool-app-title">SportGuide<' in html
+    assert ">Upcoming events<" in html and "Get_events" not in html
+    assert 'name="tool_get_events"' in html and 'class="switch"' in html
+    assert html.index("sk-tool-app-title\">StonePi") < html.index("sk-tool-app-title\">Weather")
+    assert html.index("sk-tool-app-title\">Weather") < html.index("sk-tool-app-title\">EventTrakr")
+    assert html.index("sk-tool-app-title\">EventTrakr") < html.index("sk-tool-app-title\">SportGuide")
 
 
 def test_add_sends_code_owner_and_name(fresh, agentlink):

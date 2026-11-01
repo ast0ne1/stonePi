@@ -28,7 +28,9 @@ class EnvSettings(BaseSettings):
     hostname: str = Field(default="stonepi", validation_alias=AliasChoices("STONEPI_HOSTNAME", "HOSTNAME"))
     session_secret: str = ""
     admin_username: str = "admin"
-    admin_password: str = "admin"
+    # Empty on purpose: first boot generates a random password (see ensure_admin_user).
+    # run-dev sets ADMIN_PASSWORD=admin for the familiar local login.
+    admin_password: str = ""
     admin_display_name: str = "Admin"
     stonepi_prefix: str = ""
     cockpit_url: str = DEFAULT_COCKPIT_URL

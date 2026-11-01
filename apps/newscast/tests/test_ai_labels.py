@@ -20,6 +20,7 @@ from app.routers import ui
 from app.services import passwords, settings
 from stonepi_auth.session import COOKIE_NAME, encode_session
 from tests.ai_helpers import platform_ai, use_ai
+from tests.csrf_helpers import with_csrf
 
 OWNER = "5f0c1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b"
 SECRET = "nc-test-secret"
@@ -64,7 +65,7 @@ def ctx(monkeypatch):
         yield db
 
     app.dependency_overrides[get_db] = override
-    client = TestClient(app, follow_redirects=False)
+    client = with_csrf(TestClient(app, follow_redirects=False))
     client.cookies.set(
         COOKIE_NAME,
         encode_session(

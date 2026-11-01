@@ -36,6 +36,9 @@ CSS_PRESETS: dict[str, dict[str, str]] = {
     },
 }
 DEFAULT_PRESET = "flat"
+# How long a capture is kept before a screen asks for a new one (each page its own).
+MIN_REFRESH_MIN = 15
+MAX_REFRESH_MIN = 24 * 60
 
 PAGE_DEFAULTS: dict[str, Any] = {
     "id": "",
@@ -46,6 +49,7 @@ PAGE_DEFAULTS: dict[str, Any] = {
     "css": "",
     "settle_s": 3,
     "scale": 1.0,
+    "refresh_min": MIN_REFRESH_MIN,
 }
 
 
@@ -100,6 +104,7 @@ def normalize_page(raw: Any) -> dict[str, Any] | None:
         "css": str(raw.get("css") or "")[:MAX_CSS],
         "settle_s": int(_number(raw.get("settle_s"), PAGE_DEFAULTS["settle_s"], 0, 15)),
         "scale": round(_number(raw.get("scale"), PAGE_DEFAULTS["scale"], 0.25, 3.0), 2),
+        "refresh_min": int(_number(raw.get("refresh_min"), MIN_REFRESH_MIN, MIN_REFRESH_MIN, MAX_REFRESH_MIN)),
     }
 
 
@@ -111,6 +116,12 @@ def page_css(page: dict[str, Any]) -> str:
     parts.extend(f"{s.strip()}{{display:none!important}}" for s in selectors)
     parts.append(str(page.get("css") or ""))
     return "\n".join(p for p in parts if p)
+
+
+def refresh_seconds(page: dict[str, Any] | None) -> float:
+    """How old a capture of ``page`` may be before it's taken again."""
+    minutes = _number((page or {}).get("refresh_min"), MIN_REFRESH_MIN, MIN_REFRESH_MIN, MAX_REFRESH_MIN)
+    return minutes * 60.0
 
 
 def load_pages() -> list[dict[str, Any]]:

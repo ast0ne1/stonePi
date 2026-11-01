@@ -11,7 +11,13 @@ from typing import Any
 from stonepi_contracts import WIDGET_CATALOG, widget_by_id
 
 from .grid import allowed_sizes, place_widgets
-from .templates import DATE_FORMATS, DEFAULT_DATE_FORMAT, TITLE_BAR_POSITIONS
+from .templates import (
+    DATE_FORMATS,
+    DEFAULT_DATE_FORMAT,
+    DEFAULT_HOUR_FORMAT,
+    HOUR_FORMATS,
+    TITLE_BAR_POSITIONS,
+)
 
 _data_dir: Path | None = None
 _lock = threading.Lock()
@@ -110,6 +116,7 @@ def _builtin_dashboard(widgets: list[dict[str, Any]] | None = None) -> dict[str,
         "device": "og",
         "title_bar": "bottom",
         "date_format": DEFAULT_DATE_FORMAT,
+        "hour_format": DEFAULT_HOUR_FORMAT,
         "widgets": widgets if widgets is not None else _default_widgets_from_blocks(None),
         "trmnl": dict(TRMNL_DEFAULTS),
     }
@@ -262,6 +269,7 @@ def _normalize_display(raw: dict[str, Any]) -> dict[str, Any] | None:
         device = "og"
     title_bar = str(raw.get("title_bar") or "bottom").strip().lower()
     date_format = str(raw.get("date_format") or DEFAULT_DATE_FORMAT).strip().lower()
+    hour_format = str(raw.get("hour_format") or DEFAULT_HOUR_FORMAT).strip().lower()
     kind = str(raw.get("kind") or "widgets")
     kind = kind if kind in DISPLAY_KINDS and display_id != BUILTIN_DASHBOARD_ID else "widgets"
     widgets_raw = raw.get("widgets") if isinstance(raw.get("widgets"), list) and kind == "widgets" else []
@@ -280,6 +288,7 @@ def _normalize_display(raw: dict[str, Any]) -> dict[str, Any] | None:
         "device": device,
         "title_bar": title_bar if title_bar in TITLE_BAR_POSITIONS else "bottom",
         "date_format": date_format if date_format in DATE_FORMATS else DEFAULT_DATE_FORMAT,
+        "hour_format": hour_format if hour_format in HOUR_FORMATS else DEFAULT_HOUR_FORMAT,
         "widgets": place_widgets(widgets, device),
         "trmnl": _normalize_trmnl(raw.get("trmnl"), kind),
         "web": _normalize_web(raw.get("web")),

@@ -43,6 +43,8 @@ APPS = [
     # No Kiwix on Windows: Library shows "Kiwix not installed" / mock mode in dev.
     ("library", ROOT / "apps" / "library", 8009, "", "python -m app.serve"),
     ("ripple", ROOT / "apps" / "ripple", 8017, "", "python -m app.serve"),
+    # Radio: no Odio on Windows, so playback is simulated (RADIO_MOCK, see APP_ENV).
+    ("radio", ROOT / "apps" / "radio", 8016, "", "python -m app.serve"),
     # Car Thing panel. Preview it in Notify → Displays → Car Thing; with adb on PATH and a
     # Car Thing plugged into this PC, the connector takes over its screen too.
     ("carthing", ROOT / "apps" / "carthing", 8013, "", "python -m app.serve"),
@@ -60,6 +62,7 @@ APP_ENV: dict[str, dict[str, str]] = {
         "AGENTLINK_LAN_PORT": "8015",
         "AGENTLINK_SPEECH": os.environ.get("AGENTLINK_SPEECH", "dev"),
     },
+    "radio": {"RADIO_MOCK": "1"},
 }
 
 
@@ -207,6 +210,7 @@ def ensure_venv(name: str, app_dir: Path) -> Path:
         "pricewatch",
         "library",
         "ripple",
+        "radio",
         "carthing",
         "agentlink",
     }:
@@ -223,6 +227,7 @@ def ensure_venv(name: str, app_dir: Path) -> Path:
         "pricewatch",
         "library",
         "ripple",  # through stonepi_display (its e-ink greys)
+        "radio",
         "carthing",
         "agentlink",
     }:
@@ -283,6 +288,9 @@ def main() -> None:
                     "PUBLIC_ORIGIN": "http://127.0.0.1:8010",
                     "PUBLIC_BASE_URL": f"http://127.0.0.1:{port}",
                     "STONEPI_NOTIFY_URL": "http://127.0.0.1:8012",
+                    # Explicit factory login for local SSO; Auth no longer defaults to admin/admin.
+                    "ADMIN_USERNAME": "admin",
+                    "ADMIN_PASSWORD": "admin",
                 }
             )
             env.update(APP_ENV.get(name, {}))
@@ -305,6 +313,7 @@ def main() -> None:
         print("  PriceWatch  http://127.0.0.1:8008/")
         print("  Library     http://127.0.0.1:8009/")
         print("  Ripple      http://127.0.0.1:8017/")
+        print("  Radio       http://127.0.0.1:8016/  (simulated playback)")
         print("  Car Thing   http://127.0.0.1:8012/notify/displays/carthing (preview)")
         print("  Sidekick    http://127.0.0.1:8012/sidekick (AgentLink on :8015; Pebbles use this PC's LAN IP)")
         print("  Login       admin / admin")

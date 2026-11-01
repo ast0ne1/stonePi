@@ -16,6 +16,7 @@ UNITS=(
   stonepi-pricewatch
   stonepi-library
   stonepi-ripple
+  stonepi-radio
   stonepi-agentlink
 )
 # stonepi-kiwix (Library reader) shows in status/logs but is never started/stopped here:
@@ -64,6 +65,7 @@ case "$cmd" in
       -u stonepi-pricewatch \
       -u stonepi-library \
       -u stonepi-ripple \
+      -u stonepi-radio \
       -u stonepi-kiwix \
       -f
     ;;
@@ -83,6 +85,7 @@ case "$cmd" in
     echo "http://${host}.local/watch/"
     echo "http://${host}.local/library/"
     echo "http://${host}.local/ripple/"
+    echo "http://${host}.local/radio/"
     echo "https://${host}.local:9090  # Cockpit"
     if [[ -n "${lan_ip}" ]]; then
       echo "https://${lan_ip}:9090      # Cockpit (LAN IP)"

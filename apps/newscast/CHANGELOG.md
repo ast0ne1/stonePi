@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.12 — 2026-11-01
+
+### Fixed
+- **The paper sent to the reader uses the name from Settings.** The preview (`NewsCast - 01-11-2026`) was already that name, but the file on the reader was still the internal `news-2026-11-01`. Send now uploads the display name. A copy already on the reader under the old `news-…` name is removed on the next send.
+
+### Security
+- **Every signed-in POST checks the CSRF token**, not just sign-in. Forms carry `csrf_token` and background saves send the `X-StonePi-CSRF` header, both matched against the `stonepi_csrf` cookie every page now sets, so another page on the household address can't post to NewsCast as you. One router-level check (`require_csrf`) covers the pages, Sources and the `/api/feeds` and `/api/ingest` JSON routes; a refused background save answers "That page expired. Refresh and try again.", a refused form goes back to its page. Reader/OPDS device endpoints (their own token) and the signed `/api/internal/agent` are unchanged.
+- **Backup restore rejects zip-slip paths** (`../` and symlinks) under library, briefings, cache and tls.
+- `cryptography` pin raised to **50.0.1** (aligned with Dashboard).
+
 ## 0.0.11 — 2026-10-25
 
 ### Added

@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, shrink-to-fit=no" />
+  <meta name="theme-color" content="#f3eee4" data-theme-color />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Radio" />
+  <title>{% block title %}Radio · StonePi{% endblock %}</title>
+  {% include "_theme_boot.html" %}
+  {% from "stonepi/head.html" import brand_head, brand_tail %}
+  {{ brand_head("radio", fonts_rev) }}
+  <link rel="stylesheet" href="/static/css/app.css?v={{ app_version }}-{{ asset_rev }}" />
+  {{ brand_tail(fonts_rev) }}
+</head>
+<body data-csrf="{{ csrf_token }}" data-prefix="{{ app_prefix }}" data-player-bar-mode="{{ player_bar_mode or 'device' }}" data-player-pos="{{ player_bar_pos or 'bottom-left' }}" data-hls-src="{{ app_prefix }}/static/vendor/hls/hls.light.min.js?v={{ asset_rev }}">
+  {% from "_icons.html" import icon %}
+  {% from "stonepi/header.html" import header_search, header_tools %}
+  <div class="app">
+    <header class="topbar">
+      <div class="brand-row">
+        <a class="brand" href="/">{% include "_brand_mark.html" %}Radio</a>
+      </div>
+      <div class="topbar-actions">
+        {% if user or not sso %}
+        {{ header_search("/discover", "Search stations, genres, countries", app="radio") }}
+        {{ header_tools(alerts_bell_state, logout_action="/logout", csrf_token=csrf_token) }}
+        {% endif %}
+      </div>
+    </header>
+
+    <main class="main{% block main_class %}{% endblock %}">
+      {% if using_factory_admin and active == 'settings' %}
+      <p class="banner banner-muted">The admin account still uses its first-run password. Change it under <a href="{{ stonepi_home_url }}/settings?tab=general">StonePi → Settings → General</a>.</p>
+      {% endif %}
+      {% if mock %}<p class="banner banner-muted">Mock Odio — Windows/dev mode. Playback is simulated.</p>{% endif %}
+      {% if error %}<p class="banner">{{ error }}</p>{% endif %}
+      {% block content %}{% endblock %}
+    </main>
+
+    {% if active %}
+    <nav class="nav" aria-label="Main">
+      <a href="/" class="{% if active == 'listen' %}is-active{% endif %}">
+        {{ icon("listen") }}
+        <span>My Radio</span>
+      </a>
+      <a href="/discover" class="{% if active == 'discover' %}is-active{% endif %}">
+        {{ icon("discover") }}
+        <span>Discover</span>
+      </a>
+      <a href="/now" class="{% if active == 'now' %}is-active{% endif %}">
+        {{ icon("now") }}
+        <span>Now Playing</span>
+      </a>
+      <a href="/settings" class="{% if active == 'settings' %}is-active{% endif %}">
+        {{ icon("settings") }}
+        <span>Settings</span>
+      </a>
+    </nav>
+    {# Swapped with the page when Radio changes page without a reload (app.js). #}
+    <div class="page-fab" data-page-fab>{% block fab %}{% endblock %}</div>
+    {% endif %}
+
+    {# The player bar. This device: the page's own player, shown while a station plays here;
+       Radio changes page without reloading (app.js), so the stream doesn't stop. With
+       Settings → Player bar → Wherever I play it also shows a speaker or StonePi. #}
+    {% if active %}
+    <div class="player-bar" hidden data-player-bar>
+      {# The logo and name open Now Playing; the buttons beside them stay controls. #}
+      <a class="player-link" href="/now" aria-label="Open Now Playing">
+        <img class="player-art" alt="" width="40" height="40" hidden data-player-art />
+        <div class="player-copy">
+          <strong data-player-title>Radio</strong>
+          <span class="hint" data-player-status>This device</span>
+        </div>
+      </a>
+      <button class="icon-btn" type="button" data-player-toggle aria-label="Play"><span data-icon-play>{{ icon("play") }}</span><span data-icon-pause hidden>{{ icon("pause") }}</span></button>
+      <button class="icon-btn" type="button" data-player-stop aria-label="Stop">{{ icon("stop") }}</button>
+      <button class="icon-btn" type="button" data-open-outputs aria-label="Where to play">{{ icon("speaker") }}</button>
+      <audio preload="none" data-player-audio></audio>
+    </div>
+
+    <div class="sheet" hidden data-sheet="outputs">
+      <div class="sheet-card card stack">
+        <div class="sheet-head"><h2>Play on</h2><button class="sheet-close" type="button" data-close-sheet aria-label="Close">{{ icon("clear") }}</button></div>
+        <p class="hint">What’s playing moves with you.</p>
+        <div class="output-list" data-output-list><p class="hint">Looking for speakers…</p></div>
+        {# Each row's icon, by kind (app.js copies it in). #}
+        <template data-output-icon="browser">{{ icon("devices") }}</template>
+        <template data-output-icon="speaker">{{ icon("speaker") }}</template>
+        <template data-output-icon="stonepi">{{ icon("stonepi") }}</template>
+        <div class="btn-row">
+          <button class="icon-btn" type="button" data-outputs-refresh aria-label="Rescan" title="Rescan">{{ icon("refresh") }}</button>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {# Done messages ("Saved FIP") are a toast that fades, like NewsCast; errors stay as a banner. #}
+  <div class="toast" hidden data-toast role="status" aria-live="polite"{% if message %} data-toast-message="{{ message }}"{% endif %}></div>
+  <script src="/static/js/app.js?v={{ app_version }}-{{ asset_rev }}" defer></script>
+  {% block scripts %}{% endblock %}
+  <div class="sheet" hidden data-confirm-sheet>
+    <div class="sheet-card card stack">
+      <h2 data-confirm-title>Continue?</h2>
+      <p class="hint" data-confirm-body hidden></p>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-with-icon" type="button" data-confirm-ok>{{ icon("check") }} <span data-confirm-ok-label>Continue</span></button>
+        <button class="btn btn-ghost btn-with-icon" type="button" data-confirm-cancel>{{ icon("clear") }} Cancel</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

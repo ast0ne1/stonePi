@@ -1,5 +1,10 @@
 # Changelog — Studio
 
+## Unreleased
+
+### Security
+- **Preview is sandboxed** (iframe + CSP, no `allow-same-origin`): a built site can run its scripts for demos, but not read Studio cookies or act as the signed-in user.
+
 ## 0.0.9 — 2026-10-17
 
 ### Changed

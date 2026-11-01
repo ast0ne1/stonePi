@@ -8,6 +8,7 @@
   {% include "_theme_boot.html" %}
     {% from "stonepi/head.html" import brand_head, brand_tail %}
     {{ brand_head("pinboard", fonts_rev) }}
+  <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="stylesheet" href="/static/css/app.css?v={{ asset_rev }}" />
   {{ brand_tail(fonts_rev) }}
 </head>
@@ -20,7 +21,6 @@
         <a class="brand" href="/">{% include "_brand_mark.html" %}Pinboard</a>
       </div>
       <div class="topbar-actions">
-        <p class="status-pill">{% if items is defined %}{{ (items.notices|length) + (items.reminders|length) }} pin{% if (items.notices|length) + (items.reminders|length) != 1 %}s{% endif %}{% else %}Pinboard{% endif %}</p>
         {% if user %}
         {{ header_tools(alerts_bell_state, logout_action="/logout", csrf_token=csrf_token) }}
         {% endif %}
@@ -54,7 +54,7 @@
         <span>Settings</span>
       </a>
     </nav>
-    {#- Board: + opens "Add to board" (reminder or notice). Notices: + starts a new notice. -#}
+    {#- Board: + opens "Add to board" (note, link, reminder, checklist). Notices: + starts a new notice. -#}
     {% if active == 'board' %}{{ header_fab("/reminders?new=1", "Add", sheet="add-pick") }}
     {%- elif active == 'notices' and can_post_notices %}{{ header_fab("/notices?new=1#add-notice", "New notice") }}{% endif %}
   </div>

@@ -159,15 +159,22 @@ function onLoginPath() {
   return path === "/login" || path.startsWith("/login/");
 }
 
+function csrfToken() {
+  const match = document.cookie.match(/(?:^|;\s*)stonepi_csrf=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
 async function send(url, options = {}) {
   const response = await fetch(withPrefix(url), {
     credentials: "same-origin",
+    ...options,
     headers: {
       Accept: "application/json",
       "X-Requested-With": "fetch",
+      // Every POST is checked server-side (require_csrf); the cookie is set on each page.
+      "X-StonePi-CSRF": csrfToken(),
       ...(options.headers || {}),
     },
-    ...options,
   });
   if (response.status === 401 && !onLoginPath()) {
     window.location.href = withPrefix("/login");

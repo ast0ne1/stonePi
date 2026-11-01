@@ -29,12 +29,14 @@
           </p>
           {{ header_search("/search", t("Search all articles"), app="newscast") }}
           <form method="post" action="/ingest" class="refresh-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
             <button class="btn btn-primary btn-refresh{% if ingest.running %} is-busy{% endif %}" type="submit" data-refresh aria-label="{{ t('Refresh sources') }}" title="{{ t('Refresh sources') }}" {% if ingest.running %}disabled{% endif %}>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 4v6h-6"/></svg>
             </button>
           </form>
           {# Only while a Refresh started from the button above is running (not scheduled or per-source runs). #}
           <form method="post" action="/ingest/stop" class="refresh-stop-form" data-ingest-stop {% if not ingest.stoppable %}hidden{% endif %}>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
             <button class="btn btn-secondary btn-refresh btn-stop" type="submit" aria-label="{{ t('Stopping') if ingest.stopping else t('Stop refresh') }}" title="{{ t('Stopping') if ingest.stopping else t('Stop refresh') }}" {% if ingest.stopping %}disabled{% endif %}>
               <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
             </button>
@@ -59,6 +61,7 @@
             <a href="/settings?tab=reader">Settings → Reader</a>.
           </p>
           <form method="post" action="/settings/reader/nudge-dismiss" class="banner-dismiss" data-native>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
             <input type="hidden" name="next" value="{{ request.url.path }}" />
             <button class="btn btn-ghost" type="submit">Dismiss</button>
           </form>

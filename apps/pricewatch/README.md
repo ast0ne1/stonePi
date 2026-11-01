@@ -12,6 +12,7 @@ Distinct from **PriceScout** (Danish supermarket leaflet specials): PriceWatch m
 - Price history observations
 - **Compare** every retailer's offer for a product, with Trustpilot trust scores via Bright Data (PriceRunner's own rating as a fallback)
 - Strike alerts via **StonePi Notify** (Phone alerts)
+- **Pebble** (AgentLink) can ask about your watches: a signed `POST /api/internal/agent` answers `get_price_alerts` (deals first, then the rest closest to target) from the last checks only, so a question never spends Bright Data quota. Off for each Pebble until switched on in Notify → Sidekick; never routed by nginx
 
 ## Local run
 

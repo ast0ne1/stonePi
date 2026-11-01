@@ -2,12 +2,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.auth import require_x3_reader_api_token
+from app.auth import reader_on_home_lan, require_x3_reader_api_token
 from app.config import BRIEFING_DIR, LIBRARY_DIR
 from app.services.library import media_type_for
 from app.db import get_db
@@ -49,7 +49,14 @@ def health():
 
 
 @router.post("/auth/refresh")
-def auth_refresh():
+def auth_refresh(request: Request):
+    """CrossPoint asks for a token before it syncs.
+
+    On the home LAN the reader routes do not check it, so the device gets the
+    stub it expects. Anywhere else this is not a credential.
+    """
+    if not reader_on_home_lan(request):
+        raise HTTPException(status_code=404, detail="Not found")
     return {"access_token": "newscast-local", "success": True}
 
 

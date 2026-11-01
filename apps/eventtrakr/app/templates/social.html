@@ -73,7 +73,7 @@
 {% else %}
 <section class="source-group">
   <h2 class="section-label">Add account</h2>
-  <form method="post" action="/sources/social/add" class="card stack">
+  <form method="post" action="/sources/social/add" class="card stack"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div class="form-group">
       <label for="username">Instagram username</label>
       <input type="text" id="username" name="username" class="form-control" placeholder="theglobe" autocomplete="off" required />
@@ -134,10 +134,10 @@
           <div class="source-row-panel">
             {% if can_social %}
             <div class="source-row-actions">
-              <form method="post" action="/sources/social/{{ account.id }}/toggle">
+              <form method="post" action="/sources/social/{{ account.id }}/toggle"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit" class="btn btn-outline btn-sm">{% if account.tracking_enabled %}Pause{% else %}Resume{% endif %}</button>
               </form>
-              <form method="post" action="/sources/social/{{ account.id }}/delete" data-confirm="Stop tracking @{{ account.username }}?">
+              <form method="post" action="/sources/social/{{ account.id }}/delete" data-confirm="Stop tracking @{{ account.username }}?"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit" class="icon-btn" style="color: var(--error);" aria-label="Remove @{{ account.username }}">{{ icon('trash') }}</button>
               </form>
             </div>
@@ -150,7 +150,7 @@
               · OCR fails {{ account.ocr_failures or 0 }}
             </p>
 
-            <form method="post" action="/sources/social/{{ account.id }}/schedule" class="source-settings-form schedule-edit-form" data-schedule-form>
+            <form method="post" action="/sources/social/{{ account.id }}/schedule" class="source-settings-form schedule-edit-form" data-schedule-form><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <label>
                 Schedule
                 <select name="schedule_mode" class="form-control" data-schedule-mode>
@@ -169,7 +169,7 @@
           </div>
         </details>
         {% if can_social %}
-        <form method="post" action="/sources/social/{{ account.id }}/check" class="source-row-sync">
+        <form method="post" action="/sources/social/{{ account.id }}/check" class="source-row-sync"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <button type="submit" class="icon-btn icon-btn-quiet" aria-label="Check @{{ account.username }} now" title="Check now" {% if not brightdata_ok %}disabled{% endif %}>
             {{ icon('refresh') }}
           </button>

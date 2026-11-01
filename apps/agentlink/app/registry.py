@@ -41,8 +41,9 @@ TOOLS: tuple[ToolSpec, ...] = (
         "get_today",
         "agentlink",
         Tier.READ,
-        "The owner's day at a glance: today's weather, events, reminders due today or overdue, and whether "
-        "today's news briefing is ready with its top headlines. Only includes parts whose own tool is on.",
+        "The owner's day at a glance: today's weather, events, reminders due today or overdue, whether "
+        "today's news briefing is ready with its top headlines, and which of their teams play today. "
+        "Only includes parts whose own tool is on.",
     ),
     ToolSpec(
         "get_events",
@@ -102,6 +103,36 @@ TOOLS: tuple[ToolSpec, ...] = (
         ),
         requires_app="newscast",
     ),
+    ToolSpec(
+        "get_sport",
+        "sportguide",
+        Tier.READ,
+        "What sport is on TV and streams from SportGuide: title, sport and league, day and time in "
+        "the owner's timezone, whether it's on now, the channels, and which of their Teams to Watch "
+        "is playing. Their teams first, then soonest; with counts per sport for the whole window.",
+        params=(
+            Param("when", "string", "now (the next 24 hours, the default), today, tonight, tomorrow or this_weekend", required=False),
+            Param("sport", "string", "Only this: football, afl, cricket or rugby, or a league such as 'Premier League' or 'NRL'", required=False),
+        ),
+        requires_app="sportguide",
+    ),
+    ToolSpec(
+        "get_my_teams",
+        "sportguide",
+        Tier.READ,
+        "The owner's Teams to Watch in SportGuide, each with its next match in the guide: day, time "
+        "and channels, or none when the guide has nothing for it yet.",
+        requires_app="sportguide",
+    ),
+    ToolSpec(
+        "get_price_alerts",
+        "pricewatch",
+        Tier.READ,
+        "The owner's PriceWatch watches: which have hit their target price (the deal, its shop and "
+        "when it was found), then the rest closest to target first, with the lowest price now. "
+        "From PriceWatch's last checks; it never starts a new one.",
+        requires_app="pricewatch",
+    ),
 )
 
 _HANDLERS: dict[str, ToolFn] = {
@@ -114,6 +145,9 @@ _HANDLERS: dict[str, ToolFn] = {
     "get_notices": tools.get_notices,
     "get_news_briefing": tools.get_news_briefing,
     "search_news": tools.search_news,
+    "get_sport": tools.get_sport,
+    "get_my_teams": tools.get_my_teams,
+    "get_price_alerts": tools.get_price_alerts,
 }
 
 _BY_NAME = {spec.name: spec for spec in TOOLS}

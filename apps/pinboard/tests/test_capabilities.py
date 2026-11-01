@@ -1,4 +1,4 @@
-"""Pinboard capabilities: Post notices and Assign reminders to others."""
+"""Pinboard capabilities: Add and pin cards, and Assign reminders to others."""
 
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ def test_member_without_post_notices_is_refused(monkeypatch):
     assert store.list_items()["notices"] == []
     html = c.get("/notices").text
     assert 'action="/notice"' not in html
-    assert "Ask an admin to allow &#39;Post notices&#39; in StonePi → Users." in html
+    assert "Ask an admin to allow &#39;Add and pin cards&#39; in StonePi → Users." in html
     assert 'href="/notices?new=1"' not in c.get("/").text
     # Board's + still opens "Add to board", just without the notice choice.
     board = c.get("/").text

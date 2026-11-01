@@ -1,0 +1,18 @@
+{#- Bits shared by every event card: a run's end date (F18 §3a) and the other sources it's on (U33). -#}
+{% macro event_when(ev) -%}
+{% if ev.run_until %}<span>{{ ev.start_time.strftime('%a %d %b') }}<span class="event-run-until"> – until {{ ev.run_until.strftime('%a %d %b') }}</span></span>{% else %}<span>{{ ev.start_time|format_datetime }}</span>{% endif %}
+{%- endmacro %}
+
+{% macro also_on(ev, can_split=False) -%}
+{% if ev.also_on %}
+<div class="event-also-on">
+  <span class="event-also-on-label">Also on</span>
+  {% for s in ev.also_on %}
+  <span class="event-also-on-item">
+    {% if s.url %}<a href="{{ s.url }}" target="_blank" rel="noopener noreferrer">{{ s.name }}</a>{% else %}{{ s.name }}{% endif %}
+    {% if can_split and s.can_split %}<button type="button" class="event-also-on-split" data-split-sighting="{{ s.id }}" data-split-event="{{ ev.id }}" title="Not the same event: show {{ s.name }}'s listing on its own" aria-label="Not the same event as {{ s.name }}'s listing">×</button>{% endif %}
+  </span>
+  {% endfor %}
+</div>
+{% endif %}
+{%- endmacro %}

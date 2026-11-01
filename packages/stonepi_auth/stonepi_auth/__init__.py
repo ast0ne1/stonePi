@@ -11,7 +11,7 @@ from .catalog import (
     capabilities_for,
 )
 from .config import PlatformSettings, load_settings
-from .csrf import csrf_from_request, csrf_ok, csrf_ok_request, new_csrf_token, set_csrf_cookie
+from .csrf import csrf_from_request, csrf_ok, csrf_ok_request, new_csrf_token, origin_ok, set_csrf_cookie
 from .hostname import (
     normalize_hostname,
     platform_hostname,
@@ -67,6 +67,7 @@ __all__ = [
     "csrf_ok",
     "csrf_ok_request",
     "decode_session",
+    "origin_ok",
     "encode_session",
     "exposure_mode",
     "factory_admin_warning",

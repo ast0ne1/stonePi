@@ -13,7 +13,7 @@ from stonepi_auth.brand import add_brand_fonts_route, asset_rev, fonts_rev
 from stonepi_auth.http import portal_home_url
 from stonepi_auth.session import COOKIE_NAME as PLATFORM_COOKIE_NAME
 
-__version__ = "0.0.10"
+__version__ = "0.0.11"
 __asset_rev__ = asset_rev(Path(__file__).resolve().parent / "static")  # cache-bust token; changes with static/
 __github_user__ = "ast0ne1"
 __github__ = "https://github.com/ast0ne1"
@@ -37,6 +37,7 @@ def create_app() -> Flask:
 
     # Register blueprints
     from app.routes.agent import bp as agent_bp
+    from app.routes.map import bp as map_bp
     from app.routes.api import bp as api_bp
     from app.routes.auth import bp as auth_bp
     from app.routes.calendar import bp as calendar_bp
@@ -53,6 +54,7 @@ def create_app() -> Flask:
     app.register_blueprint(settings_bp)
     app.register_blueprint(api_bp)
     app.register_blueprint(agent_bp)
+    app.register_blueprint(map_bp)
 
     @app.route("/healthz")
     def healthz():
@@ -92,6 +94,53 @@ def create_app() -> Flask:
             return
         g.current_user = auth.get_current_user()
 
+    # CSRF: every page carries the household's token (cookie + {{ csrf_token }} in forms,
+    # X-StonePi-CSRF on background saves) and every POST must send it back, so another page on
+    # the household address can't act as you. The signed Pebble read (/api/internal/agent) has its own check.
+    # Log out comes from the shared header's form (no token); being signed out is harmless.
+    CSRF_EXEMPT_ENDPOINTS = {"agent.agent_read", "auth.logout", "static", "favicon"}
+
+    @app.before_request
+    def check_csrf():
+        from stonepi_auth.csrf import csrf_from_request, csrf_ok_request
+
+        g.csrf_token = csrf_from_request(request.cookies)
+        if request.method in ("GET", "HEAD", "OPTIONS") or request.endpoint in CSRF_EXEMPT_ENDPOINTS:
+            return None
+        if app.config.get("TESTING") and not app.config.get("CSRF_IN_TESTS"):
+            return None
+        form_token = request.form.get("csrf_token") if request.mimetype in (
+            "application/x-www-form-urlencoded", "multipart/form-data") else None
+        if csrf_ok_request(request, form_token=form_token, header_token=request.headers.get("X-StonePi-CSRF")):
+            return None
+        from flask import flash, jsonify, redirect
+
+        message = "That page expired. Refresh and try again."
+        if request.is_json or request.headers.get("X-StonePi-CSRF") is not None or request.path.startswith(
+            (f"{(env.stonepi_prefix or '').rstrip('/')}/api/", "/api/")
+        ):
+            return jsonify({"ok": False, "message": message}), 403
+        flash(message, "error")
+        from urllib.parse import urlsplit
+
+        back = request.referrer or ""
+        if urlsplit(back).netloc not in ("", request.host):
+            back = ""  # a refused cross-site post goes home, not back to the other site
+        return redirect(back or (env.stonepi_prefix or "") + "/")
+
+    @app.after_request
+    def set_csrf(response):
+        # The cookie goes out with the first page; forms and app.js read the same token.
+        from stonepi_auth.csrf import set_csrf_cookie
+        from stonepi_auth.http import request_is_https
+        from stonepi_auth.session import CSRF_COOKIE
+
+        # Every page renews it (same token, a fresh day), so an open tab doesn't go stale.
+        token = g.get("csrf_token")
+        if token and response.mimetype == "text/html":
+            set_csrf_cookie(response, token, secure=request_is_https(request))
+        return response
+
     @app.context_processor
     def inject_globals():
         factory = False
@@ -118,6 +167,7 @@ def create_app() -> Flask:
             "stonepi_prefix": env.stonepi_prefix,
             "alerts_bell_state": _alerts_bell_state(home_url),
             "review_pending": _review_pending(),
+            "csrf_token": g.get("csrf_token") or "",
         }
 
     def _review_pending() -> int:

@@ -1,0 +1,1432 @@
+﻿:root,
+[data-theme="light"] {
+  --gutter: 16px;
+  --tap: 44px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --topbar-height: 65px;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; padding: 0; overflow: hidden; max-width: 100%; }
+html { color-scheme: light; height: 100%; }
+[data-theme="dark"] { color-scheme: dark;
+}
+/* Stroke icons must not inherit huge default SVG sizing if CSS fails to load. */
+svg {
+  display: inline-block;
+  vertical-align: middle;
+  flex: 0 0 auto;
+  max-width: 100%;
+  overflow: visible;
+}
+body {
+  font-family: var(--chrome);
+  background: var(--paper);
+  color: var(--ink);
+  height: 100%;
+  min-height: 100dvh;
+  line-height: 1.5;
+}
+a { color: inherit; }
+button, input, select, textarea { font: inherit; color: inherit; }
+input, select, textarea { font-size: 16px; }
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.nav {
+  position: relative;
+  flex: 0 0 auto;
+  z-index: 12;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2px;
+  padding: 8px var(--gutter) calc(10px + var(--safe-bottom));
+  background: color-mix(in srgb, var(--card) 94%, transparent);
+  border-top: 1px solid var(--line);
+}
+.nav a {
+  min-height: var(--tap);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  text-decoration: none;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--muted);
+  border-radius: 12px;
+  min-width: 0;
+  max-width: 100%;
+  text-align: center;
+  flex: 0 0 auto;
+}
+.nav a span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nav svg {
+  width: 22px;
+  height: 22px;
+  max-width: 22px;
+  max-height: 22px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.nav svg [fill]:not([fill="none"]) {
+  fill: currentColor;
+  stroke: none;
+}
+.nav a.is-active {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+}
+@media (min-width: 1024px) {
+  .app {
+    display: grid;
+    grid-template-columns: var(--app-rail-width, 200px) 1fr;
+    grid-template-rows: auto 1fr;
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  html, body { overflow: auto; height: auto; }
+  .topbar {
+    position: sticky;
+    top: 0;
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+  .nav {
+    position: sticky;
+    top: var(--topbar-height);
+    grid-column: 1;
+    grid-row: 2;
+    height: calc(100dvh - var(--topbar-height));
+    grid-template-columns: 1fr;
+    grid-auto-flow: row;
+    align-content: start;
+    border-top: 0;
+    border-right: 1px solid var(--line);
+    padding: 16px;
+    overflow: visible;
+  }
+  .nav a {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 0 12px;
+    font-size: 0.95rem;
+    max-width: none;
+  }
+  .main {
+    grid-column: 2;
+    grid-row: 2;
+  }
+}
+
+.topbar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  align-items: center;
+  padding: 10px var(--gutter);
+  min-height: var(--topbar-height);
+  background: color-mix(in srgb, var(--paper) 92%, transparent);
+  border-bottom: 1px solid var(--line);
+  z-index: 10;
+}
+.brand-row {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--serif);
+  font-weight: 600;
+  font-size: 1.35rem;
+  text-decoration: none;
+}
+.topbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+/* Brand size comes from stonepi app-base (.brand > img.brand-mark = 28 / 40 / 36). */
+.topbar svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.topbar svg [fill]:not([fill="none"]) {
+  fill: currentColor;
+  stroke: none;
+}
+
+.icon-btn {
+  width: var(--tap);
+  min-height: var(--tap);
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: none;
+}
+.icon-btn svg {
+  width: 18px; height: 18px; fill: none; stroke: currentColor;
+  stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+}
+.icon-btn:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, var(--card)); }
+
+.main {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  width: min(920px, 100%);
+  margin: 0 auto;
+  padding: 0 var(--gutter) 32px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr); /* wide strips (chips, Discover rows) scroll inside, never widen the page */
+  grid-auto-rows: max-content; /* rows are their content's height: a sideways scroller never squashes */
+  align-content: start;
+  gap: 16px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent;
+}
+.main::-webkit-scrollbar { width: 8px; height: 8px; }
+.main::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+  border-radius: 8px;
+}
+
+.hero { margin-bottom: 4px; }
+.lede, .hint, .meta, .offer-title, .offer-meta {
+  overflow-wrap: anywhere;
+}
+.text-link { color: var(--accent); font-weight: 500; }
+.about-card {
+  display: grid;
+  gap: 8px;
+  justify-items: stretch;
+  text-align: left;
+}
+.about-card > * {
+  margin: 0;
+  padding: 0;
+  max-width: 100%;
+  text-indent: 0;
+}
+.about-card h2 { margin: 0; padding: 0; }
+.about-card .lede, .about-card .hint { margin: 0; padding: 0; }
+.settings-tabs { display: grid; gap: 0; }
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+h1, h2, h3 { margin: 0 0 0.35em; }
+h1 { font-family: var(--serif); font-size: 2rem; font-weight: 600; }
+h2 { font-family: var(--serif); font-size: 1.35rem; }
+.lede, .hint { color: var(--muted); margin: 0; }
+.banner, .banner-ok {
+  padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--accent) 10%, var(--card)); margin: 0;
+}
+.banner-ok { background: color-mix(in srgb, var(--ok) 16%, var(--card)); }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.stack { display: grid; gap: 12px; }
+label { display: grid; gap: 6px; font-size: 0.92rem; font-weight: 500; }
+input, select, textarea {
+  min-height: var(--tap);
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+textarea { min-height: 5rem; resize: vertical; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: var(--tap); padding: 0 16px; border-radius: 12px;
+  border: 1px solid transparent; background: transparent; color: inherit;
+  text-decoration: none; cursor: pointer;
+}
+.stack > .btn { justify-self: start; }
+.btn-primary { background: var(--accent); color: var(--accent-ink); }
+.btn-ghost { border-color: var(--line); background: transparent; }
+.btn-with-icon { gap: 8px; font-weight: 600; }
+.btn-with-icon svg, .btn > svg {
+  width: 18px; height: 18px; flex: 0 0 auto;
+  fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.btn-with-icon svg [fill]:not([fill="none"]),
+.btn > svg [fill]:not([fill="none"]) {
+  fill: currentColor;
+  stroke: none;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.page-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 12px;
+  min-width: 0;
+}
+.page-status-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.95fr) minmax(320px, 1.05fr);
+  gap: 16px;
+  min-height: 0;
+  height: 100%;
+  align-items: stretch;
+}
+@media (max-width: 1023px) {
+  .split {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+}
+
+.btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: none;
+  place-items: end center;
+  padding: 16px 16px calc(16px + var(--safe-bottom));
+  background: color-mix(in srgb, var(--ink) 35%, transparent);
+}
+.sheet.is-open { display: grid; }
+.sheet-card { width: min(420px, 100%); margin-bottom: calc(72px + var(--safe-bottom)); }
+@media (min-width: 720px) {
+  .sheet { place-items: center; }
+  .sheet-card { margin-bottom: 12px; }
+}
+.msg { padding: 8px 0; border-bottom: 1px solid var(--line); white-space: pre-wrap; }
+.msg:last-child { border-bottom: 0; }
+
+.btn:focus-visible, .icon-btn:focus-visible,
+.theme-switch button:focus-visible, input:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Phone: stack filters, offer rows, action rows */
+@media (max-width: 559px) {
+  :root,
+  [data-theme="light"],
+  [data-theme="dark"] {
+    --tap: 40px;
+    --gutter: 12px;
+}
+  h1 { font-size: 1.7rem; }
+  .btn-row {
+    gap: 6px;
+  }
+  .btn-row > form,
+  .btn-row > .btn {
+    flex: 1 1 calc(50% - 6px);
+    min-width: 0;
+  }
+  .btn-row .btn {
+    width: 100%;
+  }
+}
+
+/* Desktop: restore side rail + page scroll (do not leave overflow locked) */
+@media (min-width: 1024px) {
+  html {
+    height: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  body {
+    height: auto;
+    overflow: visible;
+  }
+  .app {
+    display: grid;
+    grid-template-columns: var(--app-rail-width, 200px) 1fr;
+    grid-template-rows: auto 1fr;
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  .topbar {
+    position: sticky;
+    top: 0;
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+  .nav {
+    position: sticky;
+    top: var(--topbar-height);
+    grid-column: 1;
+    grid-row: 2;
+    height: calc(100dvh - var(--topbar-height));
+    grid-template-columns: 1fr;
+    grid-auto-flow: row;
+    align-content: start;
+    border-top: 0;
+    border-right: 1px solid var(--line);
+    padding: 16px;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .nav a {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 0 12px;
+    font-size: 0.95rem;
+    max-width: none;
+  }
+  .nav a span {
+    font-size: inherit;
+    white-space: nowrap;
+  }
+  .main {
+    grid-column: 2;
+    grid-row: 2;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    justify-self: stretch;
+    overflow: visible;
+    padding: 0 28px 40px;
+  }
+}
+html.sheet-open,
+html.sheet-open body { overflow: hidden; }
+.filter-bar select, .search-form input[type="search"], .search-form input[type="text"],
+.settings-tabs select {
+  min-height: var(--tap);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--ink);
+  padding: 0 12px;
+  font: inherit;
+}
+.settings-back {
+  display: inline-block;
+  margin: 0 0 6px;
+  color: var(--accent);
+  font-size: 0.92rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.settings-back:hover,
+.settings-back:focus-visible { text-decoration: underline; }
+.settings-hub,
+.settings-panel-list {
+  display: grid;
+  gap: 18px;
+  margin: 4px 0 8px;
+}
+.settings-hub-heading {
+  margin: 0 0 8px;
+  padding: 0 2px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.settings-hub-card {
+  display: grid;
+  padding: 0;
+  overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+a.settings-hub-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-height: var(--tap, 44px);
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  color: inherit;
+  text-decoration: none;
+}
+a.settings-hub-row:last-child { border-bottom: 0; }
+a.settings-hub-row:hover,
+a.settings-hub-row:focus-visible {
+  background: color-mix(in srgb, var(--ink) 4%, var(--card));
+}
+.settings-hub-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ink) 5%, var(--paper));
+  color: var(--ink);
+}
+.settings-hub-icon svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.settings-hub-icon svg [fill]:not([fill="none"]) {
+  fill: currentColor;
+  stroke: none;
+}
+/* Icons inside panel headings (General / Odio / About) — never bare SVG. */
+.settings-panel h2,
+.card h2.with-icon,
+.section-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.settings-panel h2 svg,
+.card h2 svg,
+.section-heading svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: var(--accent);
+}
+.settings-panel h2 svg [fill]:not([fill="none"]),
+.card h2 svg [fill]:not([fill="none"]),
+.section-heading svg [fill]:not([fill="none"]),
+.now-art svg [fill]:not([fill="none"]),
+.station-fav-btn svg [fill]:not([fill="none"]),
+.station-play-btn svg [fill]:not([fill="none"]),
+.icon-btn svg [fill]:not([fill="none"]) {
+  fill: currentColor;
+  stroke: none;
+}
+.settings-hub-copy { display: grid; gap: 2px; min-width: 0; }
+.settings-hub-title { font-weight: 650; line-height: 1.25; }
+.settings-hub-sub { color: var(--muted); font-size: 0.8rem; line-height: 1.35; }
+.settings-hub-chevron { color: var(--muted); font-size: 1.35rem; line-height: 1; }
+
+/* Laptop+: hub one column; the open panel stays one stack. */
+@media (min-width: 1024px) {
+  .settings-hub {
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+  }
+  .settings-panel:not([hidden]),
+  .settings-panels {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+  .settings-panel:not([hidden]) > .form-hint,
+  .settings-panel:not([hidden]) > p.form-hint,
+  .settings-panel:not([hidden]) > .hero,
+  .settings-panel:not([hidden]) > .card:only-of-type,
+  .settings-panel:not([hidden]) > form.card:only-of-type,
+  .settings-panel:not([hidden]) > .settings-panel-span,
+  .settings-panels > .settings-panel-span {
+    grid-column: 1 / -1;
+  }
+  .settings-panel:not([hidden]) label:not(.inline) > input:not([type="checkbox"]):not([type="radio"]),
+  .settings-panel:not([hidden]) label:not(.inline) > select,
+  .settings-panel:not([hidden]) .form-control,
+  .settings-panels label:not(.inline) > input:not([type="checkbox"]):not([type="radio"]),
+  .settings-panels label:not(.inline) > select {
+    max-width: min(36rem, 100%);
+  }
+}
+@media (min-width: 1440px) {
+  .settings-panel:not([hidden]),
+  .settings-panels {
+    grid-template-columns: 1fr;
+  }
+}
+/* Radio product — station cards */
+.station-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (min-width: 720px) {
+  /* As many ~170px cards as fit (a fixed 5 or 6 stretched them to ~260px squares): wide enough
+     for a name and two tags, with a 4:3 cover so the extra width doesn't make them taller. */
+  .station-grid { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+  /* My Radio's grid and Discover's rails share the card look from here on. */
+  :is(.station-grid, .station-rail) .station-cover { aspect-ratio: 4 / 3; }
+  /* The logo sits inside the cover with a margin, not edge to edge: the image box is the logo's
+     own shape (no white backing), so the rounded corners are the logo's. */
+  :is(.station-grid, .station-rail) .station-art img {
+    inset: auto;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: auto;
+    height: auto;
+    max-width: calc(100% - 20px);
+    max-height: calc(100% - 20px);
+    border-radius: 10px;
+    background: none;
+  }
+  /* An admin's bin sits in the card's corner, beside the tags, not on a row of its own. */
+  :is(.station-grid, .station-rail) .station-card { position: relative; }
+  :is(.station-grid, .station-rail) .station-card:has(.is-remove) .station-body { padding-right: 38px; }
+  :is(.station-grid, .station-rail) .station-list-action.is-remove { position: absolute; right: 4px; bottom: 4px; margin: 0; }
+  /* Tags on one line: two at most, the second shortened with "…" if it doesn't fit. */
+  :is(.station-grid, .station-rail) .station-tags { flex-wrap: nowrap; overflow: hidden; }
+  :is(.station-grid, .station-rail) .station-tags li { flex: 0 1 auto; min-width: 0; }
+  :is(.station-grid, .station-rail) .station-tags li:nth-child(n + 3) { display: none; }
+}
+
+.station-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.station-cover {
+  position: relative;
+  aspect-ratio: 1;
+  background: color-mix(in srgb, var(--accent) 18%, var(--card));
+}
+.station-art {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+/* The logo sits over the station's letter; a logo that fails to load is removed (app.js). */
+.station-art img {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  object-fit: contain; /* wide logos (FIP) fit whole; square ones fill the cover */
+  background: var(--card);
+}
+.station-mono {
+  position: relative;
+  z-index: 1;
+  font-family: var(--serif, "Source Serif 4", Georgia, serif);
+  font-size: clamp(1.6rem, 8vw, 2.2rem);
+  font-weight: 600;
+  color: color-mix(in srgb, var(--ink) 88%, transparent);
+  line-height: 1;
+}
+.station-wave {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 42%;
+  background:
+    radial-gradient(120% 80% at 20% 100%, color-mix(in srgb, var(--accent) 35%, transparent), transparent 60%),
+    radial-gradient(100% 70% at 80% 100%, color-mix(in srgb, var(--ink) 12%, transparent), transparent 55%);
+  opacity: 0.9;
+}
+.station-card.hue-0 .station-cover { --accent: #2f6f4e; }
+.station-card.hue-1 .station-cover { --accent: #1d5a8a; }
+.station-card.hue-2 .station-cover { --accent: #b45309; }
+.station-card.hue-3 .station-cover { --accent: #3f5f7a; }
+.station-card.hue-4 .station-cover { --accent: #7a3f5f; }
+.station-card.hue-5 .station-cover { --accent: #5a6b2f; }
+.station-card.hue-6 .station-cover { --accent: #6b3f2f; }
+.station-card.hue-7 .station-cover { --accent: #2f5a6b; }
+
+.station-play { position: absolute; left: 8px; bottom: 8px; margin: 0; z-index: 2; }
+.station-play-btn {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink, #fff);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--ink) 22%, transparent);
+}
+.station-play-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  margin-left: 2px;
+}
+.station-fav { position: absolute; top: 6px; right: 6px; margin: 0; z-index: 2; }
+.station-fav-btn {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 82%, transparent);
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+}
+.station-fav-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+}
+.station-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px 10px;
+  min-width: 0;
+}
+.station-title {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+/* The rest of a long Radio Browser name ("Radio X - The best rock 24/7…"): one quiet line. */
+.station-desc {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.station-place {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  overflow-wrap: anywhere;
+}
+.station-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+.station-tags li {
+  font-size: 0.66rem;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+  color: var(--ink);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 719px) {
+  .station-play-btn { width: 44px; height: 44px; }
+  .station-play-btn svg { width: 18px; height: 18px; }
+  .station-fav-btn { width: 40px; height: 40px; }
+  .station-fav-btn svg { width: 18px; height: 18px; }
+  .station-title { font-size: 0.95rem; }
+  .station-body { padding: 10px 10px 12px; }
+  .station-mono { font-size: clamp(2rem, 14vw, 2.8rem); }
+
+  /* Phones: My Radio and Discover's grids are a compact list (logo, name, then Play, bin and
+     star on the right, so nothing sits on the logo); Discover's sideways rails keep their cards. */
+  .station-grid { grid-template-columns: 1fr; gap: 8px; }
+  .station-grid .station-card { position: relative; flex-direction: row; align-items: center; min-height: 72px; padding-right: 94px; }
+  .station-grid .station-card:has(.is-remove) { padding-right: 136px; }
+  .station-grid .station-cover { position: static; aspect-ratio: auto; width: 72px; height: 72px; flex: none; background: none; }
+  .station-grid .station-art { position: relative; inset: auto; width: 72px; height: 72px; background: color-mix(in srgb, var(--accent) 18%, var(--card)); }
+  .station-grid .station-mono { font-size: 1.7rem; }
+  .station-grid .station-wave { display: none; }
+  .station-grid .station-play { left: auto; bottom: auto; top: 50%; right: 50px; transform: translateY(-50%); }
+  .station-grid .station-card:has(.is-remove) .station-play { right: 92px; }
+  .station-grid .station-play-btn { width: 38px; height: 38px; box-shadow: none; }
+  .station-grid .station-play-btn svg { width: 15px; height: 15px; }
+  .station-grid .station-fav { top: 50%; right: 6px; transform: translateY(-50%); }
+  .station-grid .station-body { flex: 1; padding: 8px 10px; }
+  .station-grid .station-title { -webkit-line-clamp: 1; font-size: 0.95rem; }
+  .station-grid .station-tags { display: none; }
+  .station-grid .station-list-action.is-remove { position: absolute; top: 50%; right: 50px; transform: translateY(-50%); margin: 0; }
+  .station-grid .station-list-action:not(.is-remove), .station-grid .station-listed { margin-top: 2px; }
+}
+
+.now-strip { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; padding: 12px 14px; }
+.now-stage { align-items: center; text-align: center; padding: 20px 16px; }
+.now-art {
+  width: 160px; height: 160px; border-radius: 18px; overflow: hidden;
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+  display: grid; place-items: center; margin: 0 auto;
+}
+.now-art img { width: 100%; height: 100%; object-fit: cover; }
+.now-art svg { width: 48px; height: 48px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+.now-copy { width: 100%; }
+.now-copy h2 { margin: 0.2rem 0; overflow-wrap: anywhere; }
+.volume-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto 3.2rem;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 28rem;
+  margin: 0 auto;
+}
+.volume-row .icon-btn svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+/* Volume: a thin, light track with a small handle; the level in quiet, normal-weight text. */
+.volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 20px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.volume-slider::-webkit-slider-runnable-track { height: 4px; border-radius: 999px; background: var(--line); }
+.volume-slider::-moz-range-track { height: 4px; border-radius: 999px; background: var(--line); }
+.volume-slider::-moz-range-progress { height: 4px; border-radius: 999px; background: var(--muted); }
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border-radius: 50%;
+  border: 2px solid var(--card);
+  background: var(--ink);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--ink) 30%, transparent);
+}
+.volume-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--card);
+  background: var(--ink);
+}
+.volume-slider:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; border-radius: 999px; }
+.volume-value { font-variant-numeric: tabular-nums; text-align: right; font-size: 0.85rem; font-weight: 500; color: var(--muted); }
+.preset-row { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Now Playing's presets: logo (or letter) and short name; the one on air has a darker edge. */
+.preset-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (min-width: 560px) { .preset-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.preset-grid form { margin: 0; min-width: 0; }
+.preset-tile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 60px;
+  padding: 8px 10px 8px 8px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.preset-tile:hover { background: color-mix(in srgb, var(--ink) 4%, var(--card)); }
+.preset-tile.is-on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.preset-art {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--ink) 8%, var(--card));
+}
+.preset-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: var(--card); }
+.preset-mono { font-weight: 700; font-size: 1.1rem; color: color-mix(in srgb, var(--ink) 70%, transparent); }
+.preset-name {
+  min-width: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.empty { padding: 20px; }
+@media (max-width: 559px) {
+  .nav a span { font-size: 0.62rem; }
+}
+
+.station-list-action { margin-top: 6px; }
+.station-list-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid var(--line, color-mix(in srgb, var(--ink) 18%, transparent));
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.station-list-btn:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.station-list-btn svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+/* Discover: a quiet note, not a button, for stations already in All stations. */
+.station-listed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.station-listed svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Done messages: a pill above the bottom nav on phones, under the topbar on desktop (NewsCast). */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(92px + var(--safe-bottom, 0px));
+  z-index: 60;
+  transform: translateX(-50%) translateY(6px);
+  width: max-content;
+  max-width: min(22rem, calc(100vw - 32px));
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--ok, #2f6f4e) 60%, var(--line));
+  background: color-mix(in srgb, var(--ok, #2f6f4e) 18%, var(--card));
+  color: var(--ok, #2f6f4e);
+  font-size: 0.85rem;
+  font-weight: 600;
+  opacity: 0;
+  pointer-events: none;
+}
+.toast.is-on {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+.toast.is-error {
+  border-color: color-mix(in srgb, var(--error, #b42318) 65%, var(--line));
+  background: color-mix(in srgb, var(--error, #b42318) 18%, var(--card));
+  color: var(--error, #b42318);
+}
+/* Above the player bar while it shows, not over it (phones and tablets; desktop has it at the top). */
+body:has(.player-bar:not([hidden])) .toast { bottom: calc(152px + var(--safe-bottom, 0px)); }
+@media (min-width: 1024px) {
+  .toast,
+  body:has(.player-bar:not([hidden])) .toast { bottom: auto; top: 76px; }
+}
+
+/* Filter chips (My Radio: all / favourites; Discover: genres), NewsCast's shape. */
+.chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 0 0 6px;
+  padding: 2px 0 6px;
+}
+.chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.chip-btn svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.chip-btn svg [fill]:not([fill="none"]) { fill: currentColor; }
+.chip-btn.is-active { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+
+/* Discover rows: a sideways-scrolling strip of station cards per section. */
+.discover-section { margin: 0 0 18px; }
+.discover-section .section-heading { margin: 0 0 8px; }
+.station-rail {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(150px, 44%);
+  gap: 12px;
+  overflow-x: auto;
+  padding: 2px 2px 10px;
+  scroll-snap-type: x proximity;
+  min-height: max-content;
+}
+.station-rail > .station-card { scroll-snap-align: start; }
+@media (min-width: 720px) { .station-rail { grid-auto-columns: 200px; } } /* about the grid's card width */
+
+/* Where Radio plays: the output chip, the picker sheet's rows and This device's player bar. */
+.output-chip {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.output-chip svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.output-chip svg [fill]:not([fill="none"]) { fill: currentColor; }
+.output-list { display: grid; gap: 6px; }
+.output-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.output-row.is-current { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.output-row .hint { margin: 0; font-size: 0.8rem; }
+/* Play on: This device (phone or laptop), a speaker, or StonePi (its mark's three bars). */
+.output-icon { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 10px; background: color-mix(in srgb, var(--ink) 6%, var(--card)); }
+.output-icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.output-copy { display: grid; gap: 2px; min-width: 0; }
+.player-bar {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(76px + var(--safe-bottom, 0px));
+  z-index: 50;
+  /* A row, not a grid: the artwork is often hidden (no logo, a speaker), and a fixed grid then
+     slid play/pause into the title's column, away from stop. */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--card);
+  box-shadow: 0 6px 24px color-mix(in srgb, var(--ink) 16%, transparent);
+}
+.player-bar[hidden] { display: none; }
+.player-art { width: 40px; height: 40px; flex: none; border-radius: 8px; object-fit: contain; background: var(--paper); }
+.player-copy { display: grid; flex: 1; min-width: 0; }
+.player-bar > .icon-btn { flex: none; }
+.player-link { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; color: inherit; text-decoration: none; border-radius: 10px; }
+.player-link:hover .player-copy strong, .player-link:focus-visible .player-copy strong { text-decoration: underline; }
+.player-copy strong, .player-copy .hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; }
+.player-copy .hint { font-size: 0.78rem; }
+.player-bar .icon-btn svg { fill: none; stroke: currentColor; stroke-width: 1.8; }
+.player-bar .icon-btn svg [fill]:not([fill="none"]) { fill: currentColor; }
+.main:has(~ .player-bar:not([hidden])) { padding-bottom: 96px; }
+/* My Radio's + sits above the bar while it shows, not on top of it. */
+body:has(.player-bar:not([hidden])) .sp-fab { bottom: calc(148px + var(--safe-bottom, 0px)); }
+/* Room for the bar alone; the bar and the + stacked only on pages that have the + (Discover and
+   Settings used to keep the bigger gap too, a blank band under their last card). */
+body:has(.player-bar:not([hidden])) .main { padding-bottom: 96px; }
+body:has(.player-bar:not([hidden])):has(.sp-fab) .main { padding-bottom: 168px; }
+@media (min-width: 1024px) {
+  .player-bar { left: calc(var(--app-rail-width, 200px) + 24px); right: 24px; bottom: 20px; max-width: 720px; }
+}
+.check-line { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.check-line input { width: auto; min-height: 0; }
+/* A sheet (Play on, Add station, confirm) sits above the player bar's spot: hide the bar meanwhile. */
+html.sheet-open .player-bar { display: none; }
+.now-stage .output-chip { justify-self: center; width: auto; }
+
+/* Now: play/pause and stop as round icon buttons (labels live in aria-label). */
+.transport-row { display: flex; justify-content: center; align-items: center; gap: 16px; }
+.transport-row form { margin: 0; }
+.transport-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+}
+.transport-btn.is-main { width: 64px; height: 64px; border-color: var(--ink); background: var(--ink); color: var(--paper); }
+.transport-btn:disabled { opacity: 0.45; cursor: default; }
+.transport-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.transport-btn.is-main svg { width: 26px; height: 26px; }
+.transport-btn svg [fill]:not([fill="none"]) { fill: currentColor; }
+.transport-btn span, .player-bar [data-player-toggle] span { display: inline-grid; place-items: center; }
+
+/* Discover's genre row + sheet: NewsCast's chips-with-action and filter picker. */
+.chips-with-action { display: flex; align-items: flex-start; gap: 8px; min-width: 0; margin: 0 0 6px; }
+.chips-with-action .chips { flex: 0 1 auto; min-width: 0; margin: 0; }
+.chips-action {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.chips-action svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.chips-action:hover { color: var(--ink); }
+.chip-btn svg { stroke-linecap: round; stroke-linejoin: round; }
+.filter-picker { display: grid; gap: 6px; align-content: start; overflow-y: auto; min-height: 0; }
+@media (min-width: 560px) { .filter-picker { grid-template-columns: 1fr 1fr; } }
+.filter-picker-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: none;
+}
+.filter-picker-option svg { width: 18px; height: 18px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; color: var(--muted); }
+.filter-picker-option svg [fill]:not([fill="none"]), .chips-action svg [fill]:not([fill="none"]) { fill: currentColor; stroke: none; }
+.filter-picker-option.is-active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.filter-picker-option.is-active svg { color: inherit; }
+.filter-picker-option:hover:not(.is-active) { background: color-mix(in srgb, var(--ink) 5%, var(--card)); }
+.sheet-card:has(> .filter-picker) { max-height: calc(100dvh - 120px); display: flex; flex-direction: column; gap: 12px; }
+
+/* Picker sheets (Genre, Play on): title with a small × top right instead of a Cancel button. */
+.sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sheet-head h2 { margin: 0; }
+.sheet-close {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.sheet-close:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
+.sheet-close svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+
+/* Scrollbars inside popups and sideways strips: thin, rounded, the design system's colours
+   (as NewsCast). Firefox reads scrollbar-*; Chromium/Safari the ::-webkit- rules. */
+/* Chromium ignores ::-webkit-scrollbar once scrollbar-width/-color are set (and draws arrow
+   buttons), so the standard properties are for Firefox only. */
+@supports not selector(::-webkit-scrollbar) {
+  .sheet-card, .filter-picker, .output-list, .chips, .station-rail {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scroll-thumb, var(--line)) var(--scroll-track, transparent);
+  }
+}
+.sheet-card::-webkit-scrollbar, .filter-picker::-webkit-scrollbar, .output-list::-webkit-scrollbar,
+.chips::-webkit-scrollbar, .station-rail::-webkit-scrollbar { width: 6px; height: 4px; background: transparent; }
+.sheet-card::-webkit-scrollbar-thumb, .filter-picker::-webkit-scrollbar-thumb, .output-list::-webkit-scrollbar-thumb,
+.chips::-webkit-scrollbar-thumb, .station-rail::-webkit-scrollbar-thumb { background: var(--scroll-thumb, var(--line)); border-radius: 999px; }
+.sheet-card::-webkit-scrollbar-thumb:hover, .filter-picker::-webkit-scrollbar-thumb:hover, .output-list::-webkit-scrollbar-thumb:hover,
+.chips::-webkit-scrollbar-thumb:hover, .station-rail::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover, var(--muted)); }
+.sheet-card::-webkit-scrollbar-track, .filter-picker::-webkit-scrollbar-track, .output-list::-webkit-scrollbar-track,
+.chips::-webkit-scrollbar-track, .station-rail::-webkit-scrollbar-track { background: transparent; }
+/* The genre list scrolls inside the card, with a little room so the bar clears the tiles. */
+.filter-picker { padding-right: 4px; }
+.sheet-card::-webkit-scrollbar-button, .filter-picker::-webkit-scrollbar-button, .output-list::-webkit-scrollbar-button,
+.chips::-webkit-scrollbar-button, .station-rail::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+
+/* My Radio: removing a household station is a small bin, right-aligned under the tags. */
+.station-list-action.is-remove { display: flex; justify-content: flex-end; margin-top: 4px; }
+.station-remove-btn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.station-remove-btn:hover, .station-remove-btn:focus-visible {
+  background: color-mix(in srgb, var(--error, #b42318) 10%, transparent);
+  color: var(--error, #b42318);
+}
+.station-remove-btn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Settings → Player bar: one choice per row, the label and its hint together. */
+.choice-list { display: grid; gap: 8px; margin: 0; padding: 0; border: 0; }
+.choice { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
+.choice:has(input:checked) { border-color: var(--ink); }
+.choice input { margin-top: 3px; flex: none; }
+.choice > span { display: grid; gap: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+/* The + button's wrapper (swapped with the page): no box of its own. */
+.page-fab { display: contents; }
+
+/* My Radio: Home stations, then My favourites, each under its own heading. */
+.radio-section { display: grid; gap: 10px; margin-top: 18px; scroll-margin-top: 80px; }
+.radio-section .section-heading { margin: 0; }
+.section-empty { margin: 0; }
+
+
+/* The song a station is sending (ICY metadata), under the station's name on Now Playing. */
+.now-song { margin: 4px 0 0; font-size: 0.95rem; color: var(--muted); }
+.now-song::before { content: "♪ "; }
+
+
+/* Now Playing on phones (iPhone 13 and alike): everything (station, controls, volume, the four
+   presets) fits between the header and the bottom nav without scrolling. */
+.preset-head .hint { margin: 2px 0 0; }
+@media (max-width: 559px) {
+  /* No + and no player bar on Now Playing, so no room kept for them at the bottom. */
+  .main:has(.now-stage) { padding-bottom: 12px; }
+  .now-hero { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  /* One column that can't grow past the card: a long name or the volume row used to push the
+     grid wider than the card in Safari (grid items default to min-width: auto). */
+  .now-stage { gap: 8px; padding: 12px 14px 14px; margin-top: 4px; grid-template-columns: minmax(0, 1fr); }
+  .now-stage > * { min-width: 0; max-width: 100%; }
+  /* The artwork takes the height the screen has spare (iPhone 13 mini: a blank band under the
+     presets otherwise); 112px on short screens, 220px at most. */
+  .now-art { width: clamp(112px, calc(100dvh - 520px), 220px); height: clamp(112px, calc(100dvh - 520px), 220px); border-radius: 16px; }
+  .now-art svg { width: 38px; height: 38px; }
+  .now-copy .hint { margin: 0; font-size: 0.8rem; }
+  /* Up to two lines, long words broken (older Safari has no overflow-wrap: anywhere). */
+  .now-copy h2 { margin: 0.1rem 0 0; font-size: 1.3rem; line-height: 1.2; overflow: hidden; word-break: break-word; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  .volume-row { max-width: 100%; grid-template-columns: auto minmax(0, 1fr) auto 2.8rem; gap: 6px; }
+  .volume-value { display: block; min-width: 0; overflow: hidden; }
+  .now-song { margin-top: 2px; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .transport-row { gap: 14px; }
+  .transport-btn.is-main { width: 54px; height: 54px; }
+  .transport-btn:not(.is-main) { width: 44px; height: 44px; }
+  .now-presets { gap: 8px; margin-top: 12px; }
+  .preset-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .preset-head .section-heading { font-size: 1.05rem; }
+  .preset-head .hint { margin: 0; font-size: 0.75rem; text-align: right; }
+  /* One row of four: logo above a one-line name. */
+  .preset-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .preset-tile { flex-direction: column; justify-content: flex-start; gap: 6px; min-height: 0; padding: 8px 4px; text-align: center; }
+  .preset-art { width: 40px; height: 40px; }
+  .preset-name { width: 100%; font-size: 0.72rem; -webkit-line-clamp: 1; }
+}
+
+/* Short phones (iPhone SE in Safari): the artwork beside the station, not above it. */
+@media (max-width: 559px) and (max-height: 620px) {
+  .now-stage { grid-template-columns: 72px minmax(0, 1fr); column-gap: 12px; text-align: left; }
+  .now-stage > .output-chip, .now-stage > .transport-row, .now-stage > .volume-row { grid-column: 1 / -1; }
+  .now-art { width: 72px; height: 72px; border-radius: 12px; margin: 0; }
+  .now-art svg { width: 28px; height: 28px; }
+  .now-copy h2 { font-size: 1.1rem; }
+}
+
+/* Settings → General: the hub's grouped cards, a row per setting (label and hint, the control
+   beside it; under it on phones). Choices are segmented buttons, on/off is a switch. */
+.set-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 16px;
+  align-items: center;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.settings-hub-card > .set-row:last-child { border-bottom: 0; }
+.set-copy { display: grid; gap: 2px; min-width: 0; }
+.set-row select { width: auto; max-width: 16rem; }
+.settings-display > .settings-save { justify-self: start; }
+
+.seg { display: inline-flex; gap: 2px; margin: 0; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: color-mix(in srgb, var(--ink) 5%, var(--card)); min-width: 0; }
+.seg label { position: relative; }
+.seg input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.seg span { display: block; padding: 6px 12px; border-radius: 999px; color: var(--muted); font-size: 0.82rem; font-weight: 600; white-space: nowrap; }
+.seg input:checked + span { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px color-mix(in srgb, var(--ink) 18%, transparent); }
+.seg input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+.switch { position: relative; display: inline-block; width: 46px; height: 28px; flex: none; }
+.switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; z-index: 1; }
+.switch span { position: absolute; inset: 0; border-radius: 999px; background: var(--line); transition: background-color 0.15s; }
+.switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--card); box-shadow: 0 1px 3px color-mix(in srgb, var(--ink) 25%, transparent); transition: transform 0.15s; }
+.switch input:checked + span { background: var(--ink); }
+.switch input:checked + span::after { transform: translateX(18px); }
+.switch input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.set-range { display: flex; align-items: center; gap: 10px; min-width: 14rem; }
+.set-range input { flex: 1; }
+.set-range output { min-width: 3.2ch; color: var(--muted); font-size: 0.85rem; text-align: right; }
+
+/* The four preset pickers: under the presets row, only while "Choose" is picked. */
+.preset-picks { display: none; grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.preset-picks select { width: 100%; max-width: none; }
+.settings-display:has(input[name="presets_mode"][value="set"]:checked) .preset-picks { display: grid; }
+
+/* Add a Home station: a row that opens into the form. */
+.set-add summary { grid-template-columns: auto minmax(0, 1fr) auto; list-style: none; cursor: pointer; border-bottom: 0; }
+.set-add summary::-webkit-details-marker { display: none; }
+.set-add summary:hover { background: color-mix(in srgb, var(--ink) 4%, var(--card)); }
+.set-add[open] summary { border-bottom: 1px solid var(--line); }
+.set-add[open] .settings-hub-chevron { transform: rotate(90deg); }
+.set-add-form { padding: 12px 14px 14px; }
+
+@media (max-width: 559px) {
+  .set-row { grid-template-columns: minmax(0, 1fr); }
+  .set-row:has(> .switch) { grid-template-columns: minmax(0, 1fr) auto; }
+  .set-add summary { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .seg { display: flex; }
+  .seg label { flex: 1; }
+  .seg span { padding: 7px 6px; text-align: center; }
+  .set-row select { width: 100%; max-width: none; }
+  .set-range { min-width: 0; }
+  .preset-picks { grid-template-columns: minmax(0, 1fr); }
+  .settings-display > .settings-save { justify-self: stretch; justify-content: center; }
+}
+
+/* Settings → Speakers: a card per speaker (its name row, then switches), Save at the foot. */
+.settings-hub-group > .set-speaker + .set-speaker { margin-top: 10px; }
+.set-head { grid-template-columns: auto minmax(0, 1fr); }
+.set-row input[name="label"] { width: 16rem; max-width: 100%; }
+.set-foot { grid-template-columns: auto; justify-content: end; }
+.set-row.hint { display: block; margin: 0; }
+@media (max-width: 559px) {
+  .set-head { grid-template-columns: auto minmax(0, 1fr); }
+  .set-row input[name="label"] { width: 100%; }
+  .set-foot { justify-content: stretch; }
+  .set-foot .btn { justify-content: center; }
+}
+
+/* Laptops and wider (14" at 1280×700 up): Now Playing is a landscape card (artwork beside
+   the station and controls) so it and the presets fit one screen; it and Settings are capped
+   at a readable width instead of stretching across the page. */
+@media (min-width: 720px) {
+  .now-stage {
+    grid-template-columns: 200px minmax(0, 1fr);
+    grid-template-areas: "art chip" "art copy" "art transport" "art volume";
+    column-gap: 28px;
+    row-gap: 10px;
+    align-items: center;
+    justify-items: start;
+    text-align: left;
+    max-width: 48rem;
+    padding: 22px 24px;
+  }
+  .now-stage > .output-chip, .now-stage .output-chip { grid-area: chip; justify-self: start; }
+  .now-stage > .now-art { grid-area: art; width: 200px; height: 200px; margin: 0; }
+  .now-stage > .now-copy { grid-area: copy; }
+  .now-stage > .transport-row { grid-area: transport; justify-content: flex-start; }
+  .now-stage > .volume-row { grid-area: volume; margin: 0; max-width: 24rem; }
+  .now-presets { max-width: 48rem; }
+  .settings-panel, .settings-hub { max-width: 48rem; }
+}
+/* Side rail and wider (14" at 100% or 125%, 24"): Now Playing fills the column beside the rail,
+   the card on the left and the presets beside it as a 2×2 grid. */
+@media (min-width: 1024px) {
+  .now-layout { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(17rem, 1fr); gap: 20px; align-items: start; }
+  .now-layout > .now-stage, .now-layout > .now-presets { max-width: none; margin-top: 0; }
+  .now-layout .preset-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Player bar position (Settings → General, each person's own: body[data-player-pos]).
+   Phones and tablets: full width, at the bottom above the nav, or just under the header for
+   Top right. From 1024px: a compact player in that corner. */
+body[data-player-pos="top-right"] .player-bar { top: calc(var(--topbar-height, 64px) + 8px + var(--safe-top, 0px)); bottom: auto; }
+body[data-player-pos="top-right"]:has(.player-bar:not([hidden])) .main { padding-top: 72px; padding-bottom: 32px; }
+body[data-player-pos="top-right"]:has(.player-bar:not([hidden])) .sp-fab { bottom: calc(88px + var(--safe-bottom, 0px)); }
+body[data-player-pos="top-right"]:has(.player-bar:not([hidden])) .toast { bottom: calc(92px + var(--safe-bottom, 0px)); }
+@media (min-width: 1024px) {
+  body[data-player-pos] .player-bar { width: 28rem; max-width: calc(100vw - var(--app-rail-width, 200px) - 48px); }
+  body[data-player-pos="bottom-left"] .player-bar { left: calc(var(--app-rail-width, 200px) + 24px); right: auto; }
+  body[data-player-pos="bottom-right"] .player-bar { left: auto; right: 24px; }
+  body[data-player-pos="top-right"] .player-bar { left: auto; right: 24px; top: calc(var(--topbar-height, 64px) + 12px); }
+  body[data-player-pos="top-right"]:has(.player-bar:not([hidden])) .toast { top: calc(var(--topbar-height, 64px) + 86px); bottom: auto; }
+}
+
+/* Pills never shrink below their text (Safari squeezed flex items in a sideways scroller,
+   clipping the label), and grow with it if the font renders taller. */
+.chips > .chip-btn, .chips-with-action > .chips-action { flex: 0 0 auto; }
+.chip-btn { height: auto; padding-top: 6px; padding-bottom: 6px; line-height: 1.25; }
+.chip-btn span { white-space: nowrap; }

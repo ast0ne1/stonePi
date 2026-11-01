@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -34,7 +35,22 @@ FEEDS = {
              "unit": "stonepi-newscast", "detail": "Status: running"},
         ],
     },
-    "newscast": {"ok": True, "card": {"headline": "Big story"}, "items": [{"id": "7", "title": "Big story", "detail": "Line one\nLine two"}]},
+    "newscast": {
+        "ok": True,
+        "card": {"headline": "Big story", "sub": "The Age · Sat 15:54"},
+        "items": [
+            {"id": "7", "title": "Big story", "sub": "The Age · Sat 15:54", "detail": "Line one\nLine two"},
+            {"id": "8", "title": "Second headline", "sub": "BBC · Sat 14:00"},
+        ],
+    },
+    "pinboard": {
+        "ok": True,
+        "card": {"headline": "testing", "sub": "1 on the board"},
+        "items": [
+            {"id": "p1", "title": "testing", "sub": "Notice"},
+            {"id": "p2", "title": "Buy milk", "sub": "Due today", "badge": "Due"},
+        ],
+    },
 }
 
 
@@ -47,6 +63,11 @@ def env(monkeypatch):
     monkeypatch.setattr(state, "feed", lambda mini: FEEDS.get(mini, {"ok": True, "card": {}, "items": []}))
     monkeypatch.setattr(state, "weather", lambda config: None)
     monkeypatch.setattr(state, "weather_cached", lambda: None)
+    # Stand in for Radio (a real one may be answering on :8016 on this machine): nothing playing.
+    from app import radio as radio_mod
+
+    monkeypatch.setattr(radio_mod, "now_playing", lambda max_age=5.0, output="stonepi": radio_mod.empty_state())
+    monkeypatch.setattr(radio_mod, "saver_now", lambda output="stonepi": None)
 
     def _restart(unit):
         restarts.append(unit)
@@ -187,6 +208,31 @@ def _shell_config(html: str) -> dict:
     return json.loads(re.search(r'<script type="application/json" id="cfg">(.*?)</script>', html, re.S).group(1))
 
 
+def test_audio_launcher_page_opens_music_and_radio(env):
+    client, panel, _ = env
+    cfg = carthing.normalize_config({"pages": [{"name": "Listen", "widgets": [{"id": "audio"}]}]})
+    panel["value"] = _panel(config=cfg)
+    client.cookies.set(routes.TOKEN_COOKIE, TOKEN)
+    body = client.get("/v/home").text
+    assert "lay-audio" in body and "audio-launch" in body
+    assert 'data-go="v/music"' in body and 'data-go="v/radio"' in body
+    assert "Spotify" in body and "StonePi Radio" in body
+    assert "static/icons/spotify.svg" in body and "stonepi-mark-flat-dark.svg" in body
+
+
+def test_open_audio_action_and_screen(env):
+    """Buttons → Open Audio: in the catalog, allowed by default on old configs, and /v/audio."""
+    assert "open:audio" in carthing.ACTION_IDS
+    assert "open:audio" in carthing.ADDED_ACTIONS
+    assert any(a["id"] == "open:audio" and a["label"] == "Open Audio" for a in carthing.ACTIONS)
+    client, panel, _ = env
+    client.cookies.set(routes.TOKEN_COOKIE, TOKEN)
+    body = client.get("/v/audio").text
+    assert 'data-screen="audio"' in body and "audio-launch" in body
+    assert 'data-go="v/music"' in body and 'data-go="v/radio"' in body
+    assert body.index('data-go="v/radio"') < body.index('data-go="v/music"')  # StonePi before Spotify
+
+
 def test_pages_render_with_dots_and_client_config(env, monkeypatch):
     client, panel, _ = env
     panel["value"] = _panel(config=PAGED)
@@ -215,6 +261,34 @@ def test_large_system_widget_shows_numbers(env):
     assert "w-system" in body and "w-full" in body
     for text in (">37<", ">41<", ">52<", ">63<", "Up 3d 4h", "10/11 services up", "NewsCast"):
         assert text in body
+
+
+def test_small_widgets_use_feed_density(env):
+    """Small Home cards: System has mini meters; list apps show a second feed line."""
+    assert routes.ITEMS_BY_SIZE["small"] == 2
+    client, panel, _ = env
+    cfg = carthing.normalize_config(
+        {
+            "pages": [
+                {
+                    "name": "Home",
+                    "widgets": [
+                        {"id": "system", "size": "small"},
+                        {"id": "newscast", "size": "small"},
+                        {"id": "pinboard", "size": "small"},
+                    ],
+                }
+            ]
+        }
+    )
+    panel["value"] = _panel(config=cfg)
+    client.cookies.set(routes.TOKEN_COOKIE, TOKEN)
+    body = client.get("/v/home").text
+    assert "w-system-small" in body and "w-small-meters" in body
+    for text in (">37<", ">41<", ">52<", ">63<", "10/11 up", "Backup 6h ago"):
+        assert text in body
+    assert "w-small-more" in body and "Second headline" in body
+    assert "Buy milk" in body and "1 on the board" in body and "w-small-foot" in body
 
 
 def test_single_page_has_no_dots_and_disallowed_dots_are_inert(env):
@@ -384,15 +458,17 @@ def test_clock_widget_opens_weather_only_when_set(env):
 
 
 def test_web_page_widget_saver_and_snapshot(env, monkeypatch):
-    """F14: a web page fills a page under the strip, or the screensaver; snapshots come from Notify."""
+    """F14: a web page fills a page under the strip, or the screensaver; snapshots come from Notify
+    and are kept for the page's refresh time; the widget's ↻ asks for a fresh one."""
     client, panel, _ = env
     asked: list[tuple] = []
 
-    def snapshot(page_id, width, height, max_age):
-        asked.append((page_id, width, height, max_age))
+    def snapshot(page_id, width, height, max_age, fresh=False, rev=""):
+        asked.append((page_id, width, height, max_age, fresh))
         return b"\x89PNG-fake"
 
     monkeypatch.setattr(state, "web_snapshot", snapshot)
+    monkeypatch.setattr(state, "web_snapshot_at", lambda *a, **k: datetime.now().timestamp())
     cfg = carthing.normalize_config(
         {
             "pages": [{"name": "Home", "widgets": [{"id": "web:homepage", "size": "full"}]},
@@ -400,20 +476,67 @@ def test_web_page_widget_saver_and_snapshot(env, monkeypatch):
             "idle": {"saver": {"style": "web", "web": {"page_id": "homepage", "refresh_min": 3, "time": True}}},
         }
     )
-    panel["value"] = {**_panel(config=cfg), "web_pages": [{"id": "homepage", "name": "Homepage"}]}
+    panel["value"] = {**_panel(config=cfg), "web_pages": [{"id": "homepage", "name": "Homepage", "refresh_min": 30}]}
     home = client.get(f"/?t={TOKEN}").text
     assert "lay-web" in home and 'src="web/homepage.png?s=widget"' in home and 'data-web-every="60"' in home
+    assert "data-web-refresh" in home and "data-web-stamp" in home
     assert "was removed in Notify" in client.get("/v/home?page=2").text
     saver = client.get("/v/saver").text
-    assert 'src="web/homepage.png?s=saver"' in saver and 'data-web-every="180"' in saver and 'class="sv-t ' in saver
+    assert 'src="web/homepage.png?s=saver"' in saver and 'data-web-every="60"' in saver and 'class="sv-t ' in saver
 
     image = client.get("/web/homepage.png?s=widget")
     assert image.status_code == 200 and image.headers["content-type"] == "image/png"
     assert client.get("/web/homepage.png?s=saver").status_code == 200
-    assert asked == [("homepage", 800, 412, 55), ("homepage", 800, 480, 175)]
+    assert client.get("/web/homepage.png?s=widget&fresh=1").status_code == 200
+    # The page's 30 minutes, not the saver's old 3.
+    assert asked == [
+        ("homepage", 800, 412, 1795, False),
+        ("homepage", 800, 480, 1795, False),
+        ("homepage", 800, 412, 1795, True),
+    ]
+    stamp = client.get("/web/homepage.json?s=widget").json()
+    assert stamp["text"].startswith("Updated ") and stamp["at"] > 0
     # Only pages this config shows can be asked for.
     assert client.get("/web/other.png").status_code == 404
+    assert client.get("/web/other.json").status_code == 404
     assert client.get("/web/..%2Fx.png").status_code == 404
+
+
+def test_web_snapshot_ages_from_capture_and_fresh(monkeypatch):
+    """A snapshot is aged from when Notify captured it; ↻ fetches again unless it's seconds old."""
+    import time as _time
+
+    calls: list[dict] = []
+
+    class Resp:
+        status_code = 200
+        content = b"png"
+
+        def __init__(self, captured):
+            self.headers = {"X-Captured-At": str(captured)}
+
+    def get(url, params=None, headers=None, timeout=None):
+        calls.append(params)
+        return Resp(_time.time() - 100)  # Notify handed over a capture it took 100 s ago
+
+    monkeypatch.setattr(state, "session_secret", lambda: "s" * 32)
+    monkeypatch.setattr(state._client, "get", get)
+    state._web.clear()
+    state._web_at.clear()
+    assert state.web_snapshot("pg", 800, 412, 150) == b"png"
+    assert state.web_snapshot("pg", 800, 412, 150) == b"png" and len(calls) == 1  # 100 s old: kept
+    assert state.web_snapshot("pg", 800, 412, 90) == b"png" and len(calls) == 2  # older than 90 s: again
+    assert abs(state.web_snapshot_at("pg", 800, 412) - (_time.time() - 100)) < 5
+    state._web[("pg", 800, 412, "")] = (_time.monotonic(), b"png")
+    assert state.web_snapshot("pg", 800, 412, 900, fresh=True) == b"png" and len(calls) == 2  # seconds old
+    state._web[("pg", 800, 412, "")] = (_time.monotonic() - 60, b"png")
+    state.web_snapshot("pg", 800, 412, 900, fresh=True)
+    assert len(calls) == 3 and calls[-1]["fresh"] == 1
+    assert state.web_page_refresh_s({"web_pages": [{"id": "pg", "refresh_min": 5}]}, "pg") == 900.0  # 15 at least
+    assert state.web_page_refresh_s({"web_pages": [{"id": "pg", "refresh_min": 60}]}, "pg") == 3600.0
+    # Edited in Notify (a new rev): the old snapshot isn't shown, and goes once the new one is in.
+    assert state.web_snapshot("pg", 800, 412, 900, rev="r2") == b"png" and len(calls) == 4
+    assert ("pg", 800, 412, "") not in state._web and state.web_snapshot_at("pg", 800, 412, rev="r2")
 
 
 def test_page_header_modes_and_contents(env, monkeypatch):
@@ -471,10 +594,27 @@ def test_panel_js_keeps_dial_press_on_now_playing():
 
 
 def test_panel_js_keeps_the_strip_away_on_now_playing():
-    # Taps and dial turns bring an auto-hidden strip back, except on Now Playing and full web pages.
+    # Taps and dial turns bring an auto-hidden strip back, except on Now Playing, the full-screen
+    # Radio player (screen or full-page widget) and full web pages.
     js = (Path(routes.__file__).parent / "static" / "js" / "panel.js").read_text(encoding="utf-8")
-    assert """if (view.querySelector('[data-screen="music"], [data-np-full], .lay-web')) return;""" in js
+    assert """if (view.querySelector('[data-screen="music"], [data-np-full], .lay-web, [data-radio-screen], .lay-radio, .lay-np')) return;""" in js
     assert js.count("stripOnInput();") == 2  # onInput and pointerdown; load and wake still call showStrip
+
+
+def test_panel_js_skin_clock_follows_the_pi():
+    # The Car Thing's Date is unreliable; Radio skins must use piNow like every other face.
+    js = (Path(routes.__file__).parent / "static" / "js" / "panel.js").read_text(encoding="utf-8")
+    assert "var d = piNow(), h = d.getUTCHours(), m = d.getUTCMinutes();" in js
+    assert "var d = new Date(), h = d.getHours(), m = d.getMinutes();" not in js
+
+
+def test_panel_js_playlist_hides_the_strip():
+    # PL + header left a short pillarboxed stack; opening PL clears the strip for the full screen.
+    js = (Path(routes.__file__).parent / "static" / "js" / "panel.js").read_text(encoding="utf-8")
+    assert "if (skinPl && view.querySelector(\".sk-has-pl\")) return;" in js
+    assert "if (strip) strip.classList.add(\"is-hidden\");" in js
+    css = (Path(routes.__file__).parent / "static" / "css" / "panel.css").read_text(encoding="utf-8")
+    assert ".strip.is-hidden { display: none; }" in css
 
 
 SYSTEM_FEED = {
@@ -538,3 +678,46 @@ def test_restart_progress_and_unit_state(env, monkeypatch):
     assert client.get("/unit-state?unit=stonepi-newscast").json() == {"ok": True, "state": "activating", "sub": "start"}
     assert client.get("/unit-state?unit=ssh").status_code == 404  # only System's services
     assert client.get("/v/restarting?unit=ssh").status_code == 404
+
+
+def test_tick_follows_radio_only_while_it_plays(env, monkeypatch):
+    from app import radio as radio_mod
+
+    client, panel, _ = env
+    panel["value"] = _panel(config=PAGED)
+    monkeypatch.setattr(state, "feeds_rev", lambda shown: "f1")
+    client.cookies.set(routes.TOKEN_COOKIE, TOKEN)
+    assert client.get("/tick").json()["frev"] == "f1"  # nothing on air: the plain feeds rev
+    monkeypatch.setattr(radio_mod, "now_playing", lambda max_age=5.0, output="stonepi": radio_mod.empty_state(playing=True, title="FIP", connected=True))
+    on_air = client.get("/tick").json()["frev"]
+    assert on_air != "f1"  # the artwork screensaver will show Radio
+    monkeypatch.setattr(radio_mod, "now_playing", lambda max_age=5.0, output="stonepi": radio_mod.empty_state(playing=True, title="KEXP", connected=True))
+    # Song/station title changes paint in place; tick only flips when play/stop changes.
+    assert client.get("/tick").json()["frev"] == on_air
+    monkeypatch.setattr(radio_mod, "now_playing", lambda max_age=5.0, output="stonepi": radio_mod.empty_state(playing=False, connected=True))
+    assert client.get("/tick").json()["frev"] == "f1"  # off air: back to the plain feeds rev
+
+
+def test_system_services_grouped_with_catalog_icons():
+    assert routes._service_meta("radio") == ("apps", "apps/radio")
+    assert routes._service_meta("ripple") == ("apps", "apps/ripple")
+    assert routes._service_meta("newscast") == ("apps", "apps/newscast")
+    assert routes._service_meta("dashboard") == ("system", "system/dashboard")
+    assert routes._service_meta("agentlink") == ("system", "system/agentlink")
+    assert routes._service_meta("carthing") == ("system", "system/carthing")  # not in the catalog: System
+    assert routes._service_meta("kiwix") == ("system", "")  # no icon: a plain tile
+    view = routes._system_view({"ok": True, "items": [
+        {"id": "studio", "title": "Studio", "level": "up"},
+        {"id": "radio", "title": "Radio", "level": "up"},
+        {"id": "recover", "title": "Recover", "level": "up"},
+        {"id": "newscast", "title": "NewsCast", "level": "up"},
+        {"id": "notify", "title": "Notify", "level": "up"},
+        {"id": "dashboard", "title": "Dashboard", "level": "up"},
+        {"id": "ripple", "title": "Ripple", "level": "down"},
+        {"id": "radio-x", "title": "Odd one", "level": "up"},
+    ]})
+    # Same order as Dashboard Health (catalog / Home), not alpha; stopped still lead each group.
+    assert [(g["label"], [i["title"] for i in g["items"]]) for g in view["groups"]] == [
+        ("System", ["Dashboard", "Notify", "Recover", "Odd one"]),
+        ("Apps", ["Ripple", "NewsCast", "Radio", "Studio"]),
+    ]

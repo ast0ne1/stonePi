@@ -31,20 +31,24 @@ def _client(monkeypatch):
     other = User(username="other", role="user", auth_user_id=OTHER)
     db.add_all([me, other])
     db.commit()
-    now = datetime.now(timezone.utc)
+    # Pin to local noon so "today" filtering doesn't drop stories near midnight.
+    from app.services.briefing import _local_today
+
+    today = _local_today()
+    noon = datetime(today.year, today.month, today.day, 12, 0, tzinfo=timezone.utc)
     for user, prefix in ((me, "Mine"), (other, "Theirs")):
         db.add(Feed(user_id=user.id, name="BBC World", url=f"https://example.com/{prefix}.rss", enabled=True, type="rss", category="news"))
         for i in range(3):
             db.add(Story(
                 user_id=user.id, title=f"{prefix} headline {i} about Mars", summary=f"<p>{prefix} summary {i}.</p>",
                 source_name="BBC World", canonical_url=f"https://example.com/{prefix}/{i}",
-                published_at=now - timedelta(minutes=10 * (i + 1)), content_hash=f"{prefix}{i}", cluster_key=f"{prefix}{i}", importance=5,
+                published_at=noon - timedelta(minutes=10 * (i + 1)), content_hash=f"{prefix}{i}", cluster_key=f"{prefix}{i}", importance=5,
             ))
     db.add(Feed(user_id=me.id, name="Sky Sports", url="https://example.com/sport.rss", enabled=True, type="rss", category="sport"))
     for i in range(2):
         db.add(Story(
             user_id=me.id, title=f"Mine sport {i}: derby result", summary="<p>Goals.</p>", source_name="Sky Sports",
-            canonical_url=f"https://example.com/sport/{i}", published_at=now - timedelta(minutes=5 + i),
+            canonical_url=f"https://example.com/sport/{i}", published_at=noon - timedelta(minutes=5 + i),
             content_hash=f"sport{i}", cluster_key=f"sport{i}", importance=5,
         ))
     db.commit()

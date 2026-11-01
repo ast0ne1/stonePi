@@ -7,12 +7,12 @@ import unicodedata
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.config import env
 from app.db import SessionLocal
-from app.models import Category, Event, EventSource, User, utcnow
-from app.services import auth, capabilities, categories, ingest
+from app.models import Category, Event, EventSighting, EventSource, User, utcnow
+from app.services import auth, capabilities, categories, ingest, timespan
 from app.services import settings as settings_service
 from app.services.calendar_sync import (
     build_facebook_share_url,
@@ -41,8 +41,52 @@ _deep_search_lock = threading.Lock()
 _deep_search_inflight: set[tuple[int, str, str]] = set()
 
 
-def _enrich_events(events: list[Event]) -> None:
+def _attach_sightings(events: list[Event]) -> None:
+    """``ev.also_on``: the other sources an event was seen on (U33), for the
+    card's "Also on" line -- not the event's own (primary) source, not ones
+    that have stopped listing it."""
+    ids = [ev.id for ev in events if ev.id]
+    by_event: dict[int, list[dict]] = {}
+    if ids:
+        with SessionLocal() as db:
+            rows = db.execute(
+                select(EventSighting, EventSource.name)
+                .join(EventSource, EventSource.id == EventSighting.source_id)
+                .where(EventSighting.event_id.in_(ids), EventSighting.dropped_at.is_(None))
+                .order_by(EventSighting.first_seen)
+            ).all()
+        primary = {ev.id: ev.source_id for ev in events}
+        fingerprints = {ev.id: ev.fingerprint for ev in events}
+        for sighting, name in rows:
+            if sighting.source_id == primary.get(sighting.event_id):
+                continue
+            by_event.setdefault(sighting.event_id, []).append({
+                "id": sighting.id,
+                "name": name,
+                "url": sighting.url,
+                # An identical listing (same fingerprint) can't be split off.
+                "can_split": sighting.fingerprint != fingerprints.get(sighting.event_id),
+            })
     for ev in events:
+        ev.also_on = by_event.get(ev.id, [])
+
+
+def _listed_by(source_id: int):
+    """Events a source lists: its own, and ones merged with another source's (U33)."""
+    return or_(
+        Event.source_id == source_id,
+        Event.id.in_(
+            select(EventSighting.event_id).where(
+                EventSighting.source_id == source_id, EventSighting.dropped_at.is_(None)
+            )
+        ),
+    )
+
+
+def _enrich_events(events: list[Event]) -> None:
+    _attach_sightings(events)
+    for ev in events:
+        ev.run_until = ev.end_time if timespan.is_run(ev) else None
         ev.gcal_url = build_google_calendar_url(ev)
         ev.fb_share_url = build_facebook_share_url(ev)
         ev.is_free = is_free_cost(ev.cost)
@@ -73,7 +117,6 @@ def _build_day_tabs(base_date: datetime):
     return tabs
 
 
-@bp.route("/")
 @bp.route("/agenda")
 @auth.login_required
 def agenda():
@@ -101,7 +144,7 @@ def agenda():
         query = select(Event).where(
             Event.user_id == user.user_id,
             Event.is_cancelled == False,
-            Event.start_time >= now - timedelta(hours=3),
+            timespan.still_on(now),
             Event.start_time <= max_lookahead,
         )
 
@@ -110,7 +153,7 @@ def agenda():
                 target_date = datetime.strptime(day_filter, "%Y-%m-%d").date()
                 day_start = datetime(target_date.year, target_date.month, target_date.day, 0, 0, tzinfo=timezone.utc)
                 day_end = day_start + timedelta(days=1)
-                query = query.where(Event.start_time >= day_start, Event.start_time < day_end)
+                query = query.where(timespan.overlaps(day_start, day_end))
             except ValueError:
                 pass
 
@@ -118,7 +161,7 @@ def agenda():
             query = query.where(Event.category.ilike(f"%{cat_filter}%"))
 
         if src_filter and src_filter != "all" and src_filter.isdigit():
-            query = query.where(Event.source_id == int(src_filter))
+            query = query.where(_listed_by(int(src_filter)))
 
         events = list(db.execute(query.order_by(Event.start_time)).scalars())
 
@@ -134,16 +177,24 @@ def agenda():
         categories = sorted({c.strip() for c in cat_rows if c and c.strip()})
 
         # Sources that actually have an upcoming event, for the Source filter
+        upcoming = (
+            Event.user_id == user.user_id,
+            Event.is_cancelled == False,  # noqa: E712
+            timespan.still_on(now),
+            Event.start_time <= max_lookahead,
+        )
+        # Primary sources, and sources whose listing was merged into another's.
+        listed = (
+            select(EventSighting.source_id)
+            .join(Event, Event.id == EventSighting.event_id)
+            .where(*upcoming, EventSighting.dropped_at.is_(None))
+        )
         source_rows = db.execute(
             select(EventSource.id, EventSource.name)
-            .join(Event, Event.source_id == EventSource.id)
             .where(
-                Event.user_id == user.user_id,
-                Event.is_cancelled == False,
-                Event.start_time >= now - timedelta(hours=3),
-                Event.start_time <= max_lookahead,
+                EventSource.user_id == user.user_id,
+                or_(EventSource.id.in_(select(Event.source_id).where(*upcoming)), EventSource.id.in_(listed)),
             )
-            .distinct()
             .order_by(EventSource.name)
         ).all()
         source_options = [{"id": row.id, "name": row.name} for row in source_rows] if bars["source"] else []
@@ -326,6 +377,20 @@ def _aware(value: datetime) -> datetime:
     return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
+def _merged_source_names(db, user_id: int) -> dict[int, str]:
+    """Names of every source still listing each event (U33), so a search for
+    "BrugByen" finds events merged into another source's listing."""
+    names: dict[int, list[str]] = {}
+    for event_id, name in db.execute(
+        select(EventSighting.event_id, EventSource.name)
+        .join(EventSource, EventSource.id == EventSighting.source_id)
+        .join(Event, Event.id == EventSighting.event_id)
+        .where(Event.user_id == user_id, EventSighting.dropped_at.is_(None))
+    ).all():
+        names.setdefault(event_id, []).append(name)
+    return {event_id: " ".join(n) for event_id, n in names.items()}
+
+
 def _social_names_by_event(db, user_id: int) -> dict[int, str]:
     """Instagram account names behind social-linked events, so "theglobe" finds them."""
     from app.models import EventSocialLink, SocialAccount, SocialPost
@@ -362,7 +427,7 @@ def run_search(
     conditions = [Event.user_id == user_id, Event.is_cancelled == False]  # noqa: E712
     if target_date:
         day_start = datetime(target_date.year, target_date.month, target_date.day, 0, 0, tzinfo=timezone.utc)
-        conditions += [Event.start_time >= day_start, Event.start_time < day_start + timedelta(days=1)]
+        conditions.append(timespan.overlaps(day_start, day_start + timedelta(days=1)))
     if category and category != "all":
         conditions.append(Event.category.ilike(f"%{category}%"))
 
@@ -378,6 +443,7 @@ def run_search(
         .where(*conditions)
     ).all()
     social_names = _social_names_by_event(db, user_id) if tokens else {}
+    merged_source_names = _merged_source_names(db, user_id) if tokens else {}
     loc_needle = fold_text(location)
     upcoming_from = now - timedelta(hours=3)
 
@@ -390,7 +456,13 @@ def run_search(
         if tokens:
             folded_title = fold_text(title)
             meta = " ".join(
-                [folded_location, fold_text(ev_category), fold_text(source_name), fold_text(social_names.get(event_id))]
+                [
+                    folded_location,
+                    fold_text(ev_category),
+                    fold_text(source_name),
+                    fold_text(merged_source_names.get(event_id)),
+                    fold_text(social_names.get(event_id)),
+                ]
             )
             # Description is folded only when the cheaper fields don't settle it.
             found = match_rank(tokens, folded_title, meta, "")
@@ -509,7 +581,7 @@ def public_agenda(username: str):
                 .where(
                     Event.user_id == target_user.id,
                     Event.is_cancelled == False,
-                    Event.start_time >= now - timedelta(hours=3),
+                    timespan.still_on(now),
                     Event.start_time <= max_lookahead,
                 )
                 .order_by(Event.start_time)

@@ -130,6 +130,7 @@
   </div>
   <p class="hint">{{ paper.message }}</p>
   <form method="post" action="/reader/publish" class="btn-row" data-busy-label="Generating…">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <input type="hidden" name="next" value="/status" />
     <button
       class="btn btn-primary btn-with-icon"
@@ -159,14 +160,17 @@
   </p>
   <div class="btn-row">
     <form method="post" action="/reader/poll" data-busy-label="Checking…">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       <input type="hidden" name="next" value="/status" />
       <button class="btn btn-secondary btn-with-icon" type="submit">{{ icon("wifi") }} <span class="btn-label-full">Check reader</span><span class="btn-label-short">Check</span></button>
     </form>
     <form method="post" action="/reader/push">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       <input type="hidden" name="next" value="/status" />
       <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("upload") }} <span class="btn-label-full">Push now</span><span class="btn-label-short">Push</span></button>
     </form>
     <form method="post" action="/reader/queue">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       <input type="hidden" name="next" value="/status" />
       <input type="hidden" name="include_paper" value="1" />
       <button class="btn btn-secondary btn-with-icon" type="submit">{{ icon("queue") }} <span class="btn-label-full">Queue for later</span><span class="btn-label-short">Queue</span></button>

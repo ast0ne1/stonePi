@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_event_extras.html" import event_when, also_on %}
 {% from "_icons.html" import icon %}
 {% from "_category_pill.html" import category_pill %}
 {% from "_cost_pill.html" import cost_pill %}
@@ -181,13 +182,15 @@
 
       <div class="event-time">
         {{ icon('clock') }}
-        <span>{{ ev.start_time|format_datetime }}</span>
+        {{ event_when(ev) }}
       </div>
 
       <div class="event-location">
         {{ icon('map-pin') }}
         <span>{{ ev.location }}</span>
       </div>
+
+      {{ also_on(ev, can_split=True) }}
 
       {% if ev.description %}
       <p class="event-desc">{{ ev.description }}</p>

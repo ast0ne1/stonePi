@@ -1,35 +1,53 @@
 from __future__ import annotations
 
 import logging
+import secrets
+
 from flask import Blueprint, Response, abort, flash, redirect, request, url_for
 from sqlalchemy import select
-
-from stonepi_auth import is_public_exposure
 
 from app.config import env
 from app.db import SessionLocal
 from app.models import CalendarConnection, Event, User
 from app.services import auth, calendar_sync, capabilities, settings as settings_service
+from app.services import token_crypto
 
 bp = Blueprint("calendar", __name__, url_prefix="/calendar")
 logger = logging.getLogger("eventtrakr.routes.calendar")
+
+FEED_TOKEN_KEY = "calendar_feed_token"
 
 sync_calendar_required = auth.capability_required(
     capabilities.SYNC_CALENDAR, redirect_endpoint="settings.view_settings", tab="calendar"
 )
 
 
-def _ics_requires_login() -> None:
-    if is_public_exposure() and not auth.get_current_user():
+def ensure_feed_token(db, user_id: int) -> str:
+    """Stable secret for webcal clients that cannot send a login cookie."""
+    token = (settings_service.get_user_value(db, user_id, FEED_TOKEN_KEY) or "").strip()
+    if token:
+        return token
+    token = secrets.token_urlsafe(24)
+    settings_service.set_user_value(db, user_id, FEED_TOKEN_KEY, token)
+    return token
+
+
+def _require_login_user():
+    user = auth.get_current_user()
+    if not user:
         abort(404)
+    return user
 
 
 @bp.route("/ics/<int:event_id>")
 def download_event_ics(event_id: int):
-    _ics_requires_login()
+    """Download one event as .ics — owner (or admin) only, always authenticated."""
+    viewer = _require_login_user()
     with SessionLocal() as db:
         event = db.get(Event, event_id)
         if not event:
+            abort(404)
+        if event.user_id != viewer.user_id and viewer.role != "admin":
             abort(404)
         ics_data = calendar_sync.build_event_ics(event)
 
@@ -41,21 +59,48 @@ def download_event_ics(event_id: int):
     )
 
 
-@bp.route("/feed/<username>.ics")
-def user_calendar_feed(username: str):
-    _ics_requires_login()
-    with SessionLocal() as db:
-        user = db.execute(select(User).where(User.username == username)).scalar_one_or_none()
-        # The live feed is a calendar subscription: it goes with Google Calendar sync.
-        if not user or not capabilities.user_can(user, capabilities.SYNC_CALENDAR):
-            abort(404)
-        ics_data = calendar_sync.build_user_calendar_feed(db, user.id)
-
+def _serve_user_feed(db, owner: User) -> Response:
+    if not owner or not capabilities.user_can(owner, capabilities.SYNC_CALENDAR):
+        abort(404)
+    ics_data = calendar_sync.build_user_calendar_feed(db, owner.id)
     return Response(
         ics_data,
         mimetype="text/calendar; charset=utf-8",
-        headers={"Content-Disposition": f'inline; filename="{username}-events.ics"'},
+        headers={"Content-Disposition": f'inline; filename="{owner.username}-events.ics"'},
     )
+
+
+@bp.route("/feed/<username>/<token>.ics")
+def user_calendar_feed_token(username: str, token: str):
+    """Unauthenticated webcal poll — gated by a per-user secret in the URL."""
+    expect = (token or "").strip()
+    if not expect:
+        abort(404)
+    with SessionLocal() as db:
+        owner = db.execute(select(User).where(User.username == username)).scalar_one_or_none()
+        if not owner:
+            abort(404)
+        stored = (settings_service.get_user_value(db, owner.id, FEED_TOKEN_KEY) or "").strip()
+        try:
+            token_ok = bool(stored) and secrets.compare_digest(stored, expect)
+        except ValueError:
+            token_ok = False
+        if not token_ok:
+            abort(404)
+        return _serve_user_feed(db, owner)
+
+
+@bp.route("/feed/<username>.ics")
+def user_calendar_feed(username: str):
+    """Browser download of the feed — must be signed in as that person (or admin)."""
+    viewer = _require_login_user()
+    with SessionLocal() as db:
+        owner = db.execute(select(User).where(User.username == username)).scalar_one_or_none()
+        if not owner:
+            abort(404)
+        if owner.id != viewer.user_id and viewer.role != "admin":
+            abort(404)
+        return _serve_user_feed(db, owner)
 
 
 @bp.route("/google/connect")
@@ -139,8 +184,11 @@ def google_callback():
                 )
                 db.add(conn)
 
-            conn.access_token = creds.token
-            conn.refresh_token = creds.refresh_token or conn.refresh_token
+            conn.access_token = token_crypto.seal(creds.token)
+            if creds.refresh_token:
+                conn.refresh_token = token_crypto.seal(creds.refresh_token)
+            elif conn.refresh_token and not token_crypto.is_sealed(conn.refresh_token):
+                conn.refresh_token = token_crypto.seal(conn.refresh_token)
             conn.token_expiry = creds.expiry
             db.commit()
 

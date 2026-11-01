@@ -1,0 +1,24 @@
+{
+  "players": [
+    {
+      "bus_name": "org.mpris.MediaPlayer2.mpd",
+      "identity": "Music Player Daemon",
+      "playback_status": "Stopped",
+      "volume": 0.6,
+      "metadata": {},
+      "capabilities": {
+        "can_play": true,
+        "can_pause": true,
+        "can_go_next": false,
+        "can_go_previous": false,
+        "can_seek": false,
+        "can_control": true
+      },
+      "tracklist_supported": true
+    }
+  ],
+  "audio": {
+    "volume": 0.6,
+    "mute": false
+  }
+}

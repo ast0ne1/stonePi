@@ -8,7 +8,7 @@ import app.routes as _app_routes
 from app.routes import router
 from stonepi_auth.prefix import clean_prefix
 
-app = FastAPI(title="StonePi Ripple")
+app = FastAPI(title="StonePi Ripple", docs_url=None, redoc_url=None, openapi_url=None)
 _prefix = clean_prefix(env.stonepi_prefix)
 if _prefix:
     from stonepi_auth.prefix import PrefixMiddleware
@@ -32,6 +32,15 @@ def _sweep_media() -> None:
         sweep_orphans()
     except Exception:  # noqa: BLE001 - never block startup over housekeeping
         pass
+
+@app.on_event("startup")
+def _start_holidays() -> None:
+    # Fetches public holidays at most once a day per country (U34); a change nudges Notify so
+    # the family's TRMNL gets them.
+    from app import holidays
+
+    holidays.start(_app_routes._changed)
+
 
 # A platform install without a session secret locks instead of running solo.
 platform_lock = add_platform_lock(app, lambda: _app_routes._session_secret())

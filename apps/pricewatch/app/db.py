@@ -439,7 +439,7 @@ def create_watch(payload: dict[str, Any]) -> int:
         return int(cur.lastrowid)
 
 
-def update_watch_fields(watch_id: int, **fields: Any) -> None:
+def update_watch_fields(watch_id: int, user_key: str | None = None, **fields: Any) -> None:
     if not fields:
         return
     allowed = {
@@ -485,7 +485,14 @@ def update_watch_fields(watch_id: int, **fields: Any) -> None:
     values.append(_iso())
     values.append(watch_id)
     with db() as conn:
-        conn.execute(f"UPDATE watches SET {', '.join(sets)} WHERE id = ?", values)
+        if user_key:
+            values.append(user_key)
+            conn.execute(
+                f"UPDATE watches SET {', '.join(sets)} WHERE id = ? AND user_key = ?",
+                values,
+            )
+        else:
+            conn.execute(f"UPDATE watches SET {', '.join(sets)} WHERE id = ?", values)
 
 
 def delete_watch(watch_id: int, user_key: str | None = None) -> bool:

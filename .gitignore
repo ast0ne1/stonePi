@@ -60,5 +60,19 @@ scripts/*-bootstrap-on-pi.sh
 # Install website (deployed separately to stonepi-install.vercel.app)
 install-stonepi/
 
-# Claude Code local state (preview launch config, worktrees)
+# Specs, backlog and CAD copies — local working notes, not the release tree
+ideation/
+
+# Pebble source art for tools/mkassets.py (kept out of git; rebuild assets from it)
+docs/pebble/
+docs/pebble-emulator/
+
+# Local test-run dumps (e.g. pre-release suite output)
+_test_results*/
+
+# Claude Code / Cursor handoff (preview launch, worktrees, memory archive, old-machine copy)
 .claude/
+CLAUDE.local.md
+CLAUDE-memory.md
+_from-old-machine/
+scripts/_split_claude_memories.py

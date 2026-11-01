@@ -47,9 +47,38 @@ def _in_tests() -> bool:
     return bool(os.environ.get("PYTEST_CURRENT_TEST")) and not os.environ.get("STONEPI_EMIT_IN_TESTS")
 
 
+def _session_secret() -> str:
+    try:
+        from stonepi_vault import get_secret
+
+        vaulted = (get_secret("STONEPI_SESSION_SECRET", env_name="STONEPI_SESSION_SECRET", default="") or "").strip()
+        if vaulted:
+            return vaulted
+    except Exception:  # noqa: BLE001
+        pass
+    return (os.environ.get("STONEPI_SESSION_SECRET") or os.environ.get("SESSION_SECRET") or "").strip()
+
+
+def _sign_headers(method: str, path: str, body: bytes) -> dict[str, str]:
+    secret = _session_secret()
+    if not secret:
+        return {}
+    try:
+        from stonepi_auth.internal import sign_internal_v2
+
+        return sign_internal_v2(secret, method, path, body)
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def _post_once(url: str, payload: dict[str, Any], timeout: float) -> bool:
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    from urllib.parse import urlparse
+
+    path = urlparse(url).path or "/api/events"
+    headers = {"Content-Type": "application/json", **_sign_headers("POST", path, body)}
     with httpx.Client(timeout=timeout, follow_redirects=False) as client:
-        response = client.post(url, json=payload)
+        response = client.post(url, content=body, headers=headers)
         return response.status_code < 400
 
 

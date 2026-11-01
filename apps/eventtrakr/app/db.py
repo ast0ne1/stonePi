@@ -35,6 +35,9 @@ def init_db() -> None:
     with SessionLocal() as db:
         seed_default_categories(db)
         backfill_event_source_categories(db)
+        # Every event gets a sighting for its own source (U33 merged events).
+        from app.services.ingest import backfill_sightings
+        backfill_sightings(db)
 
 
 def _ensure_schema() -> None:

@@ -56,7 +56,7 @@ def test_switcher_lists_user_apps_in_dashboard_order_with_current_highlighted():
 
 def test_switcher_shows_admins_every_user_app_and_never_auth():
     ids = [a["id"] for a in header.switcher_apps(_user(is_admin=True, apps=()), PI, "studio")]
-    assert len(ids) == 10 and "auth" not in ids and "dashboard" not in ids
+    assert len(ids) == 11 and "auth" not in ids and "dashboard" not in ids
     assert ids[0] == "newscast"
 
 

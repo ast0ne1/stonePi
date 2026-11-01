@@ -99,6 +99,15 @@ def test_editor_page_and_displays_card():
     assert '"id": "weather", "label": "Weather"' in page.text or '"id":"weather","label":"Weather"' in page.text
 
 
+def test_preview_commands_must_be_json():
+    """The preview proxy's commands: a cross-site form (text/plain, no preflight) is refused."""
+    client = admin_client()
+    for path in ("/carthing/panel/restart", "/carthing/panel/radio/cmd", "/carthing/panel/music/cmd"):
+        assert client.post(path, content=b'{"cmd": "stop"}', headers={"Content-Type": "text/plain"}).status_code == 415
+        assert client.post(path, data={"cmd": "stop"}).status_code == 415
+    assert client.post("/carthing/panel/other", json={}).status_code == 405
+
+
 def test_non_admin_is_refused():
     client = admin_client(is_admin=False)
     assert client.get("/displays/carthing").status_code == 403

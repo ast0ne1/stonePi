@@ -4,9 +4,10 @@ StonePi is a private hub on your home network. Default install is **trusted LAN*
 
 ## First boot
 
-1. Sign in as `admin` with the random password the installer prints at the end (generated only when no accounts exist yet; kept for root in `/etc/stonepi/initial-admin.txt`, mode `0600` — `sudo cat` it if you missed it). The installer passes it to Auth through `/etc/stonepi/auth.env` only, not the shared `stonepi.env` every app loads.
+1. Sign in as `admin` with the random password the installer prints at the end (generated only when no accounts exist yet; kept for root in `/etc/stonepi/initial-admin.txt`, mode `0600` — `sudo cat` it if you missed it). The installer passes it to Auth through `/etc/stonepi/auth.env` only, not the shared `stonepi.env` every app loads. Auth itself never falls back to a well-known `admin`/`admin` password: with no `ADMIN_PASSWORD` it generates one and writes `data/initial-admin.txt` (dev) or relies on the installer file on the Pi.
 2. Change the admin password under **Settings → General → Your password** (a banner stays until you do — browsing is not blocked). `initial-admin.txt` is not updated afterwards; delete it once changed if you like.
-3. Prefer Vault for API keys (Dashboard → Settings → Vault).
+3. Demoting an admin, changing someone's app grants, disabling an app for the household, changing a password, or deleting a person **revokes their sessions** (or everyone's, when apps are disabled) so sibling apps don't keep trusting old cookie claims until the 14-day expiry.
+4. Prefer Vault for API keys (Dashboard → Settings → Vault).
 
 ## Exposure modes
 
@@ -40,7 +41,7 @@ After Tailscale is connected, StonePi enables **Tailscale Serve** so the MagicDN
 - App processes bind **`HOST=127.0.0.1`**. Do not publish the app ports (8001–8014) publicly; only nginx (or a tunnel) should be reachable.
 - Dashboard, Library and Notify run with **`NoNewPrivileges=no`** so they can use NOPASSWD sudo — each only for fixed root helpers in `/usr/local/sbin`: Dashboard for `stonepi-service-helper` (start/stop/restart/is-active/logs of one validated `stonepi-*` unit; no sudoers wildcards on `systemctl`/`journalctl`), `stonepi-tailscale`, `stonepi-hostname`, `stonepi-backup-helper`, `stonepi-tailscale-acl`, `stonepi-update-helper`; Library for `stonepi-library-helper`; Notify for `stonepi-carthing-helper`. Other app units keep `NoNewPrivileges=yes`. The installer's ready check verifies Notify's unit setting.
 - App virtualenvs (`/opt/stonepi/apps/*/.venv`) are `root:root`, read-only to service users: root runs their `pip`/`python` during install and updates.
-- Cockpit on **`https://…:9090`** is separate — firewall it off the internet. Overview links use HTTPS; the installer upgrades old `http://` `COCKPIT_URL` values.
+- Cockpit on **`https://…:9090`** is separate — the host firewall allows it from private/LAN/tailnet ranges only and drops it on `tailscale0`. Overview links use HTTPS; the installer upgrades old `http://` `COCKPIT_URL` values.
 - Access via **`stonepi.local`**, Pi LAN IP, or router LAN DNS (e.g. **`stonepi.home`**). Portal login and Home links follow the host you typed.
 - `stonepi.local` needs Avahi (`avahi-daemon` + `avahi-utils`). If `.local` fails, use the Pi LAN IP or router DNS; `sudo systemctl restart avahi-daemon` often restores IPv4 mDNS.
 - Rate limits trust **`X-Real-IP`** from nginx (not client-supplied leftmost `X-Forwarded-For`).
@@ -52,16 +53,19 @@ Installer applies [`nftables/stonepi.nft`](nftables/stonepi.nft) via [`nftables/
 
 | Allow | Notes |
 |-------|--------|
-| TCP 22 | SSH |
+| TCP 22 | SSH — private source ranges only (same as Recover; do not port-forward 22 from the internet) |
 | TCP 80, 443 | nginx |
 | TCP 8099 | Recover (Recovery Console) escape hatch — private source ranges only (RFC 1918, link-local, Tailscale `100.64.0.0/10`, IPv6 ULA/link-local) |
 | UDP 41641 + `tailscale0` | Tailscale |
 | UDP 5353 | mDNS |
-| TCP 9090 | Cockpit — **not** via `tailscale0` (dropped before the `tailscale0` accept; LAN / local only) |
+| TCP 9090 | Cockpit — **not** via `tailscale0` (dropped before the `tailscale0` accept); otherwise private source ranges only |
+| TCP 5000, 7000; UDP 319–320, 6001–6011; TCP/UDP 32768–60999 | Odio's AirPlay (shairport-sync) and Spotify Connect (spotifyd), for Radio's speaker — private source ranges only, like Recover |
+| (no new rule) UDP replies to Radio's SSDP search | Radio finds DLNA speakers with an SSDP search from an ephemeral port; replies arrive through the LAN-only 32768–60999 rule above. Radio only talks to speakers on private literal addresses (never loopback or the internet), and only to control URLs on the host that answered. Speakers fetch `/radio/relay/<token>` over plain HTTP on port 80 (signed, one stream, 6 hours). For HLS stations the relay fetches the station's playlists and segments itself; every one of those addresses (and each redirect) passes the same stream-address check, sizes are capped, and encrypted HLS is refused. |
+| *dropped:* TCP 6600, 8018, 8080 | Odio's MPD, API (no sign-in) and myMPD bind all interfaces; dropped everywhere, `tailscale0` included, so only Radio reaches them over loopback |
 
 Default input policy is **drop**. The rules live in their own `table inet stonepi`, which the installer replaces on its own (`delete table` + re-add) — no `flush ruleset`, so tailscaled's tables survive a re-install.
 
-Recover listens on `0.0.0.0:8099` over **plain HTTP** on purpose: it is the break-glass console for when nginx or the apps are down, so it cannot sit behind them. It is a root console (HTTP Basic, user `stonepi`), hence the source-range restriction above; LAN clients reaching the Pi only by a global IPv6 address fall back to IPv4. Do not port-forward 8099. Prefer `http://stonepi.local/recover/` (through nginx) when nginx is up. Recover's login lockout (5 failures per client IP, 30 overall, per 15 minutes) needs the real client address, but every nginx request arrives from loopback, as would one from any compromised local app. So nginx proves itself with a shared secret: the installer generates `/etc/stonepi/recover-proxy.token` once (`root:root 0600`) and rebuilds `/etc/nginx/snippets/stonepi-recover-proxy.conf` (`root 0600`, read by nginx's root master process) from it on every run; `location /recover/` includes the snippet, which sends `X-StonePi-Proxy`. Recover trusts `X-Real-IP` / `X-Forwarded-Host` only from loopback **with** a matching token (constant-time compare, file re-read when it changes). Any other local caller is keyed on its socket address, so all of them share one `127.0.0.1` bucket and can't rotate a forged `X-Real-IP` past the per-IP limit. If the token file is missing, Recover trusts no proxy headers (nginx traffic then shares that bucket too) and logs a warning; re-run the installer. The Recover password itself must be at least 12 characters when set from Dashboard → Settings → Vault. App processes remain on **`127.0.0.1`** (8001–8014: Notify 8012, Car Thing 8013, Kiwix 8014). Health → Listening compares `ss` against this expected set (plus Avahi/Tailscale process names and Tailscale companion / `100.x` binds).
+Recover listens on `0.0.0.0:8099` over **plain HTTP** on purpose: it is the break-glass console for when nginx or the apps are down, so it cannot sit behind them. It is a root console (HTTP Basic, user `stonepi`), hence the source-range restriction above; LAN clients reaching the Pi only by a global IPv6 address fall back to IPv4. Do not port-forward 8099. Prefer `http://stonepi.local/recover/` (through nginx) when nginx is up. Recover's login lockout (5 failures per client IP, 30 overall, per 15 minutes) needs the real client address, but every nginx request arrives from loopback, as would one from any compromised local app. So nginx proves itself with a shared secret: the installer generates `/etc/stonepi/recover-proxy.token` once (`root:root 0600`) and rebuilds `/etc/nginx/snippets/stonepi-recover-proxy.conf` (`root 0600`, read by nginx's root master process) from it on every run; `location /recover/` includes the snippet, which sends `X-StonePi-Proxy`. Recover trusts `X-Real-IP` / `X-Forwarded-Host` only from loopback **with** a matching token (constant-time compare, file re-read when it changes). Any other local caller is keyed on its socket address, so all of them share one `127.0.0.1` bucket and can't rotate a forged `X-Real-IP` past the per-IP limit. If the token file is missing, Recover trusts no proxy headers (nginx traffic then shares that bucket too) and logs a warning; re-run the installer. The Recover password itself must be at least 12 characters when set from Dashboard → Settings → Vault. App processes remain on **`127.0.0.1`** (8001–8014: Notify 8012, Car Thing 8013, Kiwix 8014). Health → Listening compares `ss` against this expected set (plus Avahi/Tailscale process names and Tailscale companion / `100.x` binds, and Odio's ports once `stonepi-odio-setup` has installed it).
 
 Re-apply: `sudo bash /opt/stonepi/deploy/nftables/install-firewall.sh`
 
@@ -87,3 +91,5 @@ AI keys (`GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) live in the Va
 ## Backup
 
 USB labelled `STONEPI-BACKUP` holds application data — treat the stick as sensitive.
+
+Sensitive files in each stamp are encrypted with AES-256-CBC (PBKDF2) using a Pi-local key at **`/etc/stonepi/backup.key`** (`root:root` mode `0600`): `vault.key`, every `/etc/stonepi/*.env`, `recover.passwd`, `recover-proxy.token`, and `initial-admin.txt` when present. The key is **never** copied into USB or local stamps. Local restore on the same Pi works automatically. After an SD-card failure, copy `backup.key` from your offline copy (or the old card) onto the new Pi before `stonepi-restore`. Older plaintext stamps still restore.

@@ -246,10 +246,9 @@
           <div class="stack" data-ct-saver-pane="web">
             <div class="ct-grid">
               <label>Page<select data-bind="idle.saver.web.page_id"><option value="">— Choose —</option>{% for p in cat.web_pages %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}</select></label>
-              <label>Refresh every (minutes)<input type="number" min="1" max="5" data-bind="idle.saver.web.refresh_min" /></label>
               <label class="check"><input type="checkbox" data-bind="idle.saver.web.time" /><span>Show time</span></label>
             </div>
-            <p class="hint">A snapshot the Pi takes of the page, refreshed only while the screensaver shows. Touching the panel wakes it as usual.</p>
+            <p class="hint">A snapshot the Pi takes of the page, taken again once it's older than the page's own refresh time (Displays → Web pages, 15 minutes at least). Touching the panel wakes it as usual.</p>
             <details class="ct-web-add" data-ct-web-add="saver">
             <summary>+ New web page</summary>
             <div class="ct-grid">
@@ -406,6 +405,8 @@
             </fieldset>
             <fieldset class="stack">
               <legend>Now Playing look</legend>
+              <label>Spotify plays in<select data-bind="music.look_from">{% for t in cat.music_looks %}<option value="{{ t.id }}">{{ t.label }}</option>{% endfor %}</select></label>
+              <p class="hint">Radio's theme is the player theme under Radio (Classic Winamp and the others), on the Music screen, a full-page Music widget and the artwork screensaver. The settings below are for the default look.</p>
               <div class="ct-grid">
                 <label>Background<select data-bind="music.np.background">{% for b in cat.np_backgrounds %}<option value="{{ b.id }}">{{ b.label }}</option>{% endfor %}</select></label>
                 <label>Controls on screen<select data-bind="music.np.controls">{% for c in cat.np_controls %}<option value="{{ c.id }}">{{ c.label }}</option>{% endfor %}</select></label>
@@ -431,6 +432,40 @@
               <label class="check"><input type="checkbox" data-bind="music.show_save" /><span>Show the <em>Liked Songs</em> tick on Now Playing (tap to save or remove the song)</span></label>
             </fieldset>
             <div class="row-actions"><button type="button" class="btn btn-ghost" data-ct-music-open>Show Now Playing in the preview</button></div>
+          </div>
+        </details>
+        <details class="ct-fold" data-ct-home="radio">
+          <summary>Radio: player theme and presets</summary>
+          <p class="hint" data-ct-away hidden>Open on the Radio widget in Pages right now.</p>
+          <div class="stack" data-ct-box="radio">
+            <fieldset class="stack">
+              <legend>Player theme</legend>
+              <label>Look<select data-bind="radio.theme">{% for t in cat.radio_themes %}<option value="{{ t.id }}">{{ t.label }}</option>{% endfor %}</select></label>
+              <p class="hint">Classic Winamp (the Winamp 2.91 base skin) is the default. Classic Winamp, AMP BOY, RealPlayer and TouchAmp are the real skins from skins.webamp.org, scaled to fill the screen; the full page adds the playlist window with your presets. Plain follows the panel theme: logo and icon controls while on air, favourite cards when idle.</p>
+              <label>Radio plays in<select data-bind="radio.look_from">{% for t in cat.radio_looks %}<option value="{{ t.id }}">{{ t.label }}</option>{% endfor %}</select></label>
+              <p class="hint">On the Radio screen, a full-page Radio widget and the artwork screensaver. Now Playing uses Music's background, accent and edge line, with the station's logo as the artwork.</p>
+            </fieldset>
+            <fieldset class="stack">
+              <legend>Presets</legend>
+              {% for n in range(cat.radio_presets) %}
+              <div class="ct-grid">
+                <label>Preset {{ n + 1 }} name<input type="text" maxlength="40" data-bind="radio.presets.{{ n }}.name" placeholder="e.g. FIP" /></label>
+                <label>Station id<input type="text" spellcheck="false" data-bind="radio.presets.{{ n }}.station_id" placeholder="from Radio favorites" /></label>
+                <label>Or stream URL<input type="text" spellcheck="false" data-bind="radio.presets.{{ n }}.url" placeholder="https://…" /></label>
+              </div>
+              {% endfor %}
+              <p class="hint">Empty presets fall back to the household’s first favorites in Radio. Map <em>Play radio preset N</em> under Buttons.</p>
+            </fieldset>
+            <fieldset class="stack">
+              <legend>Play on</legend>
+              <label>Speaker<select data-bind="radio.output" data-ct-radio-output><option value="stonepi">StonePi (the Pi’s own audio out)</option></select></label>
+              <p class="hint" data-ct-radio-outputs-status>Speakers come from Radio: DLNA speakers it found on the home network.</p>
+            </fieldset>
+            <fieldset class="stack">
+              <legend>Options</legend>
+              <label class="check"><input type="checkbox" data-bind="radio.dial_volume" /><span>The dial turns the volume on Radio</span></label>
+              <label>Volume step per dial click (%)<input type="number" min="1" max="10" data-bind="radio.volume_step" /></label>
+            </fieldset>
           </div>
         </details>
       </div>

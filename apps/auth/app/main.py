@@ -21,7 +21,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="StonePi Auth", lifespan=lifespan)
+app = FastAPI(title="StonePi Auth", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 if env.stonepi_prefix:
     from stonepi_auth.prefix import PrefixMiddleware
 

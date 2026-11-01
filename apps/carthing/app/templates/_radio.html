@@ -1,0 +1,212 @@
+{#- Radio player skins.
+    winamp, ampboy, realplayer, touchamp: classic Winamp 2 skins from skins.webamp.org, drawn
+    from their own bitmaps (static/skins/<id>/, see the README) at their real 275 px size, and
+    scaled by panel.js (fitSkins) to fill the room on both axes (no black bars). They show the
+    main window; at full size the skin's PL button opens the playlist window below it (its rows
+    are the presets), kept open across reloads by panel.js (skinPl). plain follows the panel
+    theme: logo + icon controls while on air, favourite cards when idle.
+-#}
+{% from "_icons.html" import icon %}
+{% set SKINS = ("winamp", "ampboy", "realplayer", "touchamp") %}
+{#- TEXT.BMP: 5×6 glyphs in three rows (a space where a character isn't in the font; ¦ holds
+    the backslash's place, which a Jinja string can't carry cleanly). -#}
+{% set FONT_ROWS = ('abcdefghijklmnopqrstuvwxyz"@', "0123456789….:()-'!_+¦/[]^&%,=$#", "åöä?*") %}
+{% set FONT_FOLD = {"æ": "ä", "ø": "ö", "ü": "u", "é": "e", "è": "e", "ê": "e", "ë": "e", "á": "a", "à": "a", "â": "a", "ã": "a", "í": "i", "ì": "i", "î": "i", "ï": "i", "ó": "o", "ò": "o", "ô": "o", "õ": "o", "ú": "u", "ù": "u", "û": "u", "ñ": "n", "ç": "c", "ß": "s", "<": "[", ">": "]", "{": "[", "}": "]", "–": "-", "—": "-", "’": "'", "‘": "'", "“": '"', "”": '"', "|": "/"} %}
+
+{% macro sk_text(s) -%}
+{%- for ch in s|lower -%}
+{%- set c = FONT_FOLD.get(ch, ch) -%}
+{%- set g = namespace(x=150, y=0) -%}
+{%- for row in FONT_ROWS -%}{%- if c in row -%}{%- set g.x = row.index(c) * 5 -%}{%- set g.y = loop.index0 * 6 -%}{%- endif -%}{%- endfor -%}
+<i style="background-position:-{{ g.x }}px -{{ g.y }}px"></i>
+{%- endfor -%}
+{%- endmacro %}
+
+{#- A sprite button when the panel allows the command, else the same picture with no action. -#}
+{% macro sk_btn(cls, label, cmd="", arg="", go="") -%}
+{% if cmd or go %}<button type="button" class="sk-b {{ cls }}" data-focus{% if cmd %} data-radio-cmd="{{ cmd }}"{% if arg != "" %} data-radio-arg="{{ arg }}"{% endif %}{% endif %}{% if go %} data-go="{{ go }}" data-app="radio"{% endif %} aria-label="{{ label }}"></button>
+{%- else %}<span class="sk-b {{ cls }}" aria-hidden="true"></span>{% endif %}
+{%- endmacro %}
+
+{% macro skin(theme, now, opts, size) -%}
+{#- opts.music: the skin is showing Spotify (Look → Music → Radio's theme). Winamp's track
+    controls then do what they did in Winamp: Previous / Next skip, Shuffle and Repeat toggle,
+    the time counts the track and the position bar follows it. -#}
+{% set music = opts.music %}
+{% set track = music and (now.duration_ms or 0) > 0 %}
+{% set playing = now.playing %}
+{% set paused = now.paused and not playing %}
+{% set vol = now.volume if now.volume is not none else 0.6 %}
+{% set vol = [0, [vol, 1]|min]|max %}
+{% set vol_pct = (vol * 100)|round|int %}
+{% if not now.connected %}
+{% set line = now.error or "Radio isn't answering. Is the Radio app running?" %}
+{% else %}
+{% set line = (now.title or "Nothing playing") ~ ((" - " ~ now.artist) if now.artist else "") %}
+{% endif %}
+{#- Winamp always scrolls the title (even a short one), with "***" between repeats. -#}
+{% set marq = line ~ "  ***  " %}
+{% set marq_chars = marq|length %}
+{#- Presets you can tap: the playlist's rows, and what Previous and Next step through. -#}
+{% set usable = [] %}
+{% for p in opts.presets or [] if p.set and p.allowed %}{% set _ = usable.append(p) %}{% endfor %}
+{% set cur = namespace(i=-1) %}
+{% for p in usable if now.title and p.name and p.name|lower == now.title|lower %}{% set cur.i = loop.index0 %}{% endfor %}
+{% set n = usable|length %}
+{% set prev_p = usable[(cur.i - 1) % n if cur.i >= 0 else -1] if n else none %}
+{% set next_p = usable[(cur.i + 1) % n] if n else none %}
+{% set shown = (opts.presets or [])|selectattr("set")|list %}
+{% set list_on = size == "full" and shown %}
+<div class="sk-fit">
+  <div class="sk sk-{{ theme }}{% if list_on %} sk-has-pl{% endif %}{% if playing %} is-playing{% endif %}" data-sk-fit>
+    <div class="sk-main">
+      <span class="sk-tb" aria-hidden="true"></span>
+      <span class="sk-clutter" aria-hidden="true"></span>
+      <span class="sk-work" aria-hidden="true"></span>
+      <span class="sk-ps sk-ps-{{ 'play' if playing else ('pause' if paused else 'stop') }}" aria-hidden="true"></span>
+      {#- The time display shows the clock (a stream has no length); panel.js keeps it current. -#}
+      {%- if track %}
+      <span class="sk-time" data-sk-elapsed data-progress="{{ now.progress_ms }}" data-duration="{{ now.duration_ms }}" data-at="{{ now.at_ms }}" data-playing="{{ 1 if playing else 0 }}" aria-hidden="true"><i class="sk-d"></i><i class="sk-d"></i><i class="sk-d"></i><i class="sk-d"></i></span>
+      {%- else %}
+      <span class="sk-time" data-sk-time aria-hidden="true"><i class="sk-d"></i><i class="sk-d"></i><i class="sk-d"></i><i class="sk-d"></i></span>
+      {%- endif %}
+      <span class="sk-vis" aria-hidden="true">{% for _ in range(19) %}<i></i>{% endfor %}</span>
+      <span class="sk-marquee" data-radio-title aria-label="{{ line }}"><span class="sk-txt is-scroll" style="animation-duration: {{ '%.2f'|format(marq_chars * 0.22) }}s; animation-timing-function: steps({{ marq_chars }})">{{ sk_text(marq) }}{{ sk_text(marq) }}</span></span>
+      {#- kbps and kHz from the stream's headers (Radio reads them), right-aligned in the skin's
+          own font like Winamp; blank when the station doesn't say, when stopped and for Spotify. -#}
+      {% set kbps = (now.kbps or 0)|int if playing else 0 %}
+      {% set khz = (now.khz or 0)|int if playing else 0 %}
+      <span class="sk-kbps" aria-hidden="true">{% if kbps %}<span class="sk-txt">{{ sk_text(("%d"|format([kbps, 999]|min))) }}</span>{% endif %}</span>
+      <span class="sk-khz" aria-hidden="true">{% if khz %}<span class="sk-txt">{{ sk_text(("%d"|format([khz, 99]|min))) }}</span>{% endif %}</span>
+      <span class="sk-mono" aria-hidden="true"></span>
+      <span class="sk-stereo{% if playing %} is-on{% endif %}" aria-hidden="true"></span>
+      <span class="sk-vol" style="background-position: 0 -{{ ((vol * 27)|round|int) * 15 }}px" data-radio-vol="{{ vol_pct }}">
+        <b class="sk-thumb" style="left: {{ (vol * 54)|round|int }}px"></b>
+        {% if opts.allowed.vol_down %}<button type="button" class="sk-vol-dn" data-focus data-radio-cmd="vol" data-radio-arg="-1" aria-label="Volume down"></button>{% endif %}
+        {% if opts.allowed.vol_up %}<button type="button" class="sk-vol-up" data-focus data-radio-cmd="vol" data-radio-arg="1" aria-label="Volume up"></button>{% endif %}
+      </span>
+      <span class="sk-bal" aria-hidden="true"><b class="sk-thumb"></b></span>
+      <span class="sk-eq" aria-hidden="true"></span>
+      {% if list_on %}<button type="button" class="sk-plb" data-focus data-skin-pl aria-label="Playlist"></button>
+      {%- else %}<span class="sk-plb" aria-hidden="true"></span>{% endif %}
+      <span class="sk-pos" aria-hidden="true">{% if track %}<b class="sk-posthumb" data-sk-thumb style="left: {{ ([now.progress_ms / now.duration_ms, 1]|min * 219)|round|int }}px"></b>{% endif %}</span>
+      {%- if music %}
+      {{ sk_btn("sk-prev", "Previous track", "prev" if opts.allowed.prev else "") }}
+      {%- else %}
+      {{ sk_btn("sk-prev", "Previous preset", "preset" if prev_p else "", prev_p.number if prev_p else "") }}
+      {%- endif %}
+      {{ sk_btn("sk-play", "Play", "play_pause" if opts.allowed.play_pause and not playing else "") }}
+      {{ sk_btn("sk-pause", "Pause", "play_pause" if opts.allowed.play_pause and (playing or paused) else "") }}
+      {{ sk_btn("sk-stop", "Stop", "stop" if opts.allowed.stop and (playing or paused) else "") }}
+      {%- if music %}
+      {{ sk_btn("sk-next", "Next track", "next" if opts.allowed.next else "") }}
+      {%- else %}
+      {{ sk_btn("sk-next", "Next preset", "preset" if next_p else "", next_p.number if next_p else "") }}
+      {%- endif %}
+      {{ sk_btn("sk-eject", "Open Radio", go="v/radio" if size != "full" else "") }}
+      {%- if music and opts.allowed.shuffle %}
+      <button type="button" class="sk-shuf{% if now.shuffle %} is-on{% endif %}" data-focus data-radio-cmd="shuffle" aria-label="Shuffle"></button>
+      {%- else %}
+      <span class="sk-shuf" aria-hidden="true"></span>
+      {%- endif %}
+      {%- if music and opts.allowed.repeat %}
+      <button type="button" class="sk-rep{% if now.repeat and now.repeat != 'off' %} is-on{% endif %}" data-focus data-radio-cmd="repeat" aria-label="Repeat"></button>
+      {%- else %}
+      <span class="sk-rep" aria-hidden="true"></span>
+      {%- endif %}
+    </div>
+    {% if list_on %}
+    <div class="sk-pl">
+      <i class="pl-t" style="left: 25px"></i><i class="pl-t" style="left: 50px"></i><i class="pl-t" style="left: 75px"></i>
+      <i class="pl-t" style="left: 175px"></i><i class="pl-t" style="left: 200px"></i><i class="pl-t" style="left: 225px"></i>
+      <i class="pl-tl"></i><i class="pl-title"></i><i class="pl-tr"></i>
+      <i class="pl-l" style="top: 20px"></i><i class="pl-l" style="top: 49px"></i>
+      <i class="pl-r" style="top: 20px"></i><i class="pl-r" style="top: 49px"></i>
+      <i class="pl-bl"></i><i class="pl-br"></i><i class="pl-handle"></i>
+      <div class="pl-rows">
+        {% for p in shown[:4] %}
+        {% set on = now.title and p.name and p.name|lower == now.title|lower %}
+        {% if p.allowed %}
+        <button type="button" class="pl-row{% if on %} is-current{% endif %}" data-focus data-radio-cmd="preset" data-radio-arg="{{ p.number }}">{{ loop.index }}. {{ p.name }}</button>
+        {% else %}
+        <span class="pl-row{% if on %} is-current{% endif %}">{{ loop.index }}. {{ p.name }}</span>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{%- endmacro %}
+
+{% macro player(now, opts, size="full") -%}
+{% set theme = opts.theme or "winamp" %}
+{% if theme == "omitron" %}{% set theme = "plain" %}{% endif %}
+{% set playing = now.playing %}
+{% set title = now.title or "Nothing playing" %}
+{% set artist = now.artist or "" %}
+{% set logo = now.station_logo or now.art_url or "" %}
+{% set art = ("radio/art?u=" ~ logo|urlencode) if logo else "" %}
+{% set where = now.output_name or (now.source if now.source != "none" else "Radio") %}
+{% set idle = size != "small" and not playing and not now.paused %}
+{#- Key for panel.js: reload the skin when stream info (or what's playing) arrives after the
+    first paint — Radio reads kbps/kHz in the background, so the first HTML is often blank. -#}
+{% set radio_key = (now.title or "") ~ "|" ~ (1 if playing else 0) ~ "|" ~ ((now.kbps or 0)|int) ~ "|" ~ ((now.khz or 0)|int) %}
+<div class="radio-player theme-{{ theme }} size-{{ size }}" data-radio data-radio-theme="{{ theme }}"{% if theme in SKINS %} data-skin-radio data-skin-radio-key="{{ radio_key }}"{% endif %}>
+
+  {% if theme in SKINS %}
+  {{ skin(theme, now, opts, size) }}
+
+  {% else %}
+  <div class="radio-plain{% if idle %} is-idle{% endif %}">
+    {% if idle %}
+    <div class="rp-idle">
+      <strong class="rp-idle-head">Radio</strong>
+      <span class="rp-idle-sub">{% if now.error %}{{ now.error }}{% elif not now.connected %}Radio isn’t answering. Is the Radio app running?{% else %}Pick a favourite to play{% if where and where != "Radio" %} on {{ where }}{% endif %}.{% endif %}</span>
+      <div class="rp-tiles">
+        {% for p in opts.presets if p.set and p.allowed %}
+        <button type="button" class="rp-tile" data-focus data-radio-cmd="preset" data-radio-arg="{{ p.number }}">
+          {% if p.art %}<img src="{{ p.art }}" alt="">{% else %}<span class="rp-tile-empty">{{ icon("note") }}</span>{% endif %}
+          <b>{{ p.name or ("Favourite " ~ p.number) }}</b>
+          <span>Favourite {{ p.number }}</span>
+        </button>
+        {% else %}
+        <p class="rp-none">No favourites yet: star stations in Radio, or set presets in Notify → Car Thing → Look → Radio.</p>
+        {% endfor %}
+      </div>
+    </div>
+    {% else %}
+    <div class="rp-now">
+      <div class="rp-art">
+        <img src="{{ art }}" alt=""{% if not art %} hidden{% endif %}>
+        <span class="rp-art-empty"{% if art %} hidden{% endif %}>{{ icon("note") }}</span>
+      </div>
+      <div class="rp-text">
+        <span class="rp-where">{{ icon("speaker") }}<span>{{ where }}{% if now.playback_status %} · {{ now.playback_status }}{% endif %}</span></span>
+        <strong data-radio-title>{{ title }}</strong>
+        {% if artist %}<span class="rp-artist" data-radio-artist>{{ artist }}</span>{% endif %}
+        {% if size != "small" %}
+        <div class="rp-ctl">
+          {% if opts.allowed.play_pause %}
+          <button type="button" class="rp-btn rp-play{% if playing %} is-playing{% endif %}" data-focus data-radio-cmd="play_pause" aria-label="Play or pause">{{ icon("play", "ico i-play") }}{{ icon("pause", "ico i-pause") }}</button>
+          {% endif %}
+          {% if opts.allowed.stop %}
+          <button type="button" class="rp-btn" data-focus data-radio-cmd="stop" aria-label="Stop">{{ icon("stop") }}</button>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if theme not in SKINS and not idle %}
+  {% if not now.connected and now.error %}
+  <p class="w-empty">{{ now.error }}</p>
+  {% elif not now.connected %}
+  <p class="w-empty">Radio isn’t answering. Is the Radio app running?</p>
+  {% endif %}
+  {% endif %}
+</div>
+{%- endmacro %}

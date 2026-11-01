@@ -25,7 +25,7 @@ from app.services import backup, catalog, content, downloads, helper, kiwix, sto
 from stonepi_auth import login_url, logout_url
 from stonepi_auth.alerts import add_shared_templates, bell_context, notifications_card_context
 from stonepi_auth.brand import fonts_rev
-from stonepi_auth.csrf import CSRF_COOKIE, csrf_from_request, csrf_ok, set_csrf_cookie
+from stonepi_auth.csrf import CSRF_COOKIE, csrf_from_request, csrf_ok_request, set_csrf_cookie
 from stonepi_auth.http import portal_home_url, request_is_https
 from stonepi_auth.session import COOKIE_NAME, decode_session
 
@@ -139,7 +139,7 @@ def _require_user(request: Request, *, manage: bool = False, admin: bool = False
 
 
 def _csrf(request: Request, token: str | None) -> bool:
-    return csrf_ok(request.cookies.get(CSRF_COOKIE), token)
+    return csrf_ok_request(request, form_token=token, header_token=token)
 
 
 def _redirect(path: str, *, msg: str | None = None, error: str | None = None) -> RedirectResponse:

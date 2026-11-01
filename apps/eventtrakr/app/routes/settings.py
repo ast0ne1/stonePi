@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from flask import Blueprint, Response, flash, redirect, render_template, request, url_for
 from sqlalchemy import select
 from stonepi_auth.alerts import notifications_card_context
@@ -189,9 +191,18 @@ def view_settings():
         social_allowance = ((brightdata_usage or {}).get("use_limits") or {}).get(brightdata.INSTAGRAM_USE)
         social_instagram_used = ((brightdata_usage or {}).get("by_use") or {}).get(brightdata.INSTAGRAM_USE, 0)
 
+    # Own session: ensure_feed_token commits, which would detach rows loaded above.
+    calendar_feed_token = ""
+    if user.can(capabilities.SYNC_CALENDAR):
+        from app.routes.calendar import ensure_feed_token
+
+        with SessionLocal() as token_db:
+            calendar_feed_token = ensure_feed_token(token_db, user.user_id)
+
     return render_template(
         "settings.html",
         user=user,
+        calendar_feed_token=calendar_feed_token,
         settings_tabs=tabs,
         settings_groups=_settings_groups_for(user),
         settings_hub=settings_hub,
@@ -651,8 +662,9 @@ def install_update():
         flash(result.get("message") or "Installing…", "success")
     except ValueError as exc:
         flash(str(exc), "error")
-    except Exception as exc:  # noqa: BLE001
-        flash(f"Install failed: {exc}", "error")
+    except Exception:  # noqa: BLE001
+        logging.getLogger("eventtrakr").exception("update install failed")
+        flash("Install failed.", "error")
     return redirect(url_for("settings.view_settings", tab="update"))
 
 
@@ -668,6 +680,7 @@ def rollback_update():
         flash("Rolled back to the previous app. Restarting…", "success")
     except ValueError as exc:
         flash(str(exc), "error")
-    except Exception as exc:  # noqa: BLE001
-        flash(f"Rollback failed: {exc}", "error")
+    except Exception:  # noqa: BLE001
+        logging.getLogger("eventtrakr").exception("update rollback failed")
+        flash("Rollback failed.", "error")
     return redirect(url_for("settings.view_settings", tab="update"))

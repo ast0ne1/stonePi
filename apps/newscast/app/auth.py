@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import ipaddress
 import json
 import secrets
 import time
@@ -355,6 +356,54 @@ def require_user(request: Request, db: Annotated[Session, Depends(get_db)]) -> S
     return require_login(request, db)
 
 
+class CsrfRejected(Exception):
+    """A browser POST without the CSRF token; main.py answers it like the handler's own errors."""
+
+
+CSRF_MESSAGE = "That page expired. Refresh and try again."
+_CSRF_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
+async def require_csrf(request: Request) -> None:
+    """Router-level dependency: every state-changing request carries the CSRF token.
+
+    Forms send the ``csrf_token`` field; background posts (app.js ``send``) send the
+    ``X-StonePi-CSRF`` header. Both must match the ``stonepi_csrf`` cookie.
+    """
+    from stonepi_auth.csrf import csrf_ok_request
+
+    if request.method in _CSRF_SAFE_METHODS:
+        return
+    header_token = request.headers.get("x-stonepi-csrf")
+    form_token = None
+    if not header_token:
+        content_type = request.headers.get("content-type", "")
+        if content_type.startswith(("application/x-www-form-urlencoded", "multipart/form-data")):
+            form = await request.form()  # Starlette caches it; the handler's Form() fields reuse it
+            form_token = str(form.get("csrf_token") or "")
+    if not csrf_ok_request(request, form_token, header_token):
+        raise CsrfRejected()
+
+
+
+async def _csrf_rejected(request: Request, _exc: CsrfRejected) -> Response:
+    # Same shapes the handlers use for their own failures: {ok, message} for background
+    # posts, otherwise back to the page the form was on.
+    from fastapi.responses import JSONResponse, RedirectResponse
+
+    if wants_json(request):
+        return JSONResponse({"ok": False, "message": CSRF_MESSAGE}, status_code=403)
+    referer = urlparse(request.headers.get("referer") or "")
+    back = referer.path + (f"?{referer.query}" if referer.query else "")
+    if referer.netloc and referer.netloc != request.headers.get("host"):
+        back = "/"
+    return RedirectResponse(safe_next(back), status_code=303)
+
+
+def install_csrf_handler(app: Any) -> None:
+    """Answer :class:`CsrfRejected` on ``app`` (main.py, and test apps that check refusals)."""
+    app.add_exception_handler(CsrfRejected, _csrf_rejected)
+
 def require_admin(request: Request, db: Annotated[Session, Depends(get_db)]) -> SessionUser:
     """Household admin only (403 for members)."""
     session = require_login(request, db)
@@ -410,6 +459,7 @@ def _apply_admin_catalog_token(
     *,
     authorization: str | None,
     token: str | None,
+    force: bool = False,
 ) -> None:
     from app.services.users import ensure_admin_user
 
@@ -420,6 +470,7 @@ def _apply_admin_catalog_token(
         authorization=authorization,
         token=token,
         username_fallback=settings.catalog_username(db),
+        force=force,
     )
 
 
@@ -432,17 +483,47 @@ def require_x3_token(
     _apply_admin_catalog_token(db, authorization=authorization, token=token)
 
 
+_CGNAT = ipaddress.ip_network("100.64.0.0/10")
+
+
+def reader_on_home_lan(request: Request) -> bool:
+    """True for a home-LAN address. Tailscale and the public internet are not home.
+
+    The e-reader syncs on the house network without a catalog token. A port forward
+    (or a tailnet client) still has to present the token, even when exposure is "lan".
+    """
+    from stonepi_auth.http import client_ip
+
+    raw = client_ip(request).split("%", 1)[0].strip()
+    try:
+        ip = ipaddress.ip_address(raw)
+    except ValueError:
+        return False
+    if ip.is_loopback:
+        return True
+    if ip.is_link_local or ip.is_multicast or ip.is_unspecified or ip.is_reserved:
+        return False
+    if ip.version == 4 and ip in _CGNAT:
+        return False
+    return bool(ip.is_private)
+
+
 def require_x3_reader_api_token(
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
     authorization: Annotated[str | None, Header()] = None,
     token: Annotated[str | None, Query()] = None,
 ) -> None:
-    """CrossPoint file/task APIs: token required only when STONEPI_EXPOSURE=public."""
+    """CrossPoint file/task APIs.
+
+    Open only for a home-LAN client while exposure is "lan". Public exposure, a
+    public address, and Tailscale always need the catalog token.
+    """
     from stonepi_auth import is_public_exposure
 
-    if not is_public_exposure():
+    if not is_public_exposure() and reader_on_home_lan(request):
         return
-    _apply_admin_catalog_token(db, authorization=authorization, token=token)
+    _apply_admin_catalog_token(db, authorization=authorization, token=token, force=True)
 
 
 def require_opds_user_token(
@@ -486,15 +567,16 @@ def _require_catalog_token_for_user(
     authorization: str | None,
     token: str | None,
     username_fallback: str,
+    force: bool = False,
 ) -> None:
     from app.services import user_settings as user_settings_service
     from stonepi_auth import is_public_exposure
 
-    if not catalog_token_enforced(db):
+    if not force and not catalog_token_enforced(db):
         return
     expected_pass = user_settings_service.get_with_fallback(db, user_id, "x3_sync_token")
     if not expected_pass:
-        if is_public_exposure():
+        if force or is_public_exposure():
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Catalog password required for public exposure",

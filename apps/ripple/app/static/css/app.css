@@ -725,3 +725,7 @@ select { font-size: 16px; }
 .place-results { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .place-results:empty { display: none; }
 .place-choice { width: 100%; justify-content: flex-start; text-align: left; font-weight: 500; }
+
+/* Settings → Good time to call: a From / To pair side by side. */
+.time-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 10rem)); gap: 12px; }
+.time-pair input[type="time"] { width: 100%; }

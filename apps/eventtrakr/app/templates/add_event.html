@@ -29,7 +29,7 @@
 
 <div class="card">
   <h2>Event Details</h2>
-  <form method="post" action="/add-event/save" id="add_event_form">
+  <form method="post" action="/add-event/save" id="add_event_form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
       <div class="form-group" style="grid-column: 1 / -1;">
         <label for="title">Title *</label>

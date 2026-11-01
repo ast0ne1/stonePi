@@ -29,7 +29,7 @@ from .displays import (
 )
 from .grid import device_grid, layout_rows
 from .templates import BASE_KEYS, format_updated, snippet_keys
-from .webhook import validate_webhook_url
+from .webhook import PinnedTransport, resolve_webhook, validate_webhook_url
 
 logger = logging.getLogger("stonepi.display.push")
 
@@ -111,6 +111,19 @@ def payload_limit(display: dict[str, Any]) -> int:
     return trmnl_tier(display.get("trmnl"))["payload_kb"] * 1024 - PAYLOAD_HEADROOM_BYTES
 
 
+def _escape_html_strings(value: Any) -> Any:
+    """Escape strings in a merge payload so TRMNL Liquid can't inject HTML from Pinboard etc."""
+    import html as html_mod
+
+    if isinstance(value, str):
+        return html_mod.escape(value, quote=True)
+    if isinstance(value, list):
+        return [_escape_html_strings(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _escape_html_strings(item) for key, item in value.items()}
+    return value
+
+
 def display_payload(display: dict[str, Any], variables: dict[str, Any]) -> dict[str, Any]:
     """merge_variables for one Display."""
     grid = device_grid(display.get("device"))
@@ -129,10 +142,21 @@ def display_payload(display: dict[str, Any], variables: dict[str, Any]) -> dict[
     if payload["TB"] != "off":
         payload["TN"] = str(display.get("name") or "StonePi")[:40]
         if variables.get("updated_ts"):
-            payload["updated_at"] = format_updated(variables["updated_ts"], display.get("date_format"))
+            # The title bar's right-hand corner (TRMNL draws it small and light): said as when
+            # StonePi last updated the screen, so a bare time isn't mistaken for the clock. In
+            # the value rather than the plugin's markup, so no display has to re-paste it.
+            stamp = format_updated(
+                variables["updated_ts"],
+                display.get("date_format"),
+                display.get("hour_format"),
+            )
+            payload["updated_at"] = f"Updated {stamp}" if stamp else ""
     else:
         payload.pop("updated_at", None)
-    return fit_payload(payload, payload_limit(display))
+    # Escape after layout keys are set: L/G stay numbers; TN and widget text become safe HTML text.
+    layout = {"L": payload["L"], "G": payload["G"], "TB": payload["TB"]}
+    escaped = _escape_html_strings({k: v for k, v in payload.items() if k not in layout})
+    return fit_payload({**escaped, **layout}, payload_limit(display))
 
 
 # Panel size per device: what a web Display captures and sends (TRMNL X lays out at
@@ -144,15 +168,15 @@ WEB_SCREENS: dict[str, dict[str, Any]] = {
 
 
 def web_image(
-    display: dict[str, Any], *, page: dict[str, Any] | None = None, max_age: float = 0.0
+    display: dict[str, Any], *, page: dict[str, Any] | None = None, max_age: float | None = 0.0
 ) -> tuple[bytes, dict[str, Any]]:
     """(PNG, info) for a web Display: capture its page (or ``page``, unsaved settings from the
-    preview), convert for e-ink.
+    preview), convert for e-ink. ``max_age=None`` keeps a capture for the page's own refresh time.
 
     Raises ValueError when no page is picked or the page is gone; capture errors pass through.
     """
     from . import webcapture, webimage
-    from .webpages import get_page
+    from .webpages import get_page, refresh_seconds
 
     web = display.get("web") or {}
     page = page or get_page(str(web.get("page_id") or ""))
@@ -160,6 +184,9 @@ def web_image(
         raise ValueError("Pick a web page for this Display first.")
     screen = WEB_SCREENS.get(display.get("device") or "og", WEB_SCREENS["og"])
     bits = web_bits(display)
+    if max_age is None:
+        # A minute's margin: a capture taken just after the last push's due time counts as due.
+        max_age = refresh_seconds(page) - 60
     capture = webcapture.capture(
         page, screen["width"], screen["height"], device_scale=screen["scale"], max_age=max_age, bits=bits
     )
@@ -271,12 +298,14 @@ def _push_display(
 
     if is_web:
         try:
-            # A capture from the last minute (the Preview button) is reused.
-            image, info = web_image(display, max_age=60.0)
+            # The page is captured again only once its last capture is older than the page's
+            # refresh time (Notify → Web pages, 15 minutes at least); pushes between reuse it.
+            image, info = web_image(display, max_age=None)
         except ValueError as exc:
             return failed(str(exc))
-        except Exception as exc:  # noqa: BLE001 - capture errors (page down, no browser) show in the UI
-            return failed(f"Couldn't capture the page: {exc}")
+        except Exception:  # noqa: BLE001 - capture errors (page down, no browser) show in the UI
+            logger.exception("web page capture failed for %s", display_id)
+            return failed("Couldn't capture the page.")
         digest = info["hash"]
         size = info["bytes"]
         if size > WEBHOOK_IMAGE_MAX_BYTES:
@@ -303,8 +332,8 @@ def _push_display(
 
     fields: dict[str, Any] = {}
     try:
-        url = validate_webhook_url(url)
-        with httpx.Client(timeout=20.0, follow_redirects=False) as client:
+        url, ip = resolve_webhook(url)
+        with httpx.Client(timeout=20.0, follow_redirects=False, transport=PinnedTransport(ip)) as client:
             response = client.post(url, **post)
         recent.append(stamp)  # TRMNL counts every request it receives
         ok = response.status_code < 400
@@ -333,8 +362,9 @@ def _push_display(
         result = {"ok": ok, "message": message, "status": response.status_code, "bytes": size}
     except ValueError as exc:
         result = {"ok": False, "message": str(exc)[:240], "status": None}
-    except Exception as exc:  # noqa: BLE001 - network errors surface in the UI
-        result = {"ok": False, "message": str(exc)[:240], "status": None}
+    except Exception:  # noqa: BLE001 - network errors surface in the UI
+        logger.exception("display webhook post failed for %s", display_id)
+        result = {"ok": False, "message": "Couldn't reach TRMNL.", "status": None}
     update_trmnl_status(
         display_id,
         last_push_at=stamp,

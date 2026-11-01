@@ -20,14 +20,52 @@ fi
 LIBRARY_CONTENT=1
 [[ "${2:-}" == "--no-library-content" ]] && LIBRARY_CONTENT=0
 
-APPS="stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library stonepi-ripple"
+BACKUP_KEY_FILE="${STONEPI_BACKUP_KEY:-/etc/stonepi/backup.key}"
+ENC_SUFFIX=".stonepi-enc"
+
+decrypt_restored_secrets() {
+  mapfile -t encs < <(find /var/lib/stonepi /etc/stonepi -xdev -type f -name "*${ENC_SUFFIX}" 2>/dev/null || true)
+  if [[ ${#encs[@]} -eq 0 ]]; then
+    return 0
+  fi
+  if [[ ! -f "$BACKUP_KEY_FILE" ]]; then
+    echo "This backup has encrypted secrets (${#encs[@]} files)." >&2
+    echo "Copy backup.key from the Pi that made the backup to $BACKUP_KEY_FILE (root, mode 600), then re-run." >&2
+    exit 1
+  fi
+  # openssl -out follows umask; keep decrypted secrets root-only until later chown/chmod passes.
+  local enc dest old_umask
+  old_umask=$(umask)
+  umask 077
+  for enc in "${encs[@]}"; do
+    dest="${enc%"$ENC_SUFFIX"}"
+    openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 \
+      -in "$enc" -out "${dest}.tmp" \
+      -pass "file:${BACKUP_KEY_FILE}" \
+      || {
+        echo "Decrypt failed for $enc (wrong or missing backup.key?)." >&2
+        rm -f "${dest}.tmp"
+        umask "$old_umask"
+        exit 1
+      }
+    chmod 600 "${dest}.tmp" 2>/dev/null || true
+    mv -f "${dest}.tmp" "$dest"
+    chmod 600 "$dest" 2>/dev/null || true
+    rm -f "$enc"
+  done
+  umask "$old_umask"
+  echo "Decrypted ${#encs[@]} secret file(s) with $BACKUP_KEY_FILE"
+}
+
+APPS="stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library stonepi-ripple stonepi-radio"
 systemctl stop $APPS stonepi-kiwix 2>/dev/null || true
 
 if [[ -d "$SRC/applications" ]]; then
   rsync -a "$SRC/applications/" /var/lib/stonepi/
 fi
 if [[ -d "$SRC/config/stonepi" ]]; then
-  rsync -a "$SRC/config/stonepi/" /etc/stonepi/
+  # Never delete a live backup.key (stamps omit it on purpose).
+  rsync -a --exclude 'backup.key' "$SRC/config/stonepi/" /etc/stonepi/
 fi
 if [[ -f "$SRC/config/nginx-stonepi" ]]; then
   if grep -qE 'stonepi_(notifications|recovery)\b' "$SRC/config/nginx-stonepi" && [[ -f /opt/stonepi/deploy/nginx/stonepi.conf ]]; then
@@ -42,6 +80,8 @@ if [[ -f /opt/stonepi/deploy/stonepi-migrate-renames.sh ]]; then
   bash /opt/stonepi/deploy/stonepi-migrate-renames.sh /opt/stonepi
 fi
 
+decrypt_restored_secrets
+
 chown -R stonepi-auth:stonepi-auth /var/lib/stonepi/auth
 chown -R stonepi-dash:stonepi-dash /var/lib/stonepi/dashboard
 [[ -d /var/lib/stonepi/notify ]] && chown -R stonepi-notify:stonepi-notify /var/lib/stonepi/notify
@@ -54,13 +94,14 @@ chown -R stonepi-studio:stonepi-studio /var/lib/stonepi/studio
 [[ -d /var/lib/stonepi/sportguide ]] && chown -R stonepi-sport:stonepi-sport /var/lib/stonepi/sportguide
 [[ -d /var/lib/stonepi/pricewatch ]] && chown -R stonepi-watch:stonepi-watch /var/lib/stonepi/pricewatch
 [[ -d /var/lib/stonepi/ripple ]] && id -u stonepi-ripple >/dev/null 2>&1 && chown -R stonepi-ripple:stonepi-ripple /var/lib/stonepi/ripple
+[[ -d /var/lib/stonepi/radio ]] && id -u stonepi-radio >/dev/null 2>&1 && chown -R stonepi-radio:stonepi-radio /var/lib/stonepi/radio
 if [[ -d /var/lib/stonepi/library ]] && id -u stonepi-library >/dev/null 2>&1; then
   chown -R stonepi-library:stonepi-library /var/lib/stonepi/library
   chmod 2750 /var/lib/stonepi/library
 fi
 if [[ -d /var/lib/stonepi/vault ]]; then
   groupadd --system stonepi-vault 2>/dev/null || true
-  for u in stonepi-dash stonepi-auth stonepi-notify stonepi-news stonepi-files stonepi-events stonepi-pin stonepi-studio stonepi-prices stonepi-sport stonepi-watch stonepi-library stonepi-ripple; do
+  for u in stonepi-dash stonepi-auth stonepi-notify stonepi-news stonepi-files stonepi-events stonepi-pin stonepi-studio stonepi-prices stonepi-sport stonepi-watch stonepi-library stonepi-ripple stonepi-radio; do
     id -u "$u" >/dev/null 2>&1 && usermod -aG stonepi-vault "$u" || true
   done
   # Same as install.sh: every service user reads and saves secrets (setgid group folder).

@@ -29,6 +29,7 @@
   <div class="list-row">
     <span class="list-text">
       <span class="kind-pill kind-notice">Notice</span>
+      {% if not item.pinned %}<span class="kind-pill">Board only</span>{% endif %}
       {{ item.text }}
     </span>
     {% if user and user.is_admin %}

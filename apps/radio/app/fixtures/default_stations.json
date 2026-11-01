@@ -1,0 +1,74 @@
+[
+  {
+    "id": "bbc-radio-6",
+    "name": "BBC Radio 6 Music",
+    "stream_url": "https://as-hls-ww-live.akamaized.net/pool_81827798/live/ww/bbc_6music/bbc_6music.isml/bbc_6music-audio%3d96000.norewind.m3u8",
+    "favicon": "https://cdn-radiotime-logos.tunein.com/s44491q.png",
+    "tags": "alternative,indie,bbc",
+    "country": "United Kingdom",
+    "homepage": "https://www.bbc.co.uk/6music"
+  },
+  {
+    "id": "fip",
+    "name": "FIP",
+    "stream_url": "https://icecast.radiofrance.fr/fip-hifi.aac",
+    "favicon": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/16/FIP_logo_2021.svg/960px-FIP_logo_2021.svg.png",
+    "tags": "eclectic,jazz,france",
+    "country": "France",
+    "homepage": "https://www.radiofrance.fr/fip"
+  },
+  {
+    "id": "kexp",
+    "name": "KEXP 90.3 FM",
+    "stream_url": "https://kexp.streamguys1.com/kexp160.aac",
+    "favicon": "https://cdn-profiles.tunein.com/s32537/images/logog.png",
+    "tags": "alternative,indie,seattle",
+    "country": "United States",
+    "homepage": "https://www.kexp.org"
+  },
+  {
+    "id": "nts",
+    "name": "NTS Radio 1",
+    "stream_url": "https://stream-relay-geo.ntslive.net/stream",
+    "favicon": "https://www.nts.live/android-chrome-192x192.png",
+    "tags": "electronic,underground",
+    "country": "United Kingdom",
+    "homepage": "https://www.nts.live"
+  },
+  {
+    "id": "triple-j",
+    "name": "triple j",
+    "stream_url": "https://abc.streamguys1.com/live/triplejnsw/icecast.audio",
+    "favicon": "https://live-production.wcms.abc-cdn.net.au/c170c3d8b69f13bf43865be27b027687",
+    "tags": "alternative,australia,abc",
+    "country": "Australia",
+    "homepage": "https://www.abc.net.au/triplej"
+  },
+  {
+    "id": "soma-groove",
+    "name": "SomaFM Groove Salad",
+    "stream_url": "https://ice1.somafm.com/groovesalad-128-mp3",
+    "favicon": "https://somafm.com/img3/groovesalad-400.jpg",
+    "tags": "ambient,chill",
+    "country": "United States",
+    "homepage": "https://somafm.com/groovesalad/"
+  },
+  {
+    "id": "radio-paradise",
+    "name": "Radio Paradise Main Mix",
+    "stream_url": "https://stream.radioparadise.com/aac-320",
+    "favicon": "https://radioparadise.com/apple-touch-icon.png",
+    "tags": "eclectic,rock",
+    "country": "United States",
+    "homepage": "https://radioparadise.com"
+  },
+  {
+    "id": "drone-zone",
+    "name": "SomaFM Drone Zone",
+    "stream_url": "https://ice1.somafm.com/dronezone-128-mp3",
+    "favicon": "https://somafm.com/img3/dronezone-400.jpg",
+    "tags": "ambient,drone",
+    "country": "United States",
+    "homepage": "https://somafm.com/dronezone/"
+  }
+]

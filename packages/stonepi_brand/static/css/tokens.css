@@ -37,7 +37,8 @@
   --radius-xl: 24px;
   --radius-icon: 22%;
   --radius-pill: 999px;
-  --sidebar-width: 240px;
+  --sidebar-width: 240px; /* the Dashboard's side rail */
+  --app-rail-width: 200px; /* every Home app's side rail (from 1024px) */
   --content-max: 1200px;
   --card-min: 260px;
   --duration-fast: 140ms;

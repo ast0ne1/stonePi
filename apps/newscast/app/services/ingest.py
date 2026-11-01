@@ -1024,12 +1024,13 @@ def feed_debug(db: Session, feed_id: int) -> dict:
     try:
         collected = _collect_feed_items(feed, db=db, fetch_cache={}, force=True)
         items, status_code = _unpack_collect(collected)
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
+        logger.exception("feed debug failed for %s", feed_id)
         return {
             "ok": False,
             "feed_id": feed.id,
             "name": feed.name,
-            "error": str(exc)[:240],
+            "error": "Couldn't read that feed.",
             "last_status_code": feed.last_status_code,
             "last_item_count": feed.last_item_count,
             "last_error": feed.last_error,

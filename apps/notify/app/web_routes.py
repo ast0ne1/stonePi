@@ -12,6 +12,7 @@ Captures run in a worker thread (Chromium takes a few seconds) and are shared th
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -95,7 +96,7 @@ async def web_create(request: Request):
     if denied is not None:
         return denied
     form = await request.form()
-    if not csrf_ok_request(request.cookies, str(form.get("csrf_token") or "")):
+    if not csrf_ok_request(request, str(form.get("csrf_token") or "")):
         return RedirectResponse("/displays?err=Form+expired#web-pages", status_code=303)
     name = str(form.get("name") or "").strip()[:60] or "Web page"
     try:
@@ -145,7 +146,7 @@ async def web_save(request: Request, page_id: str):
     if denied is not None:
         return denied
     form = await request.form()
-    if not csrf_ok_request(request.cookies, str(form.get("csrf_token") or "")):
+    if not csrf_ok_request(request, str(form.get("csrf_token") or "")):
         return RedirectResponse(f"{back}?err=Form+expired", status_code=303)
     page = stonepi_display.get_page(page_id)
     if not page:
@@ -161,6 +162,7 @@ async def web_save(request: Request, page_id: str):
                 "css": str(form.get("css") or ""),
                 "settle_s": form.get("settle_s"),
                 "scale": form.get("scale"),
+                "refresh_min": form.get("refresh_min"),
             }
         )
     except ValueError as exc:
@@ -176,7 +178,7 @@ async def web_delete(request: Request, page_id: str):
     if denied is not None:
         return denied
     form = await request.form()
-    if not csrf_ok_request(request.cookies, str(form.get("csrf_token") or "")):
+    if not csrf_ok_request(request, str(form.get("csrf_token") or "")):
         return RedirectResponse("/displays?err=Form+expired#web-pages", status_code=303)
     stonepi_display.delete_page(page_id)
     return RedirectResponse("/displays?msg=Web+page+deleted#web-pages", status_code=303)
@@ -195,15 +197,16 @@ async def web_preview(request: Request, page_id: str, w: int = 800, h: int = 480
     try:
         raw = await run_in_threadpool(webcapture.capture, page, width, height, max_age=0.0 if fresh else 60.0)
         png = await run_in_threadpool(webimage.to_lcd, raw, width, height)
-    except Exception as exc:  # noqa: BLE001 - shown under the preview
-        return JSONResponse({"ok": False, "message": f"Couldn't capture the page: {exc}"[:240]}, status_code=502)
+    except Exception:  # noqa: BLE001 - shown under the preview
+        logger.exception("web page preview failed")
+        return JSONResponse({"ok": False, "message": "Couldn't capture the page."}, status_code=502)
     return _png(png)
 
 
 # ── TRMNL "Web page" Display ─────────────────────────────────────────────────
 
 
-PAGE_FIELDS = ("url", "preset", "hide", "css", "settle_s", "scale")
+PAGE_FIELDS = ("url", "preset", "hide", "css", "settle_s", "scale", "refresh_min")
 
 
 def _page_draft(page: dict[str, Any], data: Any) -> dict[str, Any]:
@@ -238,7 +241,7 @@ async def display_web_save(request: Request, display_id: str):
     if denied is not None:
         return denied
     form = await request.form()
-    if not csrf_ok_request(request.cookies, str(form.get("csrf_token") or "")):
+    if not csrf_ok_request(request, str(form.get("csrf_token") or "")):
         return RedirectResponse(f"{back}?err=Form+expired", status_code=303)
     display = stonepi_display.get_display(display_id)
     if not display or display.get("kind") != "web":
@@ -292,8 +295,9 @@ async def display_web_preview(request: Request, display_id: str):
         )
     except ValueError as exc:
         return JSONResponse({"ok": False, "message": str(exc)}, status_code=400)
-    except Exception as exc:  # noqa: BLE001
-        return JSONResponse({"ok": False, "message": f"Couldn't capture the page: {exc}"[:240]}, status_code=502)
+    except Exception:  # noqa: BLE001
+        logger.exception("web page preview failed")
+        return JSONResponse({"ok": False, "message": "Couldn't capture the page."}, status_code=502)
     return _png(
         png,
         {
@@ -328,7 +332,9 @@ async def api_web_page_create(request: Request):
 
 
 @router.get("/api/internal/web/{name}")
-async def internal_web(request: Request, name: str, w: int = 800, h: int = 480, max_age: float = 60.0):
+async def internal_web(request: Request, name: str, w: int = 800, h: int = 480, max_age: float = 60.0, fresh: int = 0):
+    """The panel's snapshot of a page; ``fresh`` (its refresh button) captures it again now.
+    ``X-Captured-At`` says when the capture was taken, for the panel's "Updated" line."""
     from app.carthing_routes import _internal_ok
 
     if not _internal_ok(request):
@@ -339,12 +345,13 @@ async def internal_web(request: Request, name: str, w: int = 800, h: int = 480, 
         return Response(status_code=404)
     width, height = _size(w, 800, LCD_MAX[0]), _size(h, 480, LCD_MAX[1])
     try:
-        raw = await run_in_threadpool(webcapture.capture, page, width, height, max_age=max(MIN_MAX_AGE, float(max_age)))
+        age = 0.0 if fresh else max(MIN_MAX_AGE, float(max_age))
+        raw, at = await run_in_threadpool(lambda: webcapture.capture_timed(page, width, height, max_age=age))
         png = await run_in_threadpool(webimage.to_lcd, raw, width, height)
     except Exception as exc:  # noqa: BLE001 - the panel keeps its last image
         logger.warning("web page %s capture failed: %s", page["id"], str(exc)[:160])
         return Response(status_code=502)
-    return _png(png)
+    return _png(png, {"X-Captured-At": str(int(at))})
 
 
 @router.post("/api/internal/web/changed")
@@ -384,5 +391,14 @@ async def internal_app_displays(request: Request, app_id: str):
 
 
 def web_pages_for_editor() -> list[dict[str, str]]:
-    """Id and name of each page, for the Car Thing editor and panel."""
-    return [{"id": p["id"], "name": p["name"]} for p in stonepi_display.load_pages()[:MAX_PAGES]]
+    """Id, name and refresh time of each page, for the Car Thing editor and panel."""
+    return [
+        {"id": p["id"], "name": p["name"], "refresh_min": p["refresh_min"], "rev": _page_rev(p)}
+        for p in stonepi_display.load_pages()[:MAX_PAGES]
+    ]
+
+
+def _page_rev(page: dict[str, Any]) -> str:
+    """A short hash of what's captured: the panel drops its snapshot when it changes."""
+    settings = {k: page.get(k) for k in ("url", "preset", "hide", "css", "settle_s", "scale")}
+    return hashlib.sha256(json.dumps(settings, sort_keys=True).encode("utf-8")).hexdigest()[:10]

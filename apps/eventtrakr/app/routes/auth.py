@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 from flask import Blueprint, make_response, redirect, render_template, request, url_for
 from sqlalchemy import select
 from stonepi_auth.csrf import csrf_from_request, csrf_ok, set_csrf_cookie
@@ -11,6 +13,17 @@ from app.models import User
 from app.services import auth, passwords
 
 bp = Blueprint("auth", __name__)
+
+
+def _safe_next(value: str | None) -> str:
+    """Path-only next after login — never bounce to an external host."""
+    home = url_for("map.map_page")
+    if not value:
+        return home
+    parsed = urlparse(value)
+    if parsed.scheme or parsed.netloc or not value.startswith("/") or value.startswith("//"):
+        return home
+    return value
 
 
 def _login_response(*, error: str | None, next_url: str, status: int = 200):
@@ -29,9 +42,9 @@ def _login_response(*, error: str | None, next_url: str, status: int = 200):
 @bp.route("/login", methods=["GET", "POST"])
 def login():
     if auth.get_current_user():
-        return redirect(url_for("ui.agenda"))
+        return redirect(url_for("map.map_page"))
 
-    next_url = request.args.get("next") or url_for("ui.agenda")
+    next_url = _safe_next(request.args.get("next"))
     settings = auth._platform_settings()
     if settings is not None:
         from stonepi_auth import login_url

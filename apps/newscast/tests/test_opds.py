@@ -24,7 +24,7 @@ def _session() -> Session:
     return Session(engine)
 
 
-def _client(db: Session, *, router=opds_router.router) -> TestClient:
+def _client(db: Session, *, router=opds_router.router, host: str = "testclient") -> TestClient:
     app = FastAPI()
     app.include_router(router)
 
@@ -32,7 +32,7 @@ def _client(db: Session, *, router=opds_router.router) -> TestClient:
         yield db
 
     app.dependency_overrides[get_db] = override
-    return TestClient(app)
+    return TestClient(app, client=(host, 50000))
 
 
 def _prep(monkeypatch, db: Session) -> None:
@@ -176,7 +176,7 @@ def test_reader_api_public_exposure_requires_token(monkeypatch):
     client = _client(db, router=xteink_router.router)
 
     assert client.get("/api/v1/health").status_code == 200
-    assert client.post("/auth/refresh").status_code == 200
+    assert client.post("/auth/refresh").status_code == 404
     assert client.get("/api/v1/device/tasks").status_code == 401
     assert client.get("/api/v1/device/tasks", auth=("newscast", "secret-token")).status_code == 200
 
@@ -187,7 +187,23 @@ def test_reader_api_stays_open_on_lan(monkeypatch):
     _prep(monkeypatch, db)
     settings.set_value(db, "x3_sync_token", "secret-token")
     client = _client(db, router=xteink_router.router)
-    assert client.get("/api/v1/device/tasks").status_code == 200
+    home = {"X-Real-IP": "192.168.0.50"}
+    assert client.get("/api/v1/device/tasks", headers=home).status_code == 200
+    assert client.post("/auth/refresh", headers=home).status_code == 200
+
+
+def test_reader_api_lan_mode_still_requires_a_token_off_the_home_network(monkeypatch):
+    monkeypatch.setenv("STONEPI_EXPOSURE", "lan")
+    db = _session()
+    _prep(monkeypatch, db)
+    settings.set_value(db, "x3_sync_token", "secret-token")
+    client = _client(db, router=xteink_router.router)
+    public = {"X-Real-IP": "8.8.8.8"}
+    tailnet = {"X-Real-IP": "100.64.0.5"}
+    assert client.get("/api/v1/device/tasks", headers=public).status_code == 401
+    assert client.get("/api/v1/device/tasks", headers=tailnet).status_code == 401
+    assert client.get("/api/v1/device/tasks", headers=public, auth=("newscast", "secret-token")).status_code == 200
+    assert client.post("/auth/refresh", headers=public).status_code == 404
 
 
 def test_opds_public_exposure_open_on_lan_with_catalog_login_off(monkeypatch):

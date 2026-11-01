@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -28,15 +29,27 @@ async def lifespan(_app: FastAPI):
     def _push_display():
         try:
             import httpx
+            from stonepi_auth.internal import sign_internal_v2
 
+            path = "/api/push-trmnl"
+            body = b"{}"
+            headers = {
+                "Content-Type": "application/json",
+                **sign_internal_v2(services.session_secret(), "POST", path, body),
+            }
             with httpx.Client(timeout=30.0) as client:
-                # JSON body: Notify only takes this as application/json (no browser can send it).
-                response = client.post("http://127.0.0.1:8012/api/push-trmnl", json={})
+                # JSON body + internal v2 signature (loopback only; nginx 404s this at the edge).
+                response = client.post(
+                    "http://127.0.0.1:8012/api/push-trmnl",
+                    content=body,
+                    headers=headers,
+                )
                 if response.status_code < 400:
                     return response.json() if response.content else {"ok": True}
                 return {"ok": False, "message": f"Notify push failed (HTTP {response.status_code})."}
-        except Exception as exc:  # noqa: BLE001 - surfaced in the automation log
-            return {"ok": False, "message": f"Notify is not reachable: {exc}"[:240]}
+        except Exception:  # noqa: BLE001 - surfaced in the automation log
+            logging.getLogger("dashboard").exception("notify push failed")
+            return {"ok": False, "message": "Notify is not reachable."}
 
     automations.configure(
         data_dir=DATA_DIR,
@@ -51,7 +64,7 @@ async def lifespan(_app: FastAPI):
     collector.stop()
 
 
-app = FastAPI(title="StonePi Dashboard", lifespan=lifespan)
+app = FastAPI(title="StonePi Dashboard", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(ROOT_DIR / "app" / "static")), name="static")
 mount_brand_fonts(app)  # /assets/fonts when reached directly (run-dev); nginx serves it on the Pi
 app.include_router(notifications_router)

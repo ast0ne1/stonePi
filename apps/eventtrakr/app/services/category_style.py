@@ -35,6 +35,8 @@ _STYLES: dict[str, tuple[str, str]] = {
     "arts": ("palette", "moss"),
     "sports": ("ball", "sky"),
     "family": ("heart", "sand"),
+    "committee-meetings": ("clipboard", "sky"),
+    "flea-markets": ("bag", "ember"),
 }
 _ALIASES = {"art": "arts", "sport": "sports", "food": "food-drink", "food-and-drink": "food-drink", "concerts": "music"}
 # Categories you add yourself: a tag, coloured by name so it stays the same everywhere.

@@ -83,3 +83,20 @@ def test_cpu_freq_from_sysfs(monkeypatch, tmp_path):
         lambda *a, **k: (_ for _ in ()).throw(AssertionError("vcgencmd should not run")),
     )
     assert _read_cpu_freq_mhz() == 1500
+
+
+def test_odio_listeners_are_expected_only_once_odio_is_installed():
+    lines = [
+        "tcp LISTEN 0 128 0.0.0.0:8018 0.0.0.0:*",
+        "tcp LISTEN 0 128 0.0.0.0:8080 0.0.0.0:*",
+        "tcp LISTEN 0 128 0.0.0.0:6600 0.0.0.0:*",
+        "tcp LISTEN 0 128 0.0.0.0:7000 0.0.0.0:*",
+        "udp UNCONN 0 0 0.0.0.0:319 0.0.0.0:*",
+        "tcp LISTEN 0 128 0.0.0.0:41877 0.0.0.0:*",
+    ]
+    assert classify_listeners(lines, odio=True)["unexpected"] == []
+    flagged = {(r["proto"], r["port"]) for r in classify_listeners(lines, odio=False)["unexpected"]}
+    assert ("tcp", 8018) in flagged and ("tcp", 41877) in flagged
+    # Odio being installed doesn't hide anything else.
+    other = ["tcp LISTEN 0 128 0.0.0.0:31337 0.0.0.0:*"]
+    assert classify_listeners(other, odio=True)["ok"] is False

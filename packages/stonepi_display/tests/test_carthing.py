@@ -32,10 +32,11 @@ def test_normalize_drops_unknown_and_disallowed():
     assert cfg["id"] == "kitchen-panel"
     # A single Home (schema 1) becomes page 1, small cards
     assert cfg["pages"] == [{"name": "Home", "widgets": [{"id": "newscast", "size": "small"}, {"id": "system", "size": "small"}]}]
-    # home + back are always allowed; page actions, Sleep, Open Weather and Music didn't exist yet, so they're allowed too
+    # home + back are always allowed; page actions, Sleep, Open Weather, Music and Radio didn't exist yet, so they're allowed too
     assert set(cfg["allowed_actions"]) == {
-        "home", "back", "select", "open:newscast", "sleep", "open:weather", "open:music",
-        *carthing.PAGE_ACTION_IDS, *carthing.MUSIC_ACTION_IDS,
+        "home", "back", "select", "open:newscast", "sleep", "open:weather", "open:music", "open:radio",
+        "open:audio",
+        *carthing.PAGE_ACTION_IDS, *carthing.MUSIC_ACTION_IDS, *carthing.RADIO_ACTION_IDS,
     }
     assert cfg["controls"]["preset1"] == "open:newscast"
     assert cfg["controls"]["preset2"] is None  # not allowed → unmapped
@@ -181,7 +182,11 @@ def test_old_export_imports_and_new_export_is_marked(store: Path):
 def test_schema_2_allow_list_is_respected():
     cfg = carthing.normalize_config({"pages": [{"name": "A", "widgets": []}], "allowed_actions": ["select"]})
     # newer than this list
-    assert set(cfg["allowed_actions"]) == {"home", "back", "select", "sleep", "open:weather", "open:music", *carthing.MUSIC_ACTION_IDS}
+    assert set(cfg["allowed_actions"]) == {
+        "home", "back", "select", "sleep", "open:weather", "open:music", "open:radio",
+        "open:audio",
+        *carthing.MUSIC_ACTION_IDS, *carthing.RADIO_ACTION_IDS,
+    }
     cfg = carthing.normalize_config(
         {"pages": [], "allowed_actions": ["next_page", "page:2"], "controls": {"swipe_left": "next_page", "preset1": "page:2", "preset2": "page:9"}}
     )
@@ -405,6 +410,16 @@ def test_clock_only_widget_in_catalog():
     assert "time" in carthing.WIDGET_IDS
     cfg = carthing.normalize_config({"pages": [{"widgets": [{"id": "time", "size": "full"}]}]})
     assert cfg["pages"][0]["widgets"] == [{"id": "time", "size": "full"}]
+
+
+def test_audio_launcher_is_full_page_only():
+    assert "audio" in carthing.WIDGET_IDS
+    entry = next(w for w in carthing.WIDGETS if w["id"] == "audio")
+    assert entry.get("sizes") == ["full"]
+    cfg = carthing.normalize_config({"pages": [{"widgets": [{"id": "audio", "size": "small"}, "clock"]}]})
+    # Audio always takes the page; clock is unplaced once the page is full.
+    assert cfg["pages"][0]["widgets"] == [{"id": "audio", "size": "full"}]
+    assert carthing.page_layout(cfg["pages"][0]["widgets"])["kind"] == "full"
 
 
 def test_music_expiry_six_months_states_and_override(tmp_path):

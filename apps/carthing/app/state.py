@@ -346,7 +346,10 @@ def background_path(asset_id: str) -> Path | None:
 # Longer than Notify's worst case, so a slow capture still lands here: up to 60 s waiting
 # for the shared Chromium lock (a scraper's run), then about 45 s of launch, load and settle.
 WEB_FETCH_TIMEOUT = 120.0
-_web: dict[tuple[str, int, int], tuple[float, bytes]] = {}
+_web: dict[tuple[str, int, int, str], tuple[float, bytes]] = {}
+_web_at: dict[tuple[str, int, int, str], float] = {}  # when Notify captured each (epoch s)
+WEB_FRESH_MIN_S = 20.0  # the ↻ button: a capture this new is shown instead of taking another
+WEB_REFRESH_MIN = 15  # a page's refresh time when Notify hasn't sent one
 _web_locks: dict[tuple[str, int, int], threading.Lock] = {}
 
 
@@ -356,18 +359,46 @@ def web_page_names(panel: dict | None) -> dict[str, str]:
     return {str(p.get("id")): str(p.get("name") or p.get("id")) for p in pages if isinstance(p, dict) and p.get("id")}
 
 
-def web_snapshot(page_id: str, width: int, height: int, max_age: float) -> bytes | None:
+def web_page_refresh_s(panel: dict | None, page_id: str) -> float:
+    """How long the panel keeps a page's snapshot: the page's own refresh time (Notify → Web
+    pages, 15 minutes at least)."""
+    for page in (panel or {}).get("web_pages") or []:
+        if isinstance(page, dict) and page.get("id") == page_id:
+            try:
+                return max(WEB_REFRESH_MIN, int(page.get("refresh_min") or WEB_REFRESH_MIN)) * 60.0
+            except (TypeError, ValueError):
+                break
+    return WEB_REFRESH_MIN * 60.0
+
+
+def web_page_rev(panel: dict | None, page_id: str) -> str:
+    """The page's settings as Notify last sent them (a short hash): a new one means the page
+    was edited, so its old snapshot isn't shown."""
+    for page in (panel or {}).get("web_pages") or []:
+        if isinstance(page, dict) and page.get("id") == page_id:
+            return str(page.get("rev") or "")
+    return ""
+
+
+def web_snapshot_at(page_id: str, width: int, height: int, rev: str = "") -> float | None:
+    """When the snapshot the panel has of this page was captured (epoch s), if it has one."""
+    with _lock:
+        return _web_at.get((page_id, width, height, rev))
+
+
+def web_snapshot(page_id: str, width: int, height: int, max_age: float, fresh: bool = False, rev: str = "") -> bytes | None:
     """PNG of a web page at width×height, at most ``max_age`` seconds old; the last good one
-    if Notify can't capture it now. One fetch at a time per page and size."""
+    if Notify can't capture it now. One fetch at a time per page and size. ``fresh`` (the ↻
+    button) asks Notify for a new capture unless one was taken in the last few seconds."""
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,39}", page_id or ""):
         return None
-    key = (page_id, width, height)
+    key = (page_id, width, height, rev)
     with _lock:
-        key_lock = _web_locks.setdefault(key, threading.Lock())
+        key_lock = _web_locks.setdefault(key[:3], threading.Lock())
     with key_lock:
         with _lock:
             hit = _web.get(key)
-        if hit and time.monotonic() - hit[0] < max_age:
+        if hit and time.monotonic() - hit[0] < (min(max_age, WEB_FRESH_MIN_S) if fresh else max_age):
             return hit[1]
         from stonepi_auth.internal import sign_internal
 
@@ -378,12 +409,16 @@ def web_snapshot(page_id: str, width: int, height: int, max_age: float) -> bytes
             try:
                 response = _client.get(
                     f"{env.notify_url.rstrip('/')}{path}",
-                    params={"w": width, "h": height, "max_age": int(max_age)},
+                    params={"w": width, "h": height, "max_age": int(max_age), **({"fresh": 1} if fresh else {})},
                     headers=sign_internal(secret, "GET", path),
                     timeout=WEB_FETCH_TIMEOUT,
                 )
                 if response.status_code == 200 and response.content:
                     data = response.content
+                    try:
+                        captured = float(response.headers.get("X-Captured-At") or time.time())
+                    except ValueError:
+                        captured = time.time()
                 elif "web:" + page_id not in _failing:
                     logger.warning("web page %s: Notify answered %s", page_id, response.status_code)
             except Exception as exc:  # noqa: BLE001 - keep the last image
@@ -399,7 +434,14 @@ def web_snapshot(page_id: str, width: int, height: int, max_age: float) -> bytes
             return None
         _failing.discard("web:" + page_id)
         with _lock:
-            _web[key] = (time.monotonic(), data)
+            # Aged from when Notify captured it (it may hand over a capture it already had),
+            # so the page is never shown more than its refresh time old.
+            # Snapshots of this page's earlier settings go.
+            for old in [k for k in _web if k[:3] == key[:3] and k != key]:
+                _web.pop(old, None)
+                _web_at.pop(old, None)
+            _web[key] = (time.monotonic() - max(0.0, time.time() - captured), data)
+            _web_at[key] = captured
         return data
 
 
@@ -407,17 +449,24 @@ def web_snapshot(page_id: str, width: int, height: int, max_age: float) -> bytes
 
 
 def restart_unit(unit: str) -> dict:
-    from stonepi_auth.internal import sign_internal
+    import json as _json
+
+    from stonepi_auth.internal import sign_internal_v2
 
     secret = session_secret()
     if not secret:
         return {"ok": False, "message": "StonePi sign-in isn't set up."}
     path = "/api/internal/units/restart"
+    payload = {"unit": unit, "source": "carthing"}
+    body = _json.dumps(payload).encode("utf-8")
     try:
         response = _client.post(
             f"{env.dashboard_url.rstrip('/')}{path}",
-            json={"unit": unit, "source": "carthing"},
-            headers=sign_internal(secret, "POST", path),
+            content=body,
+            headers={
+                "Content-Type": "application/json",
+                **sign_internal_v2(secret, "POST", path, body),
+            },
             timeout=40.0,
         )
         data = response.json()
@@ -431,17 +480,24 @@ def restart_unit(unit: str) -> dict:
 def unit_details(unit: str) -> dict:
     """A service's state, since when, memory, restarts and last log lines (Dashboard reads them).
     Asked only while its page is open, or while a restart is under way."""
-    from stonepi_auth.internal import sign_internal
+    import json as _json
+
+    from stonepi_auth.internal import sign_internal_v2
 
     secret = session_secret()
     if not secret:
         return {"ok": False, "message": "StonePi sign-in isn't set up."}
     path = "/api/internal/units/details"
+    payload = {"unit": unit}
+    body = _json.dumps(payload).encode("utf-8")
     try:
         response = _client.post(
             f"{env.dashboard_url.rstrip('/')}{path}",
-            json={"unit": unit},
-            headers=sign_internal(secret, "POST", path),
+            content=body,
+            headers={
+                "Content-Type": "application/json",
+                **sign_internal_v2(secret, "POST", path, body),
+            },
             timeout=8.0,
         )
         data = response.json()

@@ -33,6 +33,9 @@
     dateFormat: root.querySelector("[data-builder-date-format]"),
     dateFormatField: root.querySelector("[data-builder-date-format-field]"),
     dateWrap: root.querySelector("[data-builder-date-wrap]"),
+    hourFormat: root.querySelector("[data-builder-hour-format]"),
+    hourFormatField: root.querySelector("[data-builder-hour-format-field]"),
+    hourWrap: root.querySelector("[data-builder-hour-wrap]"),
     dataBtns: [...root.querySelectorAll("[data-builder-data]")],
     eink: root.querySelector("[data-builder-eink]"),
     tray: root.querySelector("[data-builder-tray]"),
@@ -61,6 +64,7 @@
     device: data.display.device || "og",
     title_bar: data.display.title_bar || "bottom",
     date_format: data.display.date_format || "day_time",
+    hour_format: data.display.hour_format || "24",
     widgets: clone(data.display.widgets || []),
   };
   let state = clone(saved);
@@ -259,7 +263,9 @@
     el.deviceField.value = state.device;
     el.titleBarField.value = state.title_bar;
     el.dateFormatField.value = state.date_format;
+    if (el.hourFormatField) el.hourFormatField.value = state.hour_format;
     el.dateWrap.hidden = state.title_bar === "off";
+    if (el.hourWrap) el.hourWrap.hidden = state.title_bar === "off";
     el.widgetsField.value = JSON.stringify(state.widgets);
     return changed;
   }
@@ -269,6 +275,7 @@
       device: s.device,
       title_bar: s.title_bar,
       date_format: s.date_format,
+      hour_format: s.hour_format,
       widgets: s.widgets.map((w) => [w.id, w.widget_id, w.size, w.x || 0, w.y || 0]),
     };
   }
@@ -307,7 +314,14 @@
         method: "POST",
         headers: { "Content-Type": "application/json", "X-StonePi-CSRF": csrf },
         credentials: "same-origin",
-        body: JSON.stringify({ device: state.device, title_bar: state.title_bar, date_format: state.date_format, widgets: state.widgets, data: dataMode }),
+        body: JSON.stringify({
+          device: state.device,
+          title_bar: state.title_bar,
+          date_format: state.date_format,
+          hour_format: state.hour_format,
+          widgets: state.widgets,
+          data: dataMode,
+        }),
       });
       const body = await response.json().catch(() => ({}));
       if (seq !== previewSeq || sentVersion !== version) return;
@@ -638,6 +652,11 @@
     commit();
   });
 
+  el.hourFormat?.addEventListener("change", () => {
+    state.hour_format = el.hourFormat.value;
+    commit();
+  });
+
   // Title bar position changes the widget area, so the overlay waits for new geometry.
   el.titleBar.addEventListener("change", () => {
     state.title_bar = el.titleBar.value;
@@ -662,6 +681,7 @@
     el.device.value = state.device;
     el.titleBar.value = state.title_bar;
     el.dateFormat.value = state.date_format;
+    if (el.hourFormat) el.hourFormat.value = state.hour_format;
     selectedId = null;
     geometry = null;
     commit();

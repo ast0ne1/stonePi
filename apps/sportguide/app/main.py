@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from app import db
 from app.config import ROOT_DIR, env
 import app.routes as _app_routes
+from app.agent_routes import router as agent_router
 from app.routes import router
 from stonepi_auth.prefix import clean_prefix
 
@@ -42,7 +43,7 @@ async def lifespan(_app: FastAPI):
         pass
 
 
-app = FastAPI(title="StonePi SportGuide", lifespan=lifespan)
+app = FastAPI(title="StonePi SportGuide", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 _prefix = clean_prefix(env.stonepi_prefix)
 if _prefix:
     from stonepi_auth.prefix import PrefixMiddleware
@@ -72,6 +73,7 @@ app.mount("/badges", StaticFiles(directory=str(_badges.BADGE_DIR)), name="badges
 if _prefix:
     app.mount(f"{_prefix}/badges", StaticFiles(directory=str(_badges.BADGE_DIR)), name="badges_prefixed")
 app.include_router(router)
+app.include_router(agent_router)
 
 # A platform install without a session secret locks instead of running solo.
 platform_lock = add_platform_lock(app, lambda: _app_routes._session_secret())

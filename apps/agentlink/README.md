@@ -11,7 +11,7 @@ the per-binding **policy**, and the **audit log**. Adapters translate their prot
 | First adapter | **Pebble** — device API `/agent/pebble/v1` ([Pebble protocol v1](https://github.com/ast0ne1/pebble-esp32/blob/main/PROTOCOL.md)) |
 | Admin UI | Notify → **Sidekick** (signed internal API `/agent/api/internal/pebble/*`) |
 | Data | `agentlink.db` (bindings, hashed tokens), `audit.db` (`stonepi_audit`, 90 days) |
-| Tools | `get_status` (Watch roll-up, no personal data). Phase 2 adds `get_today` and per-app reads. |
+| Tools | `get_status` and `get_weather` (no personal data, on by default); personal reads, off until switched on in Sidekick: `get_today`, EventTrakr `get_events`/`search_events`, Pinboard `get_reminders`/`get_notices`, NewsCast `get_news_briefing`/`search_news`, SportGuide `get_sport`/`get_my_teams`, PriceWatch `get_price_alerts`. |
 
 ## Asking
 

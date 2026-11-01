@@ -1,0 +1,286 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Settings · Radio{% endblock %}
+{% block content %}
+<section class="hero">
+  {% if not settings_hub %}
+  <a class="settings-back" href="/settings">&larr; Settings</a>
+  {% endif %}
+  <h1>{{ settings_title }}</h1>
+  <p class="lede">{{ settings_lede }}</p>
+</section>
+
+{% if settings_hub %}
+<nav class="settings-hub" aria-label="Settings groups">
+  {% for group_id, group_label, rows in settings_groups %}
+  <div class="settings-hub-group">
+    <h2 class="settings-hub-heading">{{ group_label }}</h2>
+    <div class="settings-hub-card">
+      {% for key, label, subtext, icon_name in rows %}
+      <a class="settings-hub-row" href="/settings?tab={{ key }}">
+        <span class="settings-hub-icon" aria-hidden="true">{{ icon(icon_name) }}</span>
+        <span class="settings-hub-copy">
+          <span class="settings-hub-title">{{ label }}</span>
+          <span class="settings-hub-sub">{{ subtext }}</span>
+        </span>
+        <span class="settings-hub-chevron" aria-hidden="true">&rsaquo;</span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</nav>
+{% else %}
+<div class="settings-tabs">
+  {% if settings_tab == 'general' %}
+  {#- Settings → General, in the hub's style: grouped cards of rows (label and hint, control
+      beside it on wide screens, under it on phones). One form and one Save for the settings;
+      adding a Home station (admins) is its own row that opens. -#}
+  {% set seg_first = {"home": "Home stations", "favourites": "My favourites"} %}
+  {% set seg_bar = {"device": "This device", "always": "Everywhere", "off": "Off"} %}
+  {% set seg_presets = {"latest": "Latest favourites", "set": "Choose"} %}
+  <div class="stack settings-panel">
+    <form method="post" action="/settings/general" class="stack settings-display">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+
+      <section class="settings-hub-group">
+        <h2 class="settings-hub-heading">Display · just for you</h2>
+        <div class="settings-hub-card">
+          <div class="set-row">
+            <div class="set-copy">
+              <span class="settings-hub-title" id="first-label">My Radio shows first</span>
+              <span class="settings-hub-sub">The other list follows.</span>
+            </div>
+            <fieldset class="seg" aria-labelledby="first-label">
+              {% for value, _label, hint in my_radio_first_choices %}
+              <label title="{{ hint }}"><input type="radio" name="first" value="{{ value }}"{% if my_radio_first == value %} checked{% endif %} /><span>{{ seg_first[value] }}</span></label>
+              {% endfor %}
+            </fieldset>
+          </div>
+
+          {% if can_edit_household %}
+          <div class="set-row">
+            <div class="set-copy">
+              <span class="settings-hub-title" id="add-label">Add station button</span>
+              <span class="settings-hub-sub">The + on My Radio. Hidden, you can still add below or from Discover.</span>
+            </div>
+            <input type="hidden" name="show_add_field" value="1" />
+            <label class="switch"><input type="checkbox" name="show_add" value="1" aria-labelledby="add-label"{% if show_add %} checked{% endif %} /><span aria-hidden="true"></span></label>
+          </div>
+          {% endif %}
+
+          <div class="set-row">
+            <div class="set-copy">
+              <span class="settings-hub-title" id="bar-label">Player bar</span>
+              <span class="settings-hub-sub">The mini player on My Radio and Discover: This device only, everywhere you play, or off.</span>
+            </div>
+            <fieldset class="seg" aria-labelledby="bar-label">
+              {% for value, _label, hint in player_bar_modes %}
+              <label title="{{ hint }}"><input type="radio" name="mode" value="{{ value }}"{% if player_bar_mode == value %} checked{% endif %} /><span>{{ seg_bar[value] }}</span></label>
+              {% endfor %}
+            </fieldset>
+          </div>
+
+          <div class="set-row">
+            <div class="set-copy">
+              <span class="settings-hub-title" id="pos-label">Player bar position</span>
+              <span class="settings-hub-sub">On a phone it runs full width: at the bottom, or under the header for Top right.</span>
+            </div>
+            <fieldset class="seg" aria-labelledby="pos-label">
+              {% for value, label in player_positions %}
+              <label><input type="radio" name="bar_pos" value="{{ value }}"{% if player_bar_pos == value %} checked{% endif %} /><span>{{ label }}</span></label>
+              {% endfor %}
+            </fieldset>
+          </div>
+
+          <div class="set-row">
+            <div class="set-copy">
+              <span class="settings-hub-title" id="presets-label">Now Playing presets</span>
+              <span class="settings-hub-sub">Four one-tap stations: your latest favourites, or four you choose.</span>
+            </div>
+            <fieldset class="seg" aria-labelledby="presets-label">
+              {% for value, _label, hint in presets_modes %}
+              <label title="{{ hint }}"><input type="radio" name="presets_mode" value="{{ value }}"{% if presets_mode == value %} checked{% endif %} /><span>{{ seg_presets[value] }}</span></label>
+              {% endfor %}
+            </fieldset>
+            {#- Shown while "Choose" is picked (CSS :has, no script needed). -#}
+            <div class="preset-picks">
+              {% for n in range(1, 5) %}
+              <label>
+                <span class="sr-only">Preset {{ n }}</span>
+                <select name="preset_{{ n }}">
+                  <option value="">{{ n }}. (empty)</option>
+                  {% for station in preset_choices %}
+                  <option value="{{ station.stream_url }}"{% if chosen_presets[n - 1] == station.stream_url %} selected{% endif %}>{{ n }}. {{ station_label(station.name)[0] }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {% if can_edit_household %}
+      <section class="settings-hub-group">
+        <h2 class="settings-hub-heading">For the whole household</h2>
+        <div class="settings-hub-card">
+          <div class="set-row">
+            <div class="set-copy">
+              <span class="settings-hub-title" id="volume-label">Default volume</span>
+              <span class="settings-hub-sub">What speakers and StonePi start at. Live volume is on Now Playing.</span>
+            </div>
+            <div class="set-range">
+              <input class="volume-slider" type="range" name="default_volume" min="0" max="1" step="0.05" value="{{ '%.2f'|format(default_volume) }}" aria-labelledby="volume-label" data-range-value />
+              <output>{{ (default_volume * 100)|round|int }}%</output>
+            </div>
+          </div>
+          <div class="set-row">
+            <div class="set-copy">
+              <span class="settings-hub-title" id="country-label">Country for Discover</span>
+              <span class="settings-hub-sub">The “Popular in …” row.</span>
+            </div>
+            <select name="country" aria-labelledby="country-label">
+              <option value=""{% if not country %} selected{% endif %}>From the Pi’s time zone{% if country_auto %} ({{ country_auto }}){% endif %}</option>
+              <option value="-"{% if country == '-' %} selected{% endif %}>None (worldwide only)</option>
+              {% for c in countries %}
+              <option value="{{ c.code }}"{% if country == c.code %} selected{% endif %}>{{ c.name }}</option>
+              {% endfor %}
+              {% if country and country != '-' and not countries %}<option value="{{ country }}" selected>{{ country }}</option>{% endif %}
+            </select>
+          </div>
+        </div>
+      </section>
+      {% endif %}
+
+      <button class="btn btn-primary btn-with-icon settings-save" type="submit">{{ icon("check") }} Save</button>
+    </form>
+
+    {% if can_edit_household %}
+    <details class="settings-hub-card set-add" id="add-home-station">
+      <summary class="set-row">
+        <span class="settings-hub-icon" aria-hidden="true">{{ icon("plus") }}</span>
+        <span class="set-copy">
+          <span class="settings-hub-title">Add a Home station</span>
+          <span class="settings-hub-sub">By its stream address, for everyone in the household.</span>
+        </span>
+        <span class="settings-hub-chevron" aria-hidden="true">&rsaquo;</span>
+      </summary>
+      <form method="post" action="/stations/add" class="stack set-add-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <input type="hidden" name="next" value="/settings?tab=general" />
+        <label>Name <input name="name" required maxlength="120" placeholder="Station name" autocomplete="off" /></label>
+        <label>Stream address <input name="url" required type="url" inputmode="url" placeholder="https://…" autocomplete="off" /></label>
+        <label>Logo address <input name="favicon" type="url" inputmode="url" placeholder="https://… (optional)" autocomplete="off" /></label>
+        <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("plus") }} Add station</button>
+      </form>
+    </details>
+    {% endif %}
+  </div>
+  {% elif settings_tab == 'speakers' %}
+  {#- Speakers (admins), in General's style: a Rescan row, then a card per speaker with its
+      name and switches, saved per speaker. -#}
+  <div class="stack settings-panel">
+    <section class="settings-hub-group">
+      <div class="settings-hub-card">
+        <form method="post" action="/settings/speakers/refresh" class="set-row">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <div class="set-copy">
+            <span class="settings-hub-title">Look for speakers</span>
+            <span class="settings-hub-sub">Radio looks when it starts and every 10 minutes. A speaker needs to be on, and on the same Wi-Fi.</span>
+          </div>
+          <button class="btn btn-ghost btn-with-icon" type="submit">{{ icon("refresh") }} Rescan</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="settings-hub-group">
+      <h2 class="settings-hub-heading">On the home network</h2>
+      {% for spk in speakers %}
+      <form method="post" action="/settings/speakers/{{ spk.udn }}" class="settings-hub-card set-speaker">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <div class="set-row set-head">
+          <span class="settings-hub-icon" aria-hidden="true">{{ icon("speaker") }}</span>
+          <div class="set-copy">
+            <span class="settings-hub-title">{{ spk.shown_name }}</span>
+            <span class="settings-hub-sub">{{ spk.model or 'DLNA speaker' }} · {{ spk.host }}{% if spk.linkplay %} · LinkPlay{% endif %}</span>
+          </div>
+        </div>
+        <label class="set-row">
+          <span class="set-copy">
+            <span class="settings-hub-title">Name in Radio</span>
+            <span class="settings-hub-sub">Blank uses the speaker’s own name.</span>
+          </span>
+          <input name="label" value="{{ spk.label }}" maxlength="60" placeholder="{{ spk.name }}" autocomplete="off" />
+        </label>
+        <div class="set-row">
+          <div class="set-copy">
+            <span class="settings-hub-title" id="https-{{ loop.index }}">Pass https stations through the Pi</span>
+            <span class="settings-hub-sub">Most adaptors can’t play https themselves. Turn off only if this speaker can.</span>
+          </div>
+          <label class="switch"><input type="checkbox" name="relay_https" value="1" aria-labelledby="https-{{ loop.index }}"{% if not spk.direct_https %} checked{% endif %} /><span aria-hidden="true"></span></label>
+        </div>
+        {% if spk.linkplay %}
+        <div class="set-row">
+          <div class="set-copy">
+            <span class="settings-hub-title" id="linkplay-{{ loop.index }}">Use LinkPlay commands</span>
+            <span class="settings-hub-sub">Instead of DLNA. Try it if play, stop or volume aren’t reliable.</span>
+          </div>
+          <label class="switch"><input type="checkbox" name="use_linkplay" value="1" aria-labelledby="linkplay-{{ loop.index }}"{% if spk.use_linkplay %} checked{% endif %} /><span aria-hidden="true"></span></label>
+        </div>
+        {% endif %}
+        <div class="set-row set-foot">
+          <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("check") }} Save</button>
+        </div>
+      </form>
+      {% else %}
+      <div class="settings-hub-card"><p class="set-row hint">No speakers found yet. Switch them on, then Rescan.</p></div>
+      {% endfor %}
+    </section>
+  </div>
+  {% elif settings_tab == 'odio' %}
+  <div class="stack settings-panel">
+    <div class="card stack">
+      <h2>{{ icon("sources") }} Odio playback</h2>
+      <p class="lede">Play/pause/volume go to Odio’s REST API on loopback. Nothing under :8018 is proxied through StonePi nginx.</p>
+      <p class="hint">Status: {% if odio_status.reachable %}<strong>reachable</strong>{% else %}<strong>unreachable</strong>{% endif %}{% if odio_status.mock %} (mock){% endif %}</p>
+      <p class="hint">Endpoint host: {{ odio_url_host }}</p>
+      {% if not odio_status.reachable and not odio_status.mock %}
+      <p class="banner">Install Odio on this Pi and keep its API on 127.0.0.1:8018. See the Radio README.</p>
+      {% endif %}
+    </div>
+    <div class="card stack">
+      <h2>{{ icon("listen") }} Station browse (myMPD)</h2>
+      <p class="lede">Odio’s API has no webradio catalog. Radio's search pulls station names and artwork from myMPD WebradioDB on the same Pi (:8080).</p>
+      <p class="hint">Status: {% if mympd_status.reachable %}<strong>reachable</strong>{% else %}<strong>unreachable</strong>{% endif %}{% if mympd_status.mock %} (mock — seed catalog){% endif %}</p>
+      <p class="hint">Endpoint host: {{ mympd_url_host }}</p>
+      {% if not mympd_status.reachable and not mympd_status.mock %}
+      <p class="banner">myMPD ships with Odio’s MPD role. Until it’s up, search falls back to Radio Browser / seed stations.</p>
+      {% endif %}
+    </div>
+  </div>
+  {% elif settings_tab == 'notifications' %}
+  <div class="stack settings-panel">
+    {% from "stonepi/alerts.html" import notifications_card %}
+    {% if notifications_card_state %}
+    {{ notifications_card(notifications_card_state) }}
+    {% else %}
+    <div class="card stack">
+      <h2>{{ icon("notifications") }} Notifications</h2>
+      <p class="hint">Phone alerts need StonePi sign-in. Radio does not emit events in this release.</p>
+    </div>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="stack settings-panel">
+    <div class="card stack about-card">
+      <h2>{{ app_name }}</h2>
+      <p class="lede">Internet radio for the household: browse stations, keep Home stations and your own favourites, and play on this device, a speaker on the home network, or the Pi (Odio — which also makes the Pi an AirPlay and Spotify Connect speaker).</p>
+      <p class="hint">GitHub: <a class="text-link" href="{{ app_github }}" rel="noopener noreferrer" target="_blank">{{ app_github_user }}</a></p>
+      <p class="hint">Version: {{ app_version }}</p>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

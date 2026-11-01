@@ -81,6 +81,14 @@ Reference viewports: **375×812**, **800×1280**, **1280×800**, **1280×720**, 
 
 ---
 
+## Radio (2026-10-31, unreleased)
+
+| App | Shipped in | Paths | Status |
+|-----|------------|-------|--------|
+| Radio | *unreleased* | My Radio, Discover, Now Playing, Settings → General / Speakers | Checked at 375×548 (SE), 390×664 / 390×763 (iPhone 13 Safari / home screen), 768×1024, 1280×700/720, **1536×864 (14" 1920×1200 at 125%)**, 1512×860, **1920×1200**: no horizontal scroll anywhere. Now Playing fits one screen at every size (phone: compact card + one row of presets; ≥720 landscape card; ≥1024 card and presets side by side filling the column). Settings in a 768px readable column. Card grids auto-fill (~170px cards: 5 at 1280, 7 at 1536, 9 at 1920). |
+
+---
+
 ## Wave 4 — Verification
 
 Manual checklist (all waves):

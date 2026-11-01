@@ -12,6 +12,7 @@
     data-confirm-ok="Generate"
     {% endif %}
   >
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
     <input type="hidden" name="next" value="{{ '/' if briefing_day == 'today' else ('/?day=' ~ briefing_day) }}" />
     <button class="btn btn-secondary btn-with-icon" type="submit">
       {{ icon("publish") }}
@@ -100,12 +101,14 @@
           {% endif %}
           <div class="story-card-favs">
           <form method="post" action="/stories/{{ story.id }}/longread" class="fav-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
             <input type="hidden" name="day" value="{{ briefing_day }}" />
             <button class="fav-btn {% if story.saved %}is-on{% endif %}" type="submit" aria-pressed="{{ 'true' if story.saved else 'false' }}" aria-label="{{ 'Already a long-read on Saved' if story.saved else 'Keep the full article as a long-read' }}" title="{{ 'Long-read on Saved' if story.saved else 'Keep the full article as a long-read' }}">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v17l-6-3.4L6 21z"/></svg>
             </button>
           </form>
           <form method="post" action="/stories/{{ story.id }}/favourite" class="fav-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
             <input type="hidden" name="day" value="{{ briefing_day }}" />
             <button class="fav-btn {% if story.favourited %}is-on{% endif %}" type="submit" aria-pressed="{{ 'true' if story.favourited else 'false' }}" aria-label="{{ 'Remove from Saved' if story.favourited else 'Save to Saved' }}" title="{{ 'Remove from Saved' if story.favourited else 'Save to Saved' }}">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.6 14.6 10h6.8l-5.5 4.2 2.1 6.6L12 16.8 6 20.8l2.1-6.6L2.6 10h6.8z"/></svg>

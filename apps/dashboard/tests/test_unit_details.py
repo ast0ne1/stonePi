@@ -3,10 +3,11 @@ last log lines through the service helper; a signed endpoint for catalog units o
 
 from __future__ import annotations
 
+import json
 import subprocess
 
 from fastapi.testclient import TestClient
-from stonepi_auth.internal import sign_internal
+from stonepi_auth.internal import sign_internal_v2
 
 from app import routes, services
 from app.main import app
@@ -67,12 +68,21 @@ def test_details_refuse_other_units(monkeypatch):
     assert services.unit_details("ssh")["ok"] is False and calls == []
 
 
+def _signed_post(client, payload: dict):
+    raw = json.dumps(payload).encode()
+    return client.post(
+        PATH,
+        content=raw,
+        headers={"Content-Type": "application/json", **sign_internal_v2(SECRET, "POST", PATH, raw)},
+    )
+
+
 def test_endpoint_signed_and_catalog_only(monkeypatch):
     monkeypatch.setattr(services, "session_secret", lambda: SECRET)
     monkeypatch.setattr(services, "unit_details", lambda unit: {"ok": True, "unit": unit, "state": "active"})
     client = TestClient(app)
     assert client.post(PATH, json={"unit": "stonepi-newscast"}).status_code == 403
-    body = client.post(PATH, json={"unit": "stonepi-newscast"}, headers=sign_internal(SECRET, "POST", PATH)).json()
+    body = _signed_post(client, {"unit": "stonepi-newscast"}).json()
     assert body == {"ok": True, "unit": "stonepi-newscast", "state": "active"}
     for unit in ("ssh", "stonepi-carthing; reboot", ""):
-        assert client.post(PATH, json={"unit": unit}, headers=sign_internal(SECRET, "POST", PATH)).status_code == 400
+        assert _signed_post(client, {"unit": unit}).status_code == 400

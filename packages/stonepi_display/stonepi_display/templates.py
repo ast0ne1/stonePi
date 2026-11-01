@@ -26,20 +26,35 @@ def _h12(dt) -> str:
     return f"{dt.hour % 12 or 12}:{dt.minute:02d} {'AM' if dt.hour < 12 else 'PM'}"
 
 
-# Title-bar date styles: id → (label for the picker, formatter). Portable (no %-d).
+def _h24(dt) -> str:
+    return f"{dt:%H:%M}"
+
+
+def format_clock(dt, hour_format: str | None) -> str:
+    """Time part of the title-bar stamp: 24-hour or 12-hour with AM/PM."""
+    return _h12(dt) if str(hour_format or "") == "12" else _h24(dt)
+
+
+# Title-bar date styles: id → (label for the picker, formatter(dt, time_str)).
+# The clock (12/24) is chosen separately as hour_format so "Sat 31 Oct" can be either.
 DATE_FORMATS = {
-    "day_time": ("Sat 27 Sep, 14:30", lambda d: f"{_DAYS[d.weekday()]} {d.day} {_MONTHS[d.month - 1]}, {d:%H:%M}"),
-    "date_time": ("27 Sep 2026, 14:30", lambda d: f"{d.day} {_MONTHS[d.month - 1]} {d.year}, {d:%H:%M}"),
-    "dmy": ("27/09/2026 14:30", lambda d: f"{d:%d/%m/%Y %H:%M}"),
-    "mdy": ("09/27/2026 2:30 PM", lambda d: f"{d:%m/%d/%Y} {_h12(d)}"),
-    "iso": ("2026-09-27 14:30", lambda d: f"{d:%Y-%m-%d %H:%M}"),
-    "time": ("14:30", lambda d: f"{d:%H:%M}"),
+    "day_time": ("Sat 27 Sep, time", lambda d, t: f"{_DAYS[d.weekday()]} {d.day} {_MONTHS[d.month - 1]}, {t}"),
+    "date_time": ("27 Sep 2026, time", lambda d, t: f"{d.day} {_MONTHS[d.month - 1]} {d.year}, {t}"),
+    "dmy": ("27/09/2026 time", lambda d, t: f"{d:%d/%m/%Y} {t}"),
+    "mdy": ("09/27/2026 time", lambda d, t: f"{d:%m/%d/%Y} {t}"),
+    "iso": ("2026-09-27 time", lambda d, t: f"{d:%Y-%m-%d} {t}"),
+    "time": ("Time only", lambda d, t: t),
 }
 DEFAULT_DATE_FORMAT = "day_time"
+HOUR_FORMATS = {
+    "24": "24-hour (14:30)",
+    "12": "12-hour (2:30 PM)",
+}
+DEFAULT_HOUR_FORMAT = "24"
 
 
-def format_updated(stamp: str | None, fmt: str | None) -> str:
-    """Format an ISO timestamp in the host's local time with a DATE_FORMATS style."""
+def format_updated(stamp: str | None, fmt: str | None, hour_format: str | None = None) -> str:
+    """Format an ISO timestamp in the host's local time with a DATE_FORMATS style and 12/24 clock."""
     from datetime import datetime
 
     try:
@@ -47,7 +62,7 @@ def format_updated(stamp: str | None, fmt: str | None) -> str:
     except (TypeError, ValueError):
         return ""
     _, fn = DATE_FORMATS.get(str(fmt or ""), DATE_FORMATS[DEFAULT_DATE_FORMAT])
-    return fn(dt)
+    return fn(dt, format_clock(dt, hour_format or DEFAULT_HOUR_FORMAT))
 
 _STATUS_PILL = """\
 {% if system_ok %}<span class="label label--small label--filled">OK</span>\
@@ -88,10 +103,10 @@ WIDGET_SNIPPETS: dict[str, str] = {
 </div>
 {% endfor %}""",
     "sto": """\
-<span class="title title--small">Storage</span>
+<span class="title title--small">{{ hostname }}</span>
 <div class="{% if cw >= 2 %}grid grid--cols-2 gap{% else %}flex flex--col{% endif %} mt--1">
-  <div class="flex flex--col"><span class="label label--small">Disk</span><span class="value value--small value--tnums">{{ disk_disp }}</span></div>
-  <div class="flex flex--col"><span class="label label--small">Backup</span><span class="value value--small">{{ backup_when }}</span>
+  <div class="flex flex--col flex--center"><span class="label label--small">Disk</span><span class="value value--small value--tnums">{{ disk_disp }}</span></div>
+  <div class="flex flex--col flex--center"><span class="label label--small">Backup</span><span class="value value--small">{{ backup_when }}</span>
   {% unless backup_ok %}<div><span class="label label--small label--filled">Check</span></div>{% endunless %}</div>
 </div>""",
     "nws": """\

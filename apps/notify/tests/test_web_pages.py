@@ -42,14 +42,14 @@ def test_display_page_shows_checklist_and_saves_page_settings(fresh):
         f"/displays/{display_id}/web",
         data={"csrf_token": CSRF, "web_settings": "1", "url": "http://10.0.0.5/", "preset": "none",
               "hide": "#information-widgets", "scale": "0.8", "settle_s": "5", "bits": "2", "invert": "on",
-              "threshold": "140", "device": "og"},
+              "threshold": "140", "device": "og", "refresh_min": "45"},
         follow_redirects=False,
     )
     assert response.status_code == 303 and "msg=Saved" in response.headers["location"]
     display = stonepi_display.get_display(display_id)
     page = stonepi_display.get_page(display["web"]["page_id"])
-    assert (page["url"], page["preset"], page["hide"], page["scale"], page["settle_s"]) == (
-        "http://10.0.0.5/", "none", "#information-widgets", 0.8, 5)
+    assert (page["url"], page["preset"], page["hide"], page["scale"], page["settle_s"], page["refresh_min"]) == (
+        "http://10.0.0.5/", "none", "#information-widgets", 0.8, 5, 45)
     assert (display["web"]["bits"], display["web"]["invert"], display["web"]["threshold"]) == (2, "on", 140)
     widgets_html = client.get("/displays/dashboard").text
     assert "Private Plugin" in widgets_html and "data-display-builder" in widgets_html
@@ -84,16 +84,30 @@ def test_editor_adds_a_web_page(fresh):
 
 
 def test_loopback_endpoints_need_json(fresh):
+    import json
+    import os
+
     from fastapi.testclient import TestClient
+    from stonepi_auth.internal import sign_internal_v2
 
     from app.main import app
 
-    client = TestClient(app)
+    client = TestClient(app, client=("127.0.0.1", 50000))
     # A web page can only send these as a "simple" (no-preflight) request: refused.
     event = '{"id": "x.y", "source": "x", "title": "Fake"}'
     assert client.post("/api/events", content=event, headers={"Content-Type": "text/plain"}).status_code == 415
     assert client.post("/api/push-trmnl").status_code == 415
-    assert client.post("/api/events", json={"id": "x.y", "source": "x", "title": "Real"}).status_code == 200
+    payload = {"id": "x.y", "source": "x", "title": "Real"}
+    body = json.dumps(payload).encode("utf-8")
+    secret = (os.environ.get("STONEPI_SESSION_SECRET") or os.environ.get("SESSION_SECRET") or "").strip()
+    headers = {"Content-Type": "application/json"}
+    if secret:
+        headers.update(sign_internal_v2(secret, "POST", "/api/events", body))
+    assert client.post("/api/events", content=body, headers=headers).status_code == 200
+    # Not this machine, or a proxied call that only looks like loopback.
+    assert TestClient(app, client=("192.168.0.9", 50000)).post("/api/events", content=body, headers=headers).status_code == 404
+    forwarded = {**headers, "X-Forwarded-For": "192.168.0.9"}
+    assert client.post("/api/events", content=body, headers=forwarded).status_code == 404
 
 
 def test_internal_web_image_needs_a_signature(fresh):
@@ -112,3 +126,44 @@ def test_preview_is_admins_only(fresh):
 
     stonepi_display.create_page({"name": "Home", "url": URL})
     assert TestClient(app).get("/api/web/home/preview.png").status_code == 403
+
+
+def test_page_refresh_time_saved_and_sent_to_the_panel(fresh):
+    from app.web_routes import web_pages_for_editor
+
+    client = admin_client()
+    page = stonepi_display.create_page({"name": "Home", "url": URL})
+    assert page["refresh_min"] == 15 and "Capture again every" in client.get(f"/displays/web/{page['id']}").text
+    client.post(f"/displays/web/{page['id']}/save", data={"csrf_token": CSRF, "url": URL, "refresh_min": "5"})
+    assert stonepi_display.get_page(page["id"])["refresh_min"] == 15  # 15 at least
+    client.post(f"/displays/web/{page['id']}/save", data={"csrf_token": CSRF, "url": URL, "refresh_min": "60"})
+    first = web_pages_for_editor()
+    assert first == [{"id": page["id"], "name": "Home", "refresh_min": 60, "rev": first[0]["rev"]}]
+    # The rev follows what's captured, not the refresh time.
+    client.post(f"/displays/web/{page['id']}/save", data={"csrf_token": CSRF, "url": URL, "refresh_min": "30"})
+    assert web_pages_for_editor()[0]["rev"] == first[0]["rev"]
+    client.post(f"/displays/web/{page['id']}/save", data={"csrf_token": CSRF, "url": URL, "refresh_min": "30", "css": "body{color:red}"})
+    assert web_pages_for_editor()[0]["rev"] != first[0]["rev"]
+
+
+def test_internal_web_fresh_capture_and_stamp(fresh, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app import carthing_routes, web_routes
+    from app.main import app
+
+    asked: list[float] = []
+
+    def capture_timed(page, w, h, max_age=0.0, **kw):
+        asked.append(max_age)
+        return b"raw", 1_700_000_000.0
+
+    monkeypatch.setattr(carthing_routes, "_internal_ok", lambda request: True)
+    monkeypatch.setattr(web_routes.webcapture, "capture_timed", capture_timed)
+    monkeypatch.setattr(web_routes.webimage, "to_lcd", lambda raw, w, h: b"png")
+    stonepi_display.create_page({"name": "Home", "url": URL})
+    client = TestClient(app)
+    kept = client.get("/api/internal/web/home.png?max_age=895")
+    assert kept.status_code == 200 and kept.headers["X-Captured-At"] == "1700000000"
+    assert client.get("/api/internal/web/home.png?max_age=895&fresh=1").status_code == 200
+    assert asked == [895.0, 0.0]

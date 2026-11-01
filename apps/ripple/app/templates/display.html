@@ -36,6 +36,10 @@
     .list .post { flex: 1; }
     .empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 0 32px; }
     .empty strong { font-size: {{ 24 if big else 21 }}px; }
+    /* Holidays (U34) and "good time to call" (U36): a short note per line above the posts. */
+    .notes { flex: none; padding: 8px 16px; border-bottom: 2px solid #000; font-size: {{ 19 if big else 16 }}px; line-height: 1.35; }
+    .notes div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .empty .notes { border: 2px solid #000; margin-top: 8px; text-align: left; }
   </style>
 </head>
 <body>
@@ -44,11 +48,14 @@
   {%- if post.body %}<div class="body">{{ post.body }}</div>{% endif %}
   {%- if caption %}<div class="caption">{{ caption }}</div>{% endif %}
   {%- endmacro %}
+  {%- macro notes_block() -%}
+  {%- if notes %}<div class="notes">{% for n in notes %}<div>{{ n }}</div>{% endfor %}</div>{% endif -%}
+  {%- endmacro %}
   <header><span class="board">{{ board_name }}</span>
     {%- if here %}<span class="here">{{ here }}</span>{% else %}<span class="date">{{ today }}</span>{% endif %}</header>
   <main>
     {%- if not posts %}
-    <div class="empty"><strong>No updates yet</strong><span>New posts from the family will appear here.</span></div>
+    <div class="empty"><strong>No updates yet</strong><span>New posts from the family will appear here.</span>{{ notes_block() }}</div>
     {%- elif hero %}
     <div class="hero" style="width: {{ hero.w }}px; height: {{ main_h }}px">
       {%- for t in hero.tiles %}
@@ -57,6 +64,7 @@
     </div>
     {#- Newest first, always: the first photo is the newest photo post's; captions stay with their posts. #}
     <div class="side">
+      {{ notes_block() }}
       {%- for post in posts %}
       {%- if post.id in hero.captions %}{% set caption = hero.captions[post.id] %}
       {%- elif post.media and not post.body %}{% set caption = post.media[0].caption %}
@@ -66,6 +74,7 @@
     </div>
     {%- else %}
     <div class="list">
+      {{ notes_block() }}
       {%- for post in posts %}
       <div class="post">
         {%- if post.thumb_uri %}<img src="{{ post.thumb_uri }}" width="{{ thumb }}" height="{{ thumb }}" alt="" />{% endif %}
@@ -101,9 +110,10 @@
       while (overflowing(container)) {
         var drop = null;
         for (var i = container.children.length - 1; i >= 0 && !drop; i--) {
-          if (!container.children[i].classList.contains("is-hero")) drop = container.children[i];
+          var c = container.children[i];
+          if (!c.classList.contains("is-hero") && !c.classList.contains("notes")) drop = c;
         }
-        if (!drop || container.children.length < 2) break;
+        if (!drop || container.querySelectorAll(".post").length < 2) break;
         drop.remove();
         fitText(container);
       }

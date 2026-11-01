@@ -105,6 +105,9 @@ def _tick() -> None:
         sent = check_due_reminders()
         if sent:
             logger.info("Sent %s reminder alert(s)", sent)
+        removed = store.remove_done_items()
+        if removed:
+            logger.info("Auto-removed %s done item(s)", removed)
     except Exception:
         logger.exception("Reminder check failed")
 

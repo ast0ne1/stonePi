@@ -141,8 +141,12 @@ def disabled_apps(db: Session) -> list[str]:
 
 def set_disabled_apps(db: Session, app_ids: Iterable[str]) -> list[str]:
     locked = set(SYSTEM_APP_IDS)
+    previous = set(disabled_apps(db))
     wanted = sorted({item for item in app_ids if item in APP_IDS and item not in locked})
     set_setting(db, DISABLED_APPS_KEY, json.dumps(wanted))
+    if previous != set(wanted):
+        # Cookies still list the old apps[] until re-login — drop every session.
+        revoke_all_sessions(db)
     return wanted
 
 
@@ -221,6 +225,51 @@ def enabled_app_ids(db: Session) -> list[str]:
     return [app_id for app_id in APP_IDS if app_id not in disabled]
 
 
+def _initial_admin_path():
+    from app.config import DATA_DIR
+
+    return DATA_DIR / "initial-admin.txt"
+
+
+def _write_initial_admin(username: str, password: str) -> None:
+    """Root-readable note of the first generated password (dev / non-install boots)."""
+    path = _initial_admin_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            f"username: {username}\npassword: {password}\n",
+            encoding="utf-8",
+        )
+        try:
+            path.chmod(0o600)
+        except OSError:
+            pass
+    except OSError:
+        pass
+
+
+def _read_initial_admin_password() -> str:
+    path = _initial_admin_path()
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    for line in text.splitlines():
+        if line.startswith("password:"):
+            return line.split(":", 1)[1].strip()
+    return ""
+
+
+def _first_admin_password() -> str:
+    """Password for the first admin account. Never silently fall back to ``admin``."""
+    configured = (env.admin_password or "").strip()
+    if configured:
+        return configured
+    password = secrets.token_urlsafe(12)
+    _write_initial_admin((env.admin_username or "admin").strip() or "admin", password)
+    return password
+
+
 def ensure_admin_user(db: Session) -> User:
     ensure_schema(db)
     existing = db.execute(select(User).where(User.is_admin.is_(True))).scalars().first()
@@ -231,11 +280,12 @@ def ensure_admin_user(db: Session) -> User:
         db.refresh(existing)
         return existing
     username = validate_username(env.admin_username or "admin")
+    password = _first_admin_password()
     user = User(
         id=str(uuid.uuid4()),
         username=username,
         display_name=env.admin_display_name or "Admin",
-        password_hash=passwords.hash_password(env.admin_password or "admin"),
+        password_hash=passwords.hash_password(password),
         enabled=True,
         is_admin=True,
     )
@@ -380,6 +430,8 @@ def update_user(
     password: str | None = None,
     phone_alerts: bool | None = None,
 ) -> User:
+    # Cookies carry adm/apps/perms — any change that alters those claims must revoke.
+    claims_changed = False
     if display_name is not None:
         user.display_name = display_name.strip() or user.username
     if enabled is not None:
@@ -399,6 +451,8 @@ def update_user(
             ).scalars().first()
             if others is None:
                 raise ValueError("Keep at least one enabled administrator.")
+        if bool(is_admin) != bool(user.is_admin):
+            claims_changed = True
         user.is_admin = bool(is_admin)
     if phone_alerts is not None:
         user.phone_alerts = bool(phone_alerts)
@@ -410,6 +464,9 @@ def update_user(
     if apps is not None or permissions is not None:
         current_apps = apps if apps is not None else granted_apps(user)
         set_grants(db, user, current_apps, permissions)
+        claims_changed = True
+    if claims_changed and user.enabled:
+        revoke_sessions(db, user.id)
     user.updated_at = utcnow()
     db.commit()
     db.refresh(user)
@@ -423,6 +480,7 @@ def delete_user(db: Session, user: User) -> None:
         ).scalars().first()
         if others is None:
             raise ValueError("Keep at least one administrator.")
+    revoke_sessions(db, user.id)
     db.delete(user)
     db.commit()
 
@@ -469,20 +527,46 @@ def get_session(db: Session, session_id: str) -> AuthSession | None:
     return row
 
 
+def _publish_revoked(session_id: str) -> None:
+    """Tell sibling apps (via the shared ledger) this cookie sid is dead."""
+    try:
+        from stonepi_auth.revocation import record_revoked
+
+        record_revoked(session_id, max_age=COOKIE_MAX_AGE)
+    except Exception:
+        pass
+
+
 def revoke_session(db: Session, session_id: str) -> None:
     row = db.get(AuthSession, session_id)
     if row is not None:
         db.delete(row)
         db.commit()
+    _publish_revoked(session_id)
 
 
 def revoke_sessions(db: Session, user_id: str, *, keep_session_id: str | None = None) -> None:
     rows = db.execute(select(AuthSession).where(AuthSession.user_id == user_id)).scalars().all()
+    dropped: list[str] = []
     for row in rows:
         if keep_session_id and row.id == keep_session_id:
             continue
+        dropped.append(row.id)
         db.delete(row)
     db.commit()
+    for sid in dropped:
+        _publish_revoked(sid)
+
+
+def revoke_all_sessions(db: Session) -> None:
+    """Drop every platform session (used when household-wide app access changes)."""
+    rows = db.execute(select(AuthSession)).scalars().all()
+    dropped = [row.id for row in rows]
+    for row in rows:
+        db.delete(row)
+    db.commit()
+    for sid in dropped:
+        _publish_revoked(sid)
 
 
 def change_own_password(
@@ -509,7 +593,7 @@ def change_own_password(
 
 
 def using_factory_admin(db: Session) -> bool:
-    """True when the first admin account still accepts the factory password."""
+    """True when the first admin account still accepts the first-boot password."""
     admin = (
         db.execute(select(User).where(User.is_admin.is_(True)).order_by(User.created_at.asc()))
         .scalars()
@@ -517,7 +601,10 @@ def using_factory_admin(db: Session) -> bool:
     )
     if admin is None:
         return False
-    factory = (env.admin_password or "admin").strip() or "admin"
+    # Install / run-dev set ADMIN_PASSWORD; a generated boot writes initial-admin.txt.
+    factory = (env.admin_password or "").strip() or _read_initial_admin_password()
+    if not factory:
+        return False
     # argon2 is deliberately slow (~0.2-0.4 s on a Pi) and this runs on every
     # admin page (/api/me). The answer only changes with the stored hash, so
     # remember it per hash: a password change gives a new hash and a fresh check.

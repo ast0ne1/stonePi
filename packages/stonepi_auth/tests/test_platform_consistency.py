@@ -86,6 +86,21 @@ def test_recover_unit_list_matches_catalog():
     assert units - expected <= background, sorted(units - expected - background)
 
 
+def test_every_icon_has_its_png_sizes():
+    """Favicons, the iPhone home-screen icon and manifests use PNGs rendered from each SVG
+    (packages/stonepi_brand/render_icons.py); Ripple and Radio once shipped without them."""
+    icons = ROOT / "packages" / "stonepi_brand" / "static" / "icons"
+    svgs = {p.stem for p in (icons / "apps").glob("*.svg")} | {p.stem for p in (icons / "system").glob("*.svg")}
+    assert {item["icon"] for item in APP_CATALOG if item.get("icon")} <= svgs
+    missing = [
+        f"{stem}-{size}.png"
+        for stem in sorted(svgs)
+        for size in (32, 180, 192, 512)
+        if not (icons / "png" / f"{stem}-{size}.png").is_file()
+    ]
+    assert not missing, "Run render_icons.py for: " + ", ".join(missing)
+
+
 def test_contract_app_labels_match_catalog_names():
     sys.path.insert(0, str(ROOT / "packages" / "stonepi_contracts"))
     try:

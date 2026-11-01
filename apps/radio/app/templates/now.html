@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Now Playing · Radio{% endblock %}
+{% block content %}
+<section class="hero now-hero">
+  <h1>Now Playing</h1>
+  <p class="lede">What’s playing, and where.</p>
+</section>
+
+{#- From 1024px the card and the presets sit side by side and fill the width (app.css). -#}
+<div class="now-layout">
+{% if now.browser %}
+{# This device: the page's own player (app.js) fills this card in and drives it. #}
+<section class="now-stage card stack" data-now-browser>
+  <button class="output-chip" type="button" data-open-outputs>{{ icon("speaker") }} <span data-output-name>This device</span> ▾</button>
+  <div class="now-art" aria-hidden="true">
+    <img alt="" width="160" height="160" hidden data-player-art />
+    <span data-player-art-fallback>{{ icon("listen") }}</span>
+  </div>
+  <div class="now-copy">
+    <p class="hint" data-player-status>Nothing playing</p>
+    <h2 data-player-title>Pick a station</h2>
+    <p class="now-song" hidden data-song></p>
+  </div>
+  <div class="transport-row">
+    <button class="transport-btn is-main" type="button" data-player-toggle aria-label="Play" disabled><span data-icon-play>{{ icon("play") }}</span><span data-icon-pause hidden>{{ icon("pause") }}</span></button>
+    <button class="transport-btn" type="button" data-player-stop aria-label="Stop" disabled>{{ icon("stop") }}</button>
+  </div>
+  <div class="volume-row">
+    <button class="icon-btn" type="button" data-player-step="-0.05" aria-label="Volume down">{{ icon("volume-down") }}</button>
+    <input class="volume-slider" type="range" min="0" max="1" step="0.01" value="0.8" aria-label="Volume" data-player-volume />
+    <button class="icon-btn" type="button" data-player-step="0.05" aria-label="Volume up">{{ icon("volume-up") }}</button>
+    <output class="volume-value" data-player-volume-value>80%</output>
+  </div>
+</section>
+{% else %}
+<section class="now-stage card stack" data-now-server{% if now.playing %} data-now-playing{% endif %}>
+  <button class="output-chip" type="button" data-open-outputs>{{ icon("speaker") }} <span>{{ now.output_name or 'StonePi' }}</span> ▾</button>
+  {#- The player's own artwork when Radio can serve it (Odio), else the station's logo (speakers
+      don't say); never the player's raw address, which only the Pi can reach (a broken image
+      on a phone). A logo that still fails goes, leaving the icon. -#}
+  {% set logo = (art_url(now.art_url) if now.art_url else "") or (art_url(now.station_logo) if now.title and now.station_logo else "") %}
+  <div class="now-art" aria-hidden="true">
+    {% if logo %}<img src="{{ logo }}" alt="" width="160" height="160" data-art-fallback />{% endif %}
+    <span{% if logo %} hidden{% endif %} data-art-icon>{{ icon("listen") }}</span>
+  </div>
+  <div class="now-copy">
+    <p class="hint">{{ now.playback_status or 'Stopped' }} on {{ now.output_name or 'StonePi' }}</p>
+    <h2>{{ now.title or 'Nothing playing' }}</h2>
+    {#- The song, if the station sends it (app.js asks /api/song). -#}
+    <p class="now-song" hidden data-song></p>
+    {% if now.artist %}<p class="lede">{{ now.artist }}</p>{% endif %}
+    {% if now.error %}<p class="banner">{{ now.error }}</p>{% endif %}
+  </div>
+  <div class="transport-row">
+    <form method="post" action="/transport">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="action" value="play_pause" />
+      <input type="hidden" name="next" value="/now" />
+      <button class="transport-btn is-main" type="submit" aria-label="{{ 'Pause' if now.playing else 'Play' }}">
+        {{ icon("pause") if now.playing else icon("play") }}
+      </button>
+    </form>
+    <form method="post" action="/transport">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="action" value="stop" />
+      <input type="hidden" name="next" value="/now" />
+      <button class="transport-btn" type="submit" aria-label="Stop">{{ icon("stop") }}</button>
+    </form>
+  </div>
+  {# Volume applies as the slider moves (app.js posts it); − / + step 5%. Without JS, Set applies it. #}
+  {% set vol = ((now.volume if now.volume is not none else 0.6) * 100)|round|int %}
+  <form method="post" action="/volume" class="volume-row" data-volume>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="next" value="/now" />
+    <button class="icon-btn" type="submit" name="delta" value="-0.05" aria-label="Volume down">{{ icon("volume-down") }}</button>
+    <input class="volume-slider" type="range" name="level" min="0" max="1" step="0.01" value="{{ '%.2f'|format(vol / 100) }}" aria-label="Volume" />
+    <button class="icon-btn" type="submit" name="delta" value="0.05" aria-label="Volume up">{{ icon("volume-up") }}</button>
+    <output class="volume-value" data-volume-value>{{ vol }}%</output>
+    <noscript><button class="btn btn-ghost" type="submit">Set</button></noscript>
+  </form>
+</section>
+{% endif %}
+
+{#- Presets: your four latest favourites (newest star first), or four you chose
+    (Settings → Display). The one on air is marked:
+    a speaker or StonePi by its title here, This device by app.js (data-preset-url). -#}
+{% if favorites %}
+<section class="stack now-presets">
+  <div class="preset-head">
+    <h2 class="section-heading">{{ icon("star") }} Presets</h2>
+    <p class="hint">{% if presets_mode == 'set' %}Your chosen four{% else %}Your four latest favourites{% endif %} · <a class="text-link" href="/settings?tab=general">Change</a></p>
+  </div>
+  <div class="preset-grid">
+    {% for station in favorites %}
+    {% set logo = art_url(station.favicon) %}
+    {% set label = station_label(station.name) %}
+    {% set mono = (station.name or '?')|trim %}
+    <form method="post" action="/play" class="station-play-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="station_id" value="{{ station.id }}" />
+      <input type="hidden" name="url" value="{{ station.stream_url }}" />
+      <input type="hidden" name="name" value="{{ station.name }}" />
+      <input type="hidden" name="favicon" value="{{ station.favicon or '' }}" />
+      <input type="hidden" name="next" value="/now" />
+      <button class="preset-tile{% if not now.browser and now.title and now.title == station.name %} is-on{% endif %}" type="submit" data-preset-url="{{ station.stream_url }}" title="Play {{ station.name }}">
+        <span class="preset-art" aria-hidden="true">
+          <span class="preset-mono">{{ mono[0]|upper if mono else '?' }}</span>
+          {% if logo %}<img src="{{ logo }}" alt="" width="44" height="44" loading="lazy" data-station-logo />{% endif %}
+        </span>
+        <span class="preset-name">{{ label[0] }}</span>
+      </button>
+    </form>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+</div>
+{% endblock %}

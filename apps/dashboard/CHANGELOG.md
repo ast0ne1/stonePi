@@ -1,5 +1,17 @@
 # Changelog — Dashboard
 
+## 0.6.0 — 2026-11-01
+
+### Security
+- **Car Thing service restart/details** use signed internal v2 (body hash), so a loopback
+  caller can't reuse headers to swap the unit name within the skew window.
+- **TRMNL automation push** to Notify is signed the same way.
+- CSRF checks also require Origin/Referer to match Host (cross-port double-submit).
+
+### Changed
+- **Health → Listening knows Radio's player:** once Odio is installed (the installer sets it up for Radio), its ports (MPD, the Odio API and myMPD on loopback; AirPlay and Spotify Connect on the home network) are expected, not listed as unexpected.
+- The Radio icon in the app switcher and Health.
+
 ## 0.5.0 — 2026-10-25
 
 ### Added

@@ -329,16 +329,29 @@ def create_app(config: dict | None = None) -> Flask:
         if app.config.get("TESTING"):
             return True
         return csrf_ok_request(
-            request.cookies,
+            request,
             form_token=request.form.get("csrf_token"),
             header_token=_csrf_header(),
         )
+
+    def _safe_referer(value: str | None) -> str | None:
+        """Same-host Referer only — a forged cross-site POST must not bounce to evil.example."""
+        if not value:
+            return None
+        from urllib.parse import urlsplit
+
+        parts = urlsplit(value)
+        if parts.netloc and parts.netloc != request.host:
+            return None
+        if parts.scheme and parts.scheme not in ("http", "https"):
+            return None
+        return value
 
     def _csrf_reject(message: str = "That form expired. Refresh and try again.", location: str | None = None):
         if wants_json():
             return jsonify({"ok": False, "message": message}), 403
         flash(message, "error")
-        return redirect(location or request.referrer or url_for("pages_list"))
+        return redirect(location or _safe_referer(request.referrer) or url_for("pages_list"))
 
     def _require_csrf(location: str | None = None):
         if _csrf_valid():
@@ -710,8 +723,8 @@ def create_app(config: dict | None = None) -> Flask:
             return jsonify({"ok": False, "message": str(exc)}), 400
         except httpx.HTTPStatusError as exc:
             return jsonify({"ok": False, "message": f"Upstream HTTP {exc.response.status_code}"}), 502
-        except httpx.HTTPError as exc:
-            return jsonify({"ok": False, "message": f"Fetch failed: {exc}"}), 502
+        except httpx.HTTPError:
+            return jsonify({"ok": False, "message": "Couldn't fetch that page."}), 502
         # Remote bytes on our origin: sandbox them in case the caller opens this URL directly.
         return apply_hosted_content_headers(Response(body, mimetype=content_type or "application/octet-stream"))
 
@@ -1211,9 +1224,9 @@ def create_app(config: dict | None = None) -> Flask:
             backup.restore_backup(upload.read())
         except ValueError as exc:
             return json_or_redirect(str(exc), settings_path("backup"), error=True)
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logging.getLogger("fileserve").exception("restore failed")
-            return json_or_redirect(f"Could not restore the backup: {exc}", settings_path("backup"), error=True)
+            return json_or_redirect("Could not restore the backup.", settings_path("backup"), error=True)
         clear_session()
         return json_or_redirect(
             "Backup restored. Sign in again if your password changed.",
@@ -1248,9 +1261,9 @@ def create_app(config: dict | None = None) -> Flask:
             result = update.install_latest(g.db)
         except ValueError as exc:
             return json_or_redirect(str(exc), settings_path("update"), error=True)
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logging.getLogger("fileserve").exception("update install failed")
-            return json_or_redirect(f"Could not install the update: {exc}", settings_path("update"), error=True)
+            return json_or_redirect("Could not install the update.", settings_path("update"), error=True)
         update.schedule_restart()
         return json_or_redirect(result.get("message") or "Installed. Restarting…", settings_path("update"))
 
@@ -1266,9 +1279,9 @@ def create_app(config: dict | None = None) -> Flask:
             update.rollback_code()
         except ValueError as exc:
             return json_or_redirect(str(exc), settings_path("backup"), error=True)
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logging.getLogger("fileserve").exception("update rollback failed")
-            return json_or_redirect(f"Could not roll back: {exc}", settings_path("backup"), error=True)
+            return json_or_redirect("Could not roll back.", settings_path("backup"), error=True)
         update.schedule_restart()
         return json_or_redirect("Rolled back. Restarting…", settings_path("backup"))
 
@@ -1290,7 +1303,7 @@ def create_app(config: dict | None = None) -> Flask:
 
     @app.get("/hosted/view")
     def hosted_viewer():
-        """A hosted page or file in a frame under a thin auto-hiding bar (Back, title, Open in Safari).
+        """A hosted page or file in a frame under a thin auto-hiding bar (Back and title).
 
         Used from the iOS home-screen app, which has no browser bar to go back with (U27). The
         frame loads the page's own URL, so its sandbox CSP and any password prompt still apply.

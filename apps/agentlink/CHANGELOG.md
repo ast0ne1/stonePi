@@ -1,5 +1,17 @@
 # Changelog — AgentLink
 
+## 0.6.0 — 2026-11-01
+
+### Added
+- **Sport for Pebble:** `get_sport` (what's on TV and streams from SportGuide, the owner's teams first, with channels; `when` = now, today, tonight, tomorrow or this_weekend, and an optional sport or league) and `get_my_teams` (each of the owner's Teams to Watch with its next match). The planner picks the time and sport from the question ("any football on tonight?", "is the NRL on this weekend?").
+- **Price alerts for Pebble:** `get_price_alerts` reads the owner's PriceWatch watches: deals that hit their target first (price, shop, when found), then the rest closest to target. It only reads PriceWatch's last checks, so a question never spends Bright Data quota.
+- `get_today` gains a **sport** line (the owner's teams playing today), and Pebble is **happy** when one of their teams plays later today ("Arsenal at 20:00"), after events.
+- All three are personal: off for each Pebble until switched on in Sidekick, and they need the owner's SportGuide or PriceWatch grant. Sidekick activity names them.
+
+### Changed
+- The facts sent with an ask may be up to 12,000 characters (was 9,000), room for the sport and price reads.
+- Sidekick's overview lists each tool's ``app`` so Notify can group "What Pebble can use" by app.
+
 ## 0.5.0 — 2026-10-25
 
 ### Added

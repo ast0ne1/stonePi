@@ -1,0 +1,95 @@
+{% from "_icons.html" import icon %}
+{% set hue = (station.id or station.name or 'x')|length % 8 %}
+{% set tags = (station.tags or '').split(',') if station.tags else [] %}
+{% set mono = (station.name or '?')|trim %}
+{% set letter = mono[0]|upper if mono else '?' %}
+{% set logo = art_url(station.favicon) %}
+{# Stars and the list buttons come back to this page (search included); Play goes to next_path. #}
+{% set here = request.url.path ~ ('?' ~ request.url.query if request.url.query else '') %}
+<article class="station-card hue-{{ hue }}{% if station.favorite %} is-fav{% endif %}">
+  <div class="station-cover">
+    <div class="station-art" aria-hidden="true">
+      <span class="station-mono">{{ letter }}</span>
+      <span class="station-wave"></span>
+      {% if logo %}
+      <img src="{{ logo }}" alt="" width="160" height="160" loading="lazy" data-station-logo />
+      {% endif %}
+    </div>
+    <form class="station-play" method="post" action="/play">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="station_id" value="{{ station.id }}" />
+      <input type="hidden" name="url" value="{{ station.stream_url }}" />
+      <input type="hidden" name="name" value="{{ station.name }}" />
+      <input type="hidden" name="favicon" value="{{ station.favicon or '' }}" />
+      <input type="hidden" name="next" value="{{ next_path or '/now' }}" />
+      <button class="station-play-btn" type="submit" aria-label="Play {{ station.name }}">
+        {{ icon("play") }}
+      </button>
+    </form>
+    {% if station.favorite %}
+    <form class="station-fav" method="post" action="/favorites/remove">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="station_id" value="{{ station.id }}" />
+      <input type="hidden" name="next" value="{{ here }}" />
+      <button class="station-fav-btn is-on" type="submit" title="Remove favorite" aria-label="Remove {{ station.name }} from favorites">
+        {{ icon("star") }}
+      </button>
+    </form>
+    {% else %}
+    <form class="station-fav" method="post" action="/favorites/add">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="station_id" value="{{ station.id }}" />
+      <input type="hidden" name="name" value="{{ station.name }}" />
+      <input type="hidden" name="url" value="{{ station.stream_url }}" />
+      <input type="hidden" name="favicon" value="{{ station.favicon or '' }}" />
+      <input type="hidden" name="tags" value="{{ station.tags or '' }}" />
+      <input type="hidden" name="country" value="{{ station.country or '' }}" />
+      <input type="hidden" name="next" value="{{ here }}" />
+      <button class="station-fav-btn" type="submit" title="Save favorite" aria-label="Save {{ station.name }}">
+        {{ icon("star-outline") }}
+      </button>
+    </form>
+    {% endif %}
+  </div>
+  {% set label = station_label(station.name) %}
+  <div class="station-body">
+    <h2 class="station-title" title="{{ station.name }}">{{ label[0] }}</h2>
+    {% if label[1] %}<p class="station-desc">{{ label[1] }}</p>{% endif %}
+    {% if station.country %}
+    <p class="station-place">{{ station.country }}</p>
+    {% endif %}
+    {% if tags %}
+    <ul class="station-tags" aria-label="Tags">
+      {% for tag in tags[:3] %}
+      {% set t = tag|trim %}
+      {% if t %}<li>{{ t }}</li>{% endif %}
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {# Discover marks stations already in Home stations (removing is on My Radio); only admins add or remove. #}
+    {% if mark_listed and station.in_list %}
+    <p class="station-listed">{{ icon("check") }} In Home stations</p>
+    {% elif list_actions and can_manage %}
+    {% if station.in_list %}
+    <form class="station-list-action is-remove" method="post" action="/stations/remove" data-confirm="Remove {{ station.name }}?" data-confirm-detail="It leaves Home stations for everyone. Favorites keep their own copy." data-confirm-ok="Remove">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="station_id" value="{{ station.id }}" />
+      <input type="hidden" name="next" value="{{ here }}" />
+      <button class="station-remove-btn" type="submit" aria-label="Remove {{ station.name }} from Home stations" title="Remove from Home stations">{{ icon("trash") }}</button>
+    </form>
+    {% else %}
+    <form class="station-list-action" method="post" action="/stations/add">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="name" value="{{ station.name }}" />
+      <input type="hidden" name="url" value="{{ station.stream_url }}" />
+      <input type="hidden" name="favicon" value="{{ station.favicon or '' }}" />
+      <input type="hidden" name="tags" value="{{ station.tags or '' }}" />
+      <input type="hidden" name="country" value="{{ station.country or '' }}" />
+      <input type="hidden" name="homepage" value="{{ station.homepage or '' }}" />
+      <input type="hidden" name="next" value="{{ here }}" />
+      <button class="station-list-btn" type="submit">{{ icon("plus") }} Add to Home</button>
+    </form>
+    {% endif %}
+    {% endif %}
+  </div>
+</article>

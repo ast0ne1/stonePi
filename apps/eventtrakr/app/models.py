@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, UniqueConstraint, ForeignKey
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, UniqueConstraint, ForeignKey
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -266,4 +266,63 @@ class EventUpdate(Base):
     update_kind: Mapped[str] = mapped_column(String(40), default="info")
     summary: Mapped[str] = mapped_column(Text, default="")
     priority: Mapped[str] = mapped_column(String(20), default="normal")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class EventSighting(Base):
+    """One source an event was seen on (U33). An event merged from several
+    sources has one row per source; the Event row is the merged record."""
+
+    __tablename__ = "event_sightings"
+    __table_args__ = (
+        UniqueConstraint("event_id", "source_id", name="uq_sighting_event_source"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[int] = mapped_column(Integer, ForeignKey("events.id"), nullable=False, index=True)
+    source_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    # Fingerprint of the event as this source lists it, so a later sync finds
+    # the merged event straight away instead of matching it again.
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    url: Mapped[str] = mapped_column(String(1000), default="")
+    title: Mapped[str] = mapped_column(String(500), default="")
+    start_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    location: Mapped[str] = mapped_column(String(300), default="")
+    cost: Mapped[str] = mapped_column(String(100), default="")
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # Set when the source stopped listing it; the event is only cancelled once
+    # every sighting has dropped.
+    dropped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DedupeExclusion(Base):
+    """"Not the same event": a split sighting must never be merged into this event again."""
+
+    __tablename__ = "dedupe_exclusions"
+    __table_args__ = (
+        UniqueConstraint("event_id", "fingerprint", name="uq_dedupe_exclusion"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    event_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Place(Base):
+    """A location string's coordinates for the map (F18), shared by every user."""
+
+    __tablename__ = "places"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(300), unique=True)  # services/places.place_key()
+    query: Mapped[str] = mapped_column(String(300), default="")
+    lat: Mapped[float | None] = mapped_column(Float, nullable=True)
+    lon: Mapped[float | None] = mapped_column(Float, nullable=True)
+    display_name: Mapped[str] = mapped_column(String(500), default="")
+    # pending · found · not_found · skipped · manual (moved by hand, never looked up again)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    looked_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

@@ -6,8 +6,11 @@ import ipaddress
 import socket
 from urllib.parse import urlparse
 
+import httpx
+
 _BLOCKED_HOSTS = frozenset({"localhost", "metadata.google.internal"})
 _LOOPBACK_LITERALS = frozenset({"127.0.0.1", "::1", "0:0:0:0:0:0:0:1"})
+_CGNAT = ipaddress.ip_network("100.64.0.0/10")
 
 
 def _normalize_host(host: str) -> str:
@@ -18,16 +21,19 @@ def _normalize_host(host: str) -> str:
 
 
 def _blocked_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    if ip.is_unspecified or ip.is_multicast or ip.is_reserved:
+    if ip.is_unspecified or ip.is_multicast or ip.is_reserved or ip.is_private:
         return True
     if ip.is_loopback or ip.is_link_local:
+        return True
+    if ip.version == 4 and ip in _CGNAT:
         return True
     if ip == ipaddress.ip_address("169.254.169.254"):
         return True
     return False
 
 
-def validate_webhook_url(raw: str) -> str:
+def resolve_webhook(raw: str) -> tuple[str, str]:
+    """Return ``(url, ip)`` after the SSRF checks. Connect to ``ip``, not the name."""
     value = (raw or "").strip()
     if not value:
         raise ValueError("Add a Display webhook URL first.")
@@ -52,6 +58,7 @@ def validate_webhook_url(raw: str) -> str:
         infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except socket.gaierror as exc:
         raise ValueError("Could not resolve that host.") from exc
+    pinned = ""
     for info in infos:
         address = info[4][0]
         try:
@@ -60,4 +67,37 @@ def validate_webhook_url(raw: str) -> str:
             continue
         if _blocked_ip(resolved):
             raise ValueError("That host resolves to a blocked address.")
-    return value
+        if not pinned:
+            pinned = address
+    if not pinned:
+        raise ValueError("Could not resolve that host.")
+    return value, pinned
+
+
+def validate_webhook_url(raw: str) -> str:
+    url, _ip = resolve_webhook(raw)
+    return url
+
+
+class PinnedTransport(httpx.BaseTransport):
+    """Connect to the address ``resolve_webhook`` just checked, with the original name for TLS."""
+
+    def __init__(self, ip: str, inner: httpx.BaseTransport | None = None):
+        self._ip = ip
+        self._inner = inner if inner is not None else httpx.HTTPTransport()
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        host = request.url.host
+        headers = request.headers.copy()
+        headers["host"] = host
+        pinned = httpx.Request(
+            request.method,
+            request.url.copy_with(host=self._ip),
+            headers=headers,
+            content=request.content,
+            extensions={**dict(request.extensions), "sni_hostname": host},
+        )
+        return self._inner.handle_request(pinned)
+
+    def close(self) -> None:
+        self._inner.close()

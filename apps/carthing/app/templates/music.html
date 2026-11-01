@@ -1,4 +1,5 @@
 {% import "_music.html" as m %}
+{% import "_radio.html" as r %}
 {% from "_strip.html" import strip %}
 {#- Now Playing (F7). panel.js polls /np every 3 s while this is on screen. The header follows the
     config's default header, like the pages (a tap or dial turn here doesn't bring it back). -#}
@@ -7,6 +8,9 @@
   {{ strip(hd, "Music", dots, 0, False, False, weather) }}
   {% if not np.connected %}
   <p class="empty">Connect Spotify in Notify → Displays → Car Thing → Setup.</p>
+  {% elif skin %}
+  {#- Look → Music → Spotify plays in Radio's theme: the Radio player, driving Spotify. -#}
+  <div class="music-skin" data-skin-music data-skin-key="{{ skin.key }}">{{ r.player(skin.now, skin.opts, "full") }}</div>
   {% else %}
   {{ m.now_playing(np, opts, "np2" if hd.mode != "always" else "np2 np2-card") }}
   {% endif %}

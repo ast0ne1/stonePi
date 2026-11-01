@@ -17,7 +17,7 @@ from stonepi_auth.prefix import clean_prefix
 
 configure_all()
 
-app = FastAPI(title="StonePi Notify")
+app = FastAPI(title="StonePi Notify", docs_url=None, redoc_url=None, openapi_url=None)
 _prefix = clean_prefix(env.stonepi_prefix)
 if _prefix:
     from stonepi_auth.prefix import PrefixMiddleware

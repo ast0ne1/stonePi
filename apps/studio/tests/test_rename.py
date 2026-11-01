@@ -84,7 +84,7 @@ def test_rename_rejects_expired_form(tmp_path, monkeypatch):
     from app import routes
 
     client, project, store = _client(tmp_path, monkeypatch, GAME_REPLY)
-    monkeypatch.setattr(routes, "csrf_ok", lambda *_a: False)
+    monkeypatch.setattr(routes, "csrf_ok_request", lambda *_a, **_k: False)
     resp = client.post(f"/p/{project['id']}/rename", data={"name": "Nope"}, follow_redirects=False)
     assert resp.headers["location"] == f"/p/{project['id']}?err=Form+expired"
     assert store.get_project(project["id"])["name"] == "Snake"

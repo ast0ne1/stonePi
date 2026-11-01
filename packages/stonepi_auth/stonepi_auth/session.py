@@ -105,6 +105,15 @@ def decode_session(value: str | None, secret: str) -> PlatformUser | None:
         return None
     if int(data.get("exp") or 0) < time.time():
         return None
+    session_id = str(data.get("sid") or "")
+    if session_id:
+        try:
+            from .revocation import is_revoked
+
+            if is_revoked(session_id):
+                return None
+        except Exception:  # noqa: BLE001 — fail closed: unreadable ledger must not revive sessions
+            return None
     user_id = str(data.get("uid") or "")
     username = str(data.get("u") or "")
     if not user_id or not username:
@@ -126,7 +135,7 @@ def decode_session(value: str | None, secret: str) -> PlatformUser | None:
         is_admin=is_admin,
         apps=apps,
         permissions=permissions,
-        session_id=str(data.get("sid") or ""),
+        session_id=session_id,
         exp=int(data.get("exp") or 0),
         using_factory_admin=bool(data.get("fac")) and is_admin,
         phone_alerts=(bool(data["pa"]) or is_admin) if "pa" in data else None,
@@ -184,7 +193,7 @@ def safe_next(value: str | None, *, allowed_ports: set[int] | None = None) -> st
     host = (parsed.hostname or "").lower()
     if not _host_allowed_for_redirect(host):
         return "/"
-    ports = allowed_ports or {80, 443, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009, 8010, 8011, 8012, 8017, 8080, 8081, 8085}
+    ports = allowed_ports or {80, 443, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009, 8010, 8011, 8012, 8016, 8017, 8080, 8081, 8085}
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
     if port not in ports:
         return "/"

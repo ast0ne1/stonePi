@@ -35,7 +35,7 @@ def _get_reminders(user_id: str, _params: dict) -> dict:
     for rem in store.list_items()["reminders"]:
         text = str(rem.get("text") or "").strip()
         owner = str(rem.get("assignee_user") or "").strip()
-        if not text or (owner and owner != user_id):
+        if not text or rem.get("done") or (owner and owner != user_id):
             continue
         due = str(rem.get("due") or "").strip()[:10]
         mine.append({

@@ -7,7 +7,11 @@ from stonepi_auth.session import (
 from stonepi_auth.prefix import prefix_path, rewrite_text, strip_prefix
 
 
-def test_round_trip_session():
+def test_round_trip_session(tmp_path, monkeypatch):
+    monkeypatch.setenv("STONEPI_VAULT_DIR", str(tmp_path))
+    from stonepi_auth.revocation import clear_for_tests
+
+    clear_for_tests()
     token = encode_session(
         secret="secret",
         user_id="abc",
@@ -28,6 +32,72 @@ def test_round_trip_session():
     assert user.using_factory_admin is True
     assert factory_admin_warning(user) is True
     assert decode_session(token, "other") is None
+
+
+def test_revoked_session_is_rejected(tmp_path, monkeypatch):
+    monkeypatch.setenv("STONEPI_VAULT_DIR", str(tmp_path))
+    from stonepi_auth.revocation import clear_for_tests, record_revoked
+
+    clear_for_tests()
+    token = encode_session(
+        secret="secret",
+        user_id="abc",
+        username="adam",
+        display_name="Adam",
+        is_admin=False,
+        apps=["dashboard"],
+        session_id="sid-revoked",
+    )
+    assert decode_session(token, "secret") is not None
+    record_revoked("sid-revoked")
+    assert decode_session(token, "secret") is None
+
+
+def test_corrupt_revocation_ledger_rejects_session(tmp_path, monkeypatch):
+    monkeypatch.setenv("STONEPI_VAULT_DIR", str(tmp_path))
+    from stonepi_auth.revocation import clear_for_tests
+
+    clear_for_tests()
+    token = encode_session(
+        secret="secret",
+        user_id="abc",
+        username="adam",
+        display_name="Adam",
+        is_admin=False,
+        apps=["dashboard"],
+        session_id="sid-corrupt",
+    )
+    assert decode_session(token, "secret") is not None
+    clear_for_tests()
+    (tmp_path / "revoked_sessions.json").write_text("{not-json", encoding="utf-8")
+    assert decode_session(token, "secret") is None
+
+
+def test_origin_ok_blocks_cross_port():
+    from stonepi_auth.csrf import csrf_ok_request, origin_ok
+
+    assert origin_ok("http://127.0.0.1:8005", "127.0.0.1:8011") is False
+    assert origin_ok("http://127.0.0.1:8011", "127.0.0.1:8011") is True
+    assert origin_ok(None, "127.0.0.1:8011") is True  # non-browser
+    assert origin_ok(None, "127.0.0.1:8011", referer="http://evil.example/") is False
+    assert (
+        csrf_ok_request(
+            {"stonepi_csrf": "tok"},
+            header_token="tok",
+            origin="http://127.0.0.1:8005",
+            host="127.0.0.1:8011",
+        )
+        is False
+    )
+    assert (
+        csrf_ok_request(
+            {"stonepi_csrf": "tok"},
+            header_token="tok",
+            origin="http://127.0.0.1:8011",
+            host="127.0.0.1:8011",
+        )
+        is True
+    )
 
 
 def test_factory_flag_requires_admin():

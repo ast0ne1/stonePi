@@ -13,7 +13,7 @@ from app.services.scrapers.cphpost import CphPostExtractor, with_date_window as 
 from app.services.scrapers.residentadvisor import ResidentAdvisorExtractor, with_date_window as with_ra_date_window
 from app.services.scrapers.songkick import with_date_window as with_songkick_date_window
 from app.services.scrapers.bandsintown import with_date_window as with_bandsintown_date_window
-from app.services.scrapers.brugbyen import BrugbyenExtractor, with_date_window as with_brugbyen_date_window
+from app.services.scrapers.brugbyen import BrugbyenExtractor, is_kk_event_site, with_date_window as with_brugbyen_date_window
 from app.services import brightdata
 from app.services.scrapers import brightdata_facebook
 
@@ -565,6 +565,52 @@ def test_brugbyen_with_date_window():
     assert "dates%5Bmax%5D=" in url
 
 
+SAMPLE_LOKALUDVALG_HTML = """
+<div class="node node--type-event card-grid-item">
+  <a href="/kalender-0/repair-cafe">
+    <div class="node__content">
+      <div class="pre-title">Valby Kulturhus</div>
+      <div class="title"><h3 class="title"><span>Repair Café Valby</span></h3></div>
+      <div class="footer"><div class="field field--name-scheduled-dates field__items">
+        <div class="field__item">Næste gang <br><div class="date-text">Søn. 08. nov. 2026 Kl. 10 - 12</div></div>
+      </div></div>
+    </div>
+  </a>
+</div>
+<div class="node node--type-event card-grid-item">
+  <a href="/kalender-0/lokaludvalgsmoede">
+    <div class="node__content">
+      <div class="pre-title">Fishtank</div>
+      <div class="title"><h3 class="title"><span>Lokaludvalgsmøde</span></h3></div>
+      <div class="footer"><div class="field field--name-scheduled-dates field__items">
+        <div class="field__item"><div class="date-text">Ons. 18. nov. 2026 Kl. 18.30 - 21</div></div>
+      </div></div>
+    </div>
+  </a>
+</div>
+"""
+
+
+def test_lokaludvalg_danish_dates_and_committee_meetings():
+    events = BrugbyenExtractor().extract(SAMPLE_LOKALUDVALG_HTML, "https://valbylokaludvalg.kk.dk/kalender")
+    assert [e.start_time for e in events] == [
+        datetime(2026, 11, 8, 10, 0, tzinfo=timezone.utc),
+        datetime(2026, 11, 18, 18, 30, tzinfo=timezone.utc),
+    ]
+    assert events[0].category_key is None
+    assert events[1].category_key == "committee-meetings"
+    assert events[0].url == "https://valbylokaludvalg.kk.dk/kalender-0/repair-cafe"
+
+
+def test_lokaludvalg_routing_and_date_window():
+    assert is_kk_event_site("https://vesterbrolokaludvalg.kk.dk/kalender-0")
+    assert not is_kk_event_site("https://www.kk.dk/kalender")
+    assert "dates%5Bmin%5D=" in with_brugbyen_date_window("https://amagervestlokaludvalg.kk.dk/foelg-med/kalender-events", 7)
+    # An event's own page is not a listing, so it's left alone
+    detail = "https://vesterbrolokaludvalg.kk.dk/kalender-0/green-friday-paa-vesterbro"
+    assert with_brugbyen_date_window(detail, 7) == detail
+
+
 def _make_mock_client(post_response=None, get_responses=None):
     mock_client = MagicMock()
     mock_client.__enter__.return_value = mock_client
@@ -772,3 +818,19 @@ def test_ics_feed_extractor():
     assert ev.title == "London Python Dev Meetup"
     assert "Skills Matter" in ev.location
     assert ev.start_time == datetime(2026, 9, 20, 18, 0, tzinfo=timezone.utc)
+
+
+def test_read_schedule_expands_repeats():
+    from app.services.scrapers.brugbyen import read_schedule
+
+    html = """<script type="application/ld+json">{"@graph": [{"@type": "Event", "eventSchedule": [
+      {"@type": "Schedule", "startDate": "2026-11-01", "endDate": "2026-11-22", "startTime": "10:00", "endTime": "14:00",
+       "repeatFrequency": "P1W", "byDay": ["https://schema.org/Sunday"]},
+      {"@type": "Schedule", "startDate": "2026-12-01", "endDate": "2026-12-03", "startTime": "10:00", "endTime": "17:00"}
+    ]}]}</script>"""
+    dates = read_schedule(html)
+    sundays = [d for d in dates if d[0].month == 11]
+    assert [s.day for s, _ in sundays] == [1, 8, 15, 22]
+    assert all(e.day == s.day and e.hour == 14 for s, e in sundays)  # each ends the same day
+    run = [d for d in dates if d[0].month == 12]
+    assert run == [(datetime(2026, 12, 1, 10, tzinfo=timezone.utc), datetime(2026, 12, 3, 17, tzinfo=timezone.utc))]

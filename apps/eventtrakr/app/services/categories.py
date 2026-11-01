@@ -17,6 +17,8 @@ DEFAULT_CATEGORIES = [
     ("arts", "Arts"),
     ("sports", "Sports"),
     ("family", "Family"),
+    ("committee-meetings", "Committee meetings"),
+    ("flea-markets", "Flea markets"),
 ]
 
 

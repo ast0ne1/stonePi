@@ -117,20 +117,28 @@ def read_temp_c() -> int | None:
         return None
 
 
+def format_uptime(seconds: float | int) -> str:
+    """One short token for narrow tiles (TRMNL System's Up column): ``20d``, ``4h``, ``45m``.
+
+    A two-part string like ``20d 4h`` wraps and gets clipped on a 4-column widget.
+    """
+    total = max(0, int(seconds))
+    days, rem = divmod(total, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes = rem // 60
+    if days:
+        return f"{days}d"
+    if hours:
+        return f"{hours}h"
+    return f"{minutes}m"
+
+
 def read_uptime() -> str:
     if os.name == "nt":
         return "local"
     try:
         seconds = float(Path("/proc/uptime").read_text(encoding="utf-8").split()[0])
-        total = int(seconds)
-        days, rem = divmod(total, 86400)
-        hours, rem = divmod(rem, 3600)
-        minutes = rem // 60
-        if days:
-            return f"{days}d {hours}h"
-        if hours:
-            return f"{hours}h {minutes}m"
-        return f"{minutes}m"
+        return format_uptime(seconds)
     except Exception:
         return "—"
 
@@ -157,7 +165,8 @@ def relative_when(stamp: str | None) -> str:
         if delta.days == 1:
             return "Yesterday"
         if delta.days < 14:
-            return f"{delta.days} days ago"
+            # Short for TRMNL Storage's Backup column ("6 days ago" wraps and clips).
+            return f"{delta.days}d ago"
         return dt.astimezone(timezone.utc).strftime("%d %b")
     except Exception:
         return text[:19].replace("T", " ")
@@ -407,7 +416,7 @@ def _sample() -> dict[str, Any]:
         cpu=12,
         mem=38,
         temp=47,
-        uptime="6d 4h",
+        uptime="6d",
         now=datetime(2026, 1, 1, 9, 30, tzinfo=timezone.utc),
     ) | {"backup_when": "6h ago", "refreshed_ago": "2m ago"}
 

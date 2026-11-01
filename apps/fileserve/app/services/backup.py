@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import sqlite3
+import stat
 import zipfile
 from datetime import datetime, timezone
 from io import BytesIO
@@ -17,6 +18,23 @@ from app import db as database
 FORMAT = "fileserve-backup"
 FORMAT_VERSION = 1
 DB_NAME = "fileserve.db"
+
+
+def _safe_zip_target(dest: Path, relative: str) -> Path:
+    """Resolve a zip member under ``dest``; reject ``..``, absolute paths and escapes."""
+    relative = str(relative or "").replace("\\", "/").lstrip("/")
+    parts = Path(relative).parts
+    if not relative or relative.startswith("/") or ".." in parts or (parts and ":" in parts[0]):
+        raise ValueError(f"Unsafe path in backup: {relative or '/'}")
+    target = (dest / relative).resolve()
+    root = dest.resolve()
+    if target != root and root not in target.parents:
+        raise ValueError(f"Unsafe path in backup: {relative}")
+    return target
+
+
+def _zip_member_is_symlink(info: zipfile.ZipInfo) -> bool:
+    return stat.S_ISLNK(info.external_attr >> 16)
 
 
 def _timestamp() -> str:
@@ -123,10 +141,13 @@ def restore_backup(payload: bytes | Path) -> None:
                     child.unlink()
                 elif child.is_dir():
                     shutil.rmtree(child)
-        for name in names:
+        for info in archive.infolist():
+            name = info.filename
             if not name.startswith("hosted/") or name.endswith("/"):
                 continue
-            target = HOSTED_DIR / name[len("hosted/") :]
+            if _zip_member_is_symlink(info):
+                raise ValueError(f"Symlink in backup: {name}")
+            target = _safe_zip_target(HOSTED_DIR, name[len("hosted/") :])
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(archive.read(name))
         if any(name.startswith("tls/") for name in names):
@@ -136,9 +157,12 @@ def restore_backup(payload: bytes | Path) -> None:
                     child.unlink()
                 elif child.is_dir():
                     shutil.rmtree(child)
-            for name in names:
+            for info in archive.infolist():
+                name = info.filename
                 if not name.startswith("tls/") or name.endswith("/"):
                     continue
-                target = TLS_DIR / name[len("tls/") :]
+                if _zip_member_is_symlink(info):
+                    raise ValueError(f"Symlink in backup: {name}")
+                target = _safe_zip_target(TLS_DIR, name[len("tls/") :])
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(archive.read(name))

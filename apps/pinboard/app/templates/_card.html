@@ -1,0 +1,214 @@
+{#- Board cards (pinboard-canvas.md §1, §3). Import with context:
+    {% from "_card.html" import board_card, card_sheet, pin_picker, area_select with context %} -#}
+{% from "_icons.html" import icon %}
+
+{% macro pin_svg(style) -%}
+{%- if style == "tack" -%}
+<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="currentColor"/><circle cx="12" cy="12" r="8.5" fill="none" stroke="#000" stroke-opacity=".2"/><circle cx="9" cy="9" r="3" fill="#fff" opacity=".45"/></svg>
+{%- elif style == "map" -%}
+<svg viewBox="0 0 24 32" aria-hidden="true"><path d="M12 30s9-10.5 9-17a9 9 0 0 0-18 0c0 6.5 9 17 9 17z" fill="currentColor"/><circle cx="12" cy="13" r="3.4" fill="#fff" opacity=".85"/></svg>
+{%- elif style == "tape" -%}
+<svg viewBox="0 0 64 22" aria-hidden="true"><path d="M2 3l4 1.5L10 2l5 1.6L20 2l5 1.4L30 2l5 1.5L40 2l5 1.6L50 2l5 1.4L60 2l2 1v16l-3 1-5-1.5L49 20l-5-1.5L39 20l-5-1.4L29 20l-5-1.5L19 20l-5-1.6L9 20l-5-1.4L2 19z" fill="currentColor" opacity=".62"/></svg>
+{%- else -%}
+<svg viewBox="0 0 24 32" aria-hidden="true"><path d="M12 18v12" stroke="#7d828a" stroke-width="1.8" stroke-linecap="round"/><path d="M7 16h10l-1.5-4h-7z" fill="currentColor"/><ellipse cx="12" cy="8" rx="7.5" ry="6" fill="currentColor"/><ellipse cx="9.5" cy="6.2" rx="2.6" ry="1.6" fill="#fff" opacity=".45"/></svg>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro pin_picker(current_color="", current_style="") -%}
+<fieldset class="pin-picker">
+  <legend>Pin</legend>
+  <p class="hint">A pinned card shows on the TRMNL and Car Thing. Red goes first.</p>
+  <div class="swatches" role="radiogroup" aria-label="Pin colour">
+    <label class="swatch swatch-none">
+      <input type="radio" name="pin_color" value="" {% if not current_color %}checked{% endif %} />
+      <span>No pin</span>
+    </label>
+    {% for col in pin_colors %}
+    <label class="swatch pin-{{ col }}" title="{{ col | capitalize }}">
+      <input type="radio" name="pin_color" value="{{ col }}" {% if current_color == col %}checked{% endif %} />
+      <span class="swatch-dot" aria-hidden="true"></span>
+      <span class="visually-hidden">{{ col | capitalize }}</span>
+    </label>
+    {% endfor %}
+  </div>
+  <div class="pin-styles" role="radiogroup" aria-label="Pin style">
+    {% for key, label in pin_styles.items() %}
+    <label class="pin-style">
+      <input type="radio" name="pin_style" value="{{ key }}" {% if (current_style or pin_style) == key %}checked{% endif %} />
+      <span class="pin-style-art pin-art-{{ key }}">{{ pin_svg(key) }}</span>
+      <span>{{ label }}</span>
+    </label>
+    {% endfor %}
+  </div>
+</fieldset>
+{%- endmacro %}
+
+{% macro area_select(current="household", allow_none=False) -%}
+<label>
+  Area
+  <select name="area_id">
+    {% for area in areas %}
+    <option value="{{ area.id }}" {% if area.id == current %}selected{% endif %}>{{ area.name }}</option>
+    {% endfor %}
+    {% if allow_none %}<option value="" {% if not current %}selected{% endif %}>No area</option>{% endif %}
+  </select>
+</label>
+{%- endmacro %}
+
+{% macro note_colors_field(current="yellow") -%}
+<fieldset class="note-colors">
+  <legend>Colour</legend>
+  <div class="swatches">
+    {% for col in note_colors %}
+    <label class="swatch note-swatch note-{{ col }}" title="{{ col | capitalize }}">
+      <input type="radio" name="color" value="{{ col }}" {% if current == col %}checked{% endif %} />
+      <span class="swatch-dot" aria-hidden="true"></span>
+      <span class="visually-hidden">{{ col | capitalize }}</span>
+    </label>
+    {% endfor %}
+  </div>
+</fieldset>
+{%- endmacro %}
+
+{% macro board_card(c) -%}
+<article
+  class="bcard bcard-{{ c.type }}{% if c.type == 'note' %} note-{{ c.color }}{% endif %}{% if c.done %} is-done{% endif %}{% if c.overdue %} is-overdue{% endif %}{% if c.pin_color == 'red' %} is-important{% endif %}"
+  id="card-{{ c.id }}"
+  data-card="{{ c.id }}"
+  data-rev="{{ c.rev }}"
+  data-area="{{ c.area_id }}"
+  data-x="{{ c.x }}"
+  data-y="{{ c.y }}"
+  data-w="{{ c.w }}"
+  data-h="{{ c.h }}"
+  data-z="{{ c.z }}"
+>
+  {% if c.pin_color %}
+  <span class="bpin bpin-{{ c.pin_style }} pin-{{ c.pin_color }}" title="Pinned · on the displays">{{ pin_svg(c.pin_style) }}</span>
+  {% endif %}
+  <button type="button" class="bcard-menu" data-open-sheet="card-{{ c.id }}" aria-label="Options for this card">{{ icon("more") }}</button>
+
+  {% if c.type == "note" %}
+  <p class="bcard-text">{{ c.text }}</p>
+
+  {% elif c.type == "link" %}
+  <a class="blink" href="{{ c.url }}" target="_blank" rel="noopener noreferrer">
+    {% if c.image %}<img class="blink-image" src="/previews/{{ c.image }}" alt="" loading="lazy" />{% endif %}
+    <span class="blink-site">
+      {% if c.icon %}<img src="/previews/{{ c.icon }}" alt="" width="16" height="16" loading="lazy" />{% else %}{{ icon("link") }}{% endif %}
+      <span>{{ c.site or c.host }}</span>
+    </span>
+    <span class="blink-title">{{ c.title }}</span>
+    {% if c.description %}<span class="blink-desc">{{ c.description }}</span>{% endif %}
+  </a>
+  {% if c.note %}<p class="blink-note">{{ c.note }}</p>{% endif %}
+  {% if c.preview == "pending" %}<p class="bcard-foot hint">Fetching the preview…</p>
+  {% elif c.preview == "blocked" %}<p class="bcard-foot hint">No preview: Pinboard doesn't fetch addresses on your own network.</p>
+  {% elif c.preview == "failed" %}<p class="bcard-foot hint">The site didn't give a preview.</p>{% endif %}
+
+  {% elif c.type == "reminder" %}
+  <div class="breminder">
+    <form method="post" action="/cards/{{ c.id }}/done" data-inline-toggle="reminder">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="done" value="{{ '0' if c.done else '1' }}" />
+      <button type="submit" class="tick{% if c.done %} is-on{% endif %}" aria-pressed="{{ 'true' if c.done else 'false' }}" aria-label="Done" {% if not c.can_tick %}disabled title="Only the person it's for, whoever added it, or an admin can tick this"{% endif %}>{{ icon("check") }}</button>
+    </form>
+    <div class="breminder-main">
+      <p class="bcard-text">{{ c.text }}</p>
+      <p class="bcard-chips">
+        <span class="chip{% if c.overdue %} chip-alert{% endif %}">{{ icon("reminder") }}{% if c.due_label %}Due {{ c.due_label }}{% else %}Reminder{% endif %}</span>
+        {% if c.assignee %}<span class="chip">{{ c.assignee }}</span>{% endif %}
+      </p>
+    </div>
+  </div>
+
+  {% elif c.type == "checklist" %}
+  {% if c.title %}<p class="bcard-title">{{ c.title }}</p>{% endif %}
+  {% if c.checks %}
+  <ul class="bchecklist">
+    {% for item in c.checks %}
+    <li>
+      <form method="post" action="/cards/{{ c.id }}/check/{{ loop.index0 }}" data-inline-toggle="check">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <button type="submit" class="check-row{% if item.done %} is-on{% endif %}" aria-pressed="{{ 'true' if item.done else 'false' }}">
+          <span class="tick tick-sm" aria-hidden="true">{{ icon("check") }}</span>
+          <span class="check-text">{{ item.text }}</span>
+        </button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="bcard-foot hint" data-progress>{{ c.ticked }} of {{ c.checks | length }} done</p>
+  {% endif %}
+  {% endif %}
+</article>
+{%- endmacro %}
+
+{% macro card_sheet(c) -%}
+<div class="sheet" hidden data-sheet="card-{{ c.id }}">
+  <div class="sheet-card card stack sheet-scroll">
+    <h2>{% if c.type == "note" %}Note{% elif c.type == "link" %}Link{% elif c.type == "reminder" %}Reminder{% else %}Checklist{% endif %}</h2>
+    <p class="hint sheet-sub">{{ c.title | truncate(80) }}</p>
+
+    {% if can_pin %}
+    <form method="post" action="/cards/{{ c.id }}/pin" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      {{ pin_picker(c.pin_color, c.pin_style if c.pin_color else "") }}
+      <button class="btn btn-primary" type="submit">Save pin</button>
+    </form>
+    {% else %}
+    <p class="hint">{{ no_post_notices_hint }}</p>
+    {% endif %}
+
+    <form method="post" action="/cards/{{ c.id }}/area" class="stack sheet-section">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      {{ area_select(c.area_id, allow_none=True) }}
+      <button class="btn btn-secondary" type="submit">Move</button>
+    </form>
+
+    {% if c.can_edit %}
+    <form method="post" action="/cards/{{ c.id }}/edit" class="stack sheet-section">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      {% if c.type == "note" %}
+      <label>Note <textarea name="text" rows="4" maxlength="1000" required>{{ c.text }}</textarea></label>
+      {{ note_colors_field(c.color) }}
+      {% elif c.type == "link" %}
+      <label>Web address <input name="url" type="url" inputmode="url" value="{{ c.url }}" required autocomplete="off" /></label>
+      <label>Your note <textarea name="note" rows="2" maxlength="1000" placeholder="Optional">{{ c.note }}</textarea></label>
+      {% elif c.type == "reminder" %}
+      <label>Reminder <input name="text" value="{{ c.text }}" required autocomplete="off" /></label>
+      <label>Due date <input type="date" name="due" value="{{ c.due[:10] }}" /></label>
+      {% else %}
+      <label>Title <input name="title" value="{{ c.title if c.title != 'Checklist' else '' }}" autocomplete="off" /></label>
+      <label>Items <span class="hint">One per line. Items you keep stay ticked.</span>
+        <textarea name="items" rows="6">{% for item in c.checks %}{{ item.text }}
+{% endfor %}</textarea></label>
+      {% endif %}
+      <button class="btn btn-secondary" type="submit">Save changes</button>
+    </form>
+    {% endif %}
+
+    <div class="btn-row sheet-section">
+      {% if c.type == "link" %}
+      <form method="post" action="/cards/{{ c.id }}/preview">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <button class="btn btn-ghost btn-with-icon" type="submit">{{ icon("refresh") }} Fetch preview again</button>
+      </form>
+      {% endif %}
+      {% if c.can_edit %}
+      <form
+        method="post"
+        action="/cards/{{ c.id }}/delete"
+        data-confirm="Remove this card?"
+        data-confirm-detail="It goes from the board{% if c.pin_color %} and the displays{% endif %}."
+        data-confirm-ok="Remove"
+      >
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <button class="btn btn-ghost btn-with-icon" type="submit">{{ icon("trash") }} Remove</button>
+      </form>
+      {% endif %}
+      <button type="button" class="btn btn-ghost" data-close-sheet>Close</button>
+    </div>
+  </div>
+</div>
+{%- endmacro %}

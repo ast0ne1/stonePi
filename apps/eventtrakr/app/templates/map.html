@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+
+{% block title %}Map · EventTrakr{% endblock %}
+{% block main_class %} main-map{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css?v={{ asset_rev }}" />
+<link rel="stylesheet" href="/static/css/map.css?v={{ app_version }}-{{ asset_rev }}" />
+{% endblock %}
+
+{% block content %}
+<div class="map-page" data-map-page>
+  <div class="map-canvas" data-map-canvas aria-label="Map of events"></div>
+
+  <form class="map-find" data-map-find role="search">
+    {{ icon('search') }}
+    <input type="search" name="q" placeholder="Find a place" aria-label="Find a place" autocomplete="off" enterkeyhint="search" data-map-find-input />
+    <ul class="map-find-results" data-map-find-results hidden></ul>
+  </form>
+
+  <button type="button" class="map-locate" data-map-locate aria-label="Show where I am" title="Show where I am">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>
+  </button>
+
+  {#- The week card stays put on the left (collapsing to a slim tab); only the event cards beside it swipe. -#}
+  <div class="map-dock" data-map-dock>
+    <section class="map-week" aria-label="Week and filters" data-map-week>
+      {#- A small grip on the panel's left edge collapses it to the left (and opens it again). -#}
+      <button type="button" class="map-week-toggle" data-week-toggle aria-expanded="true" aria-controls="map-week-body" aria-label="Collapse the week and filters" title="Collapse the week and filters">
+        <svg viewBox="0 0 8 24" aria-hidden="true"><line x1="2" y1="4" x2="2" y2="20"></line><line x1="6" y1="4" x2="6" y2="20"></line></svg>
+      </button>
+      <div class="map-week-head">
+        <button type="button" class="map-week-arrow" data-week-prev aria-label="Previous week">‹</button>
+        <h1 class="map-week-label" data-week-label>Wk</h1>
+        <button type="button" class="map-week-arrow" data-week-next aria-label="Next week">›</button>
+      </div>
+      <button type="button" class="map-week-pills" data-week-summary hidden>
+        <span class="map-pill" data-pill-week>Wk</span>
+        <span class="map-mini-bars" data-mini-bars aria-hidden="true"></span>
+        <span class="map-pill is-count" data-pill-count>0</span>
+      </button>
+      <div class="map-week-body" id="map-week-body" data-week-body>
+        <div class="map-bars" data-map-bars role="group" aria-label="Days"></div>
+        <div class="map-week-foot">
+          <p class="map-week-count" data-week-count></p>
+          <button type="button" class="map-week-link" data-look-further hidden></button>
+        </div>
+        <div class="map-week-chips">
+          <div class="map-cats" data-map-cats role="group" aria-label="Categories"></div>
+          <button type="button" class="map-chip" data-free-chip aria-pressed="false">Free</button>
+          <button type="button" class="map-chip" data-unplaced-chip hidden></button>
+          <span class="map-week-note" data-week-note hidden></span>
+        </div>
+      </div>
+    </section>
+    <div class="map-tray" data-map-tray aria-label="Events"></div>
+  </div>
+</div>
+
+{#- Icons for pins and cards, rendered once from the shared set. -#}
+{% for name in ['tag', 'music', 'culture', 'users', 'cup', 'briefcase', 'palette', 'ball', 'heart', 'clipboard', 'bag', 'star', 'star-filled', 'external-link', 'clock', 'map-pin'] %}
+<template data-map-icon="{{ name }}">{{ icon(name) }}</template>
+{% endfor %}
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/vendor/leaflet/leaflet.js?v={{ asset_rev }}" defer></script>
+<script src="/static/js/map.js?v={{ app_version }}-{{ asset_rev }}" defer></script>
+{% endblock %}

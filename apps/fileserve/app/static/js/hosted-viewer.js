@@ -1,5 +1,5 @@
 // U27: in the iOS home-screen app (no browser bar to go back with), hosted pages open in
-// FileServe's viewer (/hosted/view): the page in a frame under a bar with Back and Open in Safari.
+// FileServe's viewer (/hosted/view): the page in a frame under a bar with Back.
 // Everywhere else the links open the page directly, as before.
 (function () {
   var standalone = window.navigator.standalone === true ||

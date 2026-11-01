@@ -18,7 +18,7 @@ from app import __asset_rev__, jobs, services
 from stonepi_auth.brand import fonts_rev
 from stonepi_auth import APP_CATALOG, APP_IDS, LAUNCHER_APP_IDS, SYSTEM_APP_IDS, login_url, logout_url
 from stonepi_auth.config import PlatformSettings
-from stonepi_auth.csrf import csrf_from_request, csrf_ok, csrf_ok_request, set_csrf_cookie
+from stonepi_auth.csrf import csrf_from_request, csrf_ok_request, set_csrf_cookie
 from stonepi_auth.alerts import NOTIFICATIONS_PATH, add_shared_templates
 from stonepi_auth.header import LAUNCHER_ORDER_COOKIE, launcher_order_from_cookie, set_launcher_order_cookie
 from stonepi_auth.http import request_is_https
@@ -159,13 +159,14 @@ def _html(request: Request, template: str, user, extra: dict | None = None, stat
 
 
 def _require_csrf(request: Request, form) -> bool:
-    return csrf_ok(request.cookies.get(CSRF_COOKIE), str(form.get("csrf_token") or ""))
+    form_token = str(form.get("csrf_token") or "")
+    return csrf_ok_request(request, form_token=form_token)
 
 
 def _require_csrf_any(request: Request, form=None) -> bool:
     form_token = str(form.get("csrf_token") or "") if form is not None else None
     header = request.headers.get("x-stonepi-csrf") or request.headers.get("X-StonePi-CSRF")
-    return csrf_ok_request(dict(request.cookies), form_token=form_token, header_token=header)
+    return csrf_ok_request(request, form_token=form_token, header_token=header)
 
 
 def _wants_json(request: Request) -> bool:
@@ -816,12 +817,15 @@ async def internal_unit_restart(request: Request):
     import logging
     import threading
 
-    from stonepi_auth.internal import verify_internal
+    from stonepi_auth.internal import verify_internal_v2
 
-    if not verify_internal(services.session_secret(), "POST", RESTART_PATH, request.headers):
+    raw = await request.body()
+    if not verify_internal_v2(
+        services.session_secret(), "POST", RESTART_PATH, request.headers, raw
+    ):
         return JSONResponse({"ok": False, "message": "Not allowed."}, status_code=403)
     try:
-        body = await request.json()
+        body = json.loads(raw.decode("utf-8") or "{}")
     except Exception:
         body = {}
     body = body if isinstance(body, dict) else {}
@@ -853,12 +857,15 @@ async def internal_unit_details(request: Request):
     (the Car Thing panel's service page). Read only; only catalog units."""
     import asyncio
 
-    from stonepi_auth.internal import verify_internal
+    from stonepi_auth.internal import verify_internal_v2
 
-    if not verify_internal(services.session_secret(), "POST", DETAILS_PATH, request.headers):
+    raw = await request.body()
+    if not verify_internal_v2(
+        services.session_secret(), "POST", DETAILS_PATH, request.headers, raw
+    ):
         return JSONResponse({"ok": False, "message": "Not allowed."}, status_code=403)
     try:
-        body = await request.json()
+        body = json.loads(raw.decode("utf-8") or "{}")
     except Exception:
         body = {}
     unit = str((body if isinstance(body, dict) else {}).get("unit") or "")

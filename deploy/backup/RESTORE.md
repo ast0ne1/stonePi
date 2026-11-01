@@ -27,6 +27,8 @@ Enable and schedule local backups under **Dashboard → Settings → Backup**. U
 
 This restores `/var/lib/stonepi` (including Notify's Displays and phone-alert settings and the vault tree), `/etc/stonepi`, and the Nginx site. Application code comes from the installer. Restore chowns app data for all catalog users including `stonepi-notify`.
 
+Radio's database (`radio.sqlite`: Home stations, favourites, speakers) is restored; its station-logo cache isn't backed up and refills as stations play. Odio, the player behind Radio, is set up again by the installer.
+
 ## Restore drill checklist
 
 Automated: `sudo stonepi-restore-drill` (or Dashboard → Settings → Backup → **Run restore drill**). Picks the newest local or USB snapshot when no path is given.
@@ -40,6 +42,14 @@ After restore (or periodically on a spare card), verify:
 5. Confirm Displays list still has the built-in Dashboard display.
 
 Vault secrets live under `/var/lib/stonepi/vault` and are included in the applications rsync; do not copy credentials into git or logs.
+
+### Encrypted secrets (0.6.0+)
+
+Each backup encrypts `vault.key` and the sensitive `/etc/stonepi` files listed in [`../SECURITY.md`](../SECURITY.md) (Backup). The unwrap key stays on the Pi at `/etc/stonepi/backup.key` and is omitted from every stamp.
+
+- **Same Pi / local stamp:** restore as usual — the live `backup.key` decrypts the stamp.
+- **New SD after a dead card:** install StonePi, then copy your offline `backup.key` to `/etc/stonepi/backup.key` (`sudo install -m 600 backup.key /etc/stonepi/backup.key`) **before** `stonepi-restore`. A fresh install's new key cannot unwrap an old stick.
+- **Older plaintext backups** (no `*.stonepi-enc` files) still restore without a key.
 
 ## In-Dashboard restore
 

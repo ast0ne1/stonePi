@@ -1,5 +1,67 @@
 # Changelog — EventTrakr
 
+## 0.0.11 — 2026-11-01
+
+### Security
+- **Every signed-in POST checks the CSRF token**, not just sign-in (backlog: CSRF coverage). Every page sets the `stonepi_csrf` cookie; the 37 POST forms carry `csrf_token` and background saves (app.js, the map) send `X-StonePi-CSRF`, all checked in one `before_request`. A refused form goes back to its page with "That page expired. Refresh and try again."; a refused background save answers 403 `{ok: false}`. Exempt: the signed Pebble read (`/api/internal/agent`) and Log out (the shared header's form). Every page renews the cookie, so a tab left open doesn't go stale, and a refused cross-site post goes to EventTrakr's home rather than back to the other site. CSRF also requires Origin/Referer to match Host (cross-port).
+- **Solo login `?next=` is path-only** (no off-site redirect after sign-in). Platform SSO was already safe.
+- **Google OAuth tokens at rest** no longer fall back to a well-known string when Vault is
+  down; they derive from the session secret or a random local key file.
+- `cryptography` pin raised to **50.0.1** (aligned with Dashboard).
+
+### Fixed
+- **Same source, two titles for one event:** a source that lists the same start twice under
+  different titles (e.g. Jungle's "Søndagsbrød" and "Søndagsbrød: Floor" at NABO 08:00) is
+  folded into one card. Two real sessions the same day (starts a minute or more apart) stay
+  separate. A refresh also collapses twins left over from before.
+
+**What's new:** EventTrakr now opens on a **map** of what's on this week, shows an event **once** when several sources list it ("Also on: BrugByen"), keeps **exhibitions and other runs** on until their last day, and adds **Copenhagen's 12 local committee calendars** with two new categories, **Committee meetings** and **Flea markets**.
+
+### Added
+- **Map** (backlog F18, `ideation/eventtrakr-map.md`), now the home page. A map icon in the header opens it from anywhere.
+  - **Pins** sit on venues with the category's icon (a count when there's more than one). Tapping one shows that venue's events as cards.
+  - **The week card** shows the calendar week (**Wk 44 · 26 Oct – 1 Nov**, ‹ › for up to 8 weeks ahead) with a bar per day, M–S, sized by the events in view (lighter for exhibitions and other runs). Tap a day to show only that day.
+  - **Filters** on the week card: category toggles (Committee meetings start hidden), Free, and "N not on the map" (events with no place yet, listed as cards).
+  - **Event cards** swipe past beside the week card, which stays put. A mouse wheel steps one card at a time.
+  - **A small || grip** on the week card's left edge collapses it to the left into a slim tab, as tall as the cards, with a **Wk 44** pill at the top, a mini bar per day M–S, and the event count at the bottom. The cards then get the whole row. Open or collapsed is remembered on that device.
+  - **Days past the 7-day sync** show hatched. **Look for more in wk 46** runs a deep search for that week, only when you ask.
+  - **Find a place** jumps the map to a place ("Refshaleøen"). On the map, the header's search button goes straight to it.
+  - **Show where I am** centres the map on you.
+  - **"Wrong place?"** on a card lets you drag a pin to where the venue really is, for every event there.
+  - OpenStreetMap tiles via Leaflet 1.9.4, served from EventTrakr (`static/vendor/leaflet`). The tiles send the site's origin as their referrer, because OpenStreetMap refuses tile requests without one and StonePi's nginx strips it everywhere else.
+- **Venues get coordinates in the background** after each sync (and when the map opens). Each new location is looked up once with OpenStreetMap's Nominatim and stored in a new `places` table:
+  - One lookup a second, at most 150 per run, kept to your city and about 15 km around it, so "Union" is the one on Nørrebro and Hellerup venues are found too.
+  - Nothing is looked up until the city itself has been found.
+  - "Online", "Unspecified" and a bare city name are skipped.
+  - Places not found are tried again after 30 days.
+- **Same event from several sources, shown once** (backlog U33, `ideation/eventtrakr-dedup.md`).
+  - **Matching:** a listing that's the same event as another source's (same day, start within 90 minutes, similar title, same venue, or the same ticket link) is merged into it instead of becoming a duplicate. Generic titles ("Lokaludvalgsmøde") only merge when the venue agrees, and a source's own two listings are never merged.
+  - **On the card:** **Also on: BrugByen**, with a link to that source's page, on the Agenda, Search and public agendas. **×** next to a source splits it back off ("Not the same event"), and that pair is never merged again.
+  - **Merged details:** the first source's title, link and category stay; a real price, an address, a longer description, an image or an end time fill in from the others. A location only ever gets better (an address for the same venue), never flips back and forth between sources.
+  - **Tables:** new `event_sightings` and `dedupe_exclusions` tables. Every existing event gets a sighting for its own source on start.
+- **Exhibitions and other runs stay on until their last day.** A listing that lasts a day or more ("18.09.2026 - 26.09.2026") is kept and shown on every day it covers: Agenda, the day filter, Search and public agendas. The card says "Wed 14 Oct – until Wed 25 Nov". A one-off that ends after midnight (a club night 22:00–04:00) still belongs to the day it starts.
+- **A show's other dates are kept**, up to 120 days ahead, so later weeks fill in without another scan.
+  - Where a BrugByen or district card says "2 andre datoer" / "3 other dates", the dates come from the event's own page (at most 40 pages a sync, each trusted for 12 hours).
+  - A date isn't cancelled just because its page wasn't read on a sync.
+  - Repeating schedules ("every Sunday until 20 Dec") become one date each.
+- **Copenhagen's 12 local committee calendars** (lokaludvalg) in the Sources catalog: Amager Øst, Amager Vest, Bispebjerg / Nordvest, Brønshøj-Husum, Christianshavn, Indre By, Kongens Enghave / Sydhavn, Nørrebro, Østerbro, Valby, Vanløse and Vesterbro. They run on the same platform as BrugByen, so the BrugByen scraper reads them too, including their Danish dates ("Søn. 08. nov. 2026 Kl. 10 - 12").
+- **Committee meetings** category (clipboard, blue). The committees' own meetings, working groups and public meetings (lokaludvalgsmøde, borgermøde, bydelsmøde, høring) from a district calendar are filed here instead of under Community, so neighbourhood events (Repair Café, swap markets, lantern parades) stay in Community.
+- **Flea markets** category (bag, amber), from the title wherever it's listed: loppemarked, loppetorv and other "loppe…" titles (not Loppen, Christiania's venue), kræmmermarked, genbrugsmarked, flea market. Byttemarked (swap markets) stay where their source puts them.
+- A scraper can now set one event's category (`ScrapedEvent.category_key`), which wins over the source's, and give its further dates (`ScrapedEvent.more_dates`).
+
+### Changed
+- **EventTrakr opens on the map:** the home page (`/`) and signing in land there. The Agenda is unchanged at `/agenda` and keeps its tab.
+- **Filtering the Agenda by a source**, the source chips, and searching by source name include events merged with another source's listing.
+
+### Fixed
+- **Dedupe missed a short title inside a longer one at the same venue** (e.g. "Søndagsbrød" and "Søndagsbrød: Floor" both at NABO, one with a street and one with the district). A distinctive one-word title now counts as contained, and Copenhagen district names no longer dilute the venue score.
+- **An event is no longer marked cancelled while another source still lists it.** Before, when the source that first found an event stopped listing it, the event was cancelled even if another source still had it.
+- **Running exhibitions no longer drop off the Agenda** after their first day (see Added).
+
+### Upgrading
+- New tables (`event_sightings`, `dedupe_exclusions`, `places`) are created on start. No new Python packages.
+- Events already in the database aren't merged with each other; new listings merge from the next sync. For a clean start, clear the events after the first start on the new version (sources, categories, settings and users stay) and run a full Refresh. Map pins fill in over a few minutes as venues are looked up.
+
 ## 0.0.10 — 2026-10-25
 
 ### Added

@@ -50,7 +50,7 @@ APP_CATALOG: list[dict[str, Any]] = [
         "icon": "notify",
         # Admin-only; people manage their alerts on the Dashboard Notifications page.
         "grants": False,
-        "description": "Displays, TRMNL, and ntfy destinations for the household.",
+        "description": "Displays (TRMNL, Car Thing, Sidekick) and ntfy phone alerts for the household.",
     },
     {
         # Agents and agent devices (Pebble first) reach StonePi only through here: bindings,
@@ -140,7 +140,7 @@ APP_CATALOG: list[dict[str, Any]] = [
         "launcher": True,
         "group": "user",
         "icon": "eventtrakr",
-        "description": "Track local events, favourites, and calendar sync in one place.",
+        "description": "Local events on a map and agenda, favourites, and calendar sync.",
     },
     {
         "id": "pinboard",
@@ -151,13 +151,13 @@ APP_CATALOG: list[dict[str, Any]] = [
         "health": "/healthz",
         "color": "#6b4c2a",
         "capabilities": [
-            {"id": "can_post_notices", "label": "Post notices", "default": True},
+            {"id": "can_post_notices", "label": "Add and pin cards", "default": True},
             {"id": "can_assign_others", "label": "Assign reminders to others", "default": True},
         ],
         "launcher": True,
         "group": "user",
         "icon": "pinboard",
-        "description": "Household notices and short reminders.",
+        "description": "Household board: notes, links, reminders and checklists.",
     },
     {
         "id": "studio",
@@ -265,7 +265,23 @@ APP_CATALOG: list[dict[str, Any]] = [
         "display_page": "/display",
         "display_label": "Ripple family board",
         "display_blurb": "Family posts and photos from Ripple, prepared for e-ink on the Pi.",
-        "description": "Keep family far away up to date with news and photos.",
+        "description": "Family news and photos on a TRMNL far away, plus holidays and a good time to call.",
+    },
+    {
+        # Digital radio through Odio on the Pi (stonepi-odio-setup). Favorites are per person;
+        # the Car Thing drives playback over signed /api/internal calls.
+        "id": "radio",
+        "name": "Radio",
+        "path": "/radio/",
+        "port": 8016,
+        "unit": "stonepi-radio",
+        "health": "/healthz",
+        "color": "#1f3a4d",
+        "capabilities": [],
+        "launcher": True,
+        "group": "user",
+        "icon": "radio",
+        "description": "Internet radio on your device, a speaker or the Pi.",
     },
 ]
 
@@ -280,6 +296,7 @@ DEFAULT_LAUNCHER_ORDER = (
     "pricewatch",
     "pinboard",
     "ripple",
+    "radio",
     "library",
     "fileserve",
     "studio",

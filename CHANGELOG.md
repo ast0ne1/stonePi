@@ -2,6 +2,214 @@
 
 Platform version lives in [`VERSION`](VERSION). App zips use each app’s `__version__` (see `scripts/build_release_zips.py`).
 
+## 0.6.0 — 2026-11-01
+
+**Radio, the household's internet radio — on your phone, a speaker, or the Pi — and a Car Thing that plays it in real Winamp skins.** EventTrakr opens on a map of the week; Pinboard becomes a board you can lay out freely; Ripple tells the family about holidays and when to call; Pebble answers sport and price questions; and platform security is tighter across CSRF, sessions, backups, Recover, and the firewall.
+
+### What's new
+
+**Radio 0.0.11 (new app)**
+- **Play on:** listen on **This device** (with lock-screen controls and AirPlay from an iPhone or
+  Mac), on a **speaker** on the home network (DLNA, e.g. iEAST AudioCast M5), or on **StonePi**
+  itself. What's playing moves with you when you switch.
+- **My Radio:** the household's **Home stations** (admins look after them) and **My favourites**
+  (each person's stars) on one page.
+- **Discover:** popular in your country, trending now, more like your favourites, and genres that
+  really are that genre, from Radio Browser.
+- **Now Playing:** the station's logo and the song on air, play/pause, stop, volume and four
+  presets; a player bar on every page that opens it, and no pause when you change page.
+- **On the Pi:** Radio plays through **Odio**, which the installer sets up. It also makes the Pi
+  an AirPlay and Spotify Connect speaker on the home network.
+
+**Car Thing and Notify**
+- **Radio on the Car Thing** in **real skins**: Classic Winamp (2.91), Nintendo AMP BOY,
+  RealPlayer and TouchAmp, drawn from the original skins and filling the panel, with the station's kbps and kHz in their boxes. The main window
+  shows on its own; **PL** opens the playlist with your presets. Plain follows the panel theme.
+  Radio plays on the panel's own **Play on** speaker, and the dial turns its volume.
+- **Each player can wear the other's look:** Spotify in a Radio skin, or Radio in Spotify's Now
+  Playing look (Look → Music / Look → Radio). The artwork screensaver follows the choice.
+- **Audio launcher:** one page with Spotify and StonePi Radio cards; Back returns to it.
+- **Web pages keep their captures:** each page has its own refresh time (15 minutes at least).
+  The TRMNL reuses a capture until then; the Car Thing shows "Updated 14:05" with a ↻ button.
+  This also settles the slow captures (backlog U22): a page is captured once per refresh
+  time and shared, instead of on every push.
+- **Spotify in a Radio skin** works like Winamp: Previous / Next skip tracks, Shuffle and
+  Repeat toggle, the time counts the track and the position bar follows it.
+- **System** groups services under System and Apps, with every app's icon.
+- **TRMNL:** the time in a dashboard's footer reads "Updated 14:05".
+
+**EventTrakr 0.0.11**
+- **A map of what's on this week** is the new home page: pins on venues, a week card with a bar
+  per day, filters, and "Wrong place?" to move a pin.
+- **Deduplication — one card per night out.** Listings from several sources that are the same
+  event merge into one, with **Also on: BrugByen** (and a link) for the others; **×** splits a
+  source back off if they aren't the same. The same source listing the same start under two
+  titles folds into one card too.
+- **Exhibitions and other runs stay on** until their last day.
+- **Copenhagen's 12 local committee calendars**, with two new categories: Committee meetings and
+  Flea markets.
+
+**Pinboard 0.0.10**
+- **Canvas:** lay the board out freely: drag and resize cards and areas, zoom and pan, and
+  double-click to add a card there. It fills the window on a laptop.
+- **Links, notes, reminders and checklists** as cards, with link previews, four pin colours and
+  styles, and Done.
+- **Add links from anywhere:** a bookmarklet, an iPhone Shortcut, or Android's share sheet.
+- **Users permission** renamed to **Add and pin cards** (was "Post notices"; same capability id).
+
+**Ripple 0.0.11**
+- **Holidays:** upcoming public holidays, ours and the family's, as a short note on their
+  TRMNL ("Christmas Day · Fri 25 Dec · both"), with a region for holidays that only apply to
+  part of a country. Fetched once a day from Nager.Date.
+- **Good time to call:** set our sleep and work hours, and the board says "Good time to call
+  · until 23:00 your time" or "We're asleep · back from 07:00 your time", in their time.
+
+**Pebble (AgentLink), SportGuide 0.0.10 and PriceWatch 0.0.9**
+- **Sport:** "any football on tonight?", "when do Arsenal play next?", with channels and your
+  teams first.
+- **Prices:** "has the TV dropped yet?", from PriceWatch's last checks (no Bright Data quota).
+- Both are off for each Pebble until switched on in Notify → Sidekick.
+- **Sidekick → What Pebble can use** is grouped by app (StonePi, Weather, EventTrakr, Pinboard,
+  NewsCast, SportGuide, PriceWatch) with switch toggles.
+
+**Every app**
+- Radio is on Home, in the app switcher, Health, Services, Recover, backups and the `stonepi` CLI.
+- Health → Listening expects Odio's ports once it's installed.
+
+**Security**
+- **CSRF on every save:** NewsCast and EventTrakr now check the CSRF token on every signed-in
+  form and background save, not just sign-in, so another page on the household address can't
+  act as you. Every other app already did; the Car Thing preview in Notify only takes JSON.
+  CSRF also requires Origin/Referer to match Host, so a page on another port can't reuse the
+  readable `stonepi_csrf` cookie. Log out is POST + CSRF too (a forged GET no longer signs
+  you out).
+- **Session claims stay fresh:** demoting an admin, changing app grants, disabling an app for
+  the household, or deleting a person revokes sessions so cookie `adm`/`apps`/`perms` can't
+  linger for up to 14 days. An unreadable revocation ledger fails closed.
+- **No silent `admin`/`admin`:** Auth generates a random first password when `ADMIN_PASSWORD`
+  isn't set (run-dev still uses admin/admin on purpose).
+- Notify's loopback event ingest and TRMNL push, and Dashboard's Car Thing restart/details,
+  use signed internal v2 (body hash) when the session secret is set.
+- Odio's own API has no sign-in, so it listens on loopback only; the firewall drops its, myMPD's
+  and MPD's ports everywhere but the Pi itself, and allows AirPlay and Spotify Connect from the
+  home network and tailnet only.
+- Radio's stream relay links are signed, one stream each, for six hours, at most four at once;
+  stations can't point at the Pi's own services, and station logos are fetched and served by
+  Radio so pages load nothing from other sites.
+- **Backup secrets encrypted:** each stamp encrypts `vault.key` and sensitive `/etc/stonepi`
+  files with a Pi-local `/etc/stonepi/backup.key` that never leaves the Pi; keep an offline
+  copy for SD-card disaster recovery.
+- **SSH and Cockpit** accept only private/LAN/tailnet source ranges (same set as Recover), not
+  the open internet.
+- **Recover:** password at rest is Argon2 (legacy plaintext rehashed); the log view masks
+  password/token-like journal values.
+- App `cryptography` pins aligned to **50.0.1** (NewsCast, EventTrakr, FileServe).
+
+### Added
+- **Radio** (`apps/radio`, `stonepi-radio`, port 8016, loopback): nginx `/radio/` in both
+  configs (its `/api/display` blocked at the edge) and `/radio/relay/` unbuffered on port 80 too;
+  systemd unit in `stonepi.target`, backup (`radio.sqlite`; not the logo cache) and restore,
+  Recover, the `stonepi` CLI and run-dev. Signed internal API for the Car Thing
+  (`/api/internal/now|play|transport|volume|outputs|art`).
+- **Odio for Radio:** `deploy/stonepi-odio-setup.sh` installs a pinned, hash-checked Odio
+  release as the user `odio` (PulseAudio, MPD, myMPD, the Odio API, AirPlay, Spotify Connect),
+  run by the installer after the firewall; `--no-odio` skips it.
+- **Car Thing:** Radio widget and screen (four bitmap skins from skins.webamp.org plus Plain,
+  `fitSkins()` scaling, PL toggle), the Audio launcher widget, Radio on the artwork screensaver,
+  `GET /radio/art`, and the look settings (`music.look_from`, `radio.look_from`).
+- **Web page refresh:** `refresh_min` on each page (15–1440), `stonepi_display.refresh_seconds`
+  and `webcapture.capture_timed` (with `X-Captured-At` to the Car Thing), the panel's
+  `GET /web/{page}.json` stamp and `?fresh=1`.
+- **Agent reads:** a signed `POST /api/internal/agent` in SportGuide (`get_sport`,
+  `get_my_teams`) and PriceWatch (`get_price_alerts`); AgentLink's `get_today` gains a sport line.
+- **EventTrakr:** `places`, `event_sightings` and `dedupe_exclusions` tables; Leaflet 1.9.4
+  served from the app; Nominatim lookups (one a second, 150 a run).
+- **Pinboard:** `pinboard.sqlite` (the old `pinboard.json` imported once and kept as
+  `pinboard.json.migrated`), link previews saved on the Pi, a web app manifest.
+
+### Changed
+- **EventTrakr opens on the map** (`/`); the Agenda stays at `/agenda`.
+- **The Car Thing's web screensaver** follows the page's refresh time; its own 1–5 minute
+  setting is gone.
+- **Radio on the artwork screensaver** shows its skin by default (Look → Radio → Now Playing for
+  the look it had).
+- **Omitron** is removed from the Car Thing's Radio looks; saved Omitron configs become Plain.
+- Pebble's facts may be up to 12,000 characters (was 9,000).
+
+### Fixed
+- **NewsCast papers on the reader use the name from Settings** (for example
+  `NewsCast - 01-11-2026`), not the internal `news-2026-11-01`. Send already showed that
+  name in the preview; the file on the reader stayed `news-…` until this cut. A copy
+  already on the reader under the old name is removed on the next send.
+- **TRMNL System tile:** uptime is one short token (`20d`, `4h`, `45m`) so the Up column no
+  longer wraps `20d 4h` onto a second line and clips.
+- **TRMNL Storage tile:** title is the hostname (e.g. stonepi) like System; backup age is
+  `6d ago` instead of `6 days ago` so it fits the column.
+- **TRMNL title-bar clock:** each Display can pick 12-hour (AM/PM) or 24-hour for the
+  "Updated …" stamp, next to the existing date style (e.g. Sat 31 Oct, 2:30 PM).
+
+### Security
+- **Backup restore zip-slip hardened** in FileServe and NewsCast (reject `../` and symlinks).
+- **TRMNL merge strings are HTML-escaped** before Liquid (Pinboard lines, alerts, display name).
+- **Studio preview sandboxed** (no `allow-same-origin`).
+- **Open-redirect fixes:** EventTrakr solo login `?next=` path-only; FileServe CSRF reject
+  same-host Referer only.
+- NewsCast (`require_csrf` on every router) and EventTrakr (one `before_request`) check
+  `csrf_token` or `X-StonePi-CSRF` against the `stonepi_csrf` cookie on every POST; exempt are
+  the signed agent reads, device endpoints with their own token, and Log out. CSRF also
+  requires Origin/Referer to match Host (cross-port double-submit). Auth Log out is POST +
+  CSRF; a forged GET no longer clears the session.
+- **Auth session revocation** on admin demotion, grant changes, platform app disable, and
+  user delete; revocation ledger read errors fail closed. First admin password is random when
+  `ADMIN_PASSWORD` is unset (not `admin`/`admin`).
+- Notify loopback `/api/events` and `/api/push-trmnl`, and Dashboard Car Thing unit
+  restart/details, require internal v2 signatures when the session secret is set.
+- EventTrakr OAuth token encryption no longer uses a well-known fallback string.
+- Notify's Car Thing preview proxy refuses a POST that isn't `application/json` (415).
+- nftables: AirPlay and Spotify Connect from LAN and tailnet addresses only; Odio's API (8018),
+  myMPD (8080) and MPD (6600) dropped except on loopback; SSH and Cockpit limited to private
+  source ranges (Cockpit still dropped on `tailscale0`).
+- Backup stamps encrypt `vault.key` and sensitive `/etc/stonepi` files with
+  `/etc/stonepi/backup.key` (never stored in the stamp); restore decrypts them mode 600.
+- Recover stores `recover.passwd` as Argon2 (rehashes legacy plaintext); `/logs` redacts
+  password/token-like journal values; OpenAPI schema URL disabled.
+- NewsCast, EventTrakr and FileServe pin `cryptography==50.0.1`.
+
+### App versions in this cut
+
+Platform: **0.6.0**
+
+| System (ships with platform) | Version |
+|-----|---------|
+| dashboard | 0.6.0 |
+| auth | 0.6.0 |
+| notify | 0.6.0 |
+| agentlink | 0.6.0 |
+| recover | 0.6.0 |
+| carthing | 0.6.0 |
+
+| Apps | Version |
+|-----|---------|
+| newscast | 0.0.12 |
+| fileserve | 0.0.9 |
+| eventtrakr | 0.0.11 |
+| pinboard | 0.0.10 |
+| studio | 0.0.9 |
+| pricescout | 0.0.8 |
+| sportguide | 0.0.10 |
+| pricewatch | 0.0.9 |
+| library | 0.0.8 |
+| ripple | 0.0.11 |
+| radio | 0.0.11 (new) |
+
+| Packages | Version | Why |
+|----------|---------|-----|
+| stonepi_display | 0.9.0 | each web page's refresh time (`refresh_min`, `refresh_seconds`), `webcapture.capture_timed`, the Car Thing's look settings (`look_from`) and Radio looks (RealPlayer, TouchAmp; Omitron gone), the TRMNL footer's "Updated" stamp (12/24-hour clock); System uptime as one short token; TRMNL merge strings HTML-escaped before Liquid |
+| stonepi_auth | 0.5.0 | Radio in the catalog and the app switcher; CSRF Origin/Referer must match Host; shared session revocation ledger (fail closed) |
+| stonepi_contracts | 0.2.1 | Radio's app label |
+
+Unchanged: stonepi_ai 0.1.1, stonepi_audit 0.1.0, stonepi_automations 0.1.1, stonepi_browser 0.2.0, stonepi_notify 0.1.1, stonepi_update 0.1.1, stonepi_vault 0.2.0 (`cryptography>=50` floor), stonepi_watch 0.1.0. `stonepi_brand` (static files) adds the Radio icon.
+
 ## 0.5.0 — 2026-10-25
 
 **Pebble, a cute little voice sidekick for StonePi, and Ripple, family news on a screen far away.** Ripple is a new app; NewsCast, EventTrakr and Pinboard get new versions so Pebble can read them; the app switcher, Health and Services follow your Home order in every app; and both new features are built as shared plumbing the next device or display app can reuse.

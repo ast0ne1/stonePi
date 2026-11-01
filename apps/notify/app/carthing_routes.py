@@ -81,7 +81,7 @@ def _admin(request: Request):
 
 
 def _api_csrf_ok(request: Request) -> bool:
-    return csrf_ok_request(request.cookies, header_token=request.headers.get("x-stonepi-csrf") or "")
+    return csrf_ok_request(request, header_token=request.headers.get("x-stonepi-csrf") or "")
 
 
 # Device, Spotify and earlier versions live on the Setup page; everything else on the editor.
@@ -258,8 +258,13 @@ async def panel_proxy(request: Request, path: str):
     if denied is not None:
         return denied
     target = "/" + path
-    if request.method == "POST" and target not in {"/restart", "/music/cmd"}:
+    if request.method == "POST" and target not in {"/restart", "/music/cmd", "/radio/cmd"}:
         return Response(status_code=405)
+    # The preview's commands are JSON (panel.js). A cross-site page can only send JSON after a
+    # CORS preflight this proxy never answers, so requiring it keeps another site from
+    # restarting a service or playing music as a signed-in admin (the CSRF check for this route).
+    if request.method == "POST" and request.headers.get("content-type", "").split(";")[0].strip() != "application/json":
+        return Response(status_code=415)
     secret = _secret()
     if not secret:
         return HTMLResponse("<p style='font:16px sans-serif;padding:20px'>Preview needs StonePi sign-in.</p>")
@@ -507,7 +512,7 @@ async def _form(request: Request):
     if denied is not None:
         return None, denied
     form = await request.form()
-    if not csrf_ok_request(request.cookies, str(form.get("csrf_token") or "")):
+    if not csrf_ok_request(request, str(form.get("csrf_token") or "")):
         return None, _back(err="Form expired — try again.")
     return form, None
 
@@ -878,6 +883,23 @@ def api_music_catalog(request: Request):
     except ValueError:
         data = {}
     return data if isinstance(data, dict) else {"ok": False, "devices": [], "playlists": []}
+
+
+@router.get("/api/carthing/radio/outputs")
+def api_radio_outputs(request: Request):
+    """Where the panel can play Radio (StonePi and the speakers Radio found), for Look → Radio → Play on."""
+    _, denied = _admin(request)
+    if denied is not None:
+        return denied
+    from stonepi_auth.catalog import app_by_id
+    from stonepi_auth.internal import get_internal_json
+
+    radio_app = app_by_id("radio") or {}
+    port = radio_app.get("port")
+    data = get_internal_json(f"http://127.0.0.1:{port}", _secret(), "/api/internal/outputs", timeout=4.0) if port else None
+    if not data or not data.get("ok"):
+        return {"ok": False, "message": "Radio isn't answering, so its speakers can't be listed.", "outputs": []}
+    return {"ok": True, "outputs": [o for o in data.get("outputs") or [] if isinstance(o, dict) and o.get("id") != "browser"]}
 
 
 @router.get("/displays/carthing/spotify/callback")

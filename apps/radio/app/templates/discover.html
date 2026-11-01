@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Discover · Radio{% endblock %}
+{% block content %}
+<section class="hero">
+  <h1>Discover</h1>
+  <p class="lede">{% if query %}Stations matching “{{ query }}”.{% elif genre %}{{ genre_label }} stations people listen to most.{% else %}Stations to try. Star the ones you like{% if can_manage %}, or add them for the whole household{% endif %}.{% endif %}</p>
+</section>
+
+{% from "_icons.html" import genre_icon %}
+<div class="chips-with-action">
+  <nav class="chips" aria-label="Genres">
+    <a class="chip-btn{% if not genre and not query %} is-active{% endif %}" href="/discover">{{ genre_icon("for-you") }}<span>For you</span></a>
+    {% for label, tag in genres %}
+    <a class="chip-btn{% if genre == tag %} is-active{% endif %}" href="/discover?genre={{ tag }}"{% if genre == tag %} aria-current="page"{% endif %}>{{ genre_icon(tag) }}<span>{{ label }}</span></a>
+    {% endfor %}
+  </nav>
+  <button class="chips-action" type="button" data-open-sheet="genres" aria-label="Choose a genre" title="Choose a genre">{{ genre_icon("sliders") }}</button>
+</div>
+
+<div class="sheet" hidden data-sheet="genres">
+  <div class="sheet-card card">
+    <div class="sheet-head"><h2>Genre</h2><button class="sheet-close" type="button" data-close-sheet aria-label="Close">{{ icon("clear") }}</button></div>
+    <div class="filter-picker" aria-label="Genre">
+      <a class="filter-picker-option{% if not genre and not query %} is-active{% endif %}" href="/discover">{{ genre_icon("for-you") }}<span>For you</span></a>
+      {% for label, tag in genres %}
+      <a class="filter-picker-option{% if genre == tag %} is-active{% endif %}" href="/discover?genre={{ tag }}">{{ genre_icon(tag) }}<span>{{ label }}</span></a>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{% set list_actions = True %}
+{% set mark_listed = True %}
+{% if results is not none %}
+  {% if query %}
+  <p class="page-status"><span class="page-status-text">Results for “{{ query }}”. <a class="text-link" href="/discover">Clear</a></span></p>
+  {% endif %}
+  {% if results %}
+  <div class="station-grid">
+    {% for station in results %}
+    {% set next_path = '/now' %}
+    {% include "_station_card.html" %}
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty card stack">
+    <h2>No stations found</h2>
+    <p class="hint">{% if query %}Try another name, genre or country.{% else %}Radio Browser didn’t answer just now. Try again in a moment.{% endif %}</p>
+  </div>
+  {% endif %}
+{% elif sections %}
+  {% for section in sections %}
+  <section class="discover-section">
+    <h2 class="section-heading">{{ section.title }}</h2>
+    <div class="station-rail">
+      {% for station in section.stations %}
+      {% set next_path = '/now' %}
+      {% include "_station_card.html" %}
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+{% else %}
+<div class="empty card stack">
+  <h2>Nothing to show yet</h2>
+  <p class="hint">Radio Browser didn’t answer just now. Pick a genre above, or try again in a moment.</p>
+</div>
+{% endif %}
+{% endblock %}

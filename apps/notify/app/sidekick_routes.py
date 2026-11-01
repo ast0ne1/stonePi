@@ -192,8 +192,82 @@ ACTION_LABELS = {
     "settings": "Settings changed", "get_status": "Read StonePi status", "get_today": "Read today's overview",
     "get_events": "Read upcoming events", "get_reminders": "Read reminders", "get_notices": "Read notices",
     "get_news_briefing": "Read today's news briefing", "get_weather": "Checked the weather",
+    "get_sport": "Read what sport is on", "get_my_teams": "Read your teams' next matches",
+    "get_price_alerts": "Read price alerts",
 }
 SEARCH_LABELS = {"search_events": "Searched events", "search_news": "Searched news"}
+
+# Sidekick "What Pebble can use": short labels, grouped by the app whose data the tool reads.
+TOOL_TITLES = {
+    "get_status": "Status",
+    "get_weather": "Weather",
+    "get_today": "Today",
+    "get_events": "Upcoming events",
+    "search_events": "Search events",
+    "get_reminders": "Reminders",
+    "get_notices": "Notices",
+    "get_news_briefing": "Today's briefing",
+    "search_news": "Search news",
+    "get_sport": "What's on",
+    "get_my_teams": "My teams",
+    "get_price_alerts": "Price alerts",
+}
+TOOL_HINTS = {
+    "get_status": "Health, services and backup age",
+    "get_weather": "Forecast at the household's place",
+    "get_today": "Day at a glance from the tools that are on",
+    "get_events": "Agenda for the next few days",
+    "search_events": "Find events by words",
+    "get_reminders": "Yours and unassigned household ones",
+    "get_notices": "Household notices, newest first",
+    "get_news_briefing": "Whether today's paper is ready, with headlines",
+    "search_news": "Find recent stories by words",
+    "get_sport": "TV and streams, your teams first",
+    "get_my_teams": "Each watched team's next match",
+    "get_price_alerts": "Watches and deals from the last checks",
+}
+TOOL_APP_ORDER = ("agentlink", "notify", "eventtrakr", "pinboard", "newscast", "sportguide", "pricewatch")
+TOOL_APP_LABELS = {
+    "agentlink": "StonePi",
+    "notify": "Weather",
+    "eventtrakr": "EventTrakr",
+    "pinboard": "Pinboard",
+    "newscast": "NewsCast",
+    "sportguide": "SportGuide",
+    "pricewatch": "PriceWatch",
+}
+
+
+def _tool_groups(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Tools for the Sidekick form: short titles, grouped under the app they read."""
+    by_app: dict[str, list[dict[str, Any]]] = {}
+    for raw in tools:
+        name = str(raw.get("name") or "")
+        app = str(raw.get("app") or "")
+        if not app:
+            # Older AgentLink overviews omitted app; keep a sensible fallback from the name.
+            app = {
+                "get_status": "agentlink", "get_today": "agentlink", "get_weather": "notify",
+                "get_events": "eventtrakr", "search_events": "eventtrakr",
+                "get_reminders": "pinboard", "get_notices": "pinboard",
+                "get_news_briefing": "newscast", "search_news": "newscast",
+                "get_sport": "sportguide", "get_my_teams": "sportguide",
+                "get_price_alerts": "pricewatch",
+            }.get(name, "agentlink")
+        by_app.setdefault(app, []).append({
+            "name": name,
+            "enabled": bool(raw.get("enabled")),
+            "title": TOOL_TITLES.get(name) or name.replace("_", " ").capitalize(),
+            "hint": TOOL_HINTS.get(name) or str(raw.get("description") or ""),
+        })
+    groups = []
+    for app in TOOL_APP_ORDER:
+        rows = by_app.pop(app, None)
+        if rows:
+            groups.append({"id": app, "label": TOOL_APP_LABELS.get(app, app), "tools": rows})
+    for app, rows in by_app.items():  # any future app not in the order list
+        groups.append({"id": app, "label": TOOL_APP_LABELS.get(app, app.replace("_", " ").title()), "tools": rows})
+    return groups
 
 
 def _activity_label(action: str, params: dict | None) -> str:
@@ -235,6 +309,7 @@ def sidekick_page(request: Request):
     for d in devices:
         d["seen_text"] = _ago(d.get("last_seen"), now)
         d["ask_text"] = _ago(d.get("last_ask_ok"), now)
+        d["tool_groups"] = _tool_groups(list(d.get("tools") or []))
     recent = []
     for r in data.get("recent") or []:
         recent.append({
@@ -288,7 +363,7 @@ async def _admin_form(request: Request) -> tuple[Any, dict[str, str] | None, Any
     if denied is not None:
         return user, None, denied
     form = await request.form()
-    if not csrf_ok_request(request.cookies, str(form.get("csrf_token") or "")):
+    if not csrf_ok_request(request, str(form.get("csrf_token") or "")):
         return user, None, _back(err="Form expired. Try again.")
     fields = {str(k): str(v) for k, v in form.multi_items() if isinstance(v, str)}
     return user, fields, None

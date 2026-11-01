@@ -1,23 +1,25 @@
 # Pinboard
 
-**Part of [StonePi](../../README.md)** — household notices and short reminders.
+**Part of [StonePi](../../README.md)** — the household's board: notes, links, reminders and checklists.
 
 | Mode | URL |
 |------|-----|
 | On the Pi | http://stonepi.local/pinboard/ |
 | Windows `run-dev.bat` | http://127.0.0.1:8004/ |
 
-Shared StonePi sign-in. Access requires a **Pinboard** app grant (admins see it by default). Members also need **Post notices** to pin notices, and **Assign reminders to others** to assign a reminder to someone else or the whole household; without it their reminders are their own. Only admins remove items or set the reminder time.
+Shared StonePi sign-in. Access requires a **Pinboard** app grant (admins see it by default). Members also need **Add and pin cards** to add cards and pin them to the displays, and **Assign reminders to others** to assign a reminder to someone else or the whole household; without it their reminders are their own. Only admins remove items or set the reminder time.
 
 ## Why it’s in StonePi
 
-A lightweight shared corkboard — not a full task manager. Pins and reminders show on phones and, on a **TRMNL** display or the Car Thing panel (set up in Notify → Displays).
+A shared board for the household, in a list or laid out freely — not a full task manager. Pins and reminders show on phones and, on a **TRMNL** display or the Car Thing panel (set up in Notify → Displays).
 
 ## What it does
 
-- **Board** — all notices and reminders as expandable cards (type pill + icon; due date when present)
+- **Board** — notes, links (with a fetched preview), reminders and checklists, grouped by area on a cork, plain, dotted or whiteboard background. Pin a card (four colours, four styles) to put it on the displays; tick reminders and checklist items done
+- **Canvas** — the same cards laid out freely on one big board (the default on wide screens; **List / Canvas** at the top): drag the background or two fingers to move around, pinch or ctrl/cmd + scroll to zoom, drag a card to move it and its corner to resize it, drag an area by its name with its cards, and double-click empty space to add a card there. On a laptop it fills the window. Other people's moves show within a few seconds
 - **Notices** — short household messages everyone with access can see
 - **Reminders** — due date and optional assignee
+- **Settings → Board** — your background, the board's areas, removing done items after a set number of days, and adding links from anywhere (bookmarklet, iPhone Shortcut, Android share sheet)
 - Phone-first UI in the shared StonePi design system (light, dark or system theme)
 
 ## Integrations

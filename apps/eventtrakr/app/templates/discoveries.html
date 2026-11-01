@@ -59,11 +59,11 @@
     {% if d.status in ('candidate', 'discovered') %}
     <div class="row-actions discovery-actions">
       {% if not d.event_id or d.status == 'candidate' %}
-      <form method="post" action="/discoveries/{{ d.id }}/confirm">
+      <form method="post" action="/discoveries/{{ d.id }}/confirm"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button type="submit" class="btn btn-primary btn-sm btn-with-icon">{{ icon('check') }} Approve</button>
       </form>
       {% endif %}
-      <form method="post" action="/discoveries/{{ d.id }}/ignore">
+      <form method="post" action="/discoveries/{{ d.id }}/ignore"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button type="submit" class="btn btn-ghost btn-sm btn-with-icon">{{ icon('close') }} Reject</button>
       </form>
     </div>

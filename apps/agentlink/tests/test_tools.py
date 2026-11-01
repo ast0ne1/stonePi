@@ -112,7 +112,7 @@ def test_ask_facts_skip_duplicates_and_run_planned_searches(binding, app_calls, 
     b = _allow(binding, "get_today", "get_events", "get_news_briefing", "search_events", "search_news")
     planned = {}
 
-    def plan(_binding, transcript, specs, news=False, events=False):
+    def plan(_binding, transcript, specs, news=False, events=False, sport=False):
         planned["specs"] = sorted(s.name for s in specs)
         planned["news"] = news
         return {"search_events": "jazz"}
@@ -222,12 +222,12 @@ def test_voice_urls_are_the_pinned_release():
 def test_prompt_knows_pebble_and_the_owners_apps(binding, app_calls, fresh_mood, monkeypatch):
     b = _allow(binding, "get_events")
     b = {**b, "battery": "64", "last_path": "away"}
-    monkeypatch.setattr(people, "user_apps", lambda _uid: {"eventtrakr", "pricewatch"})
+    monkeypatch.setattr(people, "user_apps", lambda _uid: {"eventtrakr", "fileserve"})
     about = ask._about(b)
     assert "you belong to Adam" in about and "Your mood is" in about and "64%" in about and "away from home" in about
     guide = ask._app_guide(b)
     assert "EventTrakr" in guide and "get_events (on)" in guide and "search_events (off)" in guide
-    assert "PriceWatch" in guide and "can't read this app yet" in guide
+    assert "FileServe" in guide and "can't read this app yet" in guide
     assert "Pinboard" not in guide and "NewsCast" not in guide  # apps the owner doesn't have
     system = ask.SYSTEM_PROMPT.format(owner="Adam", now="now", about=about, guide=guide, facts="{}", previous="")
     assert "switch it on in Sidekick" in system
@@ -237,7 +237,7 @@ def test_news_by_category_from_the_planner(binding, app_calls, monkeypatch):
     b = _allow(binding, "get_news_briefing")
     seen = {}
 
-    def plan(_binding, transcript, specs, news=False, events=False):
+    def plan(_binding, transcript, specs, news=False, events=False, sport=False):
         seen.update(specs=specs, news=news)
         return {"news_category": "sport"}
 
@@ -292,7 +292,7 @@ def test_events_window_and_kind_from_the_planner(binding, app_calls, monkeypatch
     b = _allow(binding, "get_events")
     seen = {}
 
-    def plan(_binding, transcript, specs, news=False, events=False):
+    def plan(_binding, transcript, specs, news=False, events=False, sport=False):
         seen.update(news=news, events=events)
         return {"events_when": "next_week", "events_category": "community"}
 
@@ -373,3 +373,91 @@ def test_ask_facts_and_prompt_cover_the_weather(binding, app_calls, fresh_mood, 
     guide = ask._app_guide(binding)
     assert "get_weather (on)" in guide and "weather at home" in guide
     assert "Weather: answer from the get_weather facts" in ask.SYSTEM_PROMPT
+
+
+# -- SportGuide and PriceWatch --------------------------------------------------------------
+
+
+def _match_at(minutes: int) -> dict:
+    when = (datetime.now().astimezone() + timedelta(minutes=minutes)).replace(second=0, microsecond=0)
+    return {"title": "Arsenal v Chelsea", "time": f"{when:%H:%M}", "start": when.isoformat(timespec="minutes"), "channels": ["Sky"]}
+
+
+@pytest.fixture
+def sport_apps(app_calls, monkeypatch):
+    monkeypatch.setattr(people, "user_apps", lambda _uid: {"sportguide", "pricewatch"})
+    answers = {
+        "get_sport": {"when": "now", "total": 1, "listings": [{"title": "Arsenal v Chelsea", "your_team": "Arsenal"}]},
+        "get_my_teams": {"teams": [{"team": "Arsenal", "next": _match_at(90)}, {"team": "Leeds", "next": None}]},
+        "get_price_alerts": {"total": 1, "deals": 1, "watches": [{"product": "TV", "deal": {"price": "4.000 DKK"}}]},
+    }
+    real = apps.call
+
+    def fake(app_id, tool, user_id, params=None):
+        if tool in answers:
+            app_calls.append((app_id, tool, user_id, params or {}))
+            return answers[tool]
+        return real(app_id, tool, user_id, params)
+
+    monkeypatch.setattr(apps, "call", fake)
+    return answers
+
+
+def test_sport_and_price_tools_reach_their_apps(binding, app_calls, sport_apps):
+    assert registry.invoke(binding, "get_sport")["error"] == "not_allowed"  # personal: off at first
+    b = _allow(binding, "get_sport", "get_my_teams", "get_price_alerts")
+    assert registry.invoke(b, "get_sport", {"when": "tonight", "sport": "football"})["ok"]
+    assert registry.invoke(b, "get_my_teams")["payload"]["teams"][0]["team"] == "Arsenal"
+    assert registry.invoke(b, "get_price_alerts")["payload"]["deals"] == 1
+    assert app_calls == [
+        ("sportguide", "get_sport", USER, {"when": "tonight", "sport": "football"}),
+        ("sportguide", "get_my_teams", USER, {}),
+        ("pricewatch", "get_price_alerts", USER, {}),
+    ]
+    assert registry.invoke(b, "get_sport", {"league": "NRL"})["error"] == "bad_params"
+
+
+def test_today_names_the_teams_playing_today(binding, app_calls, sport_apps):
+    b = _allow(binding, "get_today", "get_my_teams")
+    sport = registry.invoke(b, "get_today")["payload"]["sport"]
+    assert sport["count"] == 1 and sport["your_teams_today"][0]["team"] == "Arsenal"
+    sport_apps["get_my_teams"]["teams"][0]["next"]["start"] = "2999-01-01T20:00+00:00"
+    assert registry.invoke(b, "get_today")["payload"]["sport"]["count"] == 0
+
+
+def test_sport_window_from_the_planner(binding, app_calls, sport_apps, monkeypatch):
+    b = _allow(binding, "get_sport")
+    seen = {}
+
+    def plan(_binding, transcript, specs, news=False, events=False, sport=False):
+        seen.update(sport=sport)
+        return {"sport_when": "tonight", "sport_kind": "football"}
+
+    monkeypatch.setattr(ask, "_plan_searches", plan)
+    facts = ask._facts(b, "any football on tonight?")
+    assert seen == {"sport": True}
+    assert {"get_sport", "get_sport:tonight/football"} <= set(facts)
+    assert ("sportguide", "get_sport", USER, {"when": "tonight", "sport": "football"}) in app_calls
+
+
+def test_planner_offers_sport_keys(binding, monkeypatch):
+    import stonepi_ai
+
+    sent = {}
+
+    class R:
+        text = '{"sport_when": "this_weekend", "sport_kind": "NRL", "events_when": "x"}'
+
+    monkeypatch.setattr(stonepi_ai, "complete", lambda *_a, **kw: sent.update(kw) or R())
+    ask._recent.clear()
+    plan = ask._plan_searches(binding, "is the NRL on this weekend?", [], sport=True)
+    assert plan == {"sport_when": "this_weekend", "sport_kind": "NRL"}
+    assert "sport_kind" in sent["system"]
+
+
+def test_happy_when_a_team_plays_later_today(binding, app_calls, sport_apps, fresh_mood):
+    b = _allow(binding, "get_my_teams")
+    out = mood.compute(b, local_now=NOON)
+    match = sport_apps["get_my_teams"]["teams"][0]["next"]
+    assert out["mood"] == "happy" and out["caption"] == f"Arsenal at {match['time']}"
+    assert out["reason"] == f"Arsenal play at {match['time']} today"

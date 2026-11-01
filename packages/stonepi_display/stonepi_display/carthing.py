@@ -73,16 +73,21 @@ MINI_APPS: tuple[dict[str, str], ...] = (
     {"id": "pinboard", "label": "Pinboard", "source": "pinboard"},
     # F7: Spotify through the panel service itself (no /api/display feed).
     {"id": "music", "label": "Music", "source": "spotify"},
+    # Digital radio via apps/radio → Odio (loopback). Widget themes in config.radio.
+    {"id": "radio", "label": "Radio", "source": "radio"},
 )
 MINI_APP_IDS = tuple(a["id"] for a in MINI_APPS)
 
 # What a page can hold: every mini-app (its card) plus the clock & weather and weather widgets.
-WIDGETS: tuple[dict[str, str], ...] = (
+# ``sizes`` (optional) limits the editor: Audio is a full-page launcher only.
+WIDGETS: tuple[dict[str, Any], ...] = (
     *MINI_APPS,
     {"id": "clock", "label": "Clock & weather", "source": ""},
     {"id": "weather", "label": "Weather", "source": ""},
     # The clock face and date alone (no weather), in the Clock tab's face and colours.
     {"id": "time", "label": "Clock", "source": ""},
+    # Full-page picker: Spotify and StonePi Radio as two cards → their full screens; Back returns here.
+    {"id": "audio", "label": "Audio", "source": "", "sizes": ["full"]},
 )
 WIDGET_IDS = tuple(w["id"] for w in WIDGETS)
 # A web page (F14) on a page: "web:<page id>" from Notify's Web pages, always full page.
@@ -147,13 +152,25 @@ _MUSIC_ACTIONS: tuple[dict[str, str], ...] = (
     *({"id": f"music:preset:{n}", "label": f"Play music preset {n}", "group": "Music"} for n in range(1, MUSIC_PRESETS + 1)),
 )
 MUSIC_ACTION_IDS = tuple(a["id"] for a in _MUSIC_ACTIONS)
+RADIO_PRESETS = 4
+_RADIO_ACTIONS: tuple[dict[str, str], ...] = (
+    {"id": "radio:play_pause", "label": "Radio play / pause", "group": "Radio"},
+    {"id": "radio:stop", "label": "Radio stop", "group": "Radio"},
+    {"id": "radio:vol_up", "label": "Radio volume up", "group": "Radio"},
+    {"id": "radio:vol_down", "label": "Radio volume down", "group": "Radio"},
+    *({"id": f"radio:preset:{n}", "label": f"Play radio preset {n}", "group": "Radio"} for n in range(1, RADIO_PRESETS + 1)),
+)
+RADIO_ACTION_IDS = tuple(a["id"] for a in _RADIO_ACTIONS)
 ACTIONS: tuple[dict[str, str], ...] = (
     *_NAV_ACTIONS,
     *_PAGE_ACTIONS,
     *({"id": f"open:{a['id']}", "label": f"Open {a['label']}", "group": "Mini-apps"} for a in MINI_APPS),
     # The large weather screen (U14); also what tapping a Weather widget opens.
     {"id": "open:weather", "label": "Open Weather", "group": "Mini-apps"},
+    # Audio launcher (Spotify + Radio cards); same screen as the full-page Audio widget.
+    {"id": "open:audio", "label": "Open Audio", "group": "Mini-apps"},
     *_MUSIC_ACTIONS,
+    *_RADIO_ACTIONS,
     *_DEVICE_ACTIONS,
 )
 ACTION_IDS = tuple(a["id"] for a in ACTIONS)
@@ -161,7 +178,17 @@ ACTION_IDS = tuple(a["id"] for a in ACTIONS)
 # that existed when it was saved (``actions_known``); anything newer is allowed by default,
 # so an older allow-list never silently forbids it. Configs saved before ``actions_known``
 # existed knew every action except these.
-ADDED_ACTIONS = frozenset({"sleep", "open:weather", "open:music", *MUSIC_ACTION_IDS})
+ADDED_ACTIONS = frozenset(
+    {
+        "sleep",
+        "open:weather",
+        "open:music",
+        "open:radio",
+        "open:audio",
+        *MUSIC_ACTION_IDS,
+        *RADIO_ACTION_IDS,
+    }
+)
 
 CLOCK_FACES: tuple[dict[str, str], ...] = (
     {"id": "digital_bold", "label": "Bold digital"},
@@ -325,7 +352,7 @@ GRADIENTS: tuple[dict[str, str], ...] = (
 )
 GRADIENT_IDS = tuple(g["id"] for g in GRADIENTS)
 BACKGROUND_TYPES = ("solid", "gradient", "image")
-LIVE_LINES = ("none", "eventtrakr", "sportguide", "newscast", "pinboard", "music")
+LIVE_LINES = ("none", "eventtrakr", "sportguide", "newscast", "pinboard", "music", "radio")
 QUIET_MODES = ("dim", "off")
 HOUR_FORMATS = ("24", "12")
 # Formatted on the device (panel.js) so the date follows the screen's clock tick.
@@ -412,6 +439,7 @@ def default_config(config_id: str = "default", name: str = "Default") -> dict[st
         "look": {"theme": "dark", "accent": SAND, "units": "metric"},
         "weather": {"lat": None, "lon": None, "label": ""},
         "music": default_music(),
+        "radio": default_radio(),
     }
 
 
@@ -446,7 +474,23 @@ def default_music() -> dict[str, Any]:
         # Now Playing's look: background, when the control row shows, where the accent comes
         # from, and an optional thin line round the screen in the accent.
         "np": dict(NP_DEFAULTS),
+        # Which look Spotify's Now Playing (screen, full-page widget, artwork screensaver) wears:
+        # its own ("music") or the Radio player's skin from Look → Radio ("radio").
+        "look_from": "music",
     }
+
+
+# The look each player can wear: its own, or the other's (Look → Music / Look → Radio).
+MUSIC_LOOKS: tuple[dict[str, str], ...] = (
+    {"id": "music", "label": "Default (Spotify Now Playing)"},
+    {"id": "radio", "label": "Radio's theme"},
+)
+RADIO_LOOKS: tuple[dict[str, str], ...] = (
+    {"id": "radio", "label": "Default (the Radio theme)"},
+    {"id": "music", "label": "Now Playing (Spotify's look)"},
+)
+MUSIC_LOOK_IDS = frozenset(item["id"] for item in MUSIC_LOOKS)
+RADIO_LOOK_IDS = frozenset(item["id"] for item in RADIO_LOOKS)
 
 
 # Now Playing (music screen, full-page music widget, artwork screensaver).
@@ -510,6 +554,59 @@ def _normalize_music(raw: Any) -> dict[str, Any]:
     out["volume_step"] = _int(data.get("volume_step"), out["volume_step"], 1, 10)
     out["np"] = _normalize_np(data.get("np"))
     out["saver_time"] = _normalize_music_saver_time(data.get("saver_time"))
+    out["look_from"] = _choice(data.get("look_from"), MUSIC_LOOK_IDS, out["look_from"])
+    return out
+
+
+# Radio (StonePi Radio → Odio). Widget player themes; presets are station ids/urls from Radio.
+# winamp, ampboy, realplayer and touchamp are the classic skins from skins.webamp.org, drawn from
+# their own bitmaps in the Car Thing app (apps/carthing/app/static/skins).
+RADIO_THEMES: tuple[dict[str, str], ...] = (
+    {"id": "winamp", "label": "Classic Winamp"},
+    {"id": "ampboy", "label": "Nintendo AMP BOY"},
+    {"id": "realplayer", "label": "RealPlayer"},
+    {"id": "touchamp", "label": "TouchAmp"},
+    {"id": "plain", "label": "Plain (panel theme)"},
+)
+RADIO_THEME_IDS = tuple(t["id"] for t in RADIO_THEMES)
+
+
+def default_radio() -> dict[str, Any]:
+    return {
+        "theme": "winamp",
+        "dial_volume": True,
+        "volume_step": 5,
+        "presets": [{"name": "", "station_id": "", "url": ""} for _ in range(RADIO_PRESETS)],
+        # Where the panel plays: "stonepi" (Odio on the Pi) or a speaker, "dlna:<udn>" (Radio's ids).
+        "output": "stonepi",
+        # Radio's screen, full-page widget and the artwork screensaver: the theme above
+        # ("radio") or Spotify's Now Playing look ("music").
+        "look_from": "radio",
+    }
+
+
+def _normalize_radio(raw: Any) -> dict[str, Any]:
+    data = raw if isinstance(raw, dict) else {}
+    out = default_radio()
+    theme = data.get("theme")
+    if theme == "omitron":  # removed; saved configs keep a working look
+        theme = "plain"
+    out["theme"] = _choice(theme, RADIO_THEME_IDS, out["theme"])
+    out["look_from"] = _choice(data.get("look_from"), RADIO_LOOK_IDS, out["look_from"])
+    if "dial_volume" in data:
+        out["dial_volume"] = bool(data.get("dial_volume"))
+    out["volume_step"] = _int(data.get("volume_step"), out["volume_step"], 1, 10)
+    presets_raw = data.get("presets") if isinstance(data.get("presets"), list) else []
+    for i, entry in enumerate(presets_raw[:RADIO_PRESETS]):
+        entry = entry if isinstance(entry, dict) else {}
+        out["presets"][i] = {
+            "name": str(entry.get("name") or "").strip()[:40],
+            "station_id": str(entry.get("station_id") or "").strip()[:40],
+            "url": str(entry.get("url") or "").strip()[:500],
+        }
+    output = str(data.get("output") or "").strip()[:200]
+    if output == "stonepi" or (output.startswith("dlna:") and len(output) > 5):
+        out["output"] = output
     return out
 
 
@@ -611,6 +708,8 @@ def _normalize_widget(item: Any) -> dict[str, str] | None:
         return {"id": wid, "size": "full"}
     if wid not in WIDGET_IDS:
         return None
+    if wid == "audio":
+        return {"id": wid, "size": "full"}
     return {"id": wid, "size": size if size in WIDGET_SIZE_IDS else "small"}
 
 
@@ -799,6 +898,7 @@ def normalize_config(raw: Any) -> dict[str, Any]:
         "label": str(weather_raw.get("label") or "").strip()[:60],
     }
     out["music"] = _normalize_music(data.get("music"))
+    out["radio"] = _normalize_radio(data.get("radio"))
     return out
 
 
@@ -1281,6 +1381,10 @@ def editor_catalog() -> dict[str, Any]:
         "gradients": [dict(g) for g in GRADIENTS],
         "live_lines": list(LIVE_LINES),
         "music_presets": MUSIC_PRESETS,
+        "radio_presets": RADIO_PRESETS,
+        "radio_themes": [dict(t) for t in RADIO_THEMES],
+        "music_looks": [dict(t) for t in MUSIC_LOOKS],
+        "radio_looks": [dict(t) for t in RADIO_LOOKS],
         "date_formats": [{"id": k, "label": v} for k, v in DATE_STYLES.items()],
         "screen": {"width": SCREEN_WIDTH, "height": SCREEN_HEIGHT},
     }

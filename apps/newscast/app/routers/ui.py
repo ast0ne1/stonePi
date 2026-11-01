@@ -23,6 +23,7 @@ from app.auth import (
     login_location,
     logout_location,
     may_add_custom_sources,
+    require_csrf,
     require_user,
     request_is_https,
     resolve_login_identity,
@@ -74,7 +75,7 @@ from stonepi_auth.csrf import csrf_from_request, csrf_ok, set_csrf_cookie
 from stonepi_auth.session import COOKIE_NAME, CSRF_COOKIE
 
 public = APIRouter()
-router = APIRouter(dependencies=[Depends(require_user)])
+router = APIRouter(dependencies=[Depends(require_user), Depends(require_csrf)])
 templates = Jinja2Templates(directory=str(ROOT_DIR / "app" / "templates"))
 templates.env.globals.update(asset_rev=__asset_rev__, fonts_rev=fonts_rev())
 add_shared_templates(templates.env)
@@ -415,11 +416,7 @@ def _resolve_page_lang(request: Request, db: Session) -> str:
 
 
 def _login_render(request: Request, db: Session, context: dict, *, status_code: int = 200):
-    token = csrf_from_request(request.cookies)
-    ctx = {**context, "request": request, "csrf_token": token}
-    response = render(request, "login.html", ctx, status_code=status_code, db=db)
-    set_csrf_cookie(response, token, secure=request_is_https(request, db))
-    return response
+    return render(request, "login.html", {**context, "request": request}, status_code=status_code, db=db)
 
 
 def render(request: Request, name: str, context: dict, *, status_code: int = 200, db: Session | None = None):
@@ -434,7 +431,12 @@ def render(request: Request, name: str, context: dict, *, status_code: int = 200
     ctx["_"] = t_fn
     ctx.setdefault("i18n_js", i18n.js_bundle(lang))
     ctx.setdefault("stonepi_prefix", (env.stonepi_prefix or "").rstrip("/"))
-    return templates.TemplateResponse(request, name, ctx, status_code=status_code)
+    # Every page's POST forms carry this; require_csrf checks it against the cookie.
+    token = csrf_from_request(request.cookies)
+    ctx["csrf_token"] = token
+    response = templates.TemplateResponse(request, name, ctx, status_code=status_code)
+    set_csrf_cookie(response, token, secure=request_is_https(request, db))
+    return response
 
 
 def _story_categories(db: Session, user_id: int | None = None) -> dict[str, str]:

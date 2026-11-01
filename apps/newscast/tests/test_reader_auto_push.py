@@ -43,7 +43,7 @@ def _reader(monkeypatch, *, online: bool, uploaded: list, probes: list, upload_e
         probes.append((host, timeout))
         return online
 
-    def upload(host, path, dest, db=None, user_id=None):
+    def upload(host, path, dest, db=None, user_id=None, save_name=None):
         if upload_error is not None:
             raise upload_error
         uploaded.append(path.name)
@@ -281,7 +281,7 @@ def test_reader_sleeping_mid_push_is_not_a_failed_attempt(tmp_path: Path, monkey
     monkeypatch.setattr(reader_push, "_http_file_names", lambda host, folder: set())
     attempted: list = []
 
-    def upload(host, path, dest, db=None, user_id=None):
+    def upload(host, path, dest, db=None, user_id=None, save_name=None):
         attempted.append(path.name)
         raise RuntimeError("Could not reach pat.local")
 

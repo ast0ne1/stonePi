@@ -8,6 +8,7 @@ from app.auth import (
     SessionUser,
     effective_user_id,
     may_add_custom_sources,
+    require_csrf,
     require_user,
     session_from_request,
     session_is_admin,
@@ -16,7 +17,7 @@ from app.db import get_db
 from app.models import Feed
 from app.services.catalog import find_catalog_item, grouped_catalog
 
-router = APIRouter(dependencies=[Depends(require_user)])
+router = APIRouter(dependencies=[Depends(require_user), Depends(require_csrf)])
 
 
 class FeedCreate(BaseModel):

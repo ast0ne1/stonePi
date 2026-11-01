@@ -1,141 +1,166 @@
 ---
 name: new-stonepi-app
 description: >-
-  Scaffold and ship a new StonePi household app (FastAPI sibling of NewsCast/
-  Pinboard/Studio/PriceScout). Use when creating a new app under apps/, wiring
-  catalog/nginx/systemd/install/run-dev, copying chrome (theme, nav, settings
-  hub/L2, icons, sheets, mobile), or fixing post-hoc mismatches with the portal
-  shell. NewsCast is the full chrome baseline — see chrome.md.
+  Scaffold and ship a new StonePi household app (FastAPI sibling of NewsCast,
+  Ripple, Pinboard). Use when creating a new app under apps/, wiring catalog,
+  nginx, systemd, install, backup, Recover, CLI and run-dev, building the shell
+  (shared header, bottom nav / side rail, settings hub, sheets, toasts), or
+  fixing an app that has drifted from the shared shell.
 ---
 
 # New StonePi app
 
-StonePi apps are **household LAN products** on a Pi: shared SSO, Home launcher,
-shared light/dark/palette theme, bottom nav on phones / side rail on desktop.
+StonePi apps are **household LAN products** on a Pi: shared sign-in (Auth),
+the shared header (search, bell, app switcher, avatar menu), the design-system
+tokens and fonts from `packages/stonepi_brand`, a bottom nav on phones and a
+side rail on laptops. Since platform 0.2.0 (F6, `ideation/ui-refresh.md`) the
+look comes from the design system, not from each app.
 
-**Chrome baseline: NewsCast** (`apps/newscast`). Use Pinboard only for a tiny
-shell. Never invent a new topbar, sheet, settings IA, or SVG size system — copy
-NewsCast and strip product pages. Detail: [chrome.md](chrome.md). Portal IA:
-[ux-stonepi](../ux-stonepi/SKILL.md). Deploy: [platform.md](platform.md).
+**References** (copy mechanisms, don't invent):
+
+| Need | Copy from |
+|------|-----------|
+| Shell, nav, settings hub → L2 → panel, toasts, sheets, JS-submitted forms | `apps/newscast` |
+| Small, platform-only app skeleton: config, `_gate`, `_render`, CSRF, denied page, admin-only settings, signed internal calls, tests | `apps/ripple` (newest, 0.5.0) |
+| Add sheets from a header "+", picker sheet, outbound fetch safety (`links.py`), capabilities | `apps/pinboard` |
+| Portal settings / Health / Services | `apps/dashboard` |
+
+NewsCast is older than the platform and still carries its own solo-mode user
+system (`app/auth.py`, local users, `/login`), i18n and its own `routers/`
+package. Don't copy those into a new app: new apps are platform-only and follow
+Ripple for the Python side. Detail: [chrome.md](chrome.md) (UI shell) and
+[platform.md](platform.md) (registration and wiring). Portal IA and breakpoints:
+[ux-stonepi](../ux-stonepi/SKILL.md).
 
 ## Workflow
 
-1. **Name & route** — lowercase `app_id`, URL prefix (`/myapp/`), free port,
-   systemd unit `stonepi-{id}`, service user. Record in [platform.md](platform.md).
-2. **Scaffold** — `apps/{id}/` FastAPI + Jinja + static CSS/JS; clone chrome from
-   **NewsCast** (`base.html`, `_theme_boot.html`, `_icons.html`, `_filter_icon.html`,
-   confirm sheet, CSS token + shell block, sheet hoist JS). Strip product pages;
-   keep shell.
-3. **Product IA** — primary destinations in bottom nav (incl. **Home** → portal).
-   Settings = product prefs + **About**; no Users/Updates when SSO is on.
-4. **Platform wire** — catalog, nginx, systemd, `install.sh`, `run_dev.py`,
-   dashboard icon, allowed ports, data dir (see [platform.md](platform.md)).
-5. **Parity pass** — run the checklist below + [chrome.md](chrome.md) §15.
-6. **Pi update** — use [push-to-pi](../push-to-pi/SKILL.md): package the overlay,
-   then give the user `cmd /c "scripts\….cmd -Apply"` (never run scp/ssh yourself).
+1. **Identity** — lowercase `app_id`, URL prefix (`/myapp/`), free port, unit
+   `stonepi-{id}`, service user, data dir. Fill the identity sheet in
+   [platform.md](platform.md).
+2. **Scaffold** — `apps/{id}/` with the file layout in [platform.md](platform.md):
+   FastAPI + Jinja + `static/css/app.css` + `static/js/app.js`. Shell from
+   NewsCast (`base.html`, `_theme_boot.html`, `_brand_mark.html`, `_icons.html`,
+   confirm sheet, toast), Python skeleton from Ripple (`config.py`, `main.py`,
+   `serve.py`, `routes.py`).
+3. **Product IA** — 2–3 primary destinations + **Settings last** in the bottom
+   nav (max 4). **No Home item**: Home is the top entry of the header's app
+   switcher. Adding things happens in sheets opened from the header "+". Settings
+   = product preferences + **About**.
+4. **Register** — every place in [platform.md](platform.md) → Registration
+   checklist (catalog, prefix roots, safe_next ports, contracts label, icons,
+   nginx ×2, systemd + target, installer, backup, Recover, CLI, run-dev, README).
+5. **Tests** — at least the Ripple set (see [platform.md](platform.md) → Tests),
+   plus `packages/stonepi_auth/tests` (platform consistency) green.
+6. **Parity pass** — the checklist below + [chrome.md](chrome.md) §14; the
+   responsive widths in `deploy/responsive-audit.md`.
+7. **run-dev, then Pi** — check in `run-dev.bat` first; then prepare the overlay
+   with [push-to-pi](../push-to-pi/SKILL.md) and give the user the
+   `cmd /c "scripts\….cmd -Apply"` line (never run scp/ssh yourself).
 
 ## Non-negotiables (fixes we keep re-doing)
 
 | Topic | Rule |
 |-------|------|
-| **Baseline** | NewsCast is the source of truth for shell, settings hub/L2, sheets, SVG sizes, topbar actions. Pinboard = minimal only. |
-| **Theme accent** | Primary buttons use `var(--accent)` / `var(--accent-ink)`. **Never** override `:root` accent to an app-only colour. Shared palettes: default brick, `ocean`, `forest`, `slate` × light/dark. |
-| **Light/dark + palette** | Include `_theme_boot.html` (shared `stonepi-theme` / `stonepi-palette` cookies). Light/dark/auto toggle is **dashboard header only** — product apps apply the shared pref, do not ship `.theme-switch`. Colour palette: Dashboard → Settings → Appearance. Fonts: IBM Plex Sans + Source Serif 4. |
-| **Topbar actions** | Order: brand → (status) → **global Refresh** (if app has sync) → **POST logout**. Refresh sits **next to** logout (`btn-refresh`); ≤420px icon-only. |
-| **Nav** | Always include **Home** → `portal_home_url` / `stonepi_home_url` (not app `/`). Phone/tablet &lt;1024: bottom bar, `repeat(N, …)` where **N = actual links**. Laptop+ ≥**1024px**: sticky side rail (~200px). Never 800/900. |
-| **Mobile shell** | `viewport-fit=cover`; `--safe-bottom`; `--tap: 44px` (40px ≤559px); phone: `html,body` overflow locked, `.main` scrolls; inputs ≥16px; confirm/filter/help sheets clear nav. Breakpoints: **720 / 1024 / 1440**. |
-| **Sheets** | Hoist `.sheet` to `document.body` (`mountSheetsToBody`); `sheet-open` locks overflow; mobile bottom padding ~76–80px + safe-area; inner body scrolls. Never rely on `position:fixed` inside scrolling `.main`. |
-| **SVG sizes** | ViewBox 24×24; CSS caps — nav/brand **22**, chrome actions **18**, theme **16**, chips **14**, hub glyph **18** in **40** tile. Always set width/height in CSS for the parent. Stroke `fill: none`; restore filled pips with `[fill]:not([fill="none"])` rules. See [chrome.md](chrome.md) §3. |
-| **Icons** | `_icons.html` for actions; `_filter_icon.html` for nav/chips/settings. Settings gear = shared cog. Chips/hub rows: **icon + label** (never text-only). |
-| **Buttons** | Labelled = `btn … btn-with-icon`. Icon-only = `icon-btn` + `aria-label` (use `icon-btn-quiet` for non-destructive). |
-| **Settings IA** | Every viewport: NewsCast **hub → L2 (icons + subtexts) → one stacked panel**. Laptop+ keeps that drill-down (one-column hub; readable panel column) — no chip bar. `SETTINGS_PANEL_SUBTEXTS` required (no “Open this section”). Heading icons match L2. A single-card tab skips L2. View/chrome prefs under General → View options; export layout stays product-specific. SSO: no Users/Updates/password ownership. |
-| **Confirms** | Shared sheet, not bare `confirm()`. Logout = **POST** + CSRF. |
-| **CSRF** | Forms include `csrf_token`; cookie via `stonepi_auth.csrf`. |
-| **Empty states** | Explain what belongs here + one CTA. |
-| **Prefix** | Honor `STONEPI_PREFIX` for redirects and static under nginx path routing. |
-| **Asset bust** | `?v={{ app_version }}-{{ asset_rev }}` + `fonts.css?v={{ fonts_rev }}`; `__asset_rev__` is computed from `static/` — never hand-bump. |
-| **Copy source** | Clone CSS/HTML/JS chrome from NewsCast; delete product-only leftovers. |
+| **No Home in the nav** | Home (Dashboard) lives in the shared header's app switcher (`stonepi/header.html`). The bottom nav holds the app's own destinations only; the brand links to the app's own `/`. |
+| **Nav** | 2–3 tabs + Settings last, max 4. Bottom bar below 1024px, `repeat(N, minmax(0, 1fr))` with **N = actual links**; sticky side rail from **1024px**. Never 800/900. |
+| **Shared header** | Topbar actions end with `header_tools(...)` from `stonepi/header.html` (bell, switcher, avatar with Appearance and Log out). Optional `header_search(...)` and at most one primary action (Refresh) before it. Never hand-build a bell, logout button or theme switch. |
+| **Design system** | `brand_head(app_id, fonts_rev)` before `app.css`, `brand_tail(fonts_rev)` after it. Colours, fonts, radii come from `tokens.css`; never define colour tokens or hex values in `app.css`. Primary = `--primary` (alias `--accent`). |
+| **Theme** | Include `_theme_boot.html` (shared `stonepi-theme` cookie: light / dark / system). The choice is made in the avatar menu → Appearance or Dashboard → Settings → General. No per-app switch, no colour palettes (removed in 0.2.0). |
+| **Icons** | App icon = fixed artwork `/assets/brand/icons/apps/{id}.svg` (+ PNGs). UI glyphs = outline SVGs on a 24 grid, sized in CSS (nav 20px, buttons 18px). See [chrome.md](chrome.md) §3. |
+| **Input in sheets** | Adding things: header "+" (`header_fab(href, label, sheet="name")`) opens a `.sheet[data-sheet="name"]` with the form; several kinds → a picker sheet first. No inline add forms on main pages. Settings panels are the exception. |
+| **Confirms** | Destructive actions: `form[data-confirm]` + the shared confirm sheet in `base.html`. Never `window.confirm()`. OK label = the verb. |
+| **Flash** | Done-messages fade as a toast (`[data-toast]`), never a `.banner-ok`; errors stay visible (inline `[data-form-error]` or `.banner`). Background posts: `X-Requested-With: fetch` → `{ok, message, redirect?}`. See [chrome.md](chrome.md) §9. |
+| **Settings IA** | Hub (groups of rows: icon, title, subtext, chevron) → L2 list when a tab has more than one panel → one stacked panel. Same drill-down on every viewport. Every row has a subtext. About last. |
+| **Auth** | Every page and POST goes through one gate (Ripple `_gate`): signed out → Auth login; no grant → `denied.html` (403). Access is re-checked on every request from the session cookie. |
+| **Admin-only** | Household settings: admins only, checked server-side on the POST. Members don't see household settings, only their own personal ones (if the app has any). |
+| **CSRF** | Every POST: `csrf_ok(request.cookies.get(CSRF_COOKIE), token)` or `csrf_ok_request(request.cookies, token)`. `csrf_ok` takes the cookie **value**; passing the cookies dict makes every form fail. |
+| **Per-person data** | Key it by the Auth user id (`user.user_id`), never username or a local id. |
+| **Redirects** | `next` values: same-app paths only (`/x`, not `//x`, no scheme). Cross-app: `stonepi_auth.session.safe_next`. |
+| **Internal calls** | Service-to-service under `/api/internal/*`, signed with `stonepi_auth.internal` v2; nginx blocks the path at the edge. Never expose an unsigned write endpoint. |
+| **Display feed** | `/api/display` is loopback-only (Dashboard tile, TRMNL, Car Thing); add the app to `stonepi-public-deny-display.conf`. |
+| **Platform lock** | `add_platform_lock(app, lambda: routes._session_secret())` in `main.py`: a Pi without a session secret returns 503 instead of running open. Every new app has it; only NewsCast, EventTrakr and FileServe (built standalone, with their own local sign-in) go without. |
+| **Prefix** | `PrefixMiddleware` when `STONEPI_PREFIX` is set; write root paths (`/settings`) in templates and redirects and let the middleware rewrite them. JSON isn't rewritten: build URLs for JSON with `prefix_path`. |
+| **Cache bust** | `?v={{ asset_rev }}` (computed from `static/`) and `fonts_rev`. Never a typed date or number: `test_platform_consistency.py` fails on it. |
+| **Versions** | `__version__` in `app/__init__.py` is the only place. User apps share the 0.0.x line; only the feature app gets a number while staging. See [platform.md](platform.md) → Versioning. |
+| **Outbound fetches** | Anything fetched from a user-given URL: public addresses only, ports 80/443, every redirect re-checked, size caps, raster images only. Pinboard `app/links.py`. |
+| **Empty states** | Say what belongs here + one clear action. |
 
 ## Ship checklist
 
 Copy and tick while building:
 
 ```
-Shell
-- [ ] base.html: viewport-fit=cover, theme-color, _theme_boot, fonts, POST logout (no light/dark switch)
-- [ ] Topbar order: brand → [Refresh] → bell (shared `alerts_bell`) → logout
-- [ ] Confirm sheet present; JS wires data-confirm + mountSheetsToBody
-- [ ] No app-specific --accent override after palette tokens
-- [ ] btn-primary / links / focus rings use var(--accent)
-- [ ] SVG size matrix applied (see chrome.md)
+Shell (chrome.md)
+- [ ] base.html: viewport-fit=cover, theme-color, _theme_boot, brand_head/brand_tail around app.css
+- [ ] Topbar: brand (app icon + name → /) · [header_search] · [one primary action] · header_tools
+- [ ] header_tools gets csrf_token (or local_name standalone); render it on every page
+- [ ] No colour tokens / hex in app.css; primary buttons use the shared .btn-primary
+- [ ] Confirm sheet + toast in base.html; sheets hoisted to <body>
+- [ ] Add flows in sheets from header_fab; Cancel = data-close-sheet; first field data-autofocus
+- [ ] Glyph sizes set in CSS (nav 20, buttons 18, hub 18-in-40)
 
 Nav
-- [ ] Home → portal origin
-- [ ] Column count = link count; labels fit on narrow phones
-- [ ] Desktop rail ≥1024px; phone/tablet bottom bar + safe-area
-- [ ] Every nav item has stroke icon (22×22)
+- [ ] No Home item; Settings last; 3–4 items; N columns = N links
+- [ ] Bottom bar + safe-area below 1024; side rail from 1024
+- [ ] Every nav item: outline glyph + short label
 
 Settings
-- [ ] Phone: hub groups + L2 icons/subtexts + back link (if multi-tab)
-- [ ] Desktop: chips with icons; all section cards visible
-- [ ] section-heading icons match L2
-- [ ] About: name, blurb, GitHub, version
-- [ ] SSO: no Users/Updates/password ownership
-- [ ] Save uses check icon; destructive actions iconed
+- [ ] Hub groups → (L2) → one stacked panel; back link; subtexts on every row
+- [ ] Panel heading icons match the hub / L2 icons
+- [ ] Admin-only saves checked server-side; household settings hidden from members
+- [ ] About: name, blurb, GitHub, Version (from __version__)
+- [ ] Notifications tab only if the app emits events (shared card)
 
-Mobile
-- [ ] Sheets clear bottom nav; inner scroll regions
-- [ ] Filter long lists via sheet + chips-action when needed
-- [ ] overflow-wrap on titles/meta; empty states
-- [ ] App in `APP_CATALOG`; `__asset_rev__` computed (no literal `?v=`)
+Platform (platform.md)
+- [ ] Every row of the Registration checklist
+- [ ] /healthz; /api/display only if it feeds Home/TRMNL/Car Thing (+ public deny)
+- [ ] add_platform_lock; PrefixMiddleware; mount_brand_fonts
+- [ ] Data under STONEPI_DATA_DIR; nothing runtime in git or zips
+- [ ] App README + CHANGELOG ("Unreleased" until the cut); root CHANGELOG Unreleased + README tables
 
-Notifications (see platform.md → Notifications)
-- [ ] Events registered in stonepi_contracts catalog with an audience
-- [ ] Every emit sets audience; personal events set user = Auth id (auth_user_id), never local ids
-- [ ] add_shared_templates; bell via alerts_bell_state on every page (hidden standalone)
-- [ ] Settings → Notifications: shared card via notifications_card_state (+ timing settings only)
-- [ ] tests/test_personal_alerts.py
+Tests
+- [ ] App tests (gate, CSRF, admin-only, per-person, healthz/display)
+- [ ] packages/stonepi_auth/tests green (consistency, prefix, icons)
 
-Platform (see platform.md)
-- [ ] catalog.py entry (path, port, unit, icon, capabilities, launcher)
-- [ ] nginx upstream + location
-- [ ] systemd unit + install.sh user/venv/env/data
-- [ ] run_dev.py port + vault list
-- [ ] dashboard _icons.html + any badge map
-- [ ] session allowed_ports includes app port
-- [ ] /healthz (+ /api/display if Display card needed)
-- [ ] README + CHANGELOG; gitignore runtime data/.venv
+Responsive
+- [ ] 375 / 800 / 1280 / 1440+ (deploy/responsive-audit.md); sheets clear the nav
 ```
-
-## Reference apps
-
-| Need | Copy from |
-|------|-----------|
-| **Full chrome (default)** | `apps/newscast` |
-| Minimal shell only | `apps/pinboard` |
-| Chat + publish | `apps/studio` |
-| Recent citizen + Pi push patterns | `apps/pricescout` |
-| Portal settings / Health | `apps/dashboard` |
 
 ## Lessons from siblings (keep these)
 
 | Lesson | From | Rule |
 |--------|------|------|
-| **Host-aware Home** | NewsCast / all | `portal_home_url(request, …)` — never hardcode `.local` only. |
-| **`platform_managed`** | NewsCast, FileServe, EventTrakr | Hide Users / Updates / password / TLS ownership when SSO; link to Dashboard. |
-| **Factory admin banner** | NewsCast, Dashboard | Surface in-UI if still `admin`/`admin`. |
-| **Asset cache bust** | NewsCast | `?v={{ app_version }}-{{ asset_rev }}`. |
-| **Settings hub + L2** | NewsCast | Grouped hub; L2 icons + short subtexts; desktop chips. See [chrome.md](chrome.md) §9. |
-| **Sheet hoist / iOS** | NewsCast | Fixed sheets inside `.main` fail — hoist to `body`. |
-| **SVG blow-ups** | NewsCast | Cap sizes in CSS; hub icons 18-in-40; never unstyled SVG. |
-| **About is a chip with icon** | EventTrakr | Never text-only About. |
-| **Capability defaults** | Dashboard Users | New users get Dashboard only; declare real `capabilities`. |
-| **Display scrape privacy** | Pinboard / platform | Public nginx denies `/api/display`. |
-| **Confirm sheet copy** | NewsCast / FileServe | Name the consequence; OK label = verb. |
-| **Sign-out POST** | All | Never `<a href="/logout">`. |
-| **Studio → FileServe** | Studio | `studio-fileserve` skill. |
-| **Playwright / scrape apps** | EventTrakr | Browsers under service user `HOME=/opt/stonepi`. |
-| **Vault secrets** | Dashboard / apps | UI says configured vs not set; never echo secrets. |
-| **Empty + first useful action** | All | Data or one clear CTA on first screen. |
+| **Host-aware Home** | all | `portal_home_url(request, env.public_origin)`; never hardcode `.local`. Cross-app links via `stonepi_auth.header.app_page_url`. |
+| **Factory admin banner** | NewsCast, Pinboard | `factory_admin_warning(user)` → a `.banner-muted` pointing at Dashboard → Settings → General. |
+| **Sheet hoist / iOS** | NewsCast | Fixed sheets inside scrolling `.main` fail on iOS; hoist to `body`. |
+| **Unstyled SVG blow-ups** | NewsCast | Every SVG parent has a CSS width/height. |
+| **Capability defaults** | Dashboard People | New users get Dashboard only; declare only real `capabilities`. |
+| **Display privacy** | Pinboard / platform | Public nginx denies `/api/display`; `/api/internal/` is blocked for every app. |
+| **Display page capture** | Ripple | A display *page* (not JSON) opens for Notify only with a one-off key from a signed `/api/internal/capture-key`; catalog `capture_key` / `display_page`. |
+| **Confirm sheet copy** | NewsCast / Ripple | Name the consequence; OK label = verb ("Delete"). |
+| **Log out** | all | Through `header_tools` (POST form); the app's `/logout` redirects to Auth's `logout_url`. Never an `<a href="/logout">`. |
+| **Icons need PNGs** | Ripple, Radio | Run `render_icons.py` after adding the SVG; the consistency test checks. |
+| **Playwright / scrape apps** | EventTrakr | Browsers under the service user `HOME=/opt/stonepi`; `install_app {id} {user} playwright`. |
+| **Vault secrets** | Dashboard / apps | Read the session secret Vault-first (Ripple `_session_secret`); UI says configured vs not set; never echo secrets. |
 
-When unsure, open NewsCast and copy the mechanism — don’t re-invent.
+When unsure, open NewsCast (UI) or Ripple (Python) and copy the mechanism.
+
+## Decided 2026-10-31 (where NewsCast and Ripple differed)
+
+The rules above follow these. Until the apps are brought into line, don't copy the "still differs" behaviour. (Audited against the code 2026-10-31.)
+
+| # | Decision | Still differs |
+|---|----------|---------------|
+| 0 | **Nav: no Home item, Settings last**, at most 4 items | None (all apps match) |
+| 1 | **Done-messages are a toast in every app**, never `.banner-ok` | SportGuide, PriceScout, Pinboard, Ripple, Studio (banners); EventTrakr, FileServe (both, by flash category) |
+| 2 | **Background posts the standard way in every app**: `X-Requested-With: fetch` → `{ok, message, redirect?}` | Ripple (`x-ripple-ajax`); EventTrakr, PriceWatch, Library don't use the header |
+| 3 | Every browser POST checks CSRF | EventTrakr (login only; its forms don't send a token). NewsCast fixed 2026-10-31 (uncommitted) |
+| 4 | **Every app calls `add_platform_lock`**, except NewsCast, EventTrakr and FileServe: built standalone, they keep their local sign-in as the fallback | PriceWatch, Library |
+| 5 | Home apps' rail: `var(--app-rail-width)` = 200px; the Dashboard keeps `--sidebar-width` 240px | Every Home app hard-codes it (200px, fine in effect); NewsCast overrides to 220px |
+| 6 | *Open:* adding things: header "+" opens a sheet; no "New …" nav tab (sheets stay the rule for new apps; existing apps not moved yet) | "+" opens a page: EventTrakr, PriceWatch, Ripple, Studio, FileServe; Ripple also has a "New post" tab. Pinboard and Radio use sheets |
+| 7 | *Open:* `header_tools` rendered on every page, signed in or not | SportGuide, Pinboard, Ripple, Library, Studio (`{% if user %}`) |
+| 8 | **Members don't see household settings**, only their own personal ones | Pinboard, Ripple, PriceScout show them read-only; others to check (NewsCast, FileServe, PriceWatch already hide them) |
+| 9 | Admins open every app without a grant | `PlatformUser.can_access` (admins go through the apps list) |
+| 10 | Keep the `{prefix}/static` mount next to `/static`: nine apps have it, so it's the pattern, not a stray | NewsCast and EventTrakr don't have it (fine as they are) |
+
+A new user app starts one above the highest Home app version at the time; confirm the number with the owner.

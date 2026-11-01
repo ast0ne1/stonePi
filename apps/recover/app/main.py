@@ -7,6 +7,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import secrets
 import shutil
 import socket
@@ -77,6 +78,7 @@ SERVICE_GROUPS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("stonepi-pricewatch", "PriceWatch"),
             ("stonepi-library", "Library"),
             ("stonepi-ripple", "Ripple"),
+            ("stonepi-radio", "Radio"),
         ),
     ),
     (
@@ -126,7 +128,7 @@ SHARED_HEADER = _use_header_templates()
 
 log = logging.getLogger("stonepi.recover")
 
-app = FastAPI(title="StonePi Recover", docs_url=None, redoc_url=None)
+app = FastAPI(title="StonePi Recover", docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 # Fonts, tokens and icons for direct :8099 use (nginx serves /assets/ itself otherwise).
 if BRAND_ROOT is not None:
@@ -440,16 +442,33 @@ def _summary(rows: list[dict], disk: str, failover: bool, network: str) -> dict:
     }
 
 
-def _load_passwd() -> tuple[str, str] | None:
-    """recover.passwd (root 0600) is the only source on the Pi.
+def _password_is_hashed(value: str | None) -> bool:
+    return (value or "").strip().startswith("$argon2")
 
-    The Vault is readable by every app user, so the Recover password never lives there.
-    An env override is honoured only in dev (Windows run-dev or RECOVER_DEV=1).
-    """
-    if _dev_mode():
-        env_pw = (os.environ.get("STONEPI_RECOVER_PASSWORD") or os.environ.get(LEGACY_VAULT_KEY) or "").strip()
-        if env_pw:
-            return ("stonepi", env_pw)
+
+def _hash_password(password: str) -> str:
+    from argon2 import PasswordHasher
+
+    return PasswordHasher().hash(password or "")
+
+
+def _verify_password(stored: str, password: str) -> bool:
+    """Accept Argon2 hashes or a legacy plaintext recover.passwd line."""
+    raw = (stored or "").strip()
+    if not raw:
+        return False
+    if _password_is_hashed(raw):
+        from argon2 import PasswordHasher
+        from argon2.exceptions import InvalidHashError, VerifyMismatchError
+
+        try:
+            return PasswordHasher().verify(raw, password or "")
+        except (VerifyMismatchError, InvalidHashError):
+            return False
+    return hmac.compare_digest(raw.encode("utf-8"), (password or "").encode("utf-8"))
+
+
+def _read_passwd_file() -> tuple[str, str] | None:
     for passwd_file in (PASSWD_FILE, LEGACY_PASSWD_FILE):
         if not passwd_file.is_file():
             continue
@@ -465,23 +484,38 @@ def _load_passwd() -> tuple[str, str] | None:
     return None
 
 
-def _signing_key(password: str) -> bytes:
+def _load_passwd() -> tuple[str, str] | None:
+    """recover.passwd (root 0600) is the only source on the Pi.
+
+    The Vault is readable by every app user, so the Recover password never lives there.
+    An env override is honoured only in dev (Windows run-dev or RECOVER_DEV=1).
+    The file value may be an Argon2 hash (preferred) or legacy plaintext.
+    """
+    if _dev_mode():
+        env_pw = (os.environ.get("STONEPI_RECOVER_PASSWORD") or os.environ.get(LEGACY_VAULT_KEY) or "").strip()
+        if env_pw:
+            return ("stonepi", env_pw)
+    return _read_passwd_file()
+
+
+def _signing_key(credential: str) -> bytes:
+    """HMAC key material: session secret + the stored credential (hash or plaintext)."""
     secret = (
         os.environ.get("STONEPI_SESSION_SECRET")
         or os.environ.get("SESSION_SECRET")
-        or password
+        or credential
         or "stonepi-recover"
     )
-    return hashlib.sha256(f"recover:{secret}:{password}".encode()).digest()
+    return hashlib.sha256(f"recover:{secret}:{credential}".encode()).digest()
 
 
-def _make_session_token(password: str) -> str:
+def _make_session_token(credential: str) -> str:
     ts = str(int(time.time()))
-    sig = hmac.new(_signing_key(password), ts.encode(), hashlib.sha256).hexdigest()
+    sig = hmac.new(_signing_key(credential), ts.encode(), hashlib.sha256).hexdigest()
     return f"{ts}.{sig}"
 
 
-def _valid_session_token(token: str | None, password: str) -> bool:
+def _valid_session_token(token: str | None, credential: str) -> bool:
     if not token or "." not in token:
         return False
     ts, sig = token.split(".", 1)
@@ -491,7 +525,7 @@ def _valid_session_token(token: str | None, password: str) -> bool:
         return False
     if age < 0 or age > SESSION_MAX_AGE:
         return False
-    expect = hmac.new(_signing_key(password), ts.encode(), hashlib.sha256).hexdigest()
+    expect = hmac.new(_signing_key(credential), ts.encode(), hashlib.sha256).hexdigest()
     return hmac.compare_digest(sig, expect)
 
 
@@ -522,8 +556,8 @@ def _recover_session_ok(request: Request) -> bool:
     creds = _load_passwd()
     if creds is None:
         return False
-    _user, password = creds
-    return _valid_session_token(request.cookies.get(SESSION_COOKIE), password)
+    _user, credential = creds
+    return _valid_session_token(request.cookies.get(SESSION_COOKIE), credential)
 
 
 class AuthRedirect(Exception):
@@ -559,17 +593,32 @@ def _list_snapshots() -> list[dict]:
 
 
 def _write_passwd_file(password: str) -> None:
-    """Write recover.passwd atomically, created 0600 so it is never briefly world-readable."""
+    """Write recover.passwd atomically (Argon2 hash), created 0600 so it is never briefly world-readable."""
+    stored = password if _password_is_hashed(password) else _hash_password(password)
     PASSWD_FILE.parent.mkdir(parents=True, exist_ok=True)
     tmp = PASSWD_FILE.with_name(PASSWD_FILE.name + ".tmp")
     fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as handle:
-        handle.write(f"stonepi:{password}\n")
+        handle.write(f"stonepi:{stored}\n")
     try:
         tmp.chmod(0o600)
     except Exception:
         pass
     tmp.replace(PASSWD_FILE)
+
+
+def _rehash_passwd_file_if_needed() -> None:
+    """Upgrade a legacy plaintext recover.passwd to Argon2 on startup."""
+    row = _read_passwd_file()
+    if not row:
+        return
+    _user, stored = row
+    if _password_is_hashed(stored):
+        return
+    try:
+        _write_passwd_file(stored)
+    except Exception:
+        pass
 
 
 def migrate_legacy_password() -> None:
@@ -610,7 +659,7 @@ def migrate_legacy_password() -> None:
 
 
 def ensure_recover_password() -> str | None:
-    """Create recover.passwd if missing; return plaintext when newly created."""
+    """Create recover.passwd if missing; return plaintext when newly created (file stores a hash)."""
     if PASSWD_FILE.is_file():
         return None
     password = secrets.token_urlsafe(12)
@@ -622,6 +671,7 @@ def ensure_recover_password() -> str | None:
 def _startup() -> None:
     migrate_legacy_password()
     ensure_recover_password()
+    _rehash_passwd_file_if_needed()
 
 
 @app.get("/healthz")
@@ -673,9 +723,9 @@ def login_post(
             {"username": username or "stonepi", "error": "Recover password not configured"},
             status_code=503,
         )
-    expect_user, expect_pw = creds
+    expect_user, stored = creds
     user_ok = hmac.compare_digest((username or "").encode(), expect_user.encode())
-    pass_ok = hmac.compare_digest((password or "").encode(), expect_pw.encode())
+    pass_ok = _verify_password(stored, password or "")
     if not (user_ok and pass_ok):
         _record_failure(request)
         return _page(
@@ -684,11 +734,20 @@ def login_post(
             {"username": username or "stonepi", "error": "Invalid credentials"},
             status_code=401,
         )
+    # Upgrade legacy plaintext file entries to Argon2 after a successful login.
+    if not _password_is_hashed(stored) and not _dev_mode():
+        try:
+            _write_passwd_file(password or "")
+            refreshed = _read_passwd_file()
+            if refreshed:
+                stored = refreshed[1]
+        except Exception:
+            pass
     _clear_failures(request)
     resp = RedirectResponse("./", status_code=303)
     resp.set_cookie(
         SESSION_COOKIE,
-        _make_session_token(expect_pw),
+        _make_session_token(stored),
         max_age=SESSION_MAX_AGE,
         httponly=True,
         samesite="lax",
@@ -815,6 +874,29 @@ def restore(
     return RedirectResponse(f"./?err={detail}", status_code=303)
 
 
+# Mask common secret shapes in journal snippets shown to Recover operators.
+_LOG_REDACT = (
+    (re.compile(r"(?i)\b(authorization:\s*bearer\s+)\S+"), r"\1***"),
+    (
+        re.compile(
+            r"(?i)\b([\w-]*(?:password|passwd|secret|token|api[_-]?key|refresh_token|client_secret)\s*[=:]\s*)\S+"
+        ),
+        r"\1***",
+    ),
+    (re.compile(r"(?i)(/[^\s\"']*?(?:token|secret|key|passwd)[^\s\"']*=)[^&\s\"']+"), r"\1***"),
+)
+
+
+def redact_log_text(text: str) -> str:
+    """Strip password/token-like values from journal text before it hits the browser."""
+    if not text:
+        return text
+    out = text
+    for pattern, repl in _LOG_REDACT:
+        out = pattern.sub(repl, out)
+    return out
+
+
 @app.get("/logs", response_class=HTMLResponse)
 def logs(request: Request, unit: str = "", _auth: None = Depends(require_recover_auth)):
     """One unit's journal (?unit=), or by default the failed units, else the core four."""
@@ -833,7 +915,7 @@ def logs(request: Request, unit: str = "", _auth: None = Depends(require_recover
         request,
         "logs.html",
         {
-            "log_text": out or "(empty)",
+            "log_text": redact_log_text(out or "(empty)"),
             "chosen": chosen,
             "showing": ", ".join(names.get(u, u) for u in units),
             "groups": [{"name": g, "units": [r for r in rows if r["group"] == g]} for g, _units in SERVICE_GROUPS],

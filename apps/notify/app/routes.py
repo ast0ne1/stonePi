@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import uuid
 from urllib.parse import quote
@@ -20,6 +21,8 @@ from stonepi_auth.csrf import csrf_from_request, csrf_ok_request, set_csrf_cooki
 from stonepi_auth.http import portal_home_url, request_is_https
 from stonepi_auth.session import COOKIE_NAME, decode_session
 
+logger = logging.getLogger("notify")
+
 templates = Jinja2Templates(directory=str(ROOT_DIR / "app" / "templates"))
 templates.env.globals.update(asset_rev=__asset_rev__, fonts_rev=fonts_rev())
 add_shared_templates(templates.env)
@@ -28,8 +31,8 @@ router = APIRouter()
 APP_ID = "notify"
 APP_NAME = "Notify"
 APP_BLURB = (
-    "Household Displays and phone alerts for StonePi — TRMNL screen layouts, phone-alert "
-    "setup and approvals, and delivery history."
+    "Household Displays and phone alerts for StonePi — TRMNL screen layouts, the Car Thing "
+    "panel, Sidekick for Pebble, phone-alert setup and approvals, and delivery history."
 )
 
 AUDIENCE_LABELS = {"personal": "Personal", "household": "Household", "admin": "Admin"}
@@ -242,15 +245,61 @@ def _json_request(request: Request) -> bool:
     return request.headers.get("content-type", "").split(";")[0].strip().lower() == "application/json"
 
 
+def _loopback_secret() -> str:
+    try:
+        from stonepi_vault import get_secret
+
+        vaulted = (get_secret("STONEPI_SESSION_SECRET", env_name="STONEPI_SESSION_SECRET", default="") or "").strip()
+        if vaulted:
+            return vaulted
+    except Exception:  # noqa: BLE001
+        pass
+    import os
+
+    return (os.environ.get("STONEPI_SESSION_SECRET") or os.environ.get("SESSION_SECRET") or "").strip()
+
+
+def _direct_loopback(request: Request) -> bool:
+    """The socket peer is this machine, and the request did not come through nginx.
+
+    Apps call 127.0.0.1:8012 directly. nginx adds forwarding headers and 404s these
+    paths; this check still holds if that deny is removed or the app is bound wider.
+    """
+    host = getattr(request.client, "host", "") or ""
+    if host not in {"127.0.0.1", "::1"} and not host.startswith("127."):
+        return False
+    for name in ("x-forwarded-for", "x-real-ip", "forwarded", "x-forwarded-host"):
+        if request.headers.get(name):
+            return False
+    return True
+
+
+def _verify_loopback_post(request: Request, raw: bytes) -> bool:
+    """Signed v2 when a session secret exists; unsigned only while Auth isn't set up yet."""
+    if not _direct_loopback(request):
+        return False
+    secret = _loopback_secret()
+    if not secret:
+        return True
+    from stonepi_auth.internal import verify_internal_v2
+
+    return verify_internal_v2(secret, "POST", request.url.path, request.headers, raw)
+
+
 @router.post("/api/events")
 async def api_events(request: Request):
     """Loopback event ingest — used by stonepi_contracts.emit_event."""
     import stonepi_notify
 
+    if not _direct_loopback(request):
+        return JSONResponse({"ok": False, "message": "Not found"}, status_code=404)
     if not _json_request(request):
         return JSONResponse({"ok": False, "message": "send application/json"}, status_code=415)
+    raw = await request.body()
+    if not _verify_loopback_post(request, raw):
+        return JSONResponse({"ok": False, "message": "Not allowed."}, status_code=403)
     try:
-        body = await request.json()
+        body = json.loads(raw.decode("utf-8") or "null")
     except Exception:
         return JSONResponse({"ok": False, "message": "invalid json"}, status_code=400)
     result = stonepi_notify.ingest_event(body if isinstance(body, dict) else None)
@@ -259,12 +308,17 @@ async def api_events(request: Request):
 
 
 @router.post("/api/push-trmnl")
-def api_push_trmnl(request: Request):
+async def api_push_trmnl(request: Request):
     """Loopback TRMNL push for Dashboard automations."""
     from app.boot import _push_trmnl
 
+    if not _direct_loopback(request):
+        return JSONResponse({"ok": False, "message": "Not found"}, status_code=404)
     if not _json_request(request):
         return JSONResponse({"ok": False, "message": "send application/json"}, status_code=415)
+    raw = await request.body()
+    if not _verify_loopback_post(request, raw):
+        return JSONResponse({"ok": False, "message": "Not allowed."}, status_code=403)
     return _push_trmnl()
 
 
@@ -412,6 +466,7 @@ def display_detail(request: Request, display_id: str):
                 "setup_steps": _setup_steps(display, webhook_set, web_page),
                 "universal_template": stonepi_display.UNIVERSAL_TEMPLATE,
                 "date_formats": [(k, label) for k, (label, _) in stonepi_display.DATE_FORMATS.items()],
+                "hour_formats": list(stonepi_display.HOUR_FORMATS.items()),
                 "trmnl_tiers": stonepi_display.TRMNL_TIERS,
                 "trmnl_tier": stonepi_display.trmnl_tier(display.get("trmnl")),
                 "push_limits": stonepi_display.push_limits(display),
@@ -425,7 +480,7 @@ def display_detail(request: Request, display_id: str):
 
 
 def _api_csrf_ok(request: Request) -> bool:
-    return csrf_ok_request(request.cookies, header_token=request.headers.get("x-stonepi-csrf") or "")
+    return csrf_ok_request(request, header_token=request.headers.get("x-stonepi-csrf") or "")
 
 
 @router.post("/api/displays/{display_id}/preview")
@@ -453,6 +508,7 @@ async def api_display_preview(request: Request, display_id: str):
             "device": body.get("device") or existing.get("device"),
             "title_bar": body.get("title_bar") or existing.get("title_bar"),
             "date_format": body.get("date_format") or existing.get("date_format"),
+            "hour_format": body.get("hour_format") or existing.get("hour_format"),
             "widgets": body.get("widgets") if isinstance(body.get("widgets"), list) else existing["widgets"],
             "trmnl": {**existing.get("trmnl", {}), "template": "universal"},
         }
@@ -466,8 +522,9 @@ async def api_display_preview(request: Request, display_id: str):
     payload = stonepi_display.display_payload(draft, variables)
     try:
         html = stonepi_display.preview_document(payload, device=draft["device"])
-    except Exception as exc:  # noqa: BLE001 - template errors should show in the builder
-        return JSONResponse({"ok": False, "message": f"Preview failed: {exc}"[:240]}, status_code=500)
+    except Exception:  # noqa: BLE001 - template errors should show in the builder
+        logger.exception("display preview failed")
+        return JSONResponse({"ok": False, "message": "Preview failed."}, status_code=500)
     size = len(json.dumps({"merge_variables": payload}, separators=(",", ":"), default=str).encode("utf-8"))
     return {
         "ok": True,
@@ -509,7 +566,7 @@ async def displays_create(request: Request):
     if denied is not None:
         return denied
     form = await request.form()
-    if not csrf_ok_request(request.cookies, str(form.get("csrf_token") or "")):
+    if not csrf_ok_request(request, str(form.get("csrf_token") or "")):
         return RedirectResponse("/displays?err=Form+expired", status_code=303)
     name = str(form.get("name") or "").strip() or "New display"
     raw_kind = str(form.get("kind") or "")
@@ -557,7 +614,7 @@ async def displays_save(request: Request, display_id: str):
     if denied is not None:
         return denied
     form = await request.form()
-    if not csrf_ok_request(request.cookies, str(form.get("csrf_token") or "")):
+    if not csrf_ok_request(request, str(form.get("csrf_token") or "")):
         return RedirectResponse(f"/displays/{display_id}?err=Form+expired", status_code=303)
     existing = stonepi_display.get_display(display_id)
     if not existing:
@@ -585,6 +642,7 @@ async def displays_save(request: Request, display_id: str):
     device = str(form.get("device") or existing.get("device") or "og")
     title_bar = str(form.get("title_bar") or existing.get("title_bar") or "bottom")
     date_format = str(form.get("date_format") or existing.get("date_format") or "")
+    hour_format = str(form.get("hour_format") or existing.get("hour_format") or "")
     # The details form carries the Enabled checkbox; the layout form does not.
     if existing.get("builtin"):
         enabled = True
@@ -598,6 +656,7 @@ async def displays_save(request: Request, display_id: str):
             "device": device,
             "title_bar": title_bar,
             "date_format": date_format,
+            "hour_format": hour_format,
             "widgets": widgets,
         }
     )
@@ -616,7 +675,7 @@ async def displays_trmnl(request: Request, display_id: str):
         return denied
     form = await request.form()
     back = f"/displays/{display_id}"
-    if not csrf_ok_request(request.cookies, str(form.get("csrf_token") or "")):
+    if not csrf_ok_request(request, str(form.get("csrf_token") or "")):
         return RedirectResponse(f"{back}?err=Form+expired", status_code=303)
     display = stonepi_display.get_display(display_id)
     if not display:
@@ -665,7 +724,7 @@ async def displays_delete(request: Request, display_id: str):
     if denied is not None:
         return denied
     form = await request.form()
-    if not csrf_ok_request(request.cookies, str(form.get("csrf_token") or "")):
+    if not csrf_ok_request(request, str(form.get("csrf_token") or "")):
         return RedirectResponse("/displays?err=Form+expired", status_code=303)
     display = stonepi_display.get_display(display_id) or {}
     if not stonepi_display.delete_display(display_id):

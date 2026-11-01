@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 import threading
 import time
@@ -27,6 +28,36 @@ from app.errors import ApiError
 from app.wav import ASK_RATE, BadAudio, level_dbfs, read_pcm16
 
 logger = logging.getLogger("agentlink.ask")
+
+# One question at a time is not a quota: a device can still ask again the moment the
+# last answer finishes. Five seconds between asks, and sixty in an hour, per Pebble.
+ASK_MIN_INTERVAL_S = 5
+ASK_MAX_PER_HOUR = 60
+_ask_limit = threading.Lock()
+_last_ask: dict[int, float] = {}
+_ask_hour: dict[int, list[float]] = {}
+
+
+def reset_limits() -> None:
+    with _ask_limit:
+        _last_ask.clear()
+        _ask_hour.clear()
+
+
+def limit_ask(binding_id: int) -> None:
+    """Refuse a device that asks again immediately, or more than ASK_MAX_PER_HOUR times."""
+    now = time.time()
+    with _ask_limit:
+        wait = ASK_MIN_INTERVAL_S - (now - _last_ask.get(binding_id, 0.0))
+        if ASK_MIN_INTERVAL_S and wait > 0:
+            raise ApiError(429, "rate_limited", "Slow down a little", max(1, math.ceil(wait)))
+        stamps = [t for t in _ask_hour.get(binding_id, []) if now - t < 3600]
+        if len(stamps) >= ASK_MAX_PER_HOUR:
+            retry = max(1, math.ceil(3600 - (now - stamps[0])))
+            raise ApiError(429, "rate_limited", "Too many questions this hour", retry)
+        stamps.append(now)
+        _ask_hour[binding_id] = stamps
+        _last_ask[binding_id] = now
 
 MAX_ASK_S = 15
 MAX_BYTES = 512 * 1024
@@ -66,6 +97,14 @@ Your reply is spoken aloud, so:
   what they asked for: now, later today (next_hours) or a day ahead (next_days), with the rain
   chance when it matters. If it isn't set up (configured false), say an admin can pick a place in
   Notify. Asked about somewhere else, say you only know the weather at home.
+- Sport: answer from the get_sport facts (get_sport:<when/sport> when they asked about a time or
+  a sport), saying the time and where to watch (channels); their own teams (your_team) first.
+  If there's lots on, give the count per sport and the highlights. If a sport isn't in the guide
+  (sport_not_found), say SportGuide covers AFL, cricket, rugby and football. "When do my team play
+  next?" is get_my_teams; a team with no next match isn't in the guide yet.
+- Prices: answer from get_price_alerts. Deals (hit their target) first, with the price and shop;
+  asked about one product, say how far it is from its target. Prices are from PriceWatch's last
+  check (checked), not live.
 You're talking to {owner}. It's {now}.
 {previous}
 About you:
@@ -114,7 +153,7 @@ def speakable(text: str, *, cut_short: bool = False) -> str:
     return text
 
 
-FACTS_MAX_CHARS = 9000
+FACTS_MAX_CHARS = 12000
 PLANNER_MAX_S = 6.0
 SEARCH_TOOLS = ("search_events", "search_news")
 _tool_pool = ThreadPoolExecutor(max_workers=6, thread_name_prefix="pebble-facts")
@@ -142,6 +181,12 @@ EVENT_HINTS = (
     "- events_category: when they ask for one kind of event (e.g. \"community events\", \"any gigs?\" → "
     "music), that kind in a word or two; otherwise \"\".",
 )
+SPORT_HINTS = (
+    "- sport_when: when they ask what sport is on at a time, one of now, today, tonight, tomorrow, "
+    "this_weekend; otherwise \"\".",
+    "- sport_kind: when they ask about one sport or league on TV (e.g. \"any football tonight?\", "
+    "\"is the NRL on?\"), that sport or league in a word or two; otherwise \"\". Not for sport news.",
+)
 FOLLOWUP_S = 120.0
 _recent: dict[int, tuple[float, str, str]] = {}  # binding id → (when, question, answer); RAM only
 _recent_lock = threading.Lock()
@@ -166,11 +211,13 @@ def _remember(binding: dict[str, Any], question: str, answer: str) -> None:
 
 def _plan_searches(
     binding: dict[str, Any], transcript: str, search_specs: list, news: bool = False, events: bool = False,
+    sport: bool = False,
 ) -> dict[str, str]:
     """{look-up: words} chosen by a quick model call; {} when nothing fits or it fails.
 
     Keys are search tool names, plus ``news_category`` when the briefing tool is on and
-    ``events_when`` / ``events_category`` when get_events is.
+    ``events_when`` / ``events_category`` when get_events is, and ``sport_when`` / ``sport_kind``
+    when get_sport is.
     """
     try:
         import stonepi_ai
@@ -179,7 +226,9 @@ def _plan_searches(
     lines = [f"- {s.name}: {s.description}" for s in search_specs] + ([NEWS_CATEGORY_HINT] if news else [])
     lines += list(EVENT_HINTS) if events else []
     allowed = {s.name for s in search_specs} | ({"news_category"} if news else set())
+    lines += list(SPORT_HINTS) if sport else []
     allowed |= {"events_when", "events_category"} if events else set()
+    allowed |= {"sport_when", "sport_kind"} if sport else set()
     example = json.dumps({key: "" for key in sorted(allowed)})
     prompt = transcript
     previous = _previous(binding)
@@ -210,16 +259,17 @@ def _facts(binding: dict[str, Any], transcript: str = "") -> dict[str, Any]:
         s for s in enabled
         if s.tier == registry.Tier.READ and not any(p.required for p in s.params) and s.name not in SEARCH_TOOLS
     ]
-    if "get_today" in names and names & {"get_events", "get_reminders", "get_news_briefing", "get_weather"}:
+    if "get_today" in names and names & {"get_events", "get_reminders", "get_news_briefing", "get_weather", "get_my_teams"}:
         plain = [s for s in plain if s.name != "get_today"]
     searches = [s for s in enabled if s.name in SEARCH_TOOLS]
 
     news = "get_news_briefing" in names
     events = "get_events" in names
+    sport = "get_sport" in names
     futures = {s.name: _tool_pool.submit(registry.invoke, binding, s.name, {}, "ask") for s in plain}
     plan_future = (
-        _tool_pool.submit(_plan_searches, binding, transcript, searches, news, events)
-        if (searches or news or events) and transcript else None
+        _tool_pool.submit(_plan_searches, binding, transcript, searches, news, events, sport)
+        if (searches or news or events or sport) and transcript else None
     )
     facts: dict[str, Any] = {}
     if plan_future is not None:
@@ -236,6 +286,13 @@ def _facts(binding: dict[str, Any], transcript: str = "") -> dict[str, Any]:
             label = "/".join(v for v in (params["when"], params["category"]) if v)
             futures[f"get_events:{label}"] = _tool_pool.submit(
                 registry.invoke, binding, "get_events", {k: v for k, v in params.items() if v}, "ask")
+        wanted = {k: plan.pop(k) for k in ("sport_when", "sport_kind") if k in plan}
+        if wanted:
+            # The next 24 hours are already coming; this is the time or sport they asked about.
+            params = {"when": wanted.get("sport_when", ""), "sport": wanted.get("sport_kind", "")}
+            label = "/".join(v for v in params.values() if v)
+            futures[f"get_sport:{label}"] = _tool_pool.submit(
+                registry.invoke, binding, "get_sport", {k: v for k, v in params.items() if v}, "ask")
         for tool, query in plan.items():
             if tool == "news_category":
                 # The whole briefing is already coming; this narrows it to what they asked for.
@@ -360,6 +417,7 @@ def run(binding: dict[str, Any], body: bytes, content_type: str) -> tuple[bytes,
         raise ApiError(413, "too_large", "That was too long")
     if seconds < 0.3 or level_dbfs(samples) < -60:
         raise ApiError(422, "no_speech", "Didn't catch that")
+    limit_ask(int(binding["id"]))
     if not _busy.acquire(blocking=False):
         raise ApiError(409, "busy", "Pebble is already answering", 5)
     started = time.monotonic()

@@ -2,7 +2,7 @@
 
 **The bedrock of your digital home.**
 
-StonePi is a private hub for your home on one Raspberry Pi. It brings you the news you want on your e-reader, shows what's on locally and in sport, finds supermarket deals, watches prices, keeps Wikipedia offline, hosts your household's files and small sites, keeps family far away up to date on a screen in their home, and pushes useful updates to your phone, a wall display, a desk panel or a little voice sidekick you can talk to. Everything sits behind one shared sign-in, on your own network, set up once and left running.
+StonePi is a private hub for your home on one Raspberry Pi. It brings you the news you want on your e-reader, shows what's on locally and in sport, finds supermarket deals, watches prices, plays internet radio around the house, keeps Wikipedia offline, hosts your household's files and small sites, keeps family far away up to date on a screen in their home, and pushes useful updates to your phone, a wall display, a desk panel or a little voice sidekick you can talk to. Everything sits behind one shared sign-in, on your own network, set up once and left running.
 
 > **Set up a Pi: [stonepi-install.vercel.app](https://stonepi-install.vercel.app)** — one command on stock Raspberry Pi OS (64-bit) for a Raspberry Pi 4 or 5.
 
@@ -28,15 +28,16 @@ Home tiles. Each app has its own README with setup details.
 | App | Path | What it does |
 |-----|------|--------------|
 | **[NewsCast](apps/newscast/README.md)** | `/news/` | A daily paper from feeds you choose, for phone or e-reader (OPDS for CrossPoint and KOReader). Optional AI summaries and translation. |
-| **[EventTrakr](apps/eventtrakr/README.md)** | `/events/` | What's on near you: a 7-day agenda from websites, ICS feeds, Facebook events and Instagram accounts; favourites; webcal and Google Calendar; an optional public agenda. |
+| **[EventTrakr](apps/eventtrakr/README.md)** | `/events/` | What's on near you: a map of the week and a 7-day agenda from websites, ICS feeds, Facebook events and Instagram accounts (an event listed by several sources shows once); favourites; webcal and Google Calendar; an optional public agenda. |
 | **[SportGuide](apps/sportguide/README.md)** | `/sports/` | Sports TV and stream schedules (AFL, cricket, rugby, football) for the teams you follow, with kick-off alerts. |
 | **[PriceScout](apps/pricescout/README.md)** | `/prices/` | This week's supermarket offers across Danish chains, a shopping list, and Salling food-waste deals for the household postcode. |
 | **[PriceWatch](apps/pricewatch/README.md)** | `/watch/` | Watch named products on PriceRunner until they hit your price; Compare every retailer's offer, with Trustpilot trust scores. |
 | **[Library](apps/library/README.md)** | `/library/` | Wikipedia, Wikivoyage, Gutenberg and other references offline through Kiwix, on microSD, USB or SSD; the reader is behind sign-in. |
 | **[FileServe](apps/fileserve/README.md)** | `/files/` | Put HTML, PDF, Word or zip sites on a household URL, with keep-until and passwords. Hosted pages load sandboxed. |
 | **[Studio](apps/studio/README.md)** | `/studio/` | Chat-build a simple site, guide or game and publish it to FileServe. |
-| **[Pinboard](apps/pinboard/README.md)** | `/pinboard/` | Household notices and reminders, on phones and displays. |
-| **[Ripple](apps/ripple/README.md)** | `/ripple/` | Keep family far away up to date: post news and photos (location details removed), and the newest appear on a TRMNL e-ink screen at their home, up to four recent photos together, with an optional line for your city, part of the day, time difference and weather. |
+| **[Pinboard](apps/pinboard/README.md)** | `/pinboard/` | The household's board: notes, links, reminders and checklists, in a list or laid out freely on a canvas; add links from any page or the share sheet; pinned cards show on the displays. |
+| **[Ripple](apps/ripple/README.md)** | `/ripple/` | Keep family far away up to date: post news and photos (location details removed), and the newest appear on a TRMNL e-ink screen at their home, up to four recent photos together, with an optional line for your city, part of the day, time difference and weather, and notes for upcoming public holidays (both countries) and whether it's a good time to call. |
+| **[Radio](apps/radio/README.md)** | `/radio/` | Internet radio on your phone or computer, a speaker on the home network (DLNA) or the Pi itself (Odio, set up by the installer, which also makes the Pi an AirPlay and Spotify Connect speaker): the household's Home stations, your own favourites, Discover, and the song on air. On the Car Thing in real Winamp, AMP BOY, RealPlayer and TouchAmp skins. |
 
 ## Platform
 
@@ -48,7 +49,7 @@ Always on; not Home tiles.
 | **[Auth](apps/auth/README.md)** | `/auth/` | One household sign-in across every app. |
 | **[Notify](apps/notify/README.md)** | `/notify/` | Where apps' updates go: TRMNL wall displays, the Car Thing panel, and ntfy phone alerts. Also shows web pages the Pi can reach (a Homepage dashboard, say) on either display, and **Sidekick**, where Pebbles are paired and managed. |
 | **[AgentLink](apps/agentlink/README.md)** | (Pebble API `/agent/pebble/v1/`) | The one way in for agents and agent devices such as **Pebble**: each device is bound to one person, uses only the tools switched on for it, and every use is logged (never what was said). Speech is turned into text and back on the Pi. Managed in Notify → Sidekick. Ships with the platform. |
-| **[Car Thing](apps/carthing/README.md)** | (USB) | A Spotify Car Thing plugged into the Pi becomes a touch-and-dial panel: pages of widgets (System, Clock, Clock & weather, Weather, Music, sport, events, news, Pinboard, a web page) under a header that can stay, auto-hide or go, a Spotify remote (Now Playing with artwork-coloured backgrounds, seek and a liked tick; Speakers, presets, dial volume) and a weather screen, a screensaver when idle (clock, album artwork, a web page, Bouncing logo, Matrix, or the Windows 98 3D Pipes, Flying Through Space, Mystify Your Mind, 3D Flower Box and 3D Maze), and a System screen with each service's state, memory and last log lines, and restarts behind an admin PIN. Set up under Notify → Displays → Car Thing. Ships with the platform. |
+| **[Car Thing](apps/carthing/README.md)** | (USB) | A Spotify Car Thing plugged into the Pi becomes a touch-and-dial panel: pages of widgets (System, Clock, Clock & weather, Weather, Music, Radio, an Audio launcher, sport, events, news, Pinboard, a web page with a ↻ to capture it again) under a header that can stay, auto-hide or go, a Spotify remote (Now Playing with artwork-coloured backgrounds, seek and a liked tick; Speakers, presets, dial volume), a Radio player in real Winamp-era skins (each player can wear the other's look) and a weather screen, a screensaver when idle (clock, album artwork, a web page, Bouncing logo, Matrix, or the Windows 98 3D Pipes, Flying Through Space, Mystify Your Mind, 3D Flower Box and 3D Maze), and a System screen with each service's state, memory and last log lines, and restarts behind an admin PIN. Set up under Notify → Displays → Car Thing. Ships with the platform. |
 | **[Recover](apps/recover/README.md)** | `/recover/`, `:8099` | Recovery Console for when the portal itself is down: restart services, restore a backup. |
 | **[Cockpit](https://cockpit-project.org/)** | `:9090` | Web console for the Raspberry Pi's operating system, separate from StonePi: system updates, storage, networking, logs and a terminal in the browser. Installed by the installer; sign in with your Pi's Linux user, not your StonePi account. |
 
@@ -56,7 +57,7 @@ Always on; not Home tiles.
 
 - **TRMNL** (e-ink, for a wall or fridge): one Display per screen, laid out in a drag-and-drop builder over a real render of the device, pushed on a timer. A **Web page** Display instead shows a captured web page, converted for e-ink. A **Ripple family board** Display shows Ripple's posts on a TRMNL at family elsewhere: name, model and webhook, and the rest is set up for you (from Ripple → Settings → Family display).
 - **Car Thing** (touch and dial, for a desk or dash): saved configs with pages, widget sizes, page header, button and dial actions, clock faces, screensaver styles, the Now Playing look and Spotify music presets, edited beside a live preview. Device, Spotify sign-in and saved configs are on its Setup page. The device keeps its own firmware and gets its screen back when the panel is switched off.
-- **Pebble** (a cute little voice sidekick for StonePi): push to talk (or use a wake word) and ask about StonePi, the weather, today's events, reminders and notices, or the news, and it answers out loud; its face shows the house's mood. Each Pebble belongs to one person and only uses the apps switched on for it in Notify → Sidekick; it can work away from home over Tailscale Funnel, switched on per Pebble.
+- **Pebble** (a cute little voice sidekick for StonePi): push to talk (or use a wake word) and ask about StonePi, the weather, today's events, reminders and notices, the news, sport on TV or your price watches, and it answers out loud; its face shows the house's mood. Each Pebble belongs to one person and only uses the apps switched on for it in Notify → Sidekick; it can work away from home over Tailscale Funnel, switched on per Pebble.
 - **ntfy** (phone): paper ready, a PriceWatch strike, an event or kick-off you follow, a backup that needs attention, a Spotify sign-in about to run out.
 - **Web pages** (Notify → Displays → Web pages): any page the Pi can reach, captured with the shared headless Chromium, with a clean-up preset, parts to hide, extra CSS and zoom. Shown on a TRMNL Web page Display, or on the Car Thing as a full-page widget or a screensaver.
 
@@ -75,8 +76,9 @@ Admins add people under **Users**, choose which apps each person can open, and w
 | Library | Manage content (install, update, remove) | off |
 | FileServe | Publish pages · Publish without a password | on · **off** |
 | Studio | Use LLM · Publish to FileServe | off · off |
-| Pinboard | Post notices · Assign reminders to others | on · on |
+| Pinboard | Add and pin cards · Assign reminders to others | on · on |
 | Ripple | (none: anyone with Ripple posts; authors change their own posts, admins any post and the family display) | — |
+| Radio | (none: anyone with Radio plays and keeps their own favourites; admins look after the Home stations) | — |
 
 Defaults that are off cover shared or costly actions: refresh scrapes, multi-gigabyte downloads, paid lookups, AI spend and publishing open pages. Household-wide settings (NewsCast's paper layout and filters, Library storage and backups, PriceWatch retention and lookups, the PriceScout postcode, the Bright Data limit) are admin-only.
 
@@ -114,7 +116,7 @@ Every app's Bright Data use counts against one shared monthly limit (default 5,0
    ```
 3. Open http://stonepi.local/ (or `http://<pi-ip>/`) and sign in as **admin** with the random password printed at the end, then change it. To see it again: `sudo cat /etc/stonepi/initial-admin.txt`. The Recovery Console's own password (user `stonepi`) is printed there too: `sudo cut -d: -f2- /etc/stonepi/recover.passwd`.
 
-The installer checks the release's checksum, ends with a ready check, and is safe to re-run: an interrupted install picks up where it stopped, and existing data and settings are kept. Everything comes back after a reboot.
+The installer also sets up Odio, the player behind Radio (about 15 minutes more the first time; `--no-odio` skips it). It checks the release's checksum, ends with a ready check, and is safe to re-run: an interrupted install picks up where it stopped, and existing data and settings are kept. Everything comes back after a reboot.
 
 Something broken on an existing Pi? **[stonepi-install.vercel.app/recover](https://stonepi-install.vercel.app/recover)**. Full guide and troubleshooting: **[deploy/INSTALL.md](deploy/INSTALL.md)**.
 
@@ -148,6 +150,7 @@ On Windows, `scripts\run-dev.bat` creates per-app virtualenvs and starts everyth
 | | 8007 | SportGuide | |
 | | 8008 | PriceWatch | |
 | | 8009 | Library | No Kiwix on Windows |
+| | 8016 | Radio | Playback is simulated (`RADIO_MOCK=1`); no Odio on Windows |
 | | 8017 | Ripple | The family display page is `/display` |
 
 Recover (`:8099` on the Pi) isn't started in dev.
@@ -157,7 +160,7 @@ Each app and package has a `tests/` folder (`python -m pytest -q` with the `pack
 ```text
 apps/            dashboard, auth, notify, recover, carthing, agentlink (platform)
                  newscast, eventtrakr, sportguide, pricescout, pricewatch,
-                 library, fileserve, studio, pinboard, ripple (Home apps)
+                 library, fileserve, studio, pinboard, ripple, radio (Home apps)
 packages/        stonepi_auth      sign-in, app catalog and permissions, Auth roster, platform lock
                  stonepi_vault     encrypted secrets, shared Bright Data and AI request limits
                  stonepi_display   display widgets, Car Thing config, Spotify sign-in, web page captures,

@@ -228,7 +228,7 @@
       <ul data-issues-list></ul>
     </div>
     <div class="preview-stage" data-preview-stage data-size="fit">
-      <iframe class="preview" {% if has_built %}src="{{ preview_url }}"{% endif %} data-href="{{ preview_url }}" title="Preview" data-preview allow="autoplay; fullscreen; gamepad" {% if not has_built %}hidden{% endif %}></iframe>
+      <iframe class="preview" {% if has_built %}src="{{ preview_url }}"{% endif %} data-href="{{ preview_url }}" title="Preview" data-preview sandbox="allow-scripts allow-forms allow-modals allow-popups allow-downloads" allow="autoplay; fullscreen; gamepad" {% if not has_built %}hidden{% endif %}></iframe>
       {# Pixel the robot: stands in before the first build and keeps kids company while one runs. #}
       <div class="buddy-stage" data-buddy data-kind="{{ project.kind or 'spa' }}" data-name="{{ greeting_name }}" data-state="{{ 'off' if has_built else 'idle' }}" {% if has_built %}hidden{% endif %}>
         <div class="buddy-bubble" data-buddy-say aria-live="polite">Hi{{ (" " ~ greeting_name) if greeting_name else "" }}! I'm Pixel. Tell me your idea in the chat and I'll build it right here!</div>

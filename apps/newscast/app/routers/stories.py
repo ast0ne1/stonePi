@@ -3,13 +3,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app.auth import effective_user_id, require_user, session_from_request, session_is_admin
+from app.auth import effective_user_id, require_csrf, require_user, session_from_request, session_is_admin
 from app.db import get_db
 from app.models import Feed, User
 from app.services.briefing import current_briefing_payload
 from app.services.ingest import feed_debug, snapshot, start_ingest
 
-router = APIRouter(dependencies=[Depends(require_user)])
+router = APIRouter(dependencies=[Depends(require_user), Depends(require_csrf)])
 
 
 def _user_id(request: Request) -> int:

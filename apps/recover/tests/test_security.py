@@ -259,12 +259,20 @@ def _passwd_paths(tmp_path, monkeypatch):
     return passwd
 
 
+def _stored_hash(passwd) -> str:
+    line = passwd.read_text(encoding="utf-8").strip()
+    assert line.startswith("stonepi:")
+    return line.split(":", 1)[1]
+
+
 def test_vault_password_moves_to_file_and_is_deleted(tmp_path, monkeypatch):
     passwd = _passwd_paths(tmp_path, monkeypatch)
     vault = FakeVault({"STONEPI_RECOVER_PASSWORD": "vault-pw", "STONEPI_RECOVERY_PASSWORD": "older"})
     _patch_vault(monkeypatch, vault)
     recover.migrate_legacy_password()
-    assert passwd.read_text(encoding="utf-8").strip() == "stonepi:vault-pw"
+    stored = _stored_hash(passwd)
+    assert recover._password_is_hashed(stored)
+    assert recover._verify_password(stored, "vault-pw")
     assert vault.data == {}
     if os.name != "nt":
         assert (passwd.stat().st_mode & 0o777) == 0o600
@@ -275,7 +283,9 @@ def test_legacy_vault_key_alone_is_migrated(tmp_path, monkeypatch):
     vault = FakeVault({"STONEPI_RECOVERY_PASSWORD": "older"})
     _patch_vault(monkeypatch, vault)
     recover.migrate_legacy_password()
-    assert passwd.read_text(encoding="utf-8").strip() == "stonepi:older"
+    stored = _stored_hash(passwd)
+    assert recover._password_is_hashed(stored)
+    assert recover._verify_password(stored, "older")
     assert vault.data == {}
 
 
@@ -292,9 +302,22 @@ def test_first_run_password_never_written_to_vault(tmp_path, monkeypatch):
     vault = FakeVault({})
     _patch_vault(monkeypatch, vault)
     created = recover.ensure_recover_password()
-    assert created and passwd.read_text(encoding="utf-8").strip() == f"stonepi:{created}"
+    assert created
+    stored = _stored_hash(passwd)
+    assert recover._password_is_hashed(stored)
+    assert recover._verify_password(stored, created)
+    assert created not in passwd.read_text(encoding="utf-8")
     assert vault.writes == []
     assert recover.ensure_recover_password() is None
+
+
+def test_startup_rehashes_plaintext_passwd(tmp_path, monkeypatch):
+    passwd = _passwd_paths(tmp_path, monkeypatch)
+    passwd.write_text("stonepi:legacy-plain\n", encoding="utf-8")
+    recover._rehash_passwd_file_if_needed()
+    stored = _stored_hash(passwd)
+    assert recover._password_is_hashed(stored)
+    assert recover._verify_password(stored, "legacy-plain")
 
 
 def _sso_admin(request):
@@ -378,3 +401,23 @@ def test_forged_proxy_headers_without_token_get_direct_links_and_logout(client, 
     token = forged.cookies.get(recover.CSRF_COOKIE)
     resp = forged.post("/logout", data={"csrf_token": token}, follow_redirects=False)
     assert resp.headers["location"] == "login?msg=signed-out"
+
+
+def test_redact_log_text_masks_secrets():
+    raw = (
+        "Authorization: Bearer super-secret-token\n"
+        "PASSWORD=hunter2 ADMIN_PASSWORD: also-secret\n"
+        "api_key=abcd1234 refresh_token=xyz\n"
+        "GET /callback?token=leakme&ok=1\n"
+        "unit stonepi-auth started\n"
+    )
+    out = recover.redact_log_text(raw)
+    assert "super-secret-token" not in out
+    assert "hunter2" not in out
+    assert "also-secret" not in out
+    assert "abcd1234" not in out
+    assert "leakme" not in out
+    assert "Authorization: Bearer ***" in out
+    assert "PASSWORD=***" in out
+    assert "unit stonepi-auth started" in out
+    assert recover.redact_log_text("") == ""

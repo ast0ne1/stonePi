@@ -4,7 +4,8 @@
 {% import "_music.html" as m %}
 
 {#- The app's fixed icon (design system); System shows the StonePi mark. -#}
-{% set APP_ICON_IDS = ("newscast", "eventtrakr", "pricescout", "sportguide", "library", "pinboard", "pricewatch", "fileserve", "studio") %}
+{% set APP_ICON_IDS = ("newscast", "eventtrakr", "pricescout", "sportguide", "library", "pinboard", "pricewatch", "fileserve", "studio", "radio") %}
+{% import "_radio.html" as radio_ui %}
 {% macro app_icon(w) -%}
 {%- if w.id in APP_ICON_IDS -%}<img class="w-icon" src="static/brand/icons/apps/{{ w.id }}.svg" width="32" height="32" alt="">
 {%- elif w.id == "system" -%}<img class="w-icon" src="static/brand/icons/system/dashboard.svg" width="32" height="32" alt="">{%- endif -%}
@@ -23,11 +24,43 @@
 </div>
 {%- endmacro %}
 
+{#- Small Home card: lead from the feed, optional second line; Pinboard keeps board count as a foot. -#}
 {% macro small_card(w) -%}
+{% set items = w["items"] or [] %}
+{% set lead = items[0] if items else none %}
 <button class="card w w-small{% if w.level %} level-{{ w.level }}{% endif %}" data-focus data-go="v/app/{{ w.id }}" data-app="{{ w.id }}">
   <span class="card-label">{{ app_icon(w) }}{{ w.label }}{% if w.badge %} <span class="badge">{{ w.badge }}</span>{% endif %}</span>
-  <strong class="card-head">{{ w.headline }}</strong>
-  {% if w.sub %}<span class="card-sub">{{ w.sub }}</span>{% endif %}
+  <strong class="card-head">{{ lead.title if lead else w.headline }}</strong>
+  {% set lead_sub = lead.sub if lead and lead.sub else (w.sub if not lead else "") %}
+  {% if lead_sub %}<span class="card-sub">{{ lead_sub }}</span>{% endif %}
+  {% if items|length > 1 %}
+  <span class="w-small-more">{% if items[1].badge %}<span class="badge">{{ items[1].badge }}</span> {% endif %}{{ items[1].title }}</span>
+  {% endif %}
+  {% if w.id == "pinboard" and lead and w.sub and w.sub != lead.sub %}
+  <span class="w-small-foot">{{ w.sub }}</span>
+  {% endif %}
+</button>
+{%- endmacro %}
+
+{#- System small: mini meters from stats + one status line (no sparse headline). -#}
+{% macro system_small(w) -%}
+{% set s = w.stats or {} %}
+<button class="card w w-small w-system-small{% if w.level %} level-{{ w.level }}{% endif %}" data-focus data-go="v/app/system" data-app="system">
+  <span class="card-label">{{ app_icon(w) }}{{ w.label }}{% if w.badge %} <span class="badge">{{ w.badge }}</span>{% endif %}</span>
+  {% if w.ok %}
+  <div class="w-small-meters">
+    {{ meter("CPU", s.cpu, "%", 100, 70, 90) }}
+    {{ meter("Mem", s.mem, "%", 100, 75, 90) }}
+    {{ meter("Temp", s.temp, "°C", 85, 65, 78) }}
+    {{ meter("Disk", s.disk, "%", 100, 80, 90) }}
+  </div>
+  <span class="w-small-line">
+    {% if s.total %}<span class="{{ 'bad' if w.down else 'good' }}">{{ s.up }}/{{ s.total }} up</span>{% endif %}
+    {% if s.backup %}<span class="{{ '' if s.backup_ok else 'bad' }}">Backup {{ s.backup }}</span>{% endif %}
+  </span>
+  {% else %}
+  <strong class="card-head">System isn't answering</strong>
+  {% endif %}
 </button>
 {%- endmacro %}
 
@@ -196,6 +229,56 @@
 {% endif %}
 {%- endmacro %}
 
+{% macro radio_widget(w) -%}
+{% set now = w.now %}
+{% if w.size == "small" %}
+<button class="card w w-small w-radio" data-focus data-go="v/radio" data-app="radio">
+  <span class="card-label">{{ app_icon(w) }}Radio{% if now.playing %} <span class="badge">On air</span>{% endif %}</span>
+  <strong class="card-head" data-radio-title>{{ now.title or ("Nothing playing" if now.connected else "Unavailable") }}</strong>
+  <span class="card-sub">{{ now.artist or (now.source if now.source != "none" else "") }}</span>
+</button>
+{% else %}
+<div class="card w w-{{ w.size }} w-radio{% if w.size == 'full' and w.edge %} w-radio-full{% endif %}" data-radio>
+  {% if w.size != "full" %}
+  <button class="w-head" data-focus data-go="v/radio" data-app="radio">
+    <span class="card-label">{{ app_icon(w) }}Radio</span>
+    {{ icon("chevron", "ico w-go") }}
+  </button>
+  {% endif %}
+  {{ radio_ui.player(now, w.opts, w.size) }}
+</div>
+{% endif %}
+{%- endmacro %}
+
+{#- Full-page launcher: two equal cards open Radio then Music (Spotify); Back returns here. -#}
+{% macro audio_widget(w) -%}
+<div class="audio-launch">
+  <button type="button" class="audio-card audio-radio" data-focus data-go="v/radio" data-app="radio">
+    <img class="audio-logo" src="static/brand/logos/stonepi-mark-flat-dark.svg" width="88" height="88" alt="">
+    <strong>StonePi Radio</strong>
+    <span>Radio</span>
+  </button>
+  <button type="button" class="audio-card audio-spotify" data-focus data-go="v/music" data-app="music">
+    <img class="audio-logo" src="static/icons/spotify.svg" width="88" height="88" alt="">
+    <strong>Spotify</strong>
+    <span>Music</span>
+  </button>
+</div>
+{%- endmacro %}
+
+{#- Full page, each player in the other's look (Look → Music / Radio → "plays in"):
+    Spotify in the Radio player's theme (its buttons drive Spotify), Radio in Now Playing. -#}
+{% macro music_skin_widget(w) -%}
+<div class="card w w-full w-radio w-music-skin{% if w.edge %} w-radio-full{% endif %}" data-np data-np-full data-skin-music data-skin-key="{{ w.key }}">
+  {{ radio_ui.player(w.now, w.opts, "full") }}
+</div>
+{%- endmacro %}
+{% macro radio_np_widget(w) -%}
+<div class="card w w-full w-music w-music-full" data-radio>
+  {{ m.now_playing(w.np, w.opts, "np2" if w.edge else "np2 np2-card") }}
+</div>
+{%- endmacro %}
+
 {#- The clock on its own: the Clock tab's face and colours, with the date. -#}
 {% macro time_widget(w, config) -%}
 <div class="card w w-{{ w.size }} w-clock w-time{% if config.clock.seconds %} secs{% endif %}">
@@ -204,7 +287,8 @@
 </div>
 {%- endmacro %}
 
-{#- A web page (F14): Notify's snapshot, swapped for a fresh one every every_s while it shows. -#}
+{#- A web page (F14): Notify's snapshot, kept for the page's refresh time (checked every every_s
+    while it shows); the ↻ button takes a new one, with when it was taken beside it. -#}
 {% macro web_widget(w) -%}
 <div class="w-web{% if w.size_key == 'page' %} w-web-full{% endif %}">
   {% if w.missing %}
@@ -212,6 +296,7 @@
   {% else %}
   <img class="web-img" src="web/{{ w.page_id }}.png?s={{ w.size_key }}" data-web-every="{{ w.every_s }}" alt="{{ w.label }}" width="800" height="{{ 480 if w.size_key == 'page' else 412 }}">
   <p class="web-msg" data-web-msg hidden>Couldn’t load {{ w.label }}.</p>
+  <button class="web-refresh" type="button" data-focus data-web-refresh aria-label="Capture {{ w.label }} again"><span data-web-stamp></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5"/></svg></button>
   {% endif %}
 </div>
 {%- endmacro %}
@@ -219,9 +304,14 @@
 {% macro widget(w, config, weather) -%}
 {% if w.kind == "web" %}{{ web_widget(w) }}
 {% elif w.kind == "music" %}{{ music_widget(w) }}
+{% elif w.kind == "radio" %}{{ radio_widget(w) }}
+{% elif w.kind == "audio" %}{{ audio_widget(w) }}
+{% elif w.kind == "music_skin" %}{{ music_skin_widget(w) }}
+{% elif w.kind == "radio_np" %}{{ radio_np_widget(w) }}
 {% elif w.kind == "time" %}{{ time_widget(w, config) }}
 {% elif w.kind == "clock" %}{{ clock(w, config, weather) }}
 {% elif w.kind == "weather" %}{{ weather_widget(w, config, weather) }}
+{% elif w.size == "small" and w.kind == "system" %}{{ system_small(w) }}
 {% elif w.size == "small" %}{{ small_card(w) }}
 {% elif w.kind == "system" %}{{ system_large(w) }}
 {% else %}{{ app_large(w) }}

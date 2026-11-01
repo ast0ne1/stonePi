@@ -8,7 +8,7 @@ import app.routes as _app_routes
 from app.routes import router
 from stonepi_auth.prefix import clean_prefix
 
-app = FastAPI(title="StonePi Studio")
+app = FastAPI(title="StonePi Studio", docs_url=None, redoc_url=None, openapi_url=None)
 _prefix = clean_prefix(env.stonepi_prefix)
 if _prefix:
     from stonepi_auth.prefix import PrefixMiddleware

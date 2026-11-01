@@ -18,7 +18,7 @@ One place for people and apps — separate from **Cockpit** (Linux host admin on
 | Area | Role |
 |------|------|
 | **Home** | A greeting with the person's alias ("Good afternoon, Sam") and an optional welcome message, then tiles for the apps they may open; **Reorder** = drag-to-place (autosave), **Default order** resets it. The app switcher in every app follows the same order (`stonepi-launcher-order` cookie, set here). On a phone every app fits on one screen |
-| **Health** | Admin monitor: Watch/alerts, host metrics, disk thresholds, backup + restore drill, remote access, listening ports, recent journal errors, whether each app is responding (and its version), grouped **SYSTEM** / **USER** |
+| **Health** | Admin monitor: Watch/alerts, host metrics, disk thresholds, backup + restore drill, remote access, listening ports (Odio's, Radio's player, expected once it's installed), recent journal errors, whether each app is responding (and its version), grouped **SYSTEM** / **USER** |
 | **Services** | Manage apps: Route + Port, enable/disable for the household; open a service to start/stop/restart. Grouped **SYSTEM** (Dashboard, Auth, Notify, Recover — always available) / **USER** (launcher apps) |
 | **Users** | Household accounts with an editable alias, app grants, capability flags (Studio Publish also needs FileServe) and the Phone alerts permission. Admins can't demote, disable or delete themselves |
 | **Notifications** | Your own phone alerts (ntfy), opened from **Preferences** in the bell's alerts panel. **← Back** returns to the app you came from, or Home when there's nothing to go back to |

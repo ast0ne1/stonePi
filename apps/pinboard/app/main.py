@@ -9,7 +9,7 @@ from app.agent_routes import router as agent_router
 from app.routes import router
 from stonepi_auth.prefix import clean_prefix
 
-app = FastAPI(title="StonePi Pinboard")
+app = FastAPI(title="StonePi Pinboard", docs_url=None, redoc_url=None, openapi_url=None)
 _prefix = clean_prefix(env.stonepi_prefix)
 if _prefix:
     from stonepi_auth.prefix import PrefixMiddleware

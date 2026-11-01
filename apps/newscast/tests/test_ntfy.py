@@ -129,7 +129,9 @@ def test_flush_pending_notifies_push_once(tmp_path: Path, monkeypatch):
     )
     calls = _patch_emit(monkeypatch)
     monkeypatch.setattr(reader_push, "reader_reachable", lambda _host, timeout=None, db=None, user_id=None: True)
-    monkeypatch.setattr(reader_push, "upload_file", lambda host, file_path, dest, db=None, user_id=None: None)
+    monkeypatch.setattr(
+        reader_push, "upload_file", lambda host, file_path, dest, db=None, user_id=None, save_name=None: None
+    )
     reader_push.flush_pending(db)
     assert len(calls) == 1
     assert calls[0]["id"] == "newscast.push_available"
@@ -193,7 +195,9 @@ def test_changed_paper_on_the_reader_alerts_again(tmp_path: Path, monkeypatch):
     path = tmp_path / f"news-{date.today().isoformat()}.epub"
     calls = _patch_emit(monkeypatch)
     monkeypatch.setattr(reader_push, "reader_reachable", lambda _host, timeout=None, db=None, user_id=None: True)
-    monkeypatch.setattr(reader_push, "upload_file", lambda host, file_path, dest, db=None, user_id=None: None)
+    monkeypatch.setattr(
+        reader_push, "upload_file", lambda host, file_path, dest, db=None, user_id=None, save_name=None: None
+    )
     for content in (b"first edition", b"regenerated edition"):
         path.write_bytes(content)
         enqueue_sync_file(db, path, path.name, kind="crosspoint", save_path=f"/News/{path.name}")

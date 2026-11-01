@@ -3,6 +3,7 @@
     <h2>Add a custom source</h2>
     <p class="hint">Enter a homepage to scrape, an RSS feed URL, or both. Only the mode you pick under How to fetch is used.</p>
     <form method="post" action="/feeds" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       <input type="hidden" name="next" value="{{ source_next }}" />
       <label>
         Name

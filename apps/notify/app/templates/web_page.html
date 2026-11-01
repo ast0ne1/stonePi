@@ -46,6 +46,11 @@
         <input type="number" name="settle_s" min="0" max="15" step="1" value="{{ page.settle_s }}" />
         <span class="hint">For widgets that fill in after the page appears.</span>
       </label>
+      <label>
+        Capture again every (minutes)
+        <input type="number" name="refresh_min" min="15" max="1440" step="5" value="{{ page.refresh_min }}" />
+        <span class="hint">TRMNL and the Car Thing reuse a capture until it's this old (15 at least). The Car Thing's ↻ button takes a new one any time.</span>
+      </label>
     </div>
     <label>
       Hide these parts <span class="muted">(CSS selectors, one per line)</span>

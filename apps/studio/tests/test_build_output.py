@@ -82,7 +82,7 @@ def _client(tmp_path, monkeypatch, reply: str, stop: str = "end_turn"):
     monkeypatch.setattr(store, "STORE", tmp_path / "studio.json")
     monkeypatch.setattr(store, "WORKSPACE_DIR", tmp_path / "ws")
     monkeypatch.setattr(routes, "_session_secret", lambda: "")
-    monkeypatch.setattr(routes, "csrf_ok", lambda *_a: True)
+    monkeypatch.setattr(routes, "csrf_ok_request", lambda *_a, **_k: True)
 
     def fake_stream(*_a, **_k):
         for i in range(0, len(reply), 7):
@@ -110,6 +110,8 @@ def test_chat_build_streams_progress_and_applies(tmp_path, monkeypatch):
 
     page = client.get(f"/p/{project['id']}/preview/")
     assert page.headers["cache-control"] == "no-store"
+    assert "sandbox" in page.headers.get("content-security-policy", "")
+    assert "allow-same-origin" not in page.headers.get("content-security-policy", "")
     assert 'source:"studio-preview"' in page.text
     assert page.text.index("studio-preview") < page.text.index("style.css")
 

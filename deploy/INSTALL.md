@@ -109,10 +109,11 @@ The installer will:
 - Enable USB-plug backup udev rule; leave weekly **USB** backup timer **disabled**
 - Install local-backup unit/timer (timer stays off until enabled in Settings → Backup)
 - Enable Cockpit
+- Set up **Odio** for Radio (`stonepi-odio-setup`, after the firewall): a pinned, hash-checked Odio release as the user `odio` (PulseAudio, MPD, myMPD, the Odio API, AirPlay and Spotify Connect). Its API listens on loopback only and the firewall keeps MPD and myMPD off the network; AirPlay and Spotify Connect answer on the home network and tailnet. `--no-odio` skips it (install later with `sudo stonepi-odio-setup`); Radio then plays only in browsers and on DLNA speakers
 - Run health checks (units active, every enabled app's `/healthz`, edge HTTP) and the ready check (permissions as each service user, sudo helpers, Tailscale, Chromium for EventTrakr, SportGuide and Notify)
 - Print the first admin password (first install only) and mark the install complete — an interrupted install is resumed by running the bootstrap command again
 
-First run can take several minutes (pip + one shared Chromium for EventTrakr, SportGuide and Notify, in `/opt/stonepi/.cache/ms-playwright`).
+First run can take several minutes (pip + one shared Chromium for EventTrakr, SportGuide and Notify, in `/opt/stonepi/.cache/ms-playwright`), plus about 15 for Odio's first install.
 
 ## 5. Sign in
 
@@ -132,6 +133,7 @@ On another device on the same LAN:
 | http://stonepi.local/watch/ | PriceWatch |
 | http://stonepi.local/library/ | Library (reader at `/library/read/`) |
 | http://stonepi.local/ripple/ | Ripple (family updates for a TRMNL) |
+| http://stonepi.local/radio/ | Radio (internet radio on your device, a speaker or the Pi) |
 | http://stonepi.local/notify/ | Notify (admin: Displays, TRMNL, Car Thing, web pages, ntfy) |
 | http://stonepi.local/recover/ or http://stonepi.local:8099/ | Recovery Console (escape hatch; user `stonepi`) |
 | https://stonepi.local:9090 or https://PI_LAN_IP:9090 | Cockpit (Linux admin; HTTPS) |
@@ -230,6 +232,7 @@ Application units (enabled on boot):
 - `stonepi-pricewatch`
 - `stonepi-library`
 - `stonepi-ripple`
+- `stonepi-radio` (Odio runs as its own units under the user `odio`)
 
 Platform units (enabled on boot):
 

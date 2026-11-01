@@ -1,6 +1,27 @@
 (function () {
   "use strict";
 
+  // CSRF: background saves (here and in map.js) send the page's token as X-StonePi-CSRF;
+  // the server refuses a POST without it. Same-origin, state-changing requests only.
+  (function () {
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    var token = meta ? meta.getAttribute("content") : "";
+    if (!token || !window.fetch) return;
+    var plain = window.fetch.bind(window);
+    window.fetch = function (input, init) {
+      init = init || {};
+      var method = String(init.method || (input && input.method) || "GET").toUpperCase();
+      var url = typeof input === "string" ? input : (input && input.url) || "";
+      var sameOrigin = url.charAt(0) === "/" && url.charAt(1) !== "/" || url.indexOf(location.origin + "/") === 0;
+      if (method !== "GET" && method !== "HEAD" && sameOrigin) {
+        var headers = new Headers(init.headers || (typeof input !== "string" && input.headers) || {});
+        if (!headers.has("X-StonePi-CSRF")) headers.set("X-StonePi-CSRF", token);
+        init = Object.assign({}, init, { headers: headers });
+      }
+      return plain(input, init);
+    };
+  })();
+
   var STAR_OUTLINE = '<svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>';
   var STAR_FILLED = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" stroke="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>';
 
@@ -135,6 +156,37 @@
       }, 180);
     }
 
+    // "Not the same event" (U33): split one source's listing off a merged event.
+    document.querySelectorAll("[data-split-sighting]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var name = btn.parentElement ? btn.parentElement.textContent.replace("×", "").trim() : "that source";
+        if (!window.confirm("Not the same event? " + name + "'s listing will show as its own event.")) return;
+        btn.disabled = true;
+        fetch(withPrefix("/api/events/" + btn.dataset.splitEvent + "/split/" + btn.dataset.splitSighting), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        })
+          .then(function (res) {
+            return res.json().then(function (data) {
+              return { ok: res.ok, data: data };
+            });
+          })
+          .then(function (result) {
+            if (!result.ok) {
+              btn.disabled = false;
+              showToast((result.data && (result.data.message || result.data.error)) || "Could not split the event");
+              return;
+            }
+            showToast("Split: it now shows as its own event");
+            window.setTimeout(function () { window.location.reload(); }, 600);
+          })
+          .catch(function () {
+            btn.disabled = false;
+            showToast("Could not split the event");
+          });
+      });
+    });
+
     document.querySelectorAll("[data-fav-toggle]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var eventId = btn.dataset.favToggle;
@@ -153,7 +205,7 @@
             btn.disabled = false;
             var data = result.data || {};
             if (!result.ok || typeof data.favourited !== "boolean") {
-              showToast(data.error || "Could not update favourite");
+              showToast(data.message || data.error || "Could not update favourite");
               return;
             }
             if (data.favourited) {
@@ -455,7 +507,7 @@
           .then(function (result) {
             fbFetchBtn.disabled = false;
             if (!result.ok) {
-              fbStatus.textContent = result.data.error || "Could not fetch that event.";
+              fbStatus.textContent = result.data.message || result.data.error || "Could not fetch that event.";
               return;
             }
             var data = result.data;

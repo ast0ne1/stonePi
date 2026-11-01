@@ -18,7 +18,7 @@ from stonepi_auth.brand import fonts_rev
 from stonepi_auth import login_url, logout_url
 from stonepi_auth.alerts import add_shared_templates, bell_context, notifications_card_context
 from stonepi_auth.config import PlatformSettings
-from stonepi_auth.csrf import CSRF_COOKIE, csrf_from_request, csrf_ok, set_csrf_cookie
+from stonepi_auth.csrf import CSRF_COOKIE, csrf_from_request, csrf_ok_request, set_csrf_cookie
 from stonepi_auth.http import portal_home_url, request_is_https
 from stonepi_auth.session import COOKIE_NAME, decode_session
 
@@ -377,7 +377,7 @@ async def sources_refresh(request: Request, csrf_token: str = Form(""), next: st
         return denied
     if not _can_refresh(user):
         return HTMLResponse("Missing capability: can_refresh", status_code=403)
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         dest = "/" if next == "now" else "/sources"
         return _redirect(dest, error="Invalid session token")
     ingest.refresh_async()
@@ -393,7 +393,7 @@ async def source_refresh_one(request: Request, source_id: str, csrf_token: str =
         return denied
     if not _can_refresh(user):
         return HTMLResponse("Missing capability: can_refresh", status_code=403)
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return _redirect("/sources", error="Invalid session token")
     if source_id not in ingest.COLLECTORS:
         return _redirect("/sources", error="Unknown source")
@@ -511,7 +511,7 @@ async def settings_general(
     user, denied = _require_user(request)
     if denied:
         return denied
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return _redirect("/settings?tab=general", error="Invalid session token")
     uk = _user_key(user)
     db.set_pref(uk, "city", city.strip())
@@ -562,7 +562,7 @@ def settings_watch_add(
     user, denied = _require_user(request)
     if denied:
         return denied
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return _redirect("/settings?tab=watch", error="Invalid session token")
     from app import teams as team_names
 
@@ -584,7 +584,7 @@ def settings_watch_remove(
     user, denied = _require_user(request)
     if denied:
         return denied
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return _redirect("/settings?tab=watch", error="Invalid session token")
     uk = _user_key(user)
     ident = str(team or "").strip()
@@ -606,7 +606,7 @@ async def settings_notifications(
     user, denied = _require_user(request)
     if denied:
         return denied
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return _redirect("/settings?tab=notifications", error="Invalid session token")
     try:
         minutes = int(str(notify_approaching_minutes or "30").strip())
@@ -621,7 +621,7 @@ async def settings_notifications(
 
 @router.post("/logout")
 async def logout(request: Request, csrf_token: str = Form("")):
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return _redirect("/", error="Invalid session token")
     response = RedirectResponse(logout_url(_settings()), status_code=303)
     return response

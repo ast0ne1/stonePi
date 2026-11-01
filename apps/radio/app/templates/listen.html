@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}My Radio{% endblock %}
+{% block fab %}{% if can_manage and show_add %}{% from "stonepi/header.html" import header_fab %}{{ header_fab("/?add=1", "Add station", sheet="add-station") }}{% endif %}{% endblock %}
+{% block content %}
+<section class="hero">
+  <h1>My Radio</h1>
+  <p class="lede">The household’s stations, and the ones you’ve starred. Find more on Discover.</p>
+</section>
+
+{% if now and now.playing %}
+<p class="now-strip card">
+  <span class="hint">On air</span>
+  <strong>{{ now.title or 'Playing' }}</strong>
+  <a class="text-link" href="/now">Now Playing →</a>
+</p>
+{% endif %}
+
+{#- Home stations: the household's, the same for everyone (admins add and remove them).
+    My favourites: your own stars. A station can be in both. Which comes first is each
+    person's choice (Settings → My Radio). -#}
+{% set list_actions = True %}
+{% set next_path = '/now' %}
+{% for section in section_order %}
+{% if section == 'home' %}
+<section class="radio-section" id="home-stations" aria-labelledby="home-stations-title">
+  <h2 class="section-heading" id="home-stations-title">{{ icon("listen") }} Home stations</h2>
+  {% if home_stations %}
+  <div class="station-grid">
+    {% for station in home_stations %}
+    {% include "_station_card.html" %}
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="hint section-empty">{% if can_manage %}None yet. Find some on Discover{% if show_add %}, or add one by its stream address with +{% endif %}.{% else %}None yet: an admin adds the household’s stations.{% endif %}</p>
+  {% endif %}
+</section>
+{% else %}
+<section class="radio-section" id="favourites" aria-labelledby="favourites-title">
+  <h2 class="section-heading" id="favourites-title">{{ icon("star-outline") }} My favourites</h2>
+  {#- Removing a Home station is in Home stations only; here a starred one just says so. -#}
+  {% set mark_listed = True %}
+  {% if favorites %}
+  <div class="station-grid">
+    {% for station in favorites %}
+    {% include "_station_card.html" %}
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="hint section-empty">Just for you. Tap the star on any station, here or on <a class="text-link" href="/discover">Discover</a>.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endfor %}
+
+{% if can_manage %}
+<div class="sheet{% if add_open %} is-open{% endif %}"{% if not add_open %} hidden{% endif %} data-sheet="add-station">
+  <form method="post" action="/stations/add" class="sheet-card card stack">
+    <h2>Add a station</h2>
+    <p class="hint">To Home stations, for everyone in the household. Paste the station’s stream address (http:// or https://); the logo is optional.</p>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <input type="hidden" name="next" value="/" />
+    <label>Name <input name="name" required maxlength="120" placeholder="Station name" autocomplete="off" data-autofocus /></label>
+    <label>Stream address <input name="url" required type="url" inputmode="url" placeholder="https://…" autocomplete="off" /></label>
+    <label>Logo address <input name="favicon" type="url" inputmode="url" placeholder="https://… (optional)" autocomplete="off" /></label>
+    <div class="btn-row">
+      <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("plus") }} Add station</button>
+      <button class="btn btn-ghost" type="button" data-close-sheet>Cancel</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

@@ -229,16 +229,20 @@
   // or press anything, then hidden after the page's hide_after_s so the page has the screen.
   var stripTimer = null;
   function showStrip() {
+    // Playlist open: the skin keeps the full screen (Always or Auto-hide).
+    if (skinPl && view.querySelector(".sk-has-pl")) return;
     var strip = view.querySelector("[data-strip-auto]");
     clearTimeout(stripTimer);
     if (!strip) return;
     strip.classList.remove("is-hidden");
     stripTimer = setTimeout(function () { strip.classList.add("is-hidden"); }, Number(strip.getAttribute("data-strip-auto")) * 1000);
   }
-  // A touch, press or turn: the strip comes back, except over Now Playing or a full web page,
-  // where you touch the screen all the time (only arriving there shows it).
+  // A touch, press or turn: the strip comes back, except over Now Playing, the full-screen
+  // Radio player or a full web page, where you touch the screen all the time (only arriving
+  // there shows it). Bringing it back on pointerdown pushes the page down under the finger,
+  // so the first tap on a Radio button landed on whatever moved there instead.
   function stripOnInput() {
-    if (view.querySelector('[data-screen="music"], [data-np-full], .lay-web')) return;
+    if (view.querySelector('[data-screen="music"], [data-np-full], .lay-web, [data-radio-screen], .lay-radio, .lay-np')) return;
     showStrip();
   }
   // Home = the page you were on; the "home" action goes to page 1.
@@ -268,7 +272,10 @@
       for (var j = 0; j < items.length; j++) if (items[j].getAttribute("data-app") === id) { idx = j; break; }
     }
     stack = [{ url: pageUrl(pageIndex), focus: idx }];
-    return load(id === "music" ? "v/music" : "v/app/" + id, false);
+    if (id === "music") return load("v/music", false);
+    if (id === "radio") return load("v/radio", false);
+    if (id === "audio") return load("v/audio", false);
+    return load("v/app/" + id, false);
   }
   // The weather screen (U14): from a widget tap (data-go) or the Open Weather action.
   function openWeather() {
@@ -304,6 +311,20 @@
     if (el.hasAttribute("data-np-more")) return npSheet();
     var mus = el.getAttribute("data-music");
     if (mus) return musicCmd(mus);
+    // A Radio skin's PL button: opens or closes its playlist window (a look, not a command; on Spotify too).
+    if (el.hasAttribute("data-skin-pl")) return skinPlToggle();
+    // Radio's player buttons (every skin): a tap and the dial press on a focused one both land here.
+    var rc = el.getAttribute("data-radio-cmd");
+    // Spotify in Radio's theme (Look → Music): the skin's buttons drive Spotify.
+    if (rc && el.closest && el.closest("[data-skin-music]")) return skinMusicCmd(el, rc, el.getAttribute("data-radio-arg"));
+    if (rc) {
+      var ra = el.getAttribute("data-radio-arg");
+      return radioCmd(rc, ra !== null && ra !== "" && !isNaN(+ra) ? +ra : ra);
+    }
+    if (el.hasAttribute("data-web-refresh")) {
+      var shot = el.parentNode && el.parentNode.querySelector("img[data-web-every]");
+      return shot && !shot.getAttribute("data-web-loading") ? loadWeb(shot, true) : undefined;
+    }
     if (el.hasAttribute("data-device")) {
       return musicCmd("transfer", el.getAttribute("data-device"), "Playing on " + el.getAttribute("data-device-name") + ".").then(afterPick);
     }
@@ -398,6 +419,10 @@
     if (action === "music:vol_up") return volStep(1);
     if (action === "music:vol_down") return volStep(-1);
     if (action.indexOf("music:") === 0) return musicCmd(action.slice(6));
+    if (action.indexOf("radio:preset:") === 0) return radioCmd("preset", +action.slice(13));
+    if (action === "radio:vol_up") return radioCmd("vol", 1);
+    if (action === "radio:vol_down") return radioCmd("vol", -1);
+    if (action.indexOf("radio:") === 0) return radioCmd(action.slice(6));
     if (action.indexOf("open:") === 0) return openApp(action.slice(5));
     if (action.indexOf("page:") === 0) {
       var n = +action.slice(5);
@@ -421,6 +446,209 @@
     }
   }
 
+  // ── Radio skins (_radio.html): drawn at their own pixel size and scaled to fill their box
+  // (width and height separately, so the panel never letterboxes or pillarboxes). The clock
+  // lives in the skin's LCD digits. Runs when the page changes. The playlist window (PL):
+  // closed by default, kept across reloads and on this panel. Opening PL hides the page
+  // header (Always or Auto-hide) so the pair gets the full 800×480; closing restores it.
+  var skinPl = false;
+  try { skinPl = localStorage.getItem("stonepi.skinPl") === "1"; } catch (e) { /* no storage */ }
+  function skinPlToggle() {
+    skinPl = !skinPl;
+    try { localStorage.setItem("stonepi.skinPl", skinPl ? "1" : "0"); } catch (e) { /* no storage */ }
+    var strip = view.querySelector(".strip");
+    if (skinPl) {
+      clearTimeout(stripTimer);
+      if (strip) strip.classList.add("is-hidden");
+    } else if (strip) {
+      // Closing PL: put Always back, or flash Auto-hide then let it time out again.
+      if (strip.hasAttribute("data-strip-auto")) showStrip();
+      else strip.classList.remove("is-hidden");
+    }
+    fitSkins();
+  }
+  function fitSkins() {
+    var els = document.querySelectorAll("[data-sk-fit]");
+    for (var i = 0; i < els.length; i++) {
+      if (els[i].classList.contains("sk-has-pl")) els[i].classList.toggle("pl-open", skinPl);
+    }
+    // PL remembered open across reloads: clear the strip before measuring height.
+    if (skinPl && view.querySelector(".sk-has-pl")) {
+      clearTimeout(stripTimer);
+      var strip = view.querySelector(".strip");
+      if (strip) strip.classList.add("is-hidden");
+    }
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i], box = el.parentNode;
+      var w = el.offsetWidth, h = el.offsetHeight, bw = box.clientWidth, bh = box.clientHeight;
+      if (!w || !h || !bw || !bh) continue;
+      // Fill the box on both axes. Contain (min) left black bars; cover (max) clips controls.
+      el.style.transform = "scale(" + (bw / w) + ", " + (bh / h) + ")";
+    }
+    skinClock();
+  }
+  function skinClock() {
+    var times = document.querySelectorAll("[data-sk-time]");
+    if (!times.length) return;
+    // Same Pi clock as every other face (the device's Date is wrong on the panel).
+    var d = piNow(), h = d.getUTCHours(), m = d.getUTCMinutes();
+    var digits = [Math.floor(h / 10), h % 10, Math.floor(m / 10), m % 10];
+    for (var i = 0; i < times.length; i++) {
+      for (var j = 0; j < 4 && j < times[i].children.length; j++) times[i].children[j].style.backgroundPosition = -9 * digits[j] + "px 0";
+    }
+  }
+  var skinFrame = 0;
+  new MutationObserver(function () {
+    if (skinFrame || !document.querySelector("[data-sk-fit]")) return;
+    skinFrame = setTimeout(function () { skinFrame = 0; fitSkins(); }, 0);
+  }).observe(body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "hidden"] });
+  window.addEventListener("resize", fitSkins);
+  setInterval(skinClock, 10000);
+  fitSkins();
+
+  // ── Radio: commands against apps/radio (Odio) ─────────────────────────
+  function radioReload() {
+    var url = (view.querySelector("[data-url]") || {}).getAttribute && view.querySelector("[data-url]").getAttribute("data-url");
+    if (url) load(url, false, focusIndex, true);
+    else if (typeof refreshHome === "function") refreshHome();
+  }
+  // Winamp-style volume.bmp: 28 frames × 15 px tall, thumb travels 0–54 px.
+  function paintSkinVol(pct) {
+    pct = Math.max(0, Math.min(100, Math.round(+pct || 0)));
+    var bars = view.querySelectorAll("[data-radio-vol]");
+    for (var i = 0; i < bars.length; i++) {
+      bars[i].setAttribute("data-radio-vol", String(pct));
+      bars[i].style.backgroundPosition = "0 -" + (Math.round((pct / 100) * 27) * 15) + "px";
+      var thumb = bars[i].querySelector(".sk-thumb");
+      if (thumb) thumb.style.left = Math.round((pct / 100) * 54) + "px";
+    }
+  }
+  function radioCmd(cmd, arg) {
+    // Volume: move the skin slider at once — a full HTML reload every step looked glitchy.
+    if (cmd === "vol") {
+      var bar = view.querySelector("[data-radio-vol]");
+      var nowPct = bar ? parseFloat(bar.getAttribute("data-radio-vol")) || 0 : 0;
+      var step = (cfg.radio && cfg.radio.volume_step) || 5;
+      paintSkinVol(nowPct + (+arg || 0) * step);
+    }
+    return fetch("radio/cmd", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cmd: cmd, arg: arg === undefined ? null : arg })
+    }).then(function (r) { return r.json(); }).then(function (res) {
+      if (!res.ok) toast(res.message || "That didn’t work.");
+      else if (res.message && cmd !== "vol") toast(res.message);
+      if (cmd === "vol") {
+        if (res.ok && res.volume != null) paintSkinVol(Math.round(+res.volume * 100));
+        return res;
+      }
+      // Play / stop / preset: refresh the radio screen / widget shortly after.
+      if (view.querySelector("[data-radio], [data-radio-screen]")) {
+        setTimeout(radioReload, 500);
+      }
+      return res;
+    }).catch(function (err) { fail("radio " + cmd, err); return { ok: false }; });
+  }
+  // Bitmap skins: Radio reads kbps/kHz in the background, and ICY titles change while on air.
+  // Paint those in place — a full HTML reload every few seconds flashed the screen (and the
+  // artwork screensaver, which re-uses the same skin).
+  var radioTimer = null;
+  var SK_FONT_ROWS = ['abcdefghijklmnopqrstuvwxyz"@', "0123456789….:()-'!_+¦/[]^&%,=$#", "åöä?*"];
+  var SK_FONT_FOLD = { "æ": "ä", "ø": "ö", "ü": "u", "é": "e", "è": "e", "ê": "e", "ë": "e", "á": "a", "à": "a", "â": "a", "ã": "a", "í": "i", "ì": "i", "î": "i", "ï": "i", "ó": "o", "ò": "o", "ô": "o", "õ": "o", "ú": "u", "ù": "u", "û": "u", "ñ": "n", "ç": "c", "ß": "s", "<": "[", ">": "]", "{": "[", "}": "]", "–": "-", "—": "-", "’": "'", "‘": "'", "“": '"', "”": '"', "|": "/" };
+  function skGlyphHtml(text) {
+    var out = "", s = String(text || "").toLowerCase();
+    for (var i = 0; i < s.length; i++) {
+      var c = SK_FONT_FOLD[s.charAt(i)] || s.charAt(i), x = 150, y = 0;
+      for (var r = 0; r < SK_FONT_ROWS.length; r++) {
+        var at = SK_FONT_ROWS[r].indexOf(c);
+        if (at >= 0) { x = at * 5; y = r * 6; break; }
+      }
+      out += '<i style="background-position:-' + x + "px -" + y + 'px"></i>';
+    }
+    return out;
+  }
+  function paintSkinTxt(el, text, scroll) {
+    if (!el) return;
+    var body = skGlyphHtml(text);
+    if (scroll) {
+      var n = String(text || "").length || 1;
+      el.innerHTML = '<span class="sk-txt is-scroll" style="animation-duration: ' + (n * 0.22).toFixed(2) +
+        "s; animation-timing-function: steps(" + n + ')">' + body + body + "</span>";
+    } else if (text) {
+      el.innerHTML = '<span class="sk-txt">' + body + "</span>";
+    } else {
+      el.innerHTML = "";
+    }
+  }
+  function radioSkinShown() {
+    return !!(view.querySelector("[data-skin-radio]") || (mode === "saver" && saver.querySelector("[data-saver-radio]")));
+  }
+  function paintSkinRadio(root, st) {
+    var box = root.querySelector("[data-skin-radio]");
+    if (!box) return false;
+    var playing = !!st.playing, paused = !!st.paused && !playing;
+    var title = st.title || "", artist = st.artist || "";
+    var line = !st.connected ? (st.error || "Radio isn't answering. Is the Radio app running?")
+      : (title || "Nothing playing") + (artist ? " - " + artist : "");
+    var marq = root.querySelector("[data-radio-title]");
+    if (marq) {
+      marq.setAttribute("aria-label", line);
+      paintSkinTxt(marq, line + "  ***  ", true);
+    }
+    var kbps = playing ? Math.min(999, Math.round(+st.kbps || 0)) : 0;
+    var khz = playing ? Math.min(99, Math.round(+st.khz || 0)) : 0;
+    paintSkinTxt(root.querySelector(".sk-kbps"), kbps ? String(kbps) : "", false);
+    paintSkinTxt(root.querySelector(".sk-khz"), khz ? String(khz) : "", false);
+    var sk = root.querySelector("[data-sk-fit]");
+    if (sk) sk.classList.toggle("is-playing", playing);
+    var stereo = root.querySelector(".sk-stereo");
+    if (stereo) stereo.classList.toggle("is-on", playing);
+    var ps = root.querySelector(".sk-ps");
+    if (ps) ps.className = "sk-ps sk-ps-" + (playing ? "play" : (paused ? "pause" : "stop"));
+    var rows = root.querySelectorAll(".pl-row");
+    var want = title.toLowerCase();
+    for (var i = 0; i < rows.length; i++) {
+      var label = (rows[i].textContent || "").replace(/^\d+\.\s*/, "").toLowerCase();
+      rows[i].classList.toggle("is-current", !!(want && label === want));
+    }
+    return true;
+  }
+  function skinRadioStale(st) {
+    var root = (mode === "saver" ? saver : view);
+    var box = root.querySelector("[data-skin-radio]");
+    if (!box) {
+      // Now Playing look on the artwork screensaver: song comes from saver_now (not this
+      // poll). Only force a full fetch when Radio stops so the chosen style returns.
+      if (mode === "saver" && saver.querySelector("[data-saver-radio]") && !st.playing) {
+        refreshSaver(true);
+        return true;
+      }
+      return false;
+    }
+    var key = (st.title || "") + "|" + (st.playing ? 1 : 0) + "|" + (st.kbps || 0) + "|" + (st.khz || 0);
+    if (box.getAttribute("data-skin-radio-key") === key) return true;
+    var wasPlaying = (box.getAttribute("data-skin-radio-key") || "").split("|")[1] === "1";
+    box.setAttribute("data-skin-radio-key", key);
+    // Artwork screensaver: dropping off air must swap back to the chosen style (full fetch).
+    if (mode === "saver" && wasPlaying && !st.playing) { refreshSaver(true); return true; }
+    paintSkinRadio(root, st);
+    return true;
+  }
+  function radioRead() {
+    return fetch("radio/now?src=screen", { credentials: "same-origin" }).then(function (r) {
+      return r.ok ? r.json() : null;
+    }).then(function (st) { if (st && st.ok) skinRadioStale(st); }).catch(function () {});
+  }
+  function radioPoll() {
+    clearTimeout(radioTimer);
+    radioTimer = setTimeout(function () {
+      if ((mode === "active" || mode === "saver") && radioSkinShown()) radioRead();
+      radioPoll();
+    }, 3000);
+  }
+  radioPoll();
+
   // ── Music (F7): commands, dial volume, Now Playing updates ────────────
   var npTimer = null, npFresh = null;
   function npRoot() { return mode === "saver" ? saver : view; }
@@ -441,6 +669,36 @@
       npSoon(700);
       return res;
     }).catch(function (err) { fail("music " + cmd, err); return { ok: false }; });
+  }
+  // The Radio skin's buttons on Spotify: stop pauses (Spotify has no stop), − / + step the volume.
+  function skinMusicCmd(el, cmd, arg) {
+    var box = el.closest("[data-skin-music]");
+    var parts = (box.getAttribute("data-skin-key") || "").split("|");
+    var playing = parts[parts.length - 3] === "1";
+    if (cmd === "play_pause") return musicCmd("play_pause");
+    if (cmd === "stop") return playing ? musicCmd("play_pause") : undefined;
+    if (cmd === "vol") return allowed(+arg > 0 ? "music:vol_up" : "music:vol_down") ? musicCmd("vol", (+arg > 0 ? 1 : -1) * cfg.music.step) : undefined;
+    if (cmd === "preset") return musicCmd("preset", +arg);
+    // Spotify's own: skip tracks, toggle shuffle and repeat (the skin lights them on its redraw).
+    if (cmd === "prev" || cmd === "next" || cmd === "shuffle" || cmd === "repeat") return musicCmd(cmd);
+  }
+  // Spotify in Radio's theme is drawn by the server: a new song or play state redraws it.
+  function skinMusicStale(root, st) {
+    var box = root.querySelector("[data-skin-music]");
+    if (!box) return false;
+    var key = (st.track || "") + "|" + (st.artist || "") + "|" + (st.playing ? 1 : 0) + "|" + (st.shuffle ? 1 : 0) + "|" + (st.repeat || "off");
+    var elapsed = root.querySelectorAll("[data-sk-elapsed]");
+    for (var e = 0; e < elapsed.length; e++) {
+      elapsed[e].setAttribute("data-progress", st.progress_ms || 0);
+      elapsed[e].setAttribute("data-duration", st.duration_ms || 0);
+      elapsed[e].setAttribute("data-at", st.at_ms || 0);
+      elapsed[e].setAttribute("data-playing", st.playing ? "1" : "0");
+    }
+    if (box.getAttribute("data-skin-key") === key) return true;
+    box.setAttribute("data-skin-key", key);
+    if (mode === "saver") refreshSaver();
+    else if (current) load(current, false, focusIndex, true);
+    return true;
   }
   // A speaker or preset picked from its list: back to Now Playing.
   function afterPick(res) { if (res && res.ok && screenKind() === "music-list") goBack(); }
@@ -478,8 +736,29 @@
   }
   function dialIsVolume(id) {
     if ((id !== "dial_cw" && id !== "dial_ccw") || !cfg.music.dial_volume || !npShown()) return false;
+    // Spotify in Radio's theme has no volume row to check: the speaker refuses if it can't.
+    if (view.querySelector("[data-skin-music]")) return allowed(id === "dial_cw" ? "music:vol_up" : "music:vol_down");
     var vol = view.querySelector("[data-np-vol]");
     return !!vol && !vol.hidden && allowed(id === "dial_cw" ? "music:vol_up" : "music:vol_down");
+  }
+  // Radio on screen (its screen, or a full page in its theme or in Now Playing's look) with
+  // Look → Radio → the dial turns the volume.
+  function radioDialIsVolume(id) {
+    if ((id !== "dial_cw" && id !== "dial_ccw") || !cfg.radio || !cfg.radio.dial_volume) return false;
+    if (view.querySelector("[data-skin-music]")) return false;
+    var shown = view.querySelector("[data-radio-screen]") || view.querySelector(".lay-radio [data-radio], .lay-np [data-radio]");
+    return !!shown && allowed(id === "dial_cw" ? "radio:vol_up" : "radio:vol_down");
+  }
+  // Dial clicks add up for ~300 ms and go out as one change of that many steps.
+  var radioVolClicks = 0, radioVolTimer = null;
+  function radioVolStep(dir) {
+    radioVolClicks += dir;
+    clearTimeout(radioVolTimer);
+    radioVolTimer = setTimeout(function () {
+      var clicks = radioVolClicks;
+      radioVolClicks = 0;
+      if (clicks) radioCmd("vol", clicks);
+    }, 300);
   }
 
   function fmt(ms) { var s = Math.max(0, Math.floor(ms / 1000)); return Math.floor(s / 60) + ":" + pad(s % 60); }
@@ -490,6 +769,9 @@
   function paintNp(st) {
     var root = npRoot();
     if (!root.querySelector("[data-np]") && !root.querySelector("[data-saver-music]")) return;
+    // Radio's artwork screensaver is drawn by the server (v/saver); Spotify's state mustn't paint it.
+    if (root.querySelector("[data-saver-radio]")) return;
+    if (skinMusicStale(root, st)) return;
     var i, nodes;
     setAll(root, "[data-np-track]", st.track || (st.connected ? "Nothing playing" : "Music"));
     setAll(root, "[data-np-artist]", st.track ? st.artist : (st.error || "Start something with a preset, or pick a speaker."));
@@ -688,6 +970,21 @@
       if (p) { var t = dur ? fmt(pos) : ""; if (p.textContent !== t) p.textContent = t; }
       var dEl = el.querySelector("[data-np-dur]");
       if (dEl) { var dt = dur ? fmt(dur) : ""; if (dEl.textContent !== dt) dEl.textContent = dt; }
+    }
+    skinTrack(now);
+  }
+  // Spotify in a Radio skin: Winamp's time display counts the track (m:ss) and the position
+  // bar's thumb moves along it, from the same progress as Now Playing's bar.
+  function skinTrack(now) {
+    var times = npRoot().querySelectorAll("[data-sk-elapsed]");
+    for (var i = 0; i < times.length; i++) {
+      var el = times[i], dur = +el.getAttribute("data-duration"), pos = +el.getAttribute("data-progress");
+      if (el.getAttribute("data-playing") === "1") pos += now - (+el.getAttribute("data-at"));
+      var s = Math.floor(Math.max(0, dur ? Math.min(pos, dur) : pos) / 1000), m = Math.min(99, Math.floor(s / 60));
+      var digits = [Math.floor(m / 10), m % 10, Math.floor((s % 60) / 10), s % 10];
+      for (var j = 0; j < 4 && j < el.children.length; j++) el.children[j].style.backgroundPosition = -9 * digits[j] + "px 0";
+      var thumb = el.parentNode && el.parentNode.querySelector("[data-sk-thumb]");
+      if (thumb && dur) thumb.style.left = Math.round(Math.min(1, pos / dur) * 219) + "px";
     }
   }
   function npRead() {
@@ -1568,9 +1865,13 @@
     var shown = showSaver();
     return shown && shown.then ? shown.then(function () { applyLevel(true); }) : applyLevel(true);
   }
-  function refreshSaver() {
+  function refreshSaver(force) {
     // The animations show no feed data, but the music artwork can take their place.
     if (cfg.idle.saver.style !== "clock" && !cfg.music.saver_artwork) return;
+    // Radio artwork/skins update from the radio poll. Replacing the whole HTML every
+    // tick/title change is the periodic flash while Radio plays. Spotify skins still
+    // refresh on track change (rarer than Radio's 3 s metadata poll).
+    if (!force && saver.querySelector("[data-skin-radio], [data-saver-radio]")) return;
     fetch("v/saver", { credentials: "same-origin" }).then(function (r) { return r.ok ? r.text() : null; }).then(function (html) {
       if (html === null || mode !== "saver") return;
       var wasMusic = !!saver.querySelector("[data-saver-music]");
@@ -1601,6 +1902,7 @@
     npTouched();
     // Now Playing with its controls set to Never: the dial press still plays and pauses.
     if (id === "dial_press" && npShown() && !view.querySelector(".np2.ctl-shown") && allowed("music:play_pause")) return musicCmd("play_pause");
+    if (radioDialIsVolume(id)) return radioVolStep(id === "dial_cw" ? 1 : -1);
     if (dialIsVolume(id)) return volStep(id === "dial_cw" ? 1 : -1);
     perform(cfg.controls[id]);
   }
@@ -1736,8 +2038,9 @@
     report("unhandled: " + String(e.reason && e.reason.message || e.reason));
   });
 
-  // ── Web page snapshots (F14): a fresh one every data-web-every s, only while it shows ──
-  // The Pi captures the page (Notify) and caches it, so asking costs the device one image.
+  // ── Web page snapshots (F14): asked for every data-web-every s, only while it shows ──
+  // The Pi captures the page (Notify) and keeps it for the page's refresh time, so asking
+  // costs the device one image. The ↻ button (fresh) has the Pi capture it again now.
   // The new image loads off screen first, so the old one stays up until it's ready.
   function refreshWeb() {
     if (document.hidden) return;
@@ -1753,33 +2056,48 @@
   }
   // The fresh image loads into a copy that replaces the old one, so each refresh is one
   // download (the snapshot is no-store, so setting the old img's src would fetch it again).
-  function loadWeb(img) {
-    var next = img.getAttribute("src").split("&r=")[0] + "&r=" + Date.now();
-    var fresh = document.createElement("img");
+  function loadWeb(img, fresh) {
+    var next = img.getAttribute("src").split("&r=")[0] + "&r=" + Date.now() + (fresh ? "&fresh=1" : "");
+    var btn = img.parentNode && img.parentNode.querySelector("[data-web-refresh]");
+    if (btn && fresh) btn.classList.add("is-loading");
+    var copy = document.createElement("img");
     for (var a = 0; a < img.attributes.length; a++) {
       var attr = img.attributes[a];
-      if (attr.name !== "src" && attr.name !== "data-web-loading") fresh.setAttribute(attr.name, attr.value);
+      if (attr.name !== "src" && attr.name !== "data-web-loading") copy.setAttribute(attr.name, attr.value);
     }
     img.setAttribute("data-web-loading", "1");
-    fresh.onload = function () {
-      fresh.onload = fresh.onerror = null;
-      fresh.setAttribute("data-web-at", String(Date.now()));
+    copy.onload = function () {
+      copy.onload = copy.onerror = null;
+      copy.setAttribute("data-web-at", String(Date.now()));
+      if (btn) btn.classList.remove("is-loading");
       if (img.parentNode) {
-        img.parentNode.replaceChild(fresh, img);
-        webShown(fresh, true);
+        img.parentNode.replaceChild(copy, img);
+        webShown(copy, true);
       }
     };
-    fresh.onerror = function () { // keep the last image
-      fresh.onload = fresh.onerror = null;
+    copy.onerror = function () { // keep the last image
+      copy.onload = copy.onerror = null;
+      if (btn) btn.classList.remove("is-loading");
       img.removeAttribute("data-web-loading");
       img.setAttribute("data-web-at", String(Date.now()));
     };
-    fresh.src = next;
+    copy.src = next;
   }
   function webShown(img, ok) {
     var msg = img.parentNode && img.parentNode.querySelector("[data-web-msg]");
     if (msg) msg.hidden = ok;
     img.style.visibility = ok ? "" : "hidden";
+    if (ok) webStamp(img);
+  }
+  // "Updated 14:05" beside the ↻: when the Pi captured the snapshot on screen.
+  function webStamp(img) {
+    var stamp = img.parentNode && img.parentNode.querySelector("[data-web-stamp]");
+    if (!stamp) return;
+    var src = img.getAttribute("src").split("&r=")[0].replace(/\.png\?/, ".json?");
+    fetch(src + "&r=" + Date.now(), { credentials: "same-origin" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (res) { if (res) stamp.textContent = res.text || ""; })
+      .catch(function () {});
   }
   document.addEventListener("load", function (e) {
     if (e.target && e.target.hasAttribute && e.target.hasAttribute("data-web-every")) webShown(e.target, true);
@@ -1847,6 +2165,7 @@
 
   // One 1 s timer: clock text + idle state. Nothing repaints unless something changed.
   var QUIET_SAVER_S = 60;
+  var radioSaverAt = 0;
   setInterval(function () {
     paintTime(false);
     paintBars();
@@ -1858,6 +2177,13 @@
     rotate(idle);
     if (mode === "saver") {
       applyLevel(false);
+      // Radio artwork: skins paint from the 3 s poll; Now Playing look still re-fetches every
+      // 30 s for the ICY song (saver_now), without thrashing the skin path.
+      if (saver.querySelector("[data-saver-radio]") && Date.now() - radioSaverAt > 30000) {
+        radioSaverAt = Date.now();
+        if (saver.querySelector("[data-skin-radio]")) radioRead();
+        else refreshSaver(true);
+      }
       // Clear Chromium memory creep once a day, while nobody is looking.
       if (inQuiet() && Date.now() - loadedAt > 20 * 3600 * 1000) location.reload();
     }

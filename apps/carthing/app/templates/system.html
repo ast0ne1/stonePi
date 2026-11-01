@@ -1,7 +1,7 @@
 {% from "_icons.html" import icon %}
 {#- System (opened from the System widget): a health strip, a Check line when something needs
-    attention, then every service as a card (stopped ones first). The dial moves between the
-    cards; press opens a service. -#}
+    attention, then every service as a card (stopped ones first; System then Apps in the same
+    order as Dashboard Health). The dial moves between the cards; press opens a service. -#}
 {% macro svc_icon(path, cls="sys-ico") -%}
 {% if path %}<img class="{{ cls }}" src="static/brand/icons/{{ path }}.svg" alt="">{% else %}<span class="{{ cls }} sys-ico-none"></span>{% endif %}
 {%- endmacro %}
@@ -32,11 +32,15 @@
     {% if check %}<p class="sys-check"><b>Check</b>{{ check|join(" · ") }}</p>{% endif %}
     <div class="sys-head"><b>Services</b><span class="{{ 'lv-bad' if down else 'lv-ok' }}">{{ items|length - down }} of {{ items|length }} running</span></div>
     <div class="rows sys-svcs">
-      {% for it in items %}
+      {% for group in groups %}
+      {#- System (the platform's services) first, then Apps (Home apps); stopped ones lead each. -#}
+      <p class="sys-group">{{ group.label }}</p>
+      {% for it in group["items"] %}
       <button class="sys-svc{% if it.level == 'down' %} is-down{% endif %}" data-focus data-go="v/item/system?id={{ it.id|string|urlencode }}">
         {{ svc_icon(it.icon) }}
         <span class="sys-svc-text"><strong>{{ it.title }}</strong><span><i class="sys-dot{% if it.level == 'down' %} lv-bad{% endif %}"></i>{{ it.line or it.sub }}</span></span>
       </button>
+      {% endfor %}
       {% else %}
       <p class="empty">No services reported.</p>
       {% endfor %}

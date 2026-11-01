@@ -47,7 +47,7 @@ def _caller(request: Request) -> tuple[PlatformUser | None, bool, JSONResponse |
 
 def _csrf_ok(request: Request) -> bool:
     header = request.headers.get("x-stonepi-csrf") or ""
-    return csrf_ok_request(request.cookies, header_token=header)
+    return csrf_ok_request(request, header_token=header)
 
 
 def _offered(user: PlatformUser, prefs: dict[str, Any]) -> list[dict[str, Any]]:
@@ -251,7 +251,7 @@ async def post_app_seen(request: Request, app_id: str):
     if "form" in (request.headers.get("content-type") or ""):
         form_token = str((await request.form()).get("csrf_token") or "")
     header = request.headers.get("x-stonepi-csrf") or ""
-    if not csrf_ok_request(request.cookies, form_token=form_token, header_token=header):
+    if not csrf_ok_request(request, form_token=form_token, header_token=header):
         return _error(403, "CSRF check failed")
     return {"ok": True, "seen_at": stonepi_notify.mark_seen(user.user_id, app_id)}
 
@@ -274,7 +274,7 @@ async def post_app_clear(request: Request, app_id: str):
     if "form" in (request.headers.get("content-type") or ""):
         form_token = str((await request.form()).get("csrf_token") or "")
     header = request.headers.get("x-stonepi-csrf") or ""
-    if not csrf_ok_request(request.cookies, form_token=form_token, header_token=header):
+    if not csrf_ok_request(request, form_token=form_token, header_token=header):
         return _error(403, "CSRF check failed")
     return {"ok": True, "cleared_at": stonepi_notify.mark_cleared(user.user_id, app_id)}
 

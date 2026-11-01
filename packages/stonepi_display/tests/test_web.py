@@ -137,6 +137,7 @@ def web_display(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(webcapture, "capture", fake_capture)
     monkeypatch.setattr(push_mod, "get_webhook", lambda display_id: "https://trmnl.com/api/plugin/x")
     monkeypatch.setattr(push_mod, "validate_webhook_url", lambda url: url)
+    monkeypatch.setattr(push_mod, "resolve_webhook", lambda url: (url, "93.184.216.34"))
     monkeypatch.setattr(push_mod.httpx, "Client", _FakeClient)
     _FakeClient.posts = []
     return captures
@@ -219,7 +220,7 @@ def test_failed_capture_stamps_without_using_the_budget(web_display, monkeypatch
 
     monkeypatch.setattr(webcapture, "capture", broken)
     result = stonepi_display.push_display("w1", {})
-    assert not result["ok"] and "Couldn't capture the page: page down" in result["message"]
+    assert not result["ok"] and result["message"] == "Couldn't capture the page."
     trmnl = get_display("w1")["trmnl"]
     assert trmnl["last_push_ok"] is False and not trmnl.get("push_log") and not _FakeClient.posts
 
@@ -351,3 +352,40 @@ def test_chromium_lock_times_out(tmp_path: Path, monkeypatch):
         worker.join(5)
     with chromium_lock(timeout=1):
         pass
+
+
+def test_page_refresh_time_and_trmnl_reuses_captures_that_long(tmp_path, monkeypatch):
+    """Each page's refresh time (15 min at least) is how long a TRMNL push reuses its capture."""
+    import stonepi_display
+    from stonepi_display import webcapture, webpages
+
+    monkeypatch.setattr(stonepi_display.displays, "_data_dir", tmp_path)
+    assert webpages.normalize_page({"id": "a", "url": "http://x/"})["refresh_min"] == 15
+    assert webpages.normalize_page({"id": "a", "url": "http://x/", "refresh_min": "3"})["refresh_min"] == 15
+    assert webpages.normalize_page({"id": "a", "url": "http://x/", "refresh_min": "90"})["refresh_min"] == 90
+    assert webpages.refresh_seconds({"refresh_min": 30}) == 1800.0
+    stonepi_display.upsert_page({"id": "home", "name": "Home", "url": "http://x/", "refresh_min": 30})
+    seen: dict = {}
+
+    def fake_capture(page, width, height, **kw):
+        seen.update(kw)
+        raise RuntimeError("stop here")
+
+    monkeypatch.setattr(webcapture, "capture", fake_capture)
+    display = {"id": "d", "kind": "web", "device": "og", "web": {"page_id": "home"}}
+    with pytest.raises(RuntimeError):
+        stonepi_display.web_image(display, max_age=None)
+    assert seen["max_age"] == 1740.0  # a minute before the 30 minutes are up
+
+
+def test_capture_timed_says_when(monkeypatch):
+    import stonepi_browser
+
+    from stonepi_display import webcapture
+
+    monkeypatch.setattr(stonepi_browser, "capture_page", lambda url, w, h, **kw: b"png")
+    webcapture.clear()
+    page = {"id": "p", "url": "http://x/", "preset": "none"}
+    png, at = webcapture.capture_timed(page, 800, 480)
+    again, at2 = webcapture.capture_timed(page, 800, 480, max_age=60)
+    assert png == again == b"png" and at == at2 and abs(at - __import__("time").time()) < 5

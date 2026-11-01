@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import mimetypes
 import random
 import time
@@ -14,15 +15,15 @@ from fastapi.templating import Jinja2Templates
 
 from app import __asset_rev__, __github__, __github_user__, __version__, llm, prompt_files, store, workspace
 from app.config import BUILD_KINDS, ROOT_DIR, env
-
-
 from stonepi_auth.brand import fonts_rev
 from stonepi_auth import login_url, logout_url
 from stonepi_auth.alerts import add_shared_templates, bell_context, notifications_card_context
 from stonepi_auth.config import PlatformSettings
-from stonepi_auth.csrf import csrf_from_request, csrf_ok, set_csrf_cookie
+from stonepi_auth.csrf import csrf_from_request, csrf_ok_request, set_csrf_cookie
 from stonepi_auth.http import portal_home_url, request_is_https
 from stonepi_auth.session import COOKIE_NAME, CSRF_COOKIE, decode_session
+
+logger = logging.getLogger("studio")
 
 templates = Jinja2Templates(directory=str(ROOT_DIR / "app" / "templates"))
 templates.env.globals.update(asset_rev=__asset_rev__, fonts_rev=fonts_rev())
@@ -356,7 +357,7 @@ def settings_prompts_save(
         return denied
     if not _is_admin(user):
         return HTMLResponse("Admins only.", status_code=403)
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return RedirectResponse(
             f"{_prefix()}/settings?tab=prompts&prompt={prompt_files.normalize_prompt_id(prompt)}&err={quote('Form expired')}",
             status_code=303,
@@ -433,7 +434,7 @@ def create_project(
     user, denied = _require_user(request)
     if denied:
         return denied
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return RedirectResponse(f"{_prefix()}/new?err=Form+expired", status_code=303)
     project = store.create_project(
         name, kind=kind, owner=(user.user_id if user else ""), owner_name=_user_label(user)
@@ -450,7 +451,7 @@ def delete_project(request: Request, project_id: str, csrf_token: str = Form("")
     user, denied = _require_user(request)
     if denied:
         return denied
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return RedirectResponse(f"{_prefix()}/projects?err=Form+expired", status_code=303)
     project = _project_for(user, project_id)
     if project is None:
@@ -476,7 +477,7 @@ def rename_project(
         return RedirectResponse(f"{_prefix()}/projects?err=Project+not+found", status_code=303)
     # Only two places rename from; never redirect to a caller-supplied URL.
     dest = _projects_home(user, project) if back == "projects" else f"{_prefix()}/p/{project_id}"
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return RedirectResponse(_with(dest, "err=Form+expired"), status_code=303)
     if not store.clean_name(name):
         return RedirectResponse(_with(dest, f"err={quote('Give your project a name first.')}"), status_code=303)
@@ -554,7 +555,7 @@ async def project_chat(
         return JSONResponse({"ok": False, "message": "No access."}, status_code=403)
     if user and not user.is_admin and not user.has_capability("studio", "can_use_llm"):
         return JSONResponse({"ok": False, "message": "LLM not enabled for your account."}, status_code=403)
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return JSONResponse({"ok": False, "message": "Form expired."}, status_code=403)
     project = _project_for(user, project_id)
     if project is None:
@@ -623,9 +624,13 @@ def _chat_events(
                 yield _event({"type": "prose", "text": sent_prose})
             if progress.get("writing") or progress["done"]:
                 yield _event({"type": "files", **{k: v for k, v in progress.items() if k != "prose"}})
-    except Exception as exc:  # network, auth, rate limits — surface them in the chat
-        store.append_message(project_id, "assistant", f"Something went wrong talking to the model: {exc}", note="error")
-        yield _event({"type": "error", "message": str(exc)})
+    except Exception as exc:  # network, auth, rate limits — a composed message is safe; a raw error is not
+        logger.exception("model call failed")
+        from stonepi_ai import AIUnavailable
+
+        text = str(exc) if isinstance(exc, AIUnavailable) else "Something went wrong talking to the model."
+        store.append_message(project_id, "assistant", text, note="error")
+        yield _event({"type": "error", "message": text})
         return
 
     reply = "".join(parts)
@@ -714,7 +719,13 @@ def project_preview(request: Request, project_id: str, asset_path: str = ""):
     media = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
     # Rebuilds rewrite app.js / style.css in place; a cached copy made the preview
     # show stale or mismatched files.
-    headers = {"Cache-Control": "no-store"}
+    # Opaque-origin sandbox: generated HTML can run scripts for demos, but not read Studio
+    # cookies or call Studio as the signed-in user (Open in new tab uses the same header).
+    headers = {
+        "Cache-Control": "no-store",
+        "Content-Security-Policy": "sandbox allow-scripts allow-forms allow-modals allow-popups allow-downloads",
+        "X-Content-Type-Options": "nosniff",
+    }
     if safe.lower().endswith((".html", ".htm")):
         html = path.read_text(encoding="utf-8", errors="replace")
         return HTMLResponse(_inject_preview_probe(html), headers=headers)
@@ -773,7 +784,7 @@ def project_publish(
     project = _project_for(user, project_id)
     if project is None:
         raise HTTPException(404, "Project not found.")
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return RedirectResponse(f"{_prefix()}/p/{project_id}?err=Form+expired", status_code=303)
     root = store.workspace_root(project_id)
     try:

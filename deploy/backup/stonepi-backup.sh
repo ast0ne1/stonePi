@@ -7,10 +7,13 @@
 set -euo pipefail
 
 CONF="/etc/stonepi/backup.conf"
+BACKUP_KEY_FILE="${STONEPI_BACKUP_KEY:-/etc/stonepi/backup.key}"
+# Plaintext secrets in the stamp are replaced with AES-256-CBC siblings (*.stonepi-enc).
+ENC_SUFFIX=".stonepi-enc"
 STAMP_LEGACY="/var/lib/stonepi/last-backup.txt"
 STAMP_LOCAL="/var/lib/stonepi/last-local-backup.txt"
 STAMP_USB="/var/lib/stonepi/last-usb-backup.txt"
-APPS="stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library stonepi-ripple"
+APPS="stonepi-auth stonepi-dashboard stonepi-notify stonepi-newscast stonepi-fileserve stonepi-eventtrakr stonepi-pinboard stonepi-studio stonepi-pricescout stonepi-sportguide stonepi-pricewatch stonepi-library stonepi-ripple stonepi-radio"
 INCLUDE_LIBRARY_CONTENT=0
 LIBRARY_MANIFEST="/var/lib/stonepi/library/backup-manifest.json"
 LIBRARY_COPY="/usr/local/sbin/stonepi-backup-library"
@@ -38,6 +41,9 @@ fi
 # backup.conf from older installs pins APPS without newer apps.
 if [[ " $APPS " != *" stonepi-library "* ]] && systemctl cat stonepi-library.service >/dev/null 2>&1; then
   APPS="$APPS stonepi-library"
+fi
+if [[ " $APPS " != *" stonepi-radio "* ]] && systemctl cat stonepi-radio.service >/dev/null 2>&1; then
+  APPS="$APPS stonepi-radio"
 fi
 if [[ " $APPS " != *" stonepi-agentlink "* ]] && systemctl cat stonepi-agentlink.service >/dev/null 2>&1; then
   APPS="$APPS stonepi-agentlink"
@@ -183,6 +189,43 @@ backup_sqlite() {
   fi
 }
 
+ensure_backup_key() {
+  if [[ -f "$BACKUP_KEY_FILE" ]]; then
+    return 0
+  fi
+  mkdir -p "$(dirname "$BACKUP_KEY_FILE")"
+  umask 077
+  openssl rand -out "$BACKUP_KEY_FILE" 32 || fail "Could not create backup key"
+  chmod 600 "$BACKUP_KEY_FILE"
+  chown root:root "$BACKUP_KEY_FILE" 2>/dev/null || true
+  log "Created $BACKUP_KEY_FILE — keep an offline copy for SD-card disaster recovery"
+}
+
+encrypt_backup_file() {
+  local src="$1"
+  [[ -f "$src" ]] || return 0
+  local dest="${src}${ENC_SUFFIX}"
+  openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt \
+    -in "$src" -out "$dest" \
+    -pass "file:${BACKUP_KEY_FILE}" \
+    || fail "Could not encrypt ${src#"$STAMP_DIR/"}"
+  shred -u "$src" 2>/dev/null || rm -f "$src"
+}
+
+encrypt_sensitive_in_stamp() {
+  ensure_backup_key
+  # Never put the unwrap key on the stick (or in the local stamp tree).
+  rm -f "$STAMP_DIR/config/stonepi/backup.key"
+  encrypt_backup_file "$STAMP_DIR/applications/vault/vault.key"
+  local f
+  for f in "$STAMP_DIR/config/stonepi/"*.env \
+           "$STAMP_DIR/config/stonepi/recover.passwd" \
+           "$STAMP_DIR/config/stonepi/recover-proxy.token" \
+           "$STAMP_DIR/config/stonepi/initial-admin.txt"; do
+    encrypt_backup_file "$f"
+  done
+}
+
 log "Applications stopping"
 systemctl stop $APPS
 
@@ -193,18 +236,22 @@ backup_sqlite /var/lib/stonepi/fileserve/fileserve.sqlite "$STAMP_DIR/databases/
 backup_sqlite /var/lib/stonepi/eventtrakr/eventtrakr.sqlite "$STAMP_DIR/databases/eventtrakr.sqlite"
 backup_sqlite /var/lib/stonepi/library/library.sqlite "$STAMP_DIR/databases/library.sqlite"
 backup_sqlite /var/lib/stonepi/ripple/ripple.sqlite "$STAMP_DIR/databases/ripple.sqlite"
+backup_sqlite /var/lib/stonepi/radio/radio.sqlite "$STAMP_DIR/databases/radio.sqlite"
+backup_sqlite /var/lib/stonepi/pinboard/pinboard.sqlite "$STAMP_DIR/databases/pinboard.sqlite"
 
 log "Application data copying"
 # Library ZIM files are re-downloadable and can be 100+ GB: never in the per-run copy.
 # (The opt-in content backup copies them once into a shared store — see below.)
-# AgentLink's speech models and voices are re-downloadable too (stonepi-speech-setup).
+# AgentLink's speech models and voices are re-downloadable too (stonepi-speech-setup),
+# and so are Radio's cached station logos.
 rsync -a --delete --exclude '/library/zim/' --exclude '.partial/' \
-  --exclude '/agentlink/models/' --exclude '/agentlink/voices/' \
+  --exclude '/agentlink/models/' --exclude '/agentlink/voices/' --exclude '/radio/art/' \
   /var/lib/stonepi/ "$STAMP_DIR/applications/" || fail "Application data copy failed"
 rsync -a /opt/stonepi/ "$STAMP_DIR/system/opt-stonepi/" --exclude '.venv' --exclude '__pycache__' || fail "Application code copy failed"
 
 log "Configuration copying"
-rsync -a /etc/stonepi/ "$STAMP_DIR/config/stonepi/"
+# Exclude backup.key so a stolen USB stick cannot unwrap the encrypted secrets below.
+rsync -a /etc/stonepi/ "$STAMP_DIR/config/stonepi/" --exclude 'backup.key'
 rsync -a /etc/nginx/sites-available/stonepi "$STAMP_DIR/config/nginx-stonepi" || true
 mkdir -p "$STAMP_DIR/config/systemd"
 rsync -a /etc/systemd/system/stonepi-*.service "$STAMP_DIR/config/systemd/" || true
@@ -214,6 +261,9 @@ dpkg --get-selections > "$STAMP_DIR/manifests/dpkg-selections.txt"
 systemctl list-unit-files 'stonepi*' > "$STAMP_DIR/manifests/units.txt"
 rsync -a /etc/systemd/system/stonepi-kiwix.service.d/ "$STAMP_DIR/config/systemd/stonepi-kiwix.service.d/" 2>/dev/null || true
 grep -- '# stonepi-library' /etc/fstab > "$STAMP_DIR/manifests/fstab-library.txt" 2>/dev/null || true
+
+log "Encrypting vault key and config secrets"
+encrypt_sensitive_in_stamp
 
 # Kiwix reader packages, so a restore works without internet.
 if dpkg -s kiwix-tools >/dev/null 2>&1; then
@@ -260,6 +310,8 @@ TIMESTAMP=$(date -Is)
 DESTINATION=$DESTINATION
 SIZE=$SIZE
 SIZE_KB=$SIZE_KB
+SECRETS=encrypted
+SECRETS_CIPHER=aes-256-cbc-pbkdf2
 $INFO_EXTRA
 EOF
 write_stamp "$STAMP" < "$STAMP_DIR/backup-info.txt"

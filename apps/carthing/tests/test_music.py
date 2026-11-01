@@ -328,6 +328,11 @@ def env(api, monkeypatch):
     monkeypatch.setattr(state, "feed", lambda mini: {"ok": True, "card": {"headline": "x"}, "items": []})
     monkeypatch.setattr(state, "weather", lambda config: None)
     monkeypatch.setattr(state, "weather_cached", lambda: None)
+    # Radio isn't running in tests: nothing on air unless a test says so.
+    from app import radio as radio_mod
+
+    monkeypatch.setattr(radio_mod, "now_playing", lambda max_age=5.0, output="stonepi": radio_mod.empty_state())
+    monkeypatch.setattr(radio_mod, "saver_now", lambda output="stonepi": None)
     app = FastAPI()
     app.include_router(routes.router)
     client = TestClient(app)
@@ -599,3 +604,142 @@ def test_full_page_now_playing_goes_edge_to_edge(env):
     panel["value"] = _panel(cfg)
     body = client.get("/v/home").text
     assert "lay-np" in body and 'class="np2 bg-glow' in body and "data-np-full" in body
+
+
+
+def test_saver_shows_radio_when_spotify_is_quiet(env, monkeypatch):
+    from app import radio as radio_mod
+
+    client, panel, fake, _, clock = env
+    fake.player["is_playing"] = False
+    clock["t"] += 31
+    asked = []
+
+    def on_air(output="stonepi"):
+        asked.append(output)
+        return {"title": "Radio Paradise", "song": "Cage the Elephant - Neon Pill", "logo": "https://img.example.test/rp.png", "output_name": "Kitchen"}
+
+    monkeypatch.setattr(radio_mod, "saver_now", on_air)
+    cfg = carthing.default_config()
+    cfg["radio"]["output"] = "dlna:uuid:kitchen"
+    cfg["radio"]["look_from"] = "music"  # Radio in Now Playing's look (the default is its theme)
+    panel["value"] = _panel(cfg)
+    body = client.get("/v/saver").text
+    assert "data-saver-music" in body and "data-saver-radio" in body
+    assert "Radio Paradise" in body and "Cage the Elephant - Neon Pill" in body and "Kitchen" in body
+    assert 'src="radio/art?u=https%3A%2F%2Fimg.example.test%2Frp.png"' in body
+    assert "data-np-bar" not in body  # live radio: no progress bar
+    assert asked == ["dlna:uuid:kitchen"]  # the panel's own Play on output
+
+    # By default Radio wears its theme on the screensaver too (Look → Radio → Radio plays in).
+    monkeypatch.setattr(radio_mod, "now_playing", lambda max_age=5.0, output="stonepi": {
+        **radio_mod.empty_state(), "connected": True, "playing": True, "title": "Radio Paradise", "source": "kitchen"})
+    cfg["radio"]["look_from"] = "radio"
+    panel["value"] = _panel(cfg)
+    body = client.get("/v/saver").text
+    assert "saver-skin" in body and "data-saver-radio" in body and "theme-winamp" in body and "Radio Paradise" in body
+    assert "data-sk-time" in body and 'class="sv-t ' not in body  # the skin's own clock, not a second one
+    cfg["radio"]["theme"] = "plain"
+    panel["value"] = _panel(cfg)
+    assert 'class="sv-t ' in client.get("/v/saver").text  # Plain has no clock of its own
+    cfg["radio"]["theme"] = "winamp"
+    cfg["radio"]["look_from"] = "music"
+    panel["value"] = _panel(cfg)
+
+    # Spotify playing wins.
+    fake.player["is_playing"] = True
+    clock["t"] += 31
+    body = client.get("/v/saver").text
+    assert "Teardrop" in body and "data-saver-radio" not in body
+
+    # With the artwork screensaver off, neither shows.
+    cfg["music"]["saver_artwork"] = False
+    panel["value"] = _panel(cfg)
+    assert "data-saver-music" not in client.get("/v/saver").text
+
+
+def test_radio_logo_comes_through_radio(env, monkeypatch):
+    from app import radio as radio_mod
+
+    client, _, _, _, _ = env
+    monkeypatch.setattr(radio_mod, "logo", lambda url: (b"\x89PNG fake", "image/png") if url == "https://img.example.test/rp.png" else None)
+    resp = client.get("/radio/art", params={"u": "https://img.example.test/rp.png"})
+    assert resp.status_code == 200 and resp.headers["content-type"] == "image/png" and resp.content == b"\x89PNG fake"
+    assert client.get("/radio/art", params={"u": "https://img.example.test/other.png"}).status_code == 404
+    assert TestClient(client.app).get("/radio/art", params={"u": "https://img.example.test/rp.png"}).status_code == 403  # not paired
+
+
+def test_each_player_in_the_others_look(env, monkeypatch):
+    """Look → Music: Spotify in Radio's theme (screen, full widget, screensaver), the skin's
+    buttons left for panel.js to send to Spotify. Look → Radio: Radio in Now Playing's look."""
+    from app import radio as radio_mod
+
+    client, panel, fake, _, clock = env
+    cfg = carthing.default_config()
+    cfg["music"]["look_from"] = "radio"
+    cfg["radio"]["theme"] = "ampboy"
+    panel["value"] = _panel(cfg)
+    body = client.get("/v/music").text
+    assert "data-skin-music" in body and "theme-ampboy" in body and "Teardrop" in body
+    assert 'data-radio-cmd="play_pause"' in body and "np2-ctl" not in body
+    assert 'data-skin-key="Teardrop|Massive Attack|1|0|off"' in body
+
+    # Spotify's artwork screensaver in the same theme.
+    clock["t"] += 31
+    saver = client.get("/v/saver").text
+    assert "saver-skin" in saver and "data-skin-music" in saver and "data-saver-radio" not in saver
+
+    # Radio in Now Playing's look on its screen: Radio's buttons, no progress bar, its logo.
+    monkeypatch.setattr(radio_mod, "now_playing", lambda max_age=5.0, output="stonepi": {
+        **radio_mod.empty_state(), "connected": True, "playing": True, "title": "FIP", "volume": 0.4, "output_name": "Kitchen"})
+    monkeypatch.setattr(radio_mod, "saver_now", lambda output="stonepi": {
+        "title": "FIP", "song": "Nina Simone - Sinnerman", "logo": "https://img.example.test/fip.png", "output_name": "Kitchen"})
+    cfg["radio"]["look_from"] = "music"
+    panel["value"] = _panel(cfg)
+    radio_screen = client.get("/v/radio").text
+    assert "data-np-look" in radio_screen and "FIP" in radio_screen and "Nina Simone - Sinnerman" in radio_screen
+    assert 'data-radio-cmd="play_pause"' in radio_screen and 'data-radio-cmd="stop"' in radio_screen
+    assert 'data-music="play_pause"' not in radio_screen and "data-np-bar" not in radio_screen
+    assert "radio/art?u=https%3A%2F%2Fimg.example.test%2Ffip.png" in radio_screen and "theme-ampboy" not in radio_screen
+
+    # The defaults keep each player in its own look.
+    defaults = carthing.normalize_config({})
+    assert defaults["music"]["look_from"] == "music" and defaults["radio"]["look_from"] == "radio"
+    assert carthing.normalize_config({"music": {"look_from": "nope"}})["music"]["look_from"] == "music"
+
+
+def test_radio_volume_steps_follow_the_dial_batch(env, monkeypatch):
+    """The panel batches dial clicks into one "vol" command: that many steps of Look → Radio's step."""
+    from app import radio as radio_mod
+
+    client, panel, _, _, _ = env
+    moved: list[float] = []
+    monkeypatch.setattr(radio_mod, "volume", lambda delta=None, level=None, output="stonepi": moved.append(round(delta, 3)) or {})
+    monkeypatch.setattr(radio_mod, "now_playing", lambda max_age=5.0, output="stonepi": {**radio_mod.empty_state(), "connected": True, "volume": 0.5})
+    cfg = carthing.default_config()
+    cfg["allowed_actions"] = sorted(set(cfg["allowed_actions"]) | {"radio:vol_up", "radio:vol_down"})
+    cfg["radio"]["volume_step"] = 4
+    panel["value"] = _panel(cfg)
+    assert client.post("/radio/cmd", json={"cmd": "vol", "arg": 3}).json()["ok"]
+    assert client.post("/radio/cmd", json={"cmd": "vol", "arg": -1}).json()["ok"]
+    assert client.post("/radio/cmd", json={"cmd": "vol", "arg": 40}).json()["ok"]  # at most 10 steps
+    assert moved == [0.12, -0.04, 0.4]
+
+
+def test_spotify_in_a_skin_has_winamps_track_controls(env):
+    """Spotify in Radio's theme: Previous / Next skip, Shuffle and Repeat toggle (lit when on),
+    the time counts the track, the position thumb sits along it, and kHz says 44."""
+    client, panel, fake, _, _ = env
+    fake.player["shuffle_state"] = True
+    cfg = carthing.default_config()
+    cfg["music"]["look_from"] = "radio"
+    panel["value"] = _panel(cfg)
+    body = client.get("/v/music").text
+    assert 'data-radio-cmd="prev"' in body and 'data-radio-cmd="next"' in body
+    assert 'class="sk-shuf is-on" data-focus data-radio-cmd="shuffle"' in body
+    assert 'class="sk-rep" data-focus data-radio-cmd="repeat"' in body
+    assert "data-sk-elapsed" in body and "data-sk-thumb" in body and "data-sk-time" not in body
+    khz = body.split('class="sk-khz"', 1)[1].split("</span></span>", 1)[0]
+    assert khz.count("-20px -6px") == 2  # "44"
+    assert '<span class="sk-kbps" aria-hidden="true"></span>' in body  # Spotify doesn't say
+    assert "|1|True" not in body and 'data-skin-key="Teardrop|Massive Attack|1|1|' in body

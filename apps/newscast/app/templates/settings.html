@@ -91,6 +91,7 @@
 </div>
 
 <form method="post" action="/settings" class="stack settings-form" data-settings data-settings-dirty-track autocomplete="off"{% if settings_tab not in settings_save_tabs %} hidden{% endif %}>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
   <input type="hidden" name="settings_tab" value="{{ settings_tab }}" data-settings-tab-field />
 
   <div class="stack settings-panel settings-panel-stack" id="settings-panel-device" role="tabpanel" data-settings-panel="device" aria-labelledby="settings-tab-device"{% if settings_tab != 'device' %} hidden{% endif %}>
@@ -179,6 +180,7 @@
         <a class="btn btn-secondary btn-block btn-with-icon" href="{{ tls_download_url }}">{{ icon("download") }} Download root CA</a>
         {% if tls_pending_restart %}
         <form method="post" action="/settings/tls/restart" data-native>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
           <button class="btn btn-primary btn-block btn-with-icon" type="submit">{{ icon("restart") }} Restart to enable HTTPS</button>
         </form>
         {% endif %}
@@ -765,6 +767,7 @@
           </div>
         </div>
         <form method="post" action="/settings/users/{{ user.id }}/qr" data-native>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
           <button class="btn btn-secondary" type="submit">Show login QR</button>
         </form>
       </div>
@@ -773,6 +776,7 @@
       <p class="hint">Admin accounts always have custom feeds and Status. Change the admin password under <a href="{{ stonepi_home_url }}/settings?tab=general#account-password">StonePi → Settings → General</a> when SSO is on.</p>
       {% else %}
       <form method="post" action="/settings/users/{{ user.id }}" class="stack user-edit-form" autocomplete="off">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
         <fieldset class="user-fieldset">
           <legend>Access</legend>
           <label class="check">
@@ -832,6 +836,7 @@
         data-confirm-detail="Their feeds, stories, papers, and Send files will be deleted. This cannot be undone."
         data-confirm-ok="Remove account"
       >
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
         <button class="btn btn-secondary btn-with-icon" type="submit">{{ icon("trash") }} Remove account</button>
       </form>
       {% endif %}
@@ -847,6 +852,7 @@
     <h2 class="section-heading">{{ icon("plus") }} Add someone</h2>
     <p class="hint">They sign in with this username. You can change permissions later on their card.</p>
     <form method="post" action="/settings/users" class="stack user-create-form" autocomplete="off" data-native>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       <div class="user-create-grid">
         <label>
           Username
@@ -901,6 +907,7 @@
     {% endif %}
     <a class="btn btn-secondary btn-with-icon" href="/settings/backup">{{ icon("download") }} Download backup</a>
     <form class="backup-restore" method="post" action="/settings/backup/restore" data-confirm="Restore this backup?" data-confirm-detail="Feeds, stories, and settings will be replaced by the file you choose." data-confirm-ok="Restore">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       <label>
         Restore from file
         <input type="file" name="file" accept=".zip,application/zip" required />
@@ -909,6 +916,7 @@
     </form>
     {% if not platform_managed %}
     <form method="post" action="/settings/updates/rollback" data-confirm="Roll back to the previous app?" data-confirm-detail="This puts the last-good app files back and restarts. Your data stay as they are." data-confirm-ok="Roll back">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       <button class="btn btn-secondary btn-with-icon" type="submit">{{ icon("restart") }} Roll back last app</button>
     </form>
     {% endif %}
@@ -920,10 +928,12 @@
   <div class="card stack" data-settings-panel-card="install">
     <h2 class="section-heading">{{ filter_icon("update") }} Check and install</h2>
     <form method="post" action="/settings/updates/check">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       <button class="btn btn-secondary btn-with-icon" type="submit">{{ icon("update") }} Check for updates</button>
     </form>
     {% if update_check.newer and update_check.valid %}
     <form method="post" action="/settings/updates/install" data-confirm="Install {{ update_check.tag }}?" data-confirm-detail="NewsCast will back up your data, then replace the app and restart." data-confirm-ok="Install">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       <button class="btn btn-primary" type="submit">Install {{ update_check.tag }}</button>
     </form>
     {% endif %}
@@ -941,6 +951,7 @@
       {% for category in categories %}
       <li class="category-edit">
         <form method="post" action="/settings/categories/{{ category.key }}/rename" class="category-edit-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
           <label>
             <span class="visually-hidden">Name for {{ category.key }}</span>
             <input type="text" name="label" value="{{ category.label }}" required {% if category.builtin %}readonly{% endif %} />
@@ -953,6 +964,7 @@
         </form>
         {% if not category.builtin %}
         <form method="post" action="/settings/categories/{{ category.key }}/delete" data-confirm="Remove {{ category.label }}?" data-confirm-detail="Sources in this category move to World News." data-confirm-ok="Remove">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
           <button class="icon-btn" type="submit" aria-label="Remove {{ category.label }}" title="Remove category">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M9 7V5h6v2M7 7l1 13h8l1-13"/></svg>
           </button>
@@ -962,6 +974,7 @@
       {% endfor %}
     </ul>
     <form method="post" action="/settings/categories" class="category-add">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       <label>
         New category
         <input type="text" name="label" required autocomplete="off" placeholder="Example" />
@@ -977,6 +990,7 @@
     <p class="hint">Import adds sources to the Catalog library. Export shares one of your categories as a JSON file. After importing, enable sources on Catalog.</p>
     <div class="package-toolbar">
       <form method="post" action="/catalog/packages/import" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
         <label>
           Import package
           <input type="file" name="file" accept=".json,application/json" required />
@@ -1001,6 +1015,7 @@
     <h2 class="section-heading">{{ icon("check") }} Approved for user viewing</h2>
     <p class="hint">Non-admin users only see and can Add sources you tick here. You still see the full Catalog.</p>
     <form method="post" action="/settings/catalog/approvals" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       <div class="toolbar" style="display:flex;gap:.5rem;flex-wrap:wrap">
         <button type="button" class="btn btn-ghost btn-with-icon" data-check-set="catalog-approvals" data-check-value="1">{{ icon("select-all") }} Select all</button>
         <button type="button" class="btn btn-ghost btn-with-icon" data-check-set="catalog-approvals" data-check-value="0">{{ icon("unselect-all") }} Unselect all</button>

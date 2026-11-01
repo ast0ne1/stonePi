@@ -16,7 +16,7 @@ from stonepi_auth.brand import fonts_rev
 from stonepi_auth import login_url, logout_url
 from stonepi_auth.alerts import add_shared_templates, bell_context, notifications_card_context
 from stonepi_auth.config import PlatformSettings
-from stonepi_auth.csrf import CSRF_COOKIE, csrf_from_request, csrf_ok, set_csrf_cookie
+from stonepi_auth.csrf import CSRF_COOKIE, csrf_from_request, csrf_ok_request, set_csrf_cookie
 from stonepi_auth.http import portal_home_url, request_is_https
 from stonepi_auth.session import COOKIE_NAME, decode_session
 
@@ -297,7 +297,7 @@ def list_add(request: Request, label: str = Form(""), csrf_token: str = Form("")
     user, denied = _require_user(request)
     if denied:
         return denied
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return _redirect("/list", error="Invalid session token")
     db.add_list_item(_user_key(user), label)
     return _redirect("/list", msg="Added")
@@ -313,7 +313,7 @@ def list_toggle(
     user, denied = _require_user(request)
     if denied:
         return denied
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return _redirect("/list", error="Invalid session token")
     db.toggle_list_item(_user_key(user), item_id, checked in ("1", "on", "true"))
     return _redirect("/list")
@@ -324,7 +324,7 @@ def list_delete(request: Request, item_id: int = Form(...), csrf_token: str = Fo
     user, denied = _require_user(request)
     if denied:
         return denied
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return _redirect("/list", error="Invalid session token")
     db.delete_list_item(_user_key(user), item_id)
     return _redirect("/list", msg="Removed")
@@ -339,7 +339,7 @@ def list_to_pinboard(
     user, denied = _require_user(request)
     if denied:
         return denied
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return _redirect("/list", error="Invalid session token")
     if _session_secret() and user and not user.is_admin and not user.can_access("pinboard"):
         return _redirect(
@@ -408,7 +408,7 @@ def sources_toggle(
     _user, denied = _require_user(request, capability="can_manage_sources")
     if denied:
         return denied
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return _redirect("/sources", error="Invalid session token")
     db.set_source_enabled(source_id, enabled in ("1", "on", "true"))
     return _redirect("/sources", msg="Saved")
@@ -430,7 +430,7 @@ def sources_refresh(
         "sources": "/sources",
         "settings": "/settings",
     }.get((next or "offers").strip().lower(), "/")
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return _redirect(dest, error="Invalid session token")
     # Temporarily inject vault token into env for this process
     token = _salling_token()
@@ -548,7 +548,7 @@ def settings_general(
     user, denied = _require_user(request)
     if denied:
         return denied
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return _redirect("/settings?tab=general", error="Invalid session token")
     uk = _user_key(user)
     code = (currency or "DKK").strip().upper()
@@ -569,7 +569,7 @@ def settings_household(
         return denied
     if not _is_household_admin(user):
         return HTMLResponse("Only admins can change the household postcode.", status_code=403)
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return _redirect("/settings?tab=general&panel=preferences", error="Invalid session token")
     value = (household_zip or "").strip()
     if value and not (value.isdigit() and len(value) == 4):
@@ -583,7 +583,7 @@ def settings_clear_history(request: Request, csrf_token: str = Form("")):
     user, denied = _require_user(request)
     if denied:
         return denied
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return _redirect("/settings?tab=general", error="Invalid session token")
     db.clear_search_history(_user_key(user))
     return _redirect("/settings?tab=general&panel=history", msg="Search history cleared")
@@ -591,6 +591,6 @@ def settings_clear_history(request: Request, csrf_token: str = Form("")):
 
 @router.post("/logout")
 def logout(request: Request, csrf_token: str = Form("")):
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return _redirect("/", error="Invalid session token")
     return RedirectResponse(logout_url(_settings()), status_code=303)

@@ -1,7 +1,7 @@
 #!/usr/sbin/nft -f
 # StonePi host firewall baseline
-# Allow: SSH, HTTP/HTTPS, Tailscale, mDNS; Recover :8099 from LAN/Tailscale ranges only.
-# Cockpit (9090): not via Tailscale (LAN / local only).
+# Allow: HTTP/HTTPS, Tailscale, mDNS; SSH, Recover :8099 and Cockpit from LAN/Tailscale ranges only.
+# Cockpit (9090): also dropped on tailscale0 (before the interface accept).
 # App backends stay on 127.0.0.1 and are not exposed here.
 #
 # Replaces only StonePi's own table: other tables (tailscaled's ts-* chains, Docker, the
@@ -31,17 +31,34 @@ table inet stonepi {
     ip protocol icmp accept
     ip6 nexthdr ipv6-icmp accept
 
-    tcp dport 22 accept
+    # SSH: LAN/tailnet only (same ranges as Recover). Do not port-forward 22 from the internet.
+    ip saddr @lan4 tcp dport 22 accept
+    ip6 saddr @lan6 tcp dport 22 accept
     tcp dport { 80, 443 } accept
 
     # Recover: plain-HTTP break-glass console (works when nginx/apps are down). LAN/tailnet only.
     ip saddr @lan4 tcp dport 8099 accept
     ip6 saddr @lan6 tcp dport 8099 accept
 
+    # Odio's control ports listen on all interfaces but are for Radio only (over lo, accepted
+    # above): Odio API 8018 (no sign-in), myMPD 8080, MPD 6600. Dropped here so the tailnet
+    # accept below can't reach them either.
+    tcp dport { 6600, 8018, 8080 } drop
+
+    # Odio speakers (Radio's player): AirPlay and Spotify Connect, LAN/tailnet only. AirPlay 1
+    # uses 5000/tcp and 6001-6011/udp; AirPlay 2 7000/tcp, NQPTP timing 319-320/udp and
+    # ephemeral ports; spotifyd's discovery server takes an ephemeral port. StonePi's own
+    # backends listen on loopback, so the ephemeral range reaches only these receivers.
+    ip saddr @lan4 tcp dport { 5000, 7000, 32768-60999 } accept
+    ip6 saddr @lan6 tcp dport { 5000, 7000, 32768-60999 } accept
+    ip saddr @lan4 udp dport { 319, 320, 6001-6011, 32768-60999 } accept
+    ip6 saddr @lan6 udp dport { 319, 320, 6001-6011, 32768-60999 } accept
+
     # Cockpit — dropped on the Tailscale path (before tailscale0 is accepted below);
-    # allowed on other interfaces (typically LAN). Keep it off the internet at the router.
+    # otherwise LAN/tailnet source ranges only (not the open internet on a global address).
     iifname "tailscale0" tcp dport 9090 drop
-    tcp dport 9090 accept
+    ip saddr @lan4 tcp dport 9090 accept
+    ip6 saddr @lan6 tcp dport 9090 accept
 
     udp dport 41641 accept
     iifname "tailscale0" accept

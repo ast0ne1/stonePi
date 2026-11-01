@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from urllib.parse import quote, urlencode, urlsplit
 
@@ -29,7 +30,7 @@ from stonepi_auth.brand import fonts_rev
 from stonepi_auth import login_url, logout_url
 from stonepi_auth.alerts import add_shared_templates, bell_context, notifications_card_context
 from stonepi_auth.config import PlatformSettings
-from stonepi_auth.csrf import CSRF_COOKIE, csrf_from_request, csrf_ok, set_csrf_cookie
+from stonepi_auth.csrf import CSRF_COOKIE, csrf_from_request, csrf_ok_request, set_csrf_cookie
 from stonepi_auth.http import portal_home_url, request_is_https
 from stonepi_auth.prefix import strip_prefix
 from stonepi_auth.session import COOKIE_NAME, decode_session
@@ -188,7 +189,7 @@ def _scope(user) -> str | None:
 
 
 def _csrf_ok(request: Request, token: str | None) -> bool:
-    return csrf_ok(request.cookies.get(CSRF_COOKIE), token)
+    return csrf_ok_request(request, form_token=token, header_token=token)
 
 
 def _csrf_response(request: Request, name: str, ctx: dict) -> HTMLResponse:
@@ -456,8 +457,9 @@ def watch_new_get(
         src = get_source(sid) or get_source("mock")
         try:
             hits = [h.as_dict() for h in (src.search(q) if src else [])]
-        except Exception as exc:
-            error = error or str(exc)
+        except Exception:
+            logging.getLogger("pricewatch").exception("product search failed")
+            error = error or "Couldn't search just now."
     if product_id:
         # Arrives from Compare → "Watch this", carrying the search hit's details;
         # no second search.
@@ -505,8 +507,9 @@ def compare(
     offers: list[dict] = []
     try:
         offers = strike.fetch_offers(sid, product_id)
-    except Exception as exc:
-        error = str(exc)
+    except Exception:
+        logging.getLogger("pricewatch").exception("offer fetch failed")
+        error = "Couldn't load offers."
     hint = {k: request.query_params.get(k) for k in PRODUCT_HINT_KEYS}
     product = _product_summary(sid, product_id, hint, offers)
     rows = trust.annotate(offers)
@@ -683,7 +686,7 @@ def watch_edit(
     # below judges it afresh (e.g. switching Ignore → Warn warns about it now).
     if any(watch.get(k) != v for k, v in trust_fields.items()):
         fields.update(low_rated_snapshot_json=None, low_rated_fingerprint=None, low_rated_at=None)
-    db.update_watch_fields(watch_id, **fields)
+    db.update_watch_fields(watch_id, _scope(user), **fields)
     if watch["status"] != "paused":
         try:
             strike.check_watch_now(watch_id)
@@ -759,7 +762,7 @@ def watch_delete(request: Request, watch_id: int, csrf_token: str = Form("")):
         return _redirect(f"/watches/{watch_id}", error="Invalid CSRF token")
     if not db.get_watch(watch_id, _scope(user)):
         return _redirect("/", error="Watch not found")
-    db.delete_watch(watch_id)
+    db.delete_watch(watch_id, _scope(user))
     return _redirect("/", msg="Watch deleted")
 
 

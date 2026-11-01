@@ -90,7 +90,13 @@ def _device_row(b: dict[str, Any]) -> dict[str, Any]:
         "last_ask_ok": b["last_ask_ok"],
         "mood": _mood(b),
         "tools": [
-            {"name": t.name, "tier": t.tier.value, "description": t.description, "enabled": registry.tool_enabled(b, t)}
+            {
+                "name": t.name,
+                "app": t.app,
+                "tier": t.tier.value,
+                "description": t.description,
+                "enabled": registry.tool_enabled(b, t),
+            }
             for t in registry.TOOLS
         ],
     }

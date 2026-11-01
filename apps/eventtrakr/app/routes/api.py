@@ -6,7 +6,7 @@ from flask import Blueprint, jsonify, request
 from sqlalchemy import select
 
 from app.db import SessionLocal
-from app.models import Event, User
+from app.models import Category, DedupeExclusion, Event, EventSighting, EventSource, User
 from app.services import auth, calendar_sync, capabilities, ingest
 
 bp = Blueprint("api", __name__, url_prefix="/api")
@@ -208,6 +208,43 @@ def toggle_favourite(event_id: int):
             "calendar_synced": bool(event.calendar_synced),
             "message": cal_msg,
         })
+
+
+@bp.route("/events/<int:event_id>/split/<int:sighting_id>", methods=["POST"])
+@auth.login_required
+def split_sighting(event_id: int, sighting_id: int):
+    """ "Not the same event" (U33): one source's listing was merged into the
+    wrong event. It becomes an event of its own and is never merged back."""
+    user = auth.get_current_user()
+    with SessionLocal() as db:
+        event = db.get(Event, event_id)
+        sighting = db.get(EventSighting, sighting_id)
+        if not event or event.user_id != user.user_id or not sighting or sighting.event_id != event.id:
+            return jsonify({"error": "Event not found"}), 404
+        if sighting.source_id == event.source_id or sighting.fingerprint == event.fingerprint:
+            return jsonify({"error": "That listing is the event itself and can't be split off"}), 400
+        source = db.get(EventSource, sighting.source_id)
+        category = db.execute(select(Category).where(Category.key == (source.category if source else ""))).scalar_one_or_none()
+        split = Event(
+            user_id=user.user_id,
+            source_id=sighting.source_id,
+            fingerprint=sighting.fingerprint,
+            title=sighting.title or event.title,
+            description="",
+            start_time=sighting.start_time or event.start_time,
+            location=sighting.location or "Unspecified",
+            cost=sighting.cost or "Unspecified",
+            category=category.label if category else "General",
+            url=sighting.url,
+            is_favourited=False,
+            calendar_synced=False,
+        )
+        db.add(split)
+        db.flush()
+        sighting.event_id = split.id
+        db.add(DedupeExclusion(user_id=user.user_id, event_id=event.id, fingerprint=sighting.fingerprint))
+        db.commit()
+        return jsonify({"split": True, "event_id": split.id})
 
 
 @bp.route("/social/accounts")

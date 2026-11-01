@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from stonepi_auth.brand import mount_brand_fonts
 from fastapi.staticfiles import StaticFiles
 
+from app.auth import install_csrf_handler
 from app.db import SessionLocal, init_db
 from app.routers import agent, feeds, opds, stories, ui, x3, xteink
 from app.config import BACKUPS_DIR, BRIEFING_DIR, DATA_DIR, FAVICON_DIR, LIBRARY_DIR, PACKAGES_DIR, ROOT_DIR, UPDATES_DIR, env
@@ -106,11 +107,13 @@ async def lifespan(_app: FastAPI):
         scheduler.shutdown(wait=False)
 
 
-app = FastAPI(title="NewsCast", lifespan=lifespan)
+app = FastAPI(title="NewsCast", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 if env.stonepi_prefix:
     from stonepi_auth.prefix import PrefixMiddleware
 
     app.add_middleware(PrefixMiddleware, prefix=env.stonepi_prefix)
+
+install_csrf_handler(app)
 app.mount("/static", StaticFiles(directory=str(ROOT_DIR / "app" / "static")), name="static")
 mount_brand_fonts(app)  # /assets/fonts when reached directly (run-dev); nginx serves it on the Pi
 app.mount("/favicons", FaviconFiles(directory=str(FAVICON_DIR)), name="favicons")

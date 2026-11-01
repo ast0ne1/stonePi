@@ -2,6 +2,7 @@
 {# Reader → Library: your own EPUB/PDF files, offered in the reader's OPDS Library. #}
 <div class="device-panels">
 <form method="post" action="/library" class="card stack panel saved-form device-panel-span" enctype="multipart/form-data" data-busy-label="Adding…">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
   <div class="panel-head">
     <h2 class="section-heading">{{ icon("plus-file") }} Add a file</h2>
     <p class="hint">Goes to your OPDS Library, where the reader can browse and download it. Not part of your feeds or today’s paper.</p>
@@ -41,10 +42,12 @@
       {% else %}
       {# Already on the reader: a quieter "Send again" instead of the main action. #}
       <form method="post" action="/library/{{ item.id }}/push" class="library-push">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
         <button class="btn {{ 'btn-ghost' if item.sent_label else 'btn-secondary' }} btn-with-icon" type="submit">{{ icon("upload") }} <span class="btn-label-full">{{ 'Send again' if item.sent_label else 'Send to reader' }}</span><span class="btn-label-short">{{ 'Again' if item.sent_label else 'Send' }}</span></button>
       </form>
       {% endif %}
       <form method="post" action="/library/{{ item.id }}/delete" data-confirm="Remove this file from Library?" data-confirm-detail="It leaves OPDS Library and will not be offered on the next push." data-confirm-ok="Remove">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
         <button class="icon-btn" type="submit" aria-label="Delete {{ item.title }}" title="Remove file">
           {{ icon("trash") }}
         </button>

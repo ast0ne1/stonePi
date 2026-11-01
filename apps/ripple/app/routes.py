@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from typing import Any
 from collections import defaultdict, deque
 from datetime import datetime, timezone
 from pathlib import PurePath
@@ -14,13 +15,13 @@ from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 
-from app import __asset_rev__, __github__, __github_user__, __version__, db, display, local, notify, photos
+from app import __asset_rev__, __github__, __github_user__, __version__, calls, db, display, holidays, local, notify, photos
 from app.config import ROOT_DIR, env
 from stonepi_auth.brand import fonts_rev
 from stonepi_auth import login_url, logout_url
 from stonepi_auth.alerts import add_shared_templates, bell_context
 from stonepi_auth.config import PlatformSettings
-from stonepi_auth.csrf import csrf_from_request, csrf_ok, set_csrf_cookie
+from stonepi_auth.csrf import csrf_from_request, csrf_ok_request, set_csrf_cookie
 from stonepi_auth.header import app_page_url
 from stonepi_auth.http import portal_home_url, request_is_https
 from stonepi_auth.internal import verify_internal_v2
@@ -44,11 +45,14 @@ templates.env.globals.update(asset_rev=__asset_rev__, fonts_rev=fonts_rev())
 add_shared_templates(templates.env)
 router = APIRouter()
 
-SETTINGS_TABS = ("board", "display", "photos", "about")
-SETTINGS_TITLES = {"board": "Board", "display": "Family display", "photos": "Photos", "about": "About"}
+SETTINGS_TABS = ("board", "display", "holidays", "calls", "photos", "about")
+SETTINGS_TITLES = {"board": "Board", "display": "Family display", "holidays": "Holidays", "calls": "Good time to call",
+                   "photos": "Photos", "about": "About"}
 SETTINGS_LEDES = {
     "board": "The board's name, shown on the feed and the family display.",
     "display": "What the family's TRMNL shows, and how to set it up.",
+    "holidays": "Upcoming public holidays, ours and the family's, on the family display.",
+    "calls": "Our quiet hours, so the family display can say when it's a good time to call.",
     "photos": "How many photos a post can have.",
     "about": "App name, description, GitHub, and the version running here.",
 }
@@ -57,6 +61,8 @@ SETTINGS_GROUPS = (
     ("board", "Board", (
         ("board", "Board", "Name of the family board.", "board"),
         ("display", "Family display", "Layout, posts shown and TRMNL setup.", "display"),
+        ("holidays", "Holidays", "Upcoming public holidays on the family display.", "calendar"),
+        ("calls", "Good time to call", "Quiet hours and when to call.", "phone"),
         ("photos", "Photos", "Photos per post.", "photo"),
     )),
     ("app", "App", (
@@ -323,7 +329,7 @@ async def create_post(request: Request):
     if stop:
         return stop
     form = await request.form()
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), str(form.get("csrf_token") or "")):
+    if not csrf_ok_request(request, form_token=str(form.get("csrf_token") or "")):
         return _fail(request, back, "Form expired. Refresh the page and try again.", 403)
     files = _uploads_in(form)
     limit = photos.max_per_post()
@@ -370,7 +376,7 @@ async def update_post(request: Request, post_id: int):
     if stop:
         return stop
     form = await request.form()
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), str(form.get("csrf_token") or "")):
+    if not csrf_ok_request(request, form_token=str(form.get("csrf_token") or "")):
         return _fail(request, back, "Form expired. Refresh the page and try again.", 403)
     post = db.get_post(post_id)
     if post is None:
@@ -422,7 +428,7 @@ async def delete_post(request: Request, post_id: int, csrf_token: str = Form("")
     user, stop = _gate(request, "/")
     if stop:
         return stop
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return _form_error("/", "Form expired. Try again.")
     post = db.get_post(post_id)
     if post is None:
@@ -502,6 +508,8 @@ def settings_page(request: Request, tab: str | None = None):
         place_here=local.get_place("here"),
         place_family=local.get_place("family"),
         here_preview=local.strip() if tab == "display" else None,
+        **(_holiday_ctx() if tab == "holidays" else {}),
+        **(_calls_ctx() if tab == "calls" else {}),
         **family,
         max_photos=photos.max_per_post(),
         max_photos_limit=photos.MAX_PER_POST_LIMIT,
@@ -521,7 +529,7 @@ async def settings_board(request: Request, board_name: str = Form(""), csrf_toke
         return stop
     if not _is_admin(user):
         return _form_error(back, "Only an admin can rename the board.")
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return _form_error(back, "Form expired. Try again.")
     name = " ".join(board_name.split())
     if not name:
@@ -543,7 +551,7 @@ async def settings_display(
         return stop
     if not _is_admin(user):
         return _form_error(back, "Only an admin can change the family display.")
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return _form_error(back, "Form expired. Try again.")
     try:
         count = int(posts)
@@ -567,7 +575,7 @@ async def settings_here(request: Request):
     if not _is_admin(user):
         return _form_error(back, "Only an admin can change the family display.")
     form = await request.form()
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), str(form.get("csrf_token") or "")):
+    if not csrf_ok_request(request, form_token=str(form.get("csrf_token") or "")):
         return _form_error(back, "Form expired. Try again.")
     show_time, show_weather = bool(form.get("show_time")), bool(form.get("show_weather"))
     here = local.clean_place(str(form.get("place_here") or ""))
@@ -578,8 +586,94 @@ async def settings_here(request: Request):
     db.set_setting("display_show_weather", "1" if show_weather else "")
     local.set_place("here", here)
     local.set_place("family", family)
+    # A new city may be a new country: its holidays are fetched now, not within the hour.
+    for which in holidays.PLACES:
+        db.set_setting(f"country_lookup_{which}", "")
+    holidays.wake()
     _changed()
     return RedirectResponse(f"{back}&msg=Saved#here", status_code=303)
+
+
+def _holiday_ctx() -> dict[str, Any]:
+    places = []
+    for which, label in (("here", "Our city"), ("family", "The family's city")):
+        place = local.get_place(which)
+        country = (place or {}).get("country") or ""
+        places.append({
+            "which": which,
+            "label": label,
+            "place": place,
+            "country": country,
+            "regions": holidays.regions(country) if country else [],
+            "fetched": holidays.fetched(country) if country else False,
+            "region": holidays.region(which),
+        })
+    return {
+        "holidays_on": holidays.enabled(),
+        "holidays_days": holidays.days_ahead(),
+        "holidays_days_max": holidays.MAX_DAYS,
+        "holiday_places": places,
+        "holiday_preview": holidays.lines(),
+    }
+
+
+def _calls_ctx() -> dict[str, Any]:
+    return {
+        "calls_on": calls.enabled(),
+        "calls_work_on": calls.work_on(),
+        "calls_times": calls.times(),
+        "calls_here": local.get_place("here"),
+        "calls_family": local.get_place("family"),
+        "calls_preview": calls.line(),
+    }
+
+
+@router.post("/settings/holidays")
+async def settings_holidays(request: Request):
+    """Holidays on the family display (U34): on/off, how many days ahead, each place's region."""
+    back = "/settings?tab=holidays"
+    user, stop = _gate(request, back)
+    if stop:
+        return stop
+    if not _is_admin(user):
+        return _form_error(back, "Only an admin can change the family display.")
+    form = await request.form()
+    if not csrf_ok_request(request, form_token=str(form.get("csrf_token") or "")):
+        return _form_error(back, "Form expired. Try again.")
+    try:
+        days = int(str(form.get("days") or holidays.DEFAULT_DAYS))
+    except ValueError:
+        days = 0
+    if not 1 <= days <= holidays.MAX_DAYS:
+        return _form_error(back, f"Choose between 1 and {holidays.MAX_DAYS} days ahead.")
+    on = bool(form.get("on"))
+    if on and local.get_place("here") is None and local.get_place("family") is None:
+        return _form_error(back, "Choose our city or the family's under Family display first.")
+    holidays.save(on, days, {w: str(form.get(f"region_{w}") or "") for w in holidays.PLACES})
+    holidays.wake()
+    _changed()
+    return RedirectResponse(f"{back}&msg=Saved", status_code=303)
+
+
+@router.post("/settings/calls")
+async def settings_calls(request: Request):
+    """Quiet hours and "good time to call" (U36), in our city's time zone."""
+    back = "/settings?tab=calls"
+    user, stop = _gate(request, back)
+    if stop:
+        return stop
+    if not _is_admin(user):
+        return _form_error(back, "Only an admin can change the family display.")
+    form = await request.form()
+    if not csrf_ok_request(request, form_token=str(form.get("csrf_token") or "")):
+        return _form_error(back, "Form expired. Try again.")
+    on = bool(form.get("on"))
+    if on and local.get_place("here") is None:
+        return _form_error(back, "Choose our city under Family display first.")
+    if calls.save(on, bool(form.get("work_on")), {k: form.get(k) for k in calls.DEFAULTS}) is None:
+        return _form_error(back, "Give each time as hours and minutes, like 07:30.")
+    _changed()
+    return RedirectResponse(f"{back}&msg=Saved", status_code=303)
 
 
 @router.get("/api/places")
@@ -623,6 +717,8 @@ def display_page(request: Request, k: str = ""):
             "board_name": db.board_name(),
             "today": f"{now:%a} {now.day} {now:%b}",  # the date only: a clock would change every capture
             "here": local.strip(),
+            # Small notes under the header: upcoming holidays (U34) and whether to call (U36).
+            "notes": holidays.lines() + [line for line in [calls.line()] if line],
         },
     )
     response.headers["Cache-Control"] = "no-store"
@@ -647,7 +743,7 @@ async def settings_photos(request: Request, max_photos: str = Form(""), csrf_tok
         return stop
     if not _is_admin(user):
         return _form_error(back, "Only an admin can change this.")
-    if not csrf_ok(request.cookies.get(CSRF_COOKIE), csrf_token):
+    if not csrf_ok_request(request, form_token=csrf_token):
         return _form_error(back, "Form expired. Try again.")
     try:
         value = int(max_photos)

@@ -1,0 +1,13 @@
+{% import "_radio.html" as r %}
+{% import "_music.html" as m %}
+{% from "_strip.html" import strip %}
+{% set hd = header %}
+<section class="screen radio{% if hd.mode != 'always' %} home-full{% endif %}" data-screen="radio" data-app="radio" data-radio-screen data-url="v/radio">
+  {{ strip(hd, "Radio", dots, 0, False, False, weather) }}
+  {% if np_look %}
+  {#- Look → Radio → Radio plays in Now Playing: Music's Now Playing, driving Radio. -#}
+  {{ m.now_playing(np_look.np, np_look.opts, "np2" if hd.mode != "always" else "np2 np2-card") }}
+  {% else %}
+  {{ r.player(now, opts, "full") }}
+  {% endif %}
+</section>

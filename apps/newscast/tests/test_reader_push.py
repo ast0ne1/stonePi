@@ -200,7 +200,7 @@ def test_upload_marks_complete(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(
         reader_push,
         "upload_file",
-        lambda host, file_path, dest, db=None, user_id=None: uploaded.append(file_path.name),
+        lambda host, file_path, dest, db=None, user_id=None, save_name=None: uploaded.append(save_name or file_path.name),
     )
     result = reader_push.flush_pending(db)
     assert result["ok"] is True
@@ -256,8 +256,8 @@ def test_xteink_upload_uses_http(tmp_path: Path, monkeypatch):
     path.write_bytes(b"epub")
     seen: list[tuple] = []
 
-    def fake_http(host, file_path, dest_dir):
-        seen.append((host, file_path.name, dest_dir))
+    def fake_http(host, file_path, dest_dir, save_name=None):
+        seen.append((host, save_name or file_path.name, dest_dir))
 
     monkeypatch.setattr(reader_push, "_http_upload", fake_http)
     monkeypatch.setattr(reader_push, "_sftp_upload", lambda *a, **k: (_ for _ in ()).throw(AssertionError("sftp")))
@@ -274,8 +274,8 @@ def test_kobo_upload_uses_sftp(tmp_path: Path, monkeypatch):
     path.write_bytes(b"epub")
     seen: list[tuple] = []
 
-    def fake_sftp(_db, host, file_path, dest_dir):
-        seen.append((host, file_path.name, dest_dir))
+    def fake_sftp(_db, host, file_path, dest_dir, user_id=None, save_name=None):
+        seen.append((host, save_name or file_path.name, dest_dir))
 
     monkeypatch.setattr(reader_push, "_sftp_upload", fake_sftp)
     monkeypatch.setattr(reader_push, "_http_upload", lambda *a, **k: (_ for _ in ()).throw(AssertionError("http")))
@@ -401,7 +401,7 @@ def test_flush_uploads_library_crosspoint_task(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(
         reader_push,
         "upload_file",
-        lambda host, file_path, dest, db=None, user_id=None: uploaded.append(file_path.name),
+        lambda host, file_path, dest, db=None, user_id=None, save_name=None: uploaded.append(save_name or file_path.name),
     )
     result = reader_push.flush_pending(db)
     assert result["ok"] is True
@@ -447,7 +447,9 @@ def _online_reader(monkeypatch, *, names, deleted, uploaded):
     monkeypatch.setattr(
         reader_push,
         "upload_file",
-        lambda host, file_path, dest, db=None, user_id=None: uploaded.append((file_path.name, dest)),
+        lambda host, file_path, dest, db=None, user_id=None, save_name=None: uploaded.append(
+            (save_name or file_path.name, dest)
+        ),
     )
 
 
@@ -461,7 +463,7 @@ def test_resend_of_unchanged_paper_is_skipped(tmp_path: Path, monkeypatch):
     enqueue_sync_file(db, path, "NewsCast.epub", kind="crosspoint", save_path="/News/adam/NewsCast.epub", user_id=uid)
     deleted: list[str] = []
     uploaded: list[tuple] = []
-    _online_reader(monkeypatch, names={"news-2026-09-29.epub"}, deleted=deleted, uploaded=uploaded)
+    _online_reader(monkeypatch, names={"NewsCast.epub"}, deleted=deleted, uploaded=uploaded)
 
     result = reader_push.flush_pending(db, user_id=uid)
 
@@ -479,13 +481,13 @@ def test_resend_of_changed_paper_replaces_readers_copy(tmp_path: Path, monkeypat
     enqueue_sync_file(db, path, "NewsCast.epub", kind="crosspoint", save_path="/News/adam/NewsCast.epub", user_id=uid)
     deleted: list[str] = []
     uploaded: list[tuple] = []
-    _online_reader(monkeypatch, names={"news-2026-09-29.epub"}, deleted=deleted, uploaded=uploaded)
+    _online_reader(monkeypatch, names={"NewsCast.epub"}, deleted=deleted, uploaded=uploaded)
 
     result = reader_push.flush_pending(db, user_id=uid)
 
     assert result["uploaded"] == 1
-    assert deleted == ["/News/adam/news-2026-09-29.epub"]
-    assert uploaded == [("news-2026-09-29.epub", "/News/adam")]
+    assert deleted == ["/News/adam/NewsCast.epub"]
+    assert uploaded == [("NewsCast.epub", "/News/adam")]
     db.refresh(previous)
     assert previous.removed_at is not None
     newest = db.query(SyncTask).filter(SyncTask.id != previous.id).one()
@@ -506,9 +508,75 @@ def test_resend_after_reader_deleted_file_uploads_without_delete(tmp_path: Path,
     reader_push.flush_pending(db, user_id=uid)
 
     assert deleted == []
-    assert uploaded == [("news-2026-09-29.epub", "/News/adam")]
+    assert uploaded == [("NewsCast.epub", "/News/adam")]
     db.refresh(previous)
     assert previous.removed_at is not None
+
+
+def test_send_replaces_legacy_news_filename(tmp_path: Path, monkeypatch):
+    db = _session()
+    uid = _reader_user(db)
+    path = tmp_path / "news-2026-11-01.epub"
+    path.write_bytes(b"paper")
+    digest = reader_push._file_digest(path)
+    previous = _completed_upload(db, uid, path, "/News/adam/NewsCast - 01-11-2026.epub", digest)
+    enqueue_sync_file(
+        db,
+        path,
+        "NewsCast - 01-11-2026.epub",
+        kind="crosspoint",
+        save_path="/News/adam/NewsCast - 01-11-2026.epub",
+        user_id=uid,
+    )
+    deleted: list[str] = []
+    uploaded: list[tuple] = []
+    _online_reader(monkeypatch, names={"news-2026-11-01.epub"}, deleted=deleted, uploaded=uploaded)
+
+    result = reader_push.flush_pending(db, user_id=uid)
+
+    assert result["uploaded"] == 1 and result["skipped"] == 0
+    assert deleted == ["/News/adam/news-2026-11-01.epub"]
+    assert uploaded == [("NewsCast - 01-11-2026.epub", "/News/adam")]
+    db.refresh(previous)
+    assert previous.removed_at is not None
+
+
+def test_http_upload_uses_display_name(tmp_path: Path, monkeypatch):
+    path = tmp_path / "news-2026-11-01.epub"
+    path.write_bytes(b"epub")
+    posted: dict[str, str] = {}
+
+    class FakeResponse:
+        status_code = 200
+        text = ""
+
+        def raise_for_status(self):
+            return None
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def get(self, url, **kwargs):
+            return FakeResponse()
+
+        def post(self, url, params=None, files=None, data=None):
+            posted["name"] = files["file"][0]
+            posted["folder"] = (params or {}).get("path", "")
+            return FakeResponse()
+
+    monkeypatch.setattr(reader_push.httpx, "Client", FakeClient)
+    monkeypatch.setattr(reader_push, "_http_ensure_dir", lambda *args, **kwargs: None)
+    reader_push._http_upload(
+        "crosspoint.local", path, "/News", save_name="NewsCast - 01-11-2026.epub"
+    )
+    assert posted == {"name": "NewsCast - 01-11-2026.epub", "folder": "/News"}
 
 
 def test_prune_removes_only_old_newscast_papers(tmp_path: Path, monkeypatch):
@@ -534,7 +602,10 @@ def test_prune_removes_only_old_newscast_papers(tmp_path: Path, monkeypatch):
 
     user_settings.set_value(db, uid, "reader_keep_days", "3")
     assert reader_push.prune_reader_papers(db, "crosspoint.local", uid, today=today) == 1
-    assert deleted == ["/News/adam/news-2026-09-24.epub"]
+    assert deleted == [
+        "/News/adam/NewsCast 2026-09-24.epub",
+        "/News/adam/news-2026-09-24.epub",
+    ]
     removed = db.query(SyncTask).filter(SyncTask.removed_at.is_not(None)).all()
     assert [Path(task.file_path).name for task in removed] == ["news-2026-09-24.epub"]
 
@@ -598,7 +669,7 @@ def test_prune_caps_deletes_and_stops_when_reader_drops(tmp_path: Path, monkeypa
     deleted: list[str] = []
     monkeypatch.setattr(reader_push, "_http_delete", lambda host, device_path: deleted.append(device_path) or True)
     assert reader_push.prune_reader_papers(db, "crosspoint.local", uid, today=date(2026, 9, 29)) == 10
-    assert deleted[0] == "/News/adam/news-2026-08-01.epub"  # oldest first
+    assert deleted[0] == "/News/adam/old-1.epub"  # oldest first, under the name on the reader
 
     attempts: list[str] = []
     monkeypatch.setattr(reader_push, "_http_delete", lambda host, device_path: attempts.append(device_path) and False)

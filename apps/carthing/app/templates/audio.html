@@ -1,0 +1,13 @@
+{% from "_widgets.html" import audio_widget %}
+{% from "_strip.html" import strip %}
+{% set hd = header %}
+{#- Audio launcher as a mini-app (Buttons → Open Audio): same two cards as the full-page
+    Audio widget; Back returns to wherever you opened it from. -#}
+<section class="screen home{% if hd.mode != 'always' %} home-full{% endif %}" data-screen="audio" data-app="audio" data-url="v/audio">
+  {{ strip(hd, "Audio", dots, 0, False, False, weather) }}
+  <div class="page lay-audio">
+    <div class="col col-1">
+      {{ audio_widget({"id": "audio", "size": "full", "kind": "audio"}) }}
+    </div>
+  </div>
+</section>

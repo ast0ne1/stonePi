@@ -33,7 +33,107 @@
 </nav>
 {% else %}
 <div class="settings-tabs">
-  {% if settings_tab == 'notifications' %}
+  {% if settings_tab == 'board' %}
+  <div class="stack settings-panel" id="settings-panel-board" role="tabpanel">
+    <div class="card stack">
+      <h2>Background</h2>
+      <p class="hint">How the board looks to you. Everyone picks their own.</p>
+      <form method="post" action="/settings/background" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <div class="bg-choices">
+          {% for key, label in backgrounds.items() %}
+          <label class="bg-choice">
+            <input type="radio" name="background" value="{{ key }}" {% if background == key %}checked{% endif %} />
+            <span class="bg-sample bg-{{ key }}" aria-hidden="true"></span>
+            <span>{{ label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+        <button class="btn btn-primary" type="submit">Save</button>
+      </form>
+    </div>
+    <div class="card stack">
+      <h2>Areas</h2>
+      <p class="hint">Named groups on the board, such as Household, Links or This week. New cards go into Household unless you pick another.</p>
+      {% for area in areas %}
+      <div class="list-row area-row">
+        {% if is_admin %}
+        <form method="post" action="/settings/areas/{{ area.id }}" class="area-rename">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <input name="name" value="{{ area.name }}" maxlength="40" aria-label="Area name" required />
+          <button class="btn btn-secondary" type="submit">Rename</button>
+        </form>
+        {% if area.id != household_area %}
+        <form
+          method="post"
+          action="/settings/areas/{{ area.id }}"
+          data-confirm="Remove {{ area.name }}?"
+          data-confirm-detail="Its cards stay on the board, without an area."
+          data-confirm-ok="Remove"
+        >
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <input type="hidden" name="action" value="delete" />
+          <button class="btn btn-ghost btn-with-icon" type="submit">{{ icon("trash") }} Remove</button>
+        </form>
+        {% endif %}
+        {% else %}
+        <span class="list-text">{{ area.name }}</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+      {% if is_admin %}
+      <form method="post" action="/settings/areas" class="area-add">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <input name="name" placeholder="New area" maxlength="40" aria-label="New area name" required />
+        <button class="btn btn-primary btn-with-icon" type="submit">{{ icon("plus") }} Add area</button>
+      </form>
+      {% else %}
+      <p class="hint">An admin adds, renames and removes areas.</p>
+      {% endif %}
+    </div>
+    <div class="card stack" data-quick-add>
+      <h2>Add links from anywhere</h2>
+      <p class="hint">Save a page to the board without copying and pasting. These use the address you opened Pinboard on: to have them work away from home too, open Pinboard at your Tailscale address before setting them up.</p>
+      <a hidden data-add-url href="/add"></a>
+      <h3>Computer: bookmarklet</h3>
+      <p class="hint">Drag this button to your browser's bookmarks bar. On any page, click it to add that page to the board.</p>
+      <p><a class="btn btn-secondary btn-with-icon bookmarklet" data-bookmarklet href="#" title="Drag me to your bookmarks bar">{{ icon("pin") }} Add to Pinboard</a></p>
+      <h3>iPhone or iPad: Shortcut</h3>
+      <p class="hint">Puts "Add to Pinboard" in the share sheet of Safari, YouTube and other apps. One-off set-up in the Shortcuts app:</p>
+      <ol class="steps">
+        <li>Tap <strong>+</strong> to make a new shortcut and name it <strong>Add to Pinboard</strong>.</li>
+        <li>Tap the <strong>ⓘ</strong> (or the settings icon) and turn on <strong>Show in Share Sheet</strong>. Under share sheet types keep <strong>URLs</strong> and <strong>Safari web pages</strong>.</li>
+        <li>Add the action <strong>URL Encode</strong> and set it to encode <strong>Shortcut Input</strong>.</li>
+        <li>Add the action <strong>Text</strong> and type this, then insert the <strong>URL Encoded Text</strong> variable right after it:
+          <span class="copy-row"><code data-shortcut-url>/add?url=</code><button type="button" class="btn btn-ghost" data-copy-shortcut>Copy</button></span>
+        </li>
+        <li>Add the action <strong>Open URLs</strong> (it opens the Text). Done: in any app, tap Share, then <strong>Add to Pinboard</strong>.</li>
+      </ol>
+      <h3>Android: share sheet</h3>
+      <p class="hint">Open Pinboard in Chrome at its <strong>https://</strong> Tailscale address and choose <strong>Add to Home screen</strong> (or <strong>Install app</strong>). Pinboard then appears when you tap Share in other apps.</p>
+    </div>
+    <div class="card stack">
+      <h2>Done items</h2>
+      <p class="hint">Reminders ticked done and checklists with every item ticked. Notes and links are never removed automatically.</p>
+      {% if is_admin %}
+      <form method="post" action="/settings/auto-remove" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <label>
+          Remove done items
+          <select name="days">
+            {% for d in auto_remove_choices %}
+            <option value="{{ d }}" {% if d == auto_remove_days %}selected{% endif %}>{% if d == 0 %}Never (keep until removed){% else %}After {{ d }} day{{ "s" if d != 1 }}{% endif %}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button class="btn btn-primary" type="submit">Save</button>
+      </form>
+      {% else %}
+      <p><strong>{% if auto_remove_days %}After {{ auto_remove_days }} day{{ "s" if auto_remove_days != 1 }}{% else %}Kept until removed{% endif %}</strong> <span class="hint">· set by an admin</span></p>
+      {% endif %}
+    </div>
+  </div>
+  {% elif settings_tab == 'notifications' %}
   <div class="stack settings-panel" id="settings-panel-notifications" role="tabpanel">
     {% from "stonepi/alerts.html" import notifications_card %}
     {% if notifications_card_state %}
@@ -65,7 +165,7 @@
   <div class="stack settings-panel" id="settings-panel-about" role="tabpanel" aria-labelledby="settings-tab-about">
     <div class="card stack about-card">
       <h2>{{ app_name }}</h2>
-      <p class="lede">Household notices and short reminders for Display / TRMNL. Runs on a home Pi or a Windows machine on your LAN.</p>
+      <p class="lede">The household's board: notes, links, reminders and checklists, in a list or laid out freely on a canvas. Pin a card to show it on the displays. Runs on a home Pi or a Windows machine on your LAN.</p>
       <p class="hint">GitHub: <a class="text-link" href="{{ app_github }}" rel="noopener noreferrer" target="_blank">{{ app_github_user }}</a></p>
       <p class="hint">Version: {{ app_version }}</p>
     </div>

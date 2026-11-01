@@ -121,7 +121,10 @@ def forward_event_to_google(db: Session, user_id: int, event: Event) -> tuple[bo
         )
     ).scalar_one_or_none()
 
-    if not conn or not conn.access_token:
+    from app.services import token_crypto
+
+    access = token_crypto.open_token(conn.access_token) if conn else ""
+    if not conn or not access:
         return False, "Google Calendar account not connected. Use 1-click Google Calendar link or connect in Settings."
 
     try:
@@ -131,9 +134,10 @@ def forward_event_to_google(db: Session, user_id: int, event: Event) -> tuple[bo
         from app.services import settings as settings_service
 
         client_id, client_secret = settings_service.get_google_oauth_credentials(db)
+        refresh = token_crypto.open_token(conn.refresh_token) if conn.refresh_token else None
         creds = Credentials(
-            token=conn.access_token,
-            refresh_token=conn.refresh_token,
+            token=access,
+            refresh_token=refresh,
             token_uri="https://oauth2.googleapis.com/token",
             client_id=client_id,
             client_secret=client_secret,
@@ -151,6 +155,15 @@ def forward_event_to_google(db: Session, user_id: int, event: Event) -> tuple[bo
         }
 
         created = service.events().insert(calendarId="primary", body=body).execute()
+        # Persist refreshed tokens (and seal any legacy plaintext left in the row).
+        if creds.token:
+            conn.access_token = token_crypto.seal(creds.token)
+        if creds.refresh_token:
+            conn.refresh_token = token_crypto.seal(creds.refresh_token)
+        elif conn.refresh_token and not token_crypto.is_sealed(conn.refresh_token):
+            conn.refresh_token = token_crypto.seal(conn.refresh_token)
+        if creds.expiry:
+            conn.token_expiry = creds.expiry
         event.google_event_id = created.get("id")
         event.calendar_synced = True
         db.commit()

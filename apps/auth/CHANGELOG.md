@@ -1,5 +1,23 @@
 # Changelog — Auth
 
+## 0.6.0 — 2026-11-01
+
+### Security
+- **Demoting an admin, changing app grants, or disabling an app for the household** now
+  revokes that person's (or everyone's) sessions, so the cookie's old `adm` / `apps` /
+  `perms` claims can't keep working for up to 14 days.
+- **Deleting a person** also revokes their sessions.
+- **First admin password:** Auth no longer defaults to `admin`/`admin`. With no
+  `ADMIN_PASSWORD`, the first account gets a random password written to
+  `data/initial-admin.txt` (mode `0600`). run-dev still sets `ADMIN_PASSWORD=admin`.
+- **Log out:** POST needs the CSRF token; a forged cross-site or cross-port GET no longer
+  signs you out.
+- Picks up `stonepi_auth` CSRF Origin checks and fail-closed session revocation.
+
+### Changed
+- The shared `stonepi_auth` 0.5.0 (Radio in the catalog and the app switcher) comes with
+  platform 0.6.0.
+
 ## 0.5.0 — 2026-10-25
 
 ### Changed

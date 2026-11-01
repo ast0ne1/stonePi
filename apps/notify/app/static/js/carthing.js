@@ -269,14 +269,25 @@
 
   // Clock and Music settings live under Look (they also drive the screensaver clock and the
   // preset buttons); an open Clock or Music widget row borrows them.
-  const boxes = { clock: root.querySelector('[data-ct-box="clock"]'), music: root.querySelector('[data-ct-box="music"]') };
-  const homes = { clock: root.querySelector('[data-ct-home="clock"]'), music: root.querySelector('[data-ct-home="music"]') };
-  const boxFor = (id) => (id === "clock" || id === "time" ? "clock" : id === "music" ? "music" : "");
+  const boxes = {
+    clock: root.querySelector('[data-ct-box="clock"]'),
+    music: root.querySelector('[data-ct-box="music"]'),
+    radio: root.querySelector('[data-ct-box="radio"]'),
+  };
+  const homes = {
+    clock: root.querySelector('[data-ct-home="clock"]'),
+    music: root.querySelector('[data-ct-home="music"]'),
+    radio: root.querySelector('[data-ct-home="radio"]'),
+  };
+  const boxFor = (id) =>
+    id === "clock" || id === "time" ? "clock" : id === "music" ? "music" : id === "radio" ? "radio" : "";
   let openRow = ""; // the widget whose settings are open on its row
   const sendHome = () => {
     Object.keys(boxes).forEach((k) => {
+      if (!boxes[k] || !homes[k]) return;
       if (boxes[k].parentNode !== homes[k]) homes[k].appendChild(boxes[k]);
-      homes[k].querySelector("[data-ct-away]").hidden = true;
+      const away = homes[k].querySelector("[data-ct-away]");
+      if (away) away.hidden = true;
     });
   };
   const faceLabel = (id) => (cat.clock_faces.find((f) => f.id === id) || { label: id }).label;
@@ -287,6 +298,12 @@
       const n = config.music.presets.filter((p) => p.uri).length;
       return `${n} preset${n === 1 ? "" : "s"} · dial volume ${config.music.dial_volume ? "on" : "off"}`;
     }
+    if (id === "radio") {
+      const theme = (cat.radio_themes || []).find((t) => t.id === (config.radio || {}).theme);
+      const n = ((config.radio || {}).presets || []).filter((p) => p.station_id || p.url).length;
+      return `${(theme && theme.label) || "Winamp"} · ${n} preset${n === 1 ? "" : "s"}`;
+    }
+    if (id === "audio") return "Spotify and Radio · full page; Back returns here";
     if (widgetById[id]?.source === "web") return "Web page · full page only";
     if (!widgetById[id]) return "Its web page was deleted: take it off";
     return miniById[id] ? `Opens ${miniById[id].label}` : "";
@@ -640,10 +657,16 @@
       pagesChanged();
     }
   });
-  pageDel.addEventListener("click", () => {
+  pageDel.addEventListener("click", async () => {
     const pages = config.pages;
     const page = pages[pageSel];
-    if (pages.length < 2 || !window.confirm(`Remove the page “${page.name}”?`)) return;
+    if (pages.length < 2) return;
+    const ok = await askConfirm({
+      title: `Remove the page “${page.name}”?`,
+      body: "Its widgets leave this config. Save the config afterwards to keep the change.",
+      okLabel: "Delete page",
+    });
+    if (!ok) return;
     pages.splice(pageSel, 1);
     pageSel = Math.min(pageSel, pages.length - 1);
     pagesChanged();
@@ -762,7 +785,10 @@
 
   const shortLabel = (action) => {
     if (!action) return "—";
-    if (action.startsWith("open:")) return miniById[action.slice(5)]?.label || action;
+    // open:music / open:radio use the mini-app name; open:weather / open:audio are actions only.
+    if (action.startsWith("open:")) {
+      return miniById[action.slice(5)]?.label || actionsById[action]?.label || action;
+    }
     const n = pageOf(action);
     if (n) return config.pages[n - 1] ? `Page ${n}: ${config.pages[n - 1].name}` : `Page ${n} (none)`;
     return actionsById[action]?.label || action;
@@ -1080,6 +1106,40 @@
     renderMusic();
   };
   root.querySelector("[data-ct-music-open]")?.addEventListener("click", () => send("open", { action: "open:music" }));
+
+  // ── Radio → Play on: StonePi plus the speakers Radio found (keeps a saved one that's away) ──
+  const radioOutput = root.querySelector("[data-ct-radio-output]");
+  const radioOutputsStatus = root.querySelector("[data-ct-radio-outputs-status]");
+  const loadRadioOutputs = async () => {
+    if (!radioOutput) return;
+    let outputs = [];
+    try {
+      const body = await (await fetch(api("radio/outputs"))).json();
+      outputs = body.outputs || [];
+      if (!body.ok && radioOutputsStatus) radioOutputsStatus.textContent = body.message || "Radio's speakers aren't available right now.";
+      else if (radioOutputsStatus) {
+        const n = outputs.filter((o) => o.kind === "speaker").length;
+        radioOutputsStatus.textContent = n
+          ? `${n} speaker${n === 1 ? "" : "s"} from Radio. A speaker must be switched on to play.`
+          : "Radio hasn't found any speakers yet. They need to be switched on and on the same Wi-Fi.";
+      }
+    } catch {
+      if (radioOutputsStatus) radioOutputsStatus.textContent = "Radio's speakers aren't available right now.";
+    }
+    const current = (config.radio || {}).output || "stonepi";
+    radioOutput.innerHTML = "";
+    const add = (value, label) => {
+      const opt = document.createElement("option");
+      opt.value = value;
+      opt.textContent = label;
+      radioOutput.appendChild(opt);
+    };
+    if (!outputs.some((o) => o.id === "stonepi")) add("stonepi", "StonePi (the Pi's own audio out)");
+    outputs.forEach((o) => add(o.id, o.kind === "stonepi" ? "StonePi (the Pi's own audio out)" : `${o.name}${o.stale ? " (not seen lately)" : ""}`));
+    if (!outputs.some((o) => o.id === current) && current !== "stonepi") add(current, "A speaker that isn't found right now");
+    radioOutput.value = current;
+  };
+  loadRadioOutputs();
 
   // ── status pills: the panel, and Spotify turning red when the service reports the sign-in gone ──
   const pill = document.querySelector("[data-ct-pill-status]");

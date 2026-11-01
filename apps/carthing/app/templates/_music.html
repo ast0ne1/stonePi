@@ -47,11 +47,20 @@
       <span class="np2-album" data-np-album>{{ np.album }}</span>
     </div>
   </div>
+  {% if not np.radio %}
   <div class="np-progress np2-bar" data-np-bar data-progress="{{ np.progress_ms }}" data-duration="{{ np.duration_ms }}" data-at="{{ np.at_ms }}" data-playing="{{ 1 if np.playing else 0 }}">
     <span class="np-pos" data-np-pos>{{ mmss(np.progress_ms) }}</span>
     <span class="np2-seek"{% if opts.allowed.seek %} data-np-seek{% endif %}><span class="np-line"><i style="width:{{ ((np.progress_ms / np.duration_ms * 100) if np.duration_ms else 0)|round|int }}%"></i></span></span>
     <span class="np-dur" data-np-dur>{{ mmss(np.duration_ms) if np.duration_ms else "" }}</span>
   </div>
+  {% endif %}
+  {% if np.radio %}
+  {#- Radio in this look: live, so no progress bar; play/pause and stop drive Radio. -#}
+  <div class="np2-ctl">
+    {% if opts.allowed.play_pause %}<button class="np2-btn np2-play{% if np.playing %} is-playing{% endif %}" data-focus data-radio-cmd="play_pause" aria-label="Play or pause">{{ icon("play", "ico i-play") }}{{ icon("pause", "ico i-pause") }}</button>{% endif %}
+    {% if opts.allowed.stop %}<button class="np2-btn np2-next" data-focus data-radio-cmd="stop" aria-label="Stop">{{ icon("stop") }}</button>{% endif %}
+  </div>
+  {% else %}
   {#- Play/pause comes first in the markup so it takes the first focus; CSS orders the row. -#}
   <div class="np2-ctl">
     {% if opts.allowed.play_pause %}<button class="np2-btn np2-play{% if np.playing %} is-playing{% endif %}" data-focus data-music="play_pause" aria-label="Play or pause">{{ icon("play", "ico i-play") }}{{ icon("pause", "ico i-pause") }}</button>{% endif %}
@@ -62,24 +71,27 @@
     {% if opts.show_save %}<button class="np2-btn np2-liked{% if np.liked %} on{% endif %}" data-focus data-music="save" aria-label="Liked Songs"><span>{{ icon("check", "ico i-on") }}{{ icon("plus", "ico i-off") }}</span></button>{% endif %}
     <button class="np2-btn np2-more" data-focus data-np-more aria-label="Speakers and presets">{{ icon("more") }}</button>
   </div>
+  {% endif %}
   <div class="np2-idle">
     <strong class="np2-idle-head">Nothing playing</strong>
     <span class="np2-idle-sub">{% if np.error %}{{ np.error }}{% else %}Pick a preset to start it{% if d.name %} on {{ d.name }}{% elif opts.default_device %} on {{ opts.default_device }}{% endif %}.{% endif %}</span>
     <div class="np2-tiles">
       {% for p in opts.presets if p.set and p.allowed %}
-      <button class="np2-tile" data-focus data-preset="{{ p.number }}">
+      <button class="np2-tile" data-focus {% if np.radio %}data-radio-cmd="preset" data-radio-arg="{{ p.number }}"{% else %}data-preset="{{ p.number }}"{% endif %}>
         {% if p.art %}<img src="{{ p.art }}" alt="">{% else %}<span class="np2-tile-empty">{{ icon("note") }}</span>{% endif %}
         <b>{{ p.name or ("Preset " ~ p.number) }}</b><span>Preset {{ p.number }}</span>
       </button>
       {% else %}
-      <p class="np2-none">No music presets yet: choose them in Notify → Displays → Car Thing (Look → Music).</p>
+      <p class="np2-none">No {{ "radio" if np.radio else "music" }} presets yet: choose them in Notify → Displays → Car Thing (Look → {{ "Radio" if np.radio else "Music" }}).</p>
       {% endfor %}
     </div>
   </div>
   <div class="np2-vol" data-np-vol{% if not d or not d.supports_volume or d.volume is none %} hidden{% endif %}>{{ icon("volume") }}<span class="np2-vol-line"><i style="width:{{ d.volume or 0 }}%"></i></span><b data-np-vol-n>{{ d.volume or 0 }}</b></div>
+  {% if not np.radio %}
   <div class="np2-sheet" data-np-sheet hidden>
     {% if opts.allowed.transfer %}<button class="np2-row" data-focus data-go="v/app/music?list=speakers">{{ icon("speaker") }}<span>Speakers</span><small data-np-device>{{ d.name or "" }}</small></button>{% endif %}
     <button class="np2-row" data-focus data-go="v/app/music?list=presets">{{ icon("presets") }}<span>Presets</span></button>
   </div>
+  {% endif %}
 </div>
 {%- endmacro %}

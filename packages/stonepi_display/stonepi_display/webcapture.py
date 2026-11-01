@@ -56,6 +56,7 @@ _lock = threading.Lock()
 # users; it's dropped when the last one leaves, so the dict only holds in-flight keys.
 _key_locks: dict[str, list[Any]] = {}
 _cache: dict[str, tuple[float, bytes]] = {}
+_cache_at: dict[str, float] = {}  # cache key -> when it was captured (wall clock, for "Updated")
 _cache_urls: dict[str, str] = {}  # cache key -> the page address it captured (for forget)
 _errors: dict[str, tuple[float, str]] = {}
 
@@ -75,6 +76,13 @@ def capture(
     draws at 1.8×). ``bits`` is the e-ink panel's depth (0 for a colour screen); only app pages
     use it. Raises ``stonepi_browser.CaptureError`` (or RuntimeError) on failure.
     """
+    return capture_timed(page, width, height, device_scale=device_scale, max_age=max_age, bits=bits)[0]
+
+
+def capture_timed(
+    page: dict[str, Any], width: int, height: int, *, device_scale: float = 1.0, max_age: float = 0.0, bits: int = 0
+) -> tuple[bytes, float]:
+    """As ``capture``, with when that capture was taken (epoch seconds)."""
     scale = float(page.get("scale") or 1.0) * float(device_scale or 1.0)
     key = _key(page, width, height, scale, bits)
     with _lock:
@@ -92,13 +100,13 @@ def capture(
 
 def _capture_locked(
     page: dict[str, Any], key: str, width: int, height: int, scale: float, max_age: float, bits: int
-) -> bytes:
+) -> tuple[bytes, float]:
     from stonepi_browser import capture_page
 
     with _lock:
         hit = _cache.get(key)
     if hit and max_age > 0 and time.monotonic() - hit[0] < max_age:
-        return hit[1]
+        return hit[1], _cache_at.get(key, time.time())
     try:
         url = capture_url(page["url"], width, height, scale, bits)
         png = capture_page(url, width, height, scale=scale, css=page_css(page), settle_s=float(page.get("settle_s") or 0))
@@ -108,13 +116,15 @@ def _capture_locked(
         raise
     with _lock:
         _cache[key] = (time.monotonic(), png)
+        _cache_at[key] = at = time.time()
         _cache_urls[key] = str(page.get("url") or "")
         _errors.pop(page.get("id") or "", None)
         while len(_cache) > MAX_ENTRIES:
             oldest = min(_cache, key=lambda k: _cache[k][0])
             _cache.pop(oldest, None)
+            _cache_at.pop(oldest, None)
             _cache_urls.pop(oldest, None)
-    return png
+    return png, at
 
 
 def last_error(page_id: str) -> str:
@@ -128,10 +138,12 @@ def forget(urls: set[str]) -> None:
     with _lock:
         for key in [k for k, url in _cache_urls.items() if url in urls]:
             _cache.pop(key, None)
+            _cache_at.pop(key, None)
             _cache_urls.pop(key, None)
 
 
 def clear() -> None:
     with _lock:
         _cache.clear()
+        _cache_at.clear()
         _cache_urls.clear()

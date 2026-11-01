@@ -9,7 +9,8 @@ the day and the difference stay true between pushes (and follow daylight saving 
 sides). Notify's hourly push picks up a new part of the day or new weather; an unchanged
 picture isn't sent.
 
-Places are picked with Open-Meteo's place search and saved with their time zone.
+Places are picked with Open-Meteo's place search and saved with their time zone and country
+(the country is for the holidays, app/holidays.py).
 """
 
 from __future__ import annotations
@@ -66,7 +67,12 @@ def clean_place(raw: Any) -> dict[str, Any] | None:
     if not name or not (-90 <= lat <= 90 and -180 <= lon <= 180):
         return None
     label = " ".join(str(raw.get("label") or name).split())[:120]
-    return {"name": name, "label": label, "lat": round(lat, 4), "lon": round(lon, 4), "tz": tz}
+    place = {"name": name, "label": label, "lat": round(lat, 4), "lon": round(lon, 4), "tz": tz}
+    # ISO country code (Open-Meteo's country_code), for the holidays (U34).
+    country = str(raw.get("country") or "").strip().upper()
+    if len(country) == 2 and country.isalpha():
+        place["country"] = country
+    return place
 
 
 def get_place(which: str) -> dict[str, Any] | None:
@@ -89,7 +95,7 @@ def search_places(query: str) -> list[dict[str, Any]]:
         label = ", ".join(str(p) for p in (row.get("name"), row.get("admin1"), row.get("country")) if p)
         place = clean_place(
             {"name": row.get("name"), "label": label, "lat": row.get("latitude"), "lon": row.get("longitude"),
-             "tz": row.get("timezone")}
+             "tz": row.get("timezone"), "country": row.get("country_code")}
         )
         if place:
             places.append(place)

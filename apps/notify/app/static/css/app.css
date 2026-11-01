@@ -1341,6 +1341,22 @@ details.alerts-section[open] > summary .section-heading::after { transform: rota
 .sk-add > summary .section-heading::after { content: "\203A"; margin-left: auto; color: var(--muted); font-size: 1.2rem; transition: transform .12s; }
 .sk-add[open] > summary .section-heading::after { transform: rotate(90deg); }
 .sk-mood { margin: 0; }
+.sk-tools { margin: 0; padding: 0; border: 0; display: grid; gap: 14px; min-inline-size: 0; }
+.sk-tool-app { display: grid; gap: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); overflow: hidden; }
+.sk-tool-app-title {
+  margin: 0; padding: 8px 12px; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.02em;
+  color: var(--muted); border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--ink) 3%, var(--card));
+}
+.sk-tool-list { display: grid; }
+.sk-tool {
+  display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center;
+  padding: 10px 12px; border-top: 1px solid var(--line); margin: 0;
+}
+.sk-tool:first-child { border-top: 0; }
+.sk-tool-copy { display: grid; gap: 2px; min-width: 0; }
+.sk-tool-copy strong { font-size: 0.95rem; font-weight: 600; }
+.sk-tool-copy .hint { margin: 0; font-size: 0.82rem; }
 .sk-tabbar { padding-bottom: 8px; }
 .sk-tabs { width: fit-content; max-width: 100%; }
 .sk-tabs .seg-btn { padding: 0 16px; }
@@ -1423,6 +1439,60 @@ details.alerts-section[open] > summary .section-heading::after { transform: rota
   .ct-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); align-items: start; }
   .ct-device-wrap { position: sticky; top: calc(var(--topbar-height) + 12px); }
 }
+/* 14" laptop at 125% (~1536×864) and similar short heights: keep the editor body on
+   one screen — forms scroll inside the left column; the device drawing stays smaller. */
+@media (min-width: 1024px) and (max-height: 920px) {
+  .main:has(.ct-editor) > :first-child { margin-top: 10px; }
+  .ct-hero { margin-bottom: 0; }
+  .ct-hero .settings-back { margin-bottom: 2px; }
+  .ct-title-row .carthing-icon-lg { width: 32px; height: 32px; }
+  .ct-chips { margin-top: 6px; gap: 6px; }
+  .ct-chip { min-height: 32px; padding: 0 12px; font-size: 0.85rem; }
+  .ct-editor.card { padding: 10px 12px 12px; }
+  .ct-tabbar { margin-top: 0; padding: 4px 0 8px; gap: 8px; }
+  .ct-layout {
+    gap: 12px;
+    grid-template-columns: minmax(0, 1.3fr) minmax(240px, 0.8fr);
+    align-items: stretch;
+    max-height: calc(100dvh - var(--topbar-height) - 10.5rem);
+    min-height: 0;
+  }
+  .ct-forms {
+    overflow-y: auto;
+    min-height: 0;
+    overscroll-behavior: contain;
+    padding-right: 4px;
+  }
+  .ct-device-wrap {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    max-height: 100%;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+  .ct-device { max-width: 460px; margin-inline: auto; }
+  .ct-device-hint { display: none; }
+  .ct-callouts { margin-bottom: 2px; }
+  .ct-under { margin-top: 4px; }
+  .ct-pane.stack { gap: 10px; }
+}
+/* Thin StonePi scrollbars on the editor's scroll panes (Firefox via @supports; Chromium via webkit). */
+@supports not selector(::-webkit-scrollbar) {
+  .ct-forms, .ct-device-wrap {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scroll-thumb, var(--line)) var(--scroll-track, transparent);
+  }
+}
+.ct-forms::-webkit-scrollbar, .ct-device-wrap::-webkit-scrollbar { width: 6px; height: 6px; background: transparent; }
+.ct-forms::-webkit-scrollbar-thumb, .ct-device-wrap::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb, var(--line)); border-radius: 999px;
+}
+.ct-forms::-webkit-scrollbar-thumb:hover, .ct-device-wrap::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover, var(--muted));
+}
+.ct-forms::-webkit-scrollbar-track, .ct-device-wrap::-webkit-scrollbar-track { background: transparent; }
+.ct-forms::-webkit-scrollbar-button, .ct-device-wrap::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
 .ct-tabs { flex-wrap: wrap; }
 .ct-sub { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .ct-label { font-size: 0.78rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }

@@ -97,3 +97,33 @@ def test_backup_nested_library_and_briefings(tmp_path, monkeypatch):
     assert (briefings / "3" / "news-2026-09-14.epub").read_bytes() == b"paper"
     assert (data / "cache" / "feeds" / "abc.txt").read_text(encoding="utf-8") == "feed-body"
     assert (tls / "root-ca.pem").read_text(encoding="utf-8") == "CA-CERT"
+
+
+def test_restore_rejects_zip_slip(tmp_path, monkeypatch):
+    data = tmp_path / "data"
+    data.mkdir()
+    library = data / "library"
+    library.mkdir()
+    sqlite3.connect(data / "newscast.db").close()
+    monkeypatch.setattr(backup, "DATA_DIR", data)
+    monkeypatch.setattr(backup, "LIBRARY_DIR", library)
+    monkeypatch.setattr(backup, "BRIEFING_DIR", data / "briefings")
+    monkeypatch.setattr(backup, "CACHE_DIR", data / "cache")
+    monkeypatch.setattr(backup, "TLS_DIR", data / "tls")
+    monkeypatch.setattr(backup, "ROOT_DIR", tmp_path)
+    monkeypatch.setattr(backup, "BACKUPS_DIR", data / "backups")
+
+    evil = data / "backups" / "evil.zip"
+    evil.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(evil, "w") as archive:
+        archive.writestr("manifest.json", '{"format":"newscast-backup"}')
+        archive.writestr("newscast.db", b"")
+        archive.writestr("library/../../outside.txt", b"nope")
+    try:
+        backup.restore_backup(evil)
+        raised = False
+    except ValueError as exc:
+        raised = True
+        assert "Unsafe path" in str(exc)
+    assert raised
+    assert not (tmp_path / "outside.txt").exists()
